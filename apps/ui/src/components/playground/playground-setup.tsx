@@ -4,6 +4,7 @@ import { useUiTranslations } from "@/providers/locale-provider";
 import { useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Users, FlaskConical } from "lucide-react";
+import { LinkButton } from "@/components/ui/button";
 import { NewPlaygroundChatForm } from "@/components/chat/new-chat-form";
 import { VirtualUserSelect } from "@/components/virtual-user/virtual-user-select";
 import { useVirtualUser } from "@/hooks/use-virtual-users";
@@ -46,6 +47,11 @@ function Setup() {
         icon={<FlaskConical />}
         title={ui("New Playground chat")}
         description={ui("Choose an agent and a virtual user to start a shared chat.")}
+        actions={
+          <LinkButton variant="outline" href="/chats/new">
+            {ui("New private Platform Chat")}
+          </LinkButton>
+        }
       />
       <PageColumns>
         <PageMain>

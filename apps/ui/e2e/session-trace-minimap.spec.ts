@@ -204,3 +204,129 @@ test("a minimap cell brings its turns into view", async ({ page, baseURL }) => {
   await minimap.getByRole("listitem", { name: /^Turns 1841 to 1851/ }).click();
   await expect.poll(() => headerInView(page, 1841), { timeout: 10_000 }).toBe(true);
 });
+
+test("opens the requested message page or tools in a fixed-size model request modal", async ({
+  page,
+  baseURL,
+}) => {
+  test.setTimeout(90_000);
+  await mockSession(page, baseURL!);
+  const call = `**/api/v1/sessions/${SESSION}/trace/turns/1833/steps/1`;
+  const preview = "Inspect the attached report";
+  const system = "Read workspace reports before answering.";
+  const longMessage = `${preview}\n${"A long line in the report.\n".repeat(150)}`;
+  const messages = Array.from({ length: 65 }, (_, index) => ({
+    index,
+    role: index === 0 ? "system" : "user",
+    preview: index === 0 ? system : index === 62 ? preview : `Message ${index}`,
+    size_bytes: index === 62 ? longMessage.length : 20,
+    content: {
+      content: [
+        {
+          type: "text",
+          text: index === 0 ? system : index === 62 ? longMessage : `Message ${index}`,
+        },
+      ],
+    },
+  }));
+  await page.route(call, (route) =>
+    route.fulfill({
+      json: {
+        step: turn(1833).items[0],
+        events: [],
+        request: {
+          message_count: messages.length,
+          new_from: 62,
+          tool_count: 1,
+          system_preview: system,
+          system_index: 0,
+          new_messages: [messages[62]],
+        },
+      },
+    }),
+  );
+  await page.route(`${call}/request?*`, (route) => {
+    const params = new URL(route.request().url()).searchParams;
+    const offset = Number(params.get("offset"));
+    const limit = Number(params.get("limit"));
+    return route.fulfill({
+      json: {
+        message_count: messages.length,
+        new_from: 62,
+        has_native_request: false,
+        tools: offset === 0 ? [{ name: "read_file", description: "Read a workspace file" }] : [],
+        messages: messages.slice(offset, offset + limit),
+      },
+    });
+  });
+  await page.goto(`/sessions/${SESSION}/trace?step=1833.1`);
+  const toolsLink = page.getByRole("button", { name: /View 1 tools/ });
+  await expect(toolsLink).toBeVisible({ timeout: 30_000 });
+  await toolsLink.click();
+  const modal = page.getByRole("dialog", { name: "Model request" });
+  await expect(modal.getByText("Read a workspace file")).toBeVisible();
+  await expect.poll(async () => (await modal.boundingBox())?.height).toBe(868);
+  const bounds = await modal.boundingBox();
+  expect(bounds?.width).toBeGreaterThan(1300);
+  await modal.getByRole("button", { name: "Close" }).click();
+  await expect(modal).toBeHidden();
+
+  await page.getByRole("button", { name: new RegExp(system) }).click();
+  await expect(modal.getByRole("button", { name: /^0 system/ })).toHaveAttribute(
+    "aria-expanded",
+    "true",
+  );
+  await modal.getByRole("button", { name: "Close" }).click();
+
+  await page.getByRole("button", { name: new RegExp(preview) }).click();
+  await expect(modal.getByRole("button", { name: /^62 user/ })).toHaveAttribute(
+    "aria-expanded",
+    "true",
+  );
+  await expect(modal.getByText(/A long line in the report/)).toBeVisible();
+  await expect(modal.getByText(preview, { exact: true })).toHaveCount(0);
+  await expect(modal.getByRole("button", { name: "Load earlier messages" })).toBeAttached();
+  await expect.poll(() => modal.boundingBox()).toEqual(bounds);
+
+  const scroller = modal.getByRole("region", { name: "Messages" });
+  await expect(scroller).toHaveAttribute("tabindex", "0");
+  await scroller.focus();
+  await expect(scroller).toBeFocused();
+  await scroller.press("Home");
+  await expect.poll(() => scroller.evaluate((element) => element.scrollTop)).toBe(0);
+  await scroller.press("PageDown");
+  await expect.poll(() => scroller.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+
+  await modal.getByRole("button", { name: /^62 user/ }).click();
+  await expect(modal.getByRole("button", { name: /^62 user/ })).toHaveAttribute(
+    "aria-expanded",
+    "false",
+  );
+  await expect.poll(() => modal.boundingBox()).toEqual(bounds);
+});
+
+test("opens the full recorded turn input in the trace sidebar", async ({ page, baseURL }) => {
+  test.setTimeout(90_000);
+  await mockSession(page, baseURL!);
+  const fullInput = `Prompt of turn 1833\n${"An unabridged line.\n".repeat(500)}End of message.`;
+  await page.route(`**/api/v1/sessions/${SESSION}/trace/turns/1833/input`, (route) =>
+    route.fulfill({ json: { content: fullInput } }),
+  );
+  await page.goto(`/sessions/${SESSION}/trace?turn=1833`);
+  const turn = page.getByRole("button", { name: /Prompt of turn 1833/ }).locator("..");
+  await turn.getByRole("button", { name: "View full message" }).click();
+  const sidebar = page.getByRole("complementary", { name: "Turn input" });
+  await expect(sidebar).toContainText("End of message.");
+  await expect(sidebar.locator("pre")).toHaveText(fullInput);
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+});
+
+test("Playground links to a new private Platform Chat", async ({ page, baseURL }) => {
+  test.setTimeout(90_000);
+  await mockSession(page, baseURL!);
+  await page.goto("/playground/new");
+  const privateChat = page.getByRole("link", { name: "New private Platform Chat" });
+  await expect(privateChat).toHaveAttribute("href", "/chats/new");
+  await privateChat.click();
+  await expect(page).toHaveURL(/\/chats\/new$/, { timeout: 30_000 });
+});

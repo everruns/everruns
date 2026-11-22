@@ -182,8 +182,8 @@ export const messages: Readonly<Record<string, string>> = {
   "Knowledge:": "Знання:",
   "Last synced": "Остання синхронізація",
   "Last used:": "Останнє використання:",
-  "Leave empty to use the platform default, GPT-6 Luna.":
-    "Залиште порожнім, щоб використовувати стандартну платформу GPT-6 Luna.",
+  "Leave empty to use the platform default, GPT-6.2 Sol.":
+    "Залиште порожнім, щоб використовувати стандартну платформу GPT-6.2 Sol.",
   Link: "Посилання",
   lists: "списки",
   "Load more presets": "Завантажити більше попередніх налаштувань",
@@ -293,7 +293,7 @@ export const messages: Readonly<Record<string, string>> = {
   "Personal access tokens are tied to your user account, not to an organization. The token inherits access to every organization and resource available to your account, limited by the access you choose below.":
     "Особисті маркери доступу прив’язані до вашого облікового запису користувача, а не до організації. Маркер успадковує доступ до кожної організації та ресурсу, доступних для вашого облікового запису, обмежений доступом, який ви виберете нижче.",
   "placeholders.": "заповнювачі.",
-  "Platform default · GPT-6 Luna": "Стандартна платформа · GPT-6 Luna",
+  "Platform default · GPT-6.2 Sol": "Стандартна платформа · GPT-6.2 Sol",
   "prefix. Public hostnames only; the deployment's deny list still applies.":
     ". Лише публічні імена хостів; список заборонених для розгортання все ще застосовується.",
   "Private Key": "Приватний ключ",

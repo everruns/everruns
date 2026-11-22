@@ -328,6 +328,10 @@ export const messages: Readonly<Record<string, string>> = {
   Request: "Anfrage",
   "Request credentials from": "Anmeldeinformationen anfordern von",
   "Request view": "Ansicht anfordern",
+  "Load earlier messages": "Frühere Nachrichten laden",
+  "Load full message": "Vollständige Nachricht laden",
+  "Full message is unavailable.": "Die vollständige Nachricht ist nicht verfügbar.",
+  "View {value0} tools": "{value0} Werkzeuge anzeigen",
   requested: "angefordert",
   Requested: "Angefordert",
   "Requests and the approvals recorded for them will show up here together.":

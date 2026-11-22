@@ -557,8 +557,44 @@ impl Command for ListSessionTraceSteps {
 }
 
 // ============================================================================
-// GetSessionTraceStep
+// GetSessionTraceTurnInput and GetSessionTraceStep
 // ============================================================================
+
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
+pub struct GetSessionTraceTurnInput {
+    /// Session's prefixed public identifier.
+    pub session_id: String,
+    /// Turn number.
+    pub turn: i32,
+}
+
+#[command(
+    name = "get_session_trace_turn_input",
+    category = "sessions",
+    description = "Read the full recorded input of one trace turn.",
+    method = "GET",
+    path = "/v1/sessions/{session_id}/trace/turns/{turn}/input",
+    policy = SESSION_VIEW,
+    positional = "session_id",
+    cli = CliRoute::new(&["sessions", "trace", "turns", "input"], "get").with_examples(&[CliExample::new("Read the original input of turn 12", "everruns sessions trace turns input get --session-id session_01h9 --turn 12")]),
+    http = plain,
+)]
+impl Command for GetSessionTraceTurnInput {
+    type Output = TraceTurnInput;
+
+    async fn execute(self, ctx: &Ctx) -> Result<TraceTurnInput, CommandError> {
+        let (session, db) = session_uuid(ctx, &self.session_id).await?;
+        let turn = turn_row(&db, session, self.turn).await?;
+        // The turn index stores only a preview. Read the start event by its
+        // session-scoped sequence on either data plane.
+        let content = db
+            .trace_event_data(session, turn.start_sequence)
+            .await?
+            .filter(|(kind, _)| kind == "turn.started")
+            .and_then(|(_, data)| data["input_content"].as_str().map(str::to_owned));
+        Ok(TraceTurnInput { content })
+    }
+}
 
 #[derive(Debug, Deserialize, ToSchema, IntoParams, Serialize)]
 #[into_params(parameter_in = Query)]
@@ -973,10 +1009,10 @@ fn request_summary(data: &Value, new_from: i32) -> TraceRequestSummary {
     // Compaction can shrink the history; then everything counts as new.
     let new_from = usize::try_from(new_from).unwrap_or(0);
     let new_from = if new_from > count { 0 } else { new_from };
-    let system_preview = all
+    let system = all
         .iter()
-        .find(|m| wire_role(m) == "system")
-        .map(|m| message_preview(m, &names));
+        .enumerate()
+        .find(|(_, m)| wire_role(m) == "system");
     TraceRequestSummary {
         message_count: i32::try_from(count).unwrap_or(i32::MAX),
         new_from: i32::try_from(new_from).unwrap_or(i32::MAX),
@@ -984,7 +1020,8 @@ fn request_summary(data: &Value, new_from: i32) -> TraceRequestSummary {
             .get("tools")
             .and_then(Value::as_array)
             .map_or(0, |t| i32::try_from(t.len()).unwrap_or(i32::MAX)),
-        system_preview,
+        system_preview: system.map(|(_, m)| message_preview(m, &names)),
+        system_index: system.map(|(index, _)| i32::try_from(index).unwrap_or(i32::MAX)),
         new_messages: all
             .iter()
             .enumerate()

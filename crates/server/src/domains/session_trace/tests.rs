@@ -381,6 +381,23 @@ async fn step_detail_and_request_show_what_changed() {
 }
 
 #[tokio::test]
+async fn turn_input_loads_full_text_from_its_start_event() {
+    let db = Arc::new(StorageBackend::test_database());
+    let session = db.create_test_session().await;
+    let input = "The original input contains a long line.\n".repeat(2_000);
+    db.create_events(turn(session, &input, 0, &[]))
+        .await
+        .unwrap();
+    let command = || GetSessionTraceTurnInput {
+        session_id: session.to_string(),
+        turn: 1,
+    };
+    let full = command().run(&ctx(&db, DEFAULT_ORG_ID)).await.unwrap();
+    assert_eq!(full.content.as_deref(), Some(input.as_str()));
+    assert!(command().run(&ctx(&db, 424_242)).await.is_err());
+}
+
+#[tokio::test]
 async fn other_orgs_cannot_read_a_trace() {
     let (db, session) = seeded().await;
     let err = GetSessionTrace {

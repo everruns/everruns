@@ -44,6 +44,10 @@ identity or a separate organization. An empty draft creates its session only on
 first send; a failed first send reuses that session. Side chats keep normal
 pin/archive behavior.
 
+Main chat is created on demand. A rolled-back data-plane create leaves a deleted
+record for history and allows the next attempt to provision a new starter. Side
+chat drafts and links can open without a successful Main chat lookup.
+
 The sidebar shows **Main chat** (with a live dot while it streams) and a
 **Side chats +** group listing recent side chats. Threads are not in the
 sidebar: each chat's threads live in that chat's Threads panel. There are no

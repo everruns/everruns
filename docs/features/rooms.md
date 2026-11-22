@@ -153,7 +153,7 @@ for a guest or an outside agent.
 
 ## In the console
 
-**Rooms**, under Activity next to Sessions, lists every room in your organization, whoever
+**Rooms**, under Observability next to Sessions, lists every room in your organization, whoever
 made it. Open one to read its recording: what happened in order, each message with the agents it
 woke and why, the shared files with every version, and each agent's sessions.
 

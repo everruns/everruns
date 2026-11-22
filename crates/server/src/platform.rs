@@ -18,9 +18,9 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 /// The platform fallback when an organization has not selected a model:
-/// GPT-6 Luna (`seed::seed_ids::GPT_6_LUNA`).
+/// GPT-6.2 Sol, seeded by `setup::seed::models`.
 pub(crate) const PLATFORM_DEFAULT_MODEL_ID: Uuid =
-    Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000022c);
+    Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000022f);
 
 pub(crate) const fn platform_default_model_id(org_id: i64) -> Option<Uuid> {
     if org_id == DEFAULT_ORG_ID {

@@ -33561,6 +33561,53 @@
         }
       }
     },
+    "/v1/sessions/{session_id}/trace/turns/{turn}/input": {
+      "get": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "Read the full recorded input of one trace turn",
+        "operationId": "get_session_trace_turn_input",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "turn",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TraceTurnInput"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "sessions-workspaces",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/sessions/{session_id}/trace/turns/{turn}/steps": {
       "get": {
         "tags": [
@@ -82805,6 +82852,14 @@
             },
             "description": "The new messages, at most 50."
           },
+          "system_index": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Position of the system message in the full request."
+          },
           "system_preview": {
             "type": [
               "string",
@@ -83552,6 +83607,19 @@
             "type": "string",
             "description": "Public turn identifier.",
             "example": "turn_01a124cd7e9571ac95c312b3c6d0cd82"
+          }
+        }
+      },
+      "TraceTurnInput": {
+        "type": "object",
+        "description": "Full text recorded when a trace turn starts.",
+        "properties": {
+          "content": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The recorded input, when present."
           }
         }
       },

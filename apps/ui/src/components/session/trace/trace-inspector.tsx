@@ -6,7 +6,7 @@
 import { useUiTranslations } from "@/providers/locale-provider";
 import Link from "next/link";
 import { useState } from "react";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronDown, ChevronRight, ChevronUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CopyButton } from "@/components/ui/copy-button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -15,7 +15,7 @@ import type { TraceBatch, TracePayload, TraceStep, TraceStepDetail } from "@/lib
 import { cn } from "@/lib/utils";
 import { JsonView, formatBytes } from "./json-view";
 import { CacheBar } from "./cache-bar";
-import { ROLE_COLOR, ROLE_HINT, RequestSheet } from "./request-sheet";
+import { ROLE_COLOR, ROLE_HINT, RequestSheet, type RequestFocus } from "./request-sheet";
 import { ToolChanges } from "./tool-changes";
 import { formatClock, formatCount, formatDuration, parseTraceError } from "./trace-model";
 import { WebSearchTraceSection } from "./web-search-trace";
@@ -371,6 +371,11 @@ function StepDetail({
   }
   const request = detail.request;
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [sheetFocus, setSheetFocus] = useState<RequestFocus>();
+  function openRequest(focus?: RequestFocus) {
+    setSheetFocus(focus);
+    setSheetOpen(true);
+  }
   return (
     <div>
       {header(
@@ -397,7 +402,7 @@ function StepDetail({
               variant="link"
               size="sm"
               className="h-auto p-0 text-xs"
-              onClick={() => setSheetOpen(true)}
+              onClick={() => openRequest()}
             >
               {ui("View full request")}
             </Button>
@@ -406,9 +411,20 @@ function StepDetail({
           {request.usage && <CacheBar usage={request.usage} className="mb-3" />}
           {request.tool_changes && <ToolChanges changes={request.tool_changes} />}
           <ul className="border text-xs">
-            {/* When every message is new, the system prompt is already among them. */}
-            {request.system_preview && request.new_from > 0 && (
-              <RequestRow role="system" preview={request.system_preview} />
+            {request.tool_count > 0 && (
+              <RequestRow
+                label={ui("Tools")}
+                preview={ui("View {value0} tools", { value0: formatCount(request.tool_count) })}
+                onOpen={() => openRequest("tools")}
+              />
+            )}
+            {/* A new system message is already in the rows below. */}
+            {request.system_preview && (request.system_index ?? 0) < request.new_from && (
+              <RequestRow
+                label="system"
+                preview={request.system_preview}
+                onOpen={() => openRequest(request.system_index ?? 0)}
+              />
             )}
             {request.new_from > 0 && (
               <li className="border-t border-border/60 bg-muted/50 px-2.5 py-1.5 italic text-muted-foreground first:border-t-0">
@@ -417,7 +433,13 @@ function StepDetail({
               </li>
             )}
             {request.new_messages.map((m) => (
-              <RequestRow key={m.index} role={m.role} preview={m.preview} isNew />
+              <RequestRow
+                key={m.index}
+                label={m.role}
+                preview={m.preview}
+                isNew
+                onOpen={() => openRequest(m.index)}
+              />
             ))}
           </ul>
           <RequestSheet
@@ -426,6 +448,7 @@ function StepDetail({
             step={step.step}
             open={sheetOpen}
             onOpenChange={setSheetOpen}
+            focus={sheetFocus}
           />
         </Section>
       )}
@@ -483,27 +506,43 @@ function StepDetail({
   );
 }
 
-function RequestRow({ role, preview, isNew }: { role: string; preview: string; isNew?: boolean }) {
+function RequestRow({
+  label,
+  preview,
+  isNew,
+  onOpen,
+}: {
+  label: string;
+  preview: string;
+  isNew?: boolean;
+  onOpen: () => void;
+}) {
   const ui = useUiTranslations();
   return (
-    <li
-      className={cn(
-        "flex items-center gap-2 border-t border-border/60 px-2.5 py-1.5 first:border-t-0",
-        isNew && "bg-accent/6",
-      )}
-    >
-      <span
-        className={cn("w-[62px] shrink-0 font-mono text-[11px]", ROLE_COLOR[role] ?? "text-info")}
-        title={ROLE_HINT}
+    <li className={cn("border-t border-border/60 first:border-t-0", isNew && "bg-accent/6")}>
+      <button
+        type="button"
+        aria-haspopup="dialog"
+        onClick={onOpen}
+        className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left hover:bg-muted/60"
       >
-        {role}
-      </span>
-      <span className="min-w-0 flex-1 truncate">{preview || "—"}</span>
-      {isNew && (
-        <span className="shrink-0 border border-accent bg-accent/15 px-1 text-[10px]">
-          {ui("new")}
+        <span
+          className={cn(
+            "w-[62px] shrink-0 font-mono text-[11px]",
+            ROLE_COLOR[label] ?? "text-muted-foreground",
+          )}
+          title={ROLE_COLOR[label] ? ROLE_HINT : undefined}
+        >
+          {label}
         </span>
-      )}
+        <span className="min-w-0 flex-1 truncate">{preview || "—"}</span>
+        {isNew && (
+          <span className="shrink-0 border border-accent bg-accent/15 px-1 text-[10px]">
+            {ui("new")}
+          </span>
+        )}
+        <ChevronRight className="size-3 shrink-0 text-muted-foreground" aria-hidden />
+      </button>
     </li>
   );
 }

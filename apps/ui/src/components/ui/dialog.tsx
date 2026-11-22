@@ -9,15 +9,30 @@ import { cn } from "@/lib/utils";
 import { usePageChatMode } from "@/components/chat-mode/chat-mode-context";
 import { ManualPageContext } from "@/components/chat-mode/manual-page-context";
 
-function Dialog({ ...props }: DialogPrimitive.Root.Props) {
+type DialogScope = "page" | "viewport";
+const DialogScopeContext = React.createContext<DialogScope>("page");
+
+function useDialogPageMode() {
   const mode = usePageChatMode();
+  const scope = React.useContext(DialogScopeContext);
+  return scope === "page" ? mode : null;
+}
+
+function Dialog({
+  scope = "page",
+  ...props
+}: DialogPrimitive.Root.Props & { scope?: DialogScope }) {
+  const mode = usePageChatMode();
+  const besideChat = scope === "page" && mode?.open;
   return (
-    <DialogPrimitive.Root
-      data-slot="dialog"
-      {...props}
-      modal={mode?.open ? false : props.modal}
-      disablePointerDismissal={mode?.open || props.disablePointerDismissal}
-    />
+    <DialogScopeContext.Provider value={scope}>
+      <DialogPrimitive.Root
+        data-slot="dialog"
+        {...props}
+        modal={besideChat ? false : props.modal}
+        disablePointerDismissal={besideChat || props.disablePointerDismissal}
+      />
+    </DialogScopeContext.Provider>
   );
 }
 
@@ -37,7 +52,7 @@ function DialogTrigger({
 }
 
 function DialogPortal({ ...props }: DialogPrimitive.Portal.Props) {
-  const mode = usePageChatMode();
+  const mode = useDialogPageMode();
   // Keep the portal container stable when Chat opens: moving a mounted form
   // between body and pane would remount it and discard unsaved React state.
   return (
@@ -79,7 +94,7 @@ function DialogContent({
   chatProtected?: string;
 }) {
   const ui = useUiTranslations();
-  const mode = usePageChatMode();
+  const mode = useDialogPageMode();
   const scoped = !!(mode?.pageContainerElement ?? mode?.pageContainer.current);
   return (
     <DialogPortal data-slot="dialog-portal">

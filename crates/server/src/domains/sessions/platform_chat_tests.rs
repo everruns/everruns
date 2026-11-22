@@ -76,6 +76,30 @@ async fn permanent_chat_is_durable_and_cannot_be_removed_or_reassigned() {
 }
 
 #[tokio::test]
+async fn main_chat_recovers_after_a_failed_starter_was_soft_deleted() {
+    let ctx = fixture().await;
+    let failed = EnsurePlatformChat {}.run(&ctx).await.unwrap();
+    // A failed data-plane create rolls back its new record via this soft delete.
+    assert!(
+        ctx.db
+            .delete_session(ctx.org_id(), failed.id)
+            .await
+            .unwrap()
+    );
+
+    let replacement = EnsurePlatformChat {}.run(&ctx).await.unwrap();
+    assert_ne!(failed.id, replacement.id);
+    assert_eq!(
+        replacement.resolved_owner_user_id,
+        failed.resolved_owner_user_id
+    );
+    assert_eq!(
+        EnsurePlatformChat {}.run(&ctx).await.unwrap().id,
+        replacement.id
+    );
+}
+
+#[tokio::test]
 async fn side_chat_starts_empty_on_the_same_agent_and_bashkit_worker() {
     let ctx = fixture().await;
     let main = EnsurePlatformChat {}.run(&ctx).await.unwrap();

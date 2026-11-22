@@ -13,6 +13,7 @@ let mockPathname = "/agents/agent_1";
 let mockCanNavigate = false;
 let mockOrg = "org_1";
 let mockHasRole = true;
+let mockMainChatError: Error | null = null;
 const mockSearch = jest.fn();
 const mockPush = jest.fn();
 const mockQuery = new URLSearchParams();
@@ -91,7 +92,10 @@ jest.mock("@/hooks/use-command-palette", () => ({
   useCommandPalette: () => ({ setOpen: mockSearch }),
 }));
 jest.mock("@/hooks/use-platform-chat-thread", () => ({
-  usePlatformChatThread: () => ({ thread: { id: "session_chat" } }),
+  usePlatformChatThread: () => ({
+    thread: mockMainChatError ? undefined : { id: "session_chat" },
+    error: mockMainChatError,
+  }),
 }));
 jest.mock("@/app/(main)/sessions/[sessionId]/session-context", () => ({
   SessionProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
@@ -172,11 +176,21 @@ beforeEach(() => {
   mockCanNavigate = false;
   mockOrg = "org_1";
   mockHasRole = true;
+  mockMainChatError = null;
   mockLayout = "chat_first";
   mockClassicChat = "full_screen";
   window.localStorage.clear();
   window.sessionStorage.clear();
   jest.clearAllMocks();
+});
+
+it("opens the new side chat route when the Main chat lookup fails", () => {
+  mockLayout = "classic";
+  mockMainChatError = new Error("Session not found");
+  mockPathname = "/chats/new";
+  render(shell());
+  expect(screen.getByTestId("workspace")).toBeInTheDocument();
+  expect(screen.queryByText("Could not open Chat: Session not found")).not.toBeInTheDocument();
 });
 
 describe("chat-first layout", () => {

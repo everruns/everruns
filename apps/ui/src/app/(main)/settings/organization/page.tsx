@@ -455,7 +455,7 @@ export default function OrganizationPage() {
             >
               <SettingsRow
                 label={ui("Default model")}
-                description={ui("Leave empty to use the platform default, GPT-6 Luna.")}
+                description={ui("Leave empty to use the platform default, GPT-6.2 Sol.")}
                 htmlFor="default-model"
               >
                 <ModelPicker

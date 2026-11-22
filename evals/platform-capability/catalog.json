@@ -14956,6 +14956,35 @@
     "read_only": true
   },
   {
+    "category": "sessions",
+    "cli": "sessions trace turns input get",
+    "description": "Read the full recorded input of one trace turn.",
+    "input_schema": {
+      "properties": {
+        "session_id": {
+          "description": "Session's prefixed public identifier.",
+          "type": "string"
+        },
+        "turn": {
+          "description": "Turn number.",
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "session_id",
+        "turn"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "get_session_trace_turn_input",
+    "output_shape": "unknown",
+    "path": "/v1/sessions/{session_id}/trace/turns/{turn}/input",
+    "positional_arg": "session_id",
+    "read_only": true
+  },
+  {
     "category": "events",
     "cli": "sessions work get",
     "description": "Show what a session's turn is doing or got done.",

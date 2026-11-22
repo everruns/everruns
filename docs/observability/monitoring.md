@@ -12,7 +12,7 @@ agent names, prompts, and tool arguments out of the display.
 
 ## Organization and platform views
 
-Open **Activity → Monitoring** to see the selected organization’s execution and
+Open **Observability → Monitoring** to see the selected organization’s execution and
 actor ownership. Reading this view requires session-read permission.
 
 Platform operators open **System → Monitoring** for the cross-org

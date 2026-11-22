@@ -17324,6 +17324,41 @@
     ]
   },
   {
+    "wire_name": "get_session_trace_turn_input",
+    "path": [
+      "sessions",
+      "trace",
+      "turns",
+      "input"
+    ],
+    "verb": "get",
+    "description": "Read the full recorded input of one trace turn.",
+    "method": "GET",
+    "http_path": "/v1/sessions/{session_id}/trace/turns/{turn}/input",
+    "args": [
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier."
+      },
+      {
+        "field": "turn",
+        "long": "turn",
+        "kind": "integer",
+        "required": true,
+        "help": "Turn number."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Read the original input of turn 12",
+        "command": "everruns sessions trace turns input get --session-id session_01h9 --turn 12"
+      }
+    ]
+  },
+  {
     "wire_name": "list_session_trace_turns",
     "path": [
       "sessions",

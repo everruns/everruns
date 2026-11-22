@@ -25,3 +25,7 @@ Before, Extractions sat above Overview at the top of Building, and Models and
 Web search shared a Library group with Capabilities and Knowledge. Breadcrumbs,
 Cmd-K search and the Chat first navigation rail follow the same groups. Every
 page keeps its URL. See [UI](/features/ui/) for the full list.
+
+## Update 2026-11-20
+
+**Activity** is now called **Observability**. It still holds Sessions, Rooms and Monitoring.

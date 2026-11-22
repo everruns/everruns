@@ -472,6 +472,10 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
         "Raw events recorded for one turn of a trace.",
     ),
     (
+        "sessions trace turns input",
+        "The original input recorded for a trace turn.",
+    ),
+    (
         "sessions trace turns steps",
         "Model calls, tool calls and other steps within a turn.",
     ),

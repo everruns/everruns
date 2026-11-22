@@ -30,7 +30,7 @@ impl Database {
         org_id: i64,
         user_id: Uuid,
     ) -> Result<Option<everruns_contracts::typed_id::SessionId>> {
-        let id: Option<(Uuid,)> = sqlx::query_as("SELECT id FROM sessions WHERE org_id = $1 AND 'platform-chat-starter' = ANY(tags) AND owner_principal_id IN (SELECT p.id FROM principals p JOIN virtual_user_bindings b ON b.org_id = p.org_id AND b.virtual_user_id = p.subject_id WHERE p.kind = 'virtual_user' AND b.management_user_id = $2) LIMIT 1")
+        let id: Option<(Uuid,)> = sqlx::query_as("SELECT id FROM sessions WHERE org_id = $1 AND deleted_at IS NULL AND tags @> ARRAY['platform-chat-starter']::text[] AND owner_principal_id IN (SELECT p.id FROM principals p JOIN virtual_user_bindings b ON b.org_id = p.org_id AND b.virtual_user_id = p.subject_id WHERE p.kind = 'virtual_user' AND b.management_user_id = $2) LIMIT 1")
             .bind(org_id).bind(user_id).fetch_optional(&self.pool).await?;
         Ok(id.map(|(id,)| everruns_contracts::typed_id::SessionId::from_uuid(id)))
     }

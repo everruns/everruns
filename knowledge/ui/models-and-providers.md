@@ -47,6 +47,9 @@ service. The provider record itself is described in
   each model family per service, plus calibrated decision models. Uncurated
   models are never pre-ticked, which keeps a several-hundred-model catalog such
   as OpenRouter down to a short list.
+  Browser sign-in also discovers and bootstraps the catalog before returning to
+  the Providers tab, where the provider's remaining models can be reviewed.
+  A new, unreviewed provider's calibrated decision models are enabled for selection.
 - **New models are tracked, stale ones are marked, never deleted.** A provider
   keeps `models_reviewed_at`; a discovered, not yet enabled model created after
   it is `is_new` and surfaces as "N new models · Review". Choosing or reviewing a

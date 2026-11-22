@@ -14,6 +14,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, Maximize2, Minimize2, PanelRight, X } from "lucide-react";
 import { useOptionalFeatureFlags } from "@/providers/feature-flags-provider";
 import { useSessionAgentView } from "@/hooks/use-agent-view-settings";
+import { useAgent } from "@/hooks/use-agents";
 import { usePlatformChatThread } from "@/hooks/use-platform-chat-thread";
 import { useSession } from "@/hooks/use-sessions";
 import { useSessionTasks } from "@/hooks/use-session-tasks";
@@ -38,7 +39,7 @@ import {
   threadRowTitle,
   workGroup,
 } from "@/lib/chat-thread-work";
-import { isChatThread } from "@/lib/chat-threads";
+import { isChatThread, PLATFORM_CHAT_AGENT_NAME } from "@/lib/chat-threads";
 import { formatRelativeTime } from "@/lib/formatting";
 import { cn } from "@/lib/utils";
 import type { SessionTask } from "@/lib/api/types";
@@ -134,6 +135,8 @@ export function ChatWorkspace({
   const searchParams = useSearchParams();
   const chatMode = useChatMode();
   const { thread, error } = usePlatformChatThread({ ensure: true });
+  const { data: platformAgent } = useAgent(thread ? undefined : PLATFORM_CHAT_AGENT_NAME);
+  const platformAgentId = thread?.agent_id ?? platformAgent?.id;
   const [open, setOpen] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [compact, setCompact] = useState(false);
@@ -144,7 +147,7 @@ export function ChatWorkspace({
   const chatRoute = pathname === "/chats" || pathname.startsWith("/chats/");
   const segment = chatRoute ? pathname.slice("/chats".length).split("/")[1] : undefined;
   const conversationId = segment && !["new", "history"].includes(segment) ? segment : undefined;
-  const drafting = !chatRoute && !!newChat;
+  const drafting = segment === "new" || (!chatRoute && !!newChat);
   const currentId = chatRoute ? (conversationId ?? thread?.id) : (activeChatId ?? thread?.id);
   const active = useSession(currentId);
   const viewsEnabled = useOptionalFeatureFlags()?.flags.agent_views;
@@ -162,14 +165,16 @@ export function ChatWorkspace({
   const personalChat =
     active.data &&
     isChatThread(active.data) &&
-    active.data.agent_id === thread?.agent_id &&
+    active.data.agent_id === platformAgentId &&
+    !!platformAgentId &&
     !parentId;
   const coordinatorId =
     parentId === thread?.id
       ? parentId
       : parent.data &&
           isChatThread(parent.data) &&
-          parent.data.agent_id === thread?.agent_id &&
+          parent.data.agent_id === platformAgentId &&
+          !!platformAgentId &&
           !parent.data.parent_session_id
         ? parent.data.id
         : undefined;
@@ -255,8 +260,20 @@ export function ChatWorkspace({
     router.push(`/chats/${owner}?task=${encodeURIComponent(id)}`);
   };
 
-  if (error) return <ChatErrorAlert message={error.message} />;
-  if (!thread || (parentId && parentId !== thread.id && parent.isLoading))
+  if (drafting) {
+    return segment === "new" ? (
+      <ChatDraft />
+    ) : (
+      <ChatDraft
+        key={newChat}
+        pageAware={pageAware}
+        extraActions={extraActions}
+        onCreated={onNewChatCreated}
+      />
+    );
+  }
+  if (error && !currentId) return <ChatErrorAlert message={error.message} />;
+  if (!currentId || (parentId && parentId !== thread?.id && parent.isLoading))
     return <Skeleton className="m-6 h-64" />;
 
   const threadPane = openThreadId ? (
@@ -437,7 +454,7 @@ export function ChatWorkspace({
   return (
     <ChatWorkspaceContext.Provider
       value={{
-        sessionId: workOwnerId ?? currentId ?? thread.id,
+        sessionId: workOwnerId ?? currentId,
         openTask: (target) =>
           isAssignment(target) ? openThread(target.links!.child_session_id!) : openWork(target.id),
       }}
@@ -450,44 +467,33 @@ export function ChatWorkspace({
             !useDrawer && panelOpen && expanded && "hidden",
           )}
         >
-          {segment === "new" ? (
-            <ChatDraft />
-          ) : drafting ? (
-            <ChatDraft
-              key={newChat}
-              pageAware={pageAware}
-              extraActions={extraActions}
-              onCreated={onNewChatCreated}
-            />
-          ) : (
-            <ChatThreadView
-              threadId={currentId ?? thread.id}
-              coordinatorId={coordinatorId}
-              threadMode={!!coordinatorId}
-              pageAware={pageAware && !!personalChat && !active.data?.archived_at}
-              onPageMessage={onPageMessage}
-              notice={notice}
-              extraActions={
-                <>
-                  {extraActions}
-                  <Button
-                    ref={threadsButton}
-                    variant="outline"
-                    size="sm"
-                    aria-expanded={panelOpen}
-                    aria-label={view ? ui("Conversation panel") : undefined}
-                    title={view ? ui("Conversation panel") : undefined}
-                    onClick={() => (panelOpen ? close() : setOpen(true))}
-                  >
-                    {view ? <PanelRight /> : ui("Threads")}
-                    {!view && openCount > 0 && (
-                      <span className="tabular-nums text-muted-foreground">· {openCount}</span>
-                    )}
-                  </Button>
-                </>
-              }
-            />
-          )}
+          <ChatThreadView
+            threadId={currentId}
+            coordinatorId={coordinatorId}
+            threadMode={!!coordinatorId}
+            pageAware={pageAware && !!personalChat && !active.data?.archived_at}
+            onPageMessage={onPageMessage}
+            notice={notice}
+            extraActions={
+              <>
+                {extraActions}
+                <Button
+                  ref={threadsButton}
+                  variant="outline"
+                  size="sm"
+                  aria-expanded={panelOpen}
+                  aria-label={view ? ui("Conversation panel") : undefined}
+                  title={view ? ui("Conversation panel") : undefined}
+                  onClick={() => (panelOpen ? close() : setOpen(true))}
+                >
+                  {view ? <PanelRight /> : ui("Threads")}
+                  {!view && openCount > 0 && (
+                    <span className="tabular-nums text-muted-foreground">· {openCount}</span>
+                  )}
+                </Button>
+              </>
+            }
+          />
         </div>
         {useDrawer ? (
           <Drawer open={panelOpen} onOpenChange={(value) => !value && close()}>
