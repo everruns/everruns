@@ -3976,7 +3976,7 @@
           "agents"
         ],
         "summary": "List agent mcp attachments",
-        "description": "Lists the effective MCP attachments after capability, harness, and agent layers are merged. Connection state and permitted actions are resolved for the current caller.",
+        "description": "Lists the effective MCP attachments after capability, harness, and agent layers are merged. Connection state, the agent's sign-in state, and permitted actions are resolved for the current caller.",
         "operationId": "list_agent_mcp_attachments",
         "parameters": [
           {
@@ -40333,6 +40333,24 @@
             ],
             "description": "Connection provider (e.g. `github`) whose connection on the agent\nsupplies the service credential, when the preset names one. The agent's\nservice login is then set up on the agent's integrations, not by an MCP\nsign-in."
           },
+          "sign_in": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AgentMcpSignIn",
+                "description": "The agent's own sign-in to this catalog server and what it can still\ndo. Absent when the attachment does not sign in as the agent, or the\nagent never signed in."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sign_in_href": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Console path where a person signs in (again), when a sign-in is\nmissing, stopped working or will stop."
+          },
           "source": {
             "$ref": "#/components/schemas/AgentMcpAttachmentSource",
             "description": "Highest-precedence configuration layer that supplied this attachment."
@@ -40431,7 +40449,60 @@
         "enum": [
           "ready",
           "connection_missing",
-          "preset_missing"
+          "preset_missing",
+          "reconnect_required"
+        ]
+      },
+      "AgentMcpSignIn": {
+        "type": "object",
+        "description": "The agent's own (service) sign-in to an OAuth catalog server.",
+        "required": [
+          "state"
+        ],
+        "properties": {
+          "detail": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The reason in plain words."
+          },
+          "expires_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When it stops working, for `expires_soon`."
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why it cannot renew or stopped working: `unbound`, `settings_changed`,\n`no_refresh_token`, `refused` or `rejected`."
+          },
+          "since": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When it stopped working, for `needs_sign_in`, when known."
+          },
+          "state": {
+            "$ref": "#/components/schemas/AgentMcpSignInState",
+            "description": "What the sign-in can still do."
+          }
+        }
+      },
+      "AgentMcpSignInState": {
+        "type": "string",
+        "description": "What the agent's own sign-in to a catalog server can still do.",
+        "enum": [
+          "working",
+          "expires_soon",
+          "needs_sign_in"
         ]
       },
       "AgentModelRole": {

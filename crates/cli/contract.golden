@@ -47,6 +47,8 @@ agents health-checks list	--agent-id! --context-revision --reason
 agents health-checks trigger	--agent-id! --context-revision --reason
 agents import	--content --format --reason --target <file>
 agents list	--context-revision --include-archived --limit --offset --reason --search
+agents mcp list	--context-revision --id --reason <id>
+agents mcp revoke	--context-revision --id --name --reason <id> <name>
 agents pause	--agent --context-revision --reason <agent_id>
 agents preview	--agent-id --capabilities --context-revision --harness-id --initial-files --mcp-servers --reason --system-prompt --tools
 agents resume	--agent --context-revision --reason <agent_id>

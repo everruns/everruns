@@ -209,6 +209,9 @@ pub fn issue_copy(row: &HealthIssueRow) -> (String, String) {
     if super::background_work::owns(&row.code) {
         return super::background_work::copy(row);
     }
+    if row.code == super::mcp_grants::MCP_SIGN_IN {
+        return super::mcp_grants::copy(row);
+    }
     if row.code == super::relevance_fallback::CODE {
         return super::relevance_fallback::copy(&row.status);
     }

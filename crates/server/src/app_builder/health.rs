@@ -143,12 +143,18 @@ pub(super) async fn start(
     supervisor.track("server_heartbeat", instances::spawn_heartbeat(db.clone()));
     supervisor.track(
         "slack_health_reconciliation",
-        SlackHealthService::new(db.clone(), encryption).spawn(),
+        SlackHealthService::new(db.clone(), encryption.clone()).spawn(),
     );
     supervisor.track(
         "active_turn_limit_health_sweep",
         crate::domains::health_issues::active_turns::spawn_sweep(db.clone()),
     );
+    if let Some(encryption) = encryption.clone() {
+        supervisor.track(
+            "mcp_sign_in_health_sweep",
+            crate::domains::health_issues::mcp_grants::spawn_sweep(db.clone(), encryption),
+        );
+    }
     supervisor.track(
         "background_work_health_sweep",
         crate::domains::health_issues::background_work::spawn_sweep(db),

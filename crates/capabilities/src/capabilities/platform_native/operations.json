@@ -14510,6 +14510,24 @@
     "read_only": true
   },
   {
+    "description": "List an agent's MCP servers after capability, harness and agent layers are merged, with each server's sign-in state for the caller: whether it works, renews, expires or needs a person to sign in again.",
+    "input_schema": {
+      "description": "List an agent's effective MCP servers and whether each one's sign-in works.",
+      "properties": {
+        "id": {
+          "description": "Agent ID (prefixed) or name.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "name": "list_agent_mcp_attachments",
+    "read_only": true
+  },
+  {
     "description": "List an agent's saved scripts with their bodies. include_archived=true also returns archived.",
     "input_schema": {
       "description": "List an agent's saved scripts, including their bodies.",
@@ -19645,6 +19663,29 @@
       "type": "object"
     },
     "name": "revoke_agent_key",
+    "read_only": false
+  },
+  {
+    "description": "Revoke the caller's own sign-in for an agent's MCP server, or the agent's shared sign-in when the caller has none (needs MCP server management). The attachment stays; sign in again on the agent's MCP sheet.",
+    "input_schema": {
+      "description": "Revoke the caller's own sign-in for an agent's MCP server, or the agent's\nshared sign-in when the caller has none. The attachment stays.",
+      "properties": {
+        "id": {
+          "description": "Agent ID (prefixed) or name.",
+          "type": "string"
+        },
+        "name": {
+          "description": "Effective MCP attachment name.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "type": "object"
+    },
+    "name": "revoke_agent_mcp_connection",
     "read_only": false
   },
   {

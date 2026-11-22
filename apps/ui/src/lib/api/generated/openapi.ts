@@ -1058,7 +1058,7 @@ export interface paths {
     };
     /**
      * List agent mcp attachments
-     * @description Lists the effective MCP attachments after capability, harness, and agent layers are merged. Connection state and permitted actions are resolved for the current caller.
+     * @description Lists the effective MCP attachments after capability, harness, and agent layers are merged. Connection state, the agent's sign-in state, and permitted actions are resolved for the current caller.
      */
     get: operations["list_agent_mcp_attachments"];
     put?: never;
@@ -11143,6 +11143,12 @@ export interface components {
        *     sign-in.
        */
       service_connection_provider?: string | null;
+      sign_in?: components["schemas"]["AgentMcpSignIn"] | null;
+      /**
+       * @description Console path where a person signs in (again), when a sign-in is
+       *     missing, stopped working or will stop.
+       */
+      sign_in_href?: string | null;
       /** @description Highest-precedence configuration layer that supplied this attachment. */
       source: components["schemas"]["AgentMcpAttachmentSource"];
       /** @description Human-readable name of the winning capability, harness, or agent layer. */
@@ -11186,7 +11192,38 @@ export interface components {
      * @description Availability state of an effective MCP attachment.
      * @enum {string}
      */
-    AgentMcpAttachmentState: "ready" | "connection_missing" | "preset_missing";
+    AgentMcpAttachmentState:
+      | "ready"
+      | "connection_missing"
+      | "preset_missing"
+      | "reconnect_required";
+    /** @description The agent's own (service) sign-in to an OAuth catalog server. */
+    AgentMcpSignIn: {
+      /** @description The reason in plain words. */
+      detail?: string | null;
+      /**
+       * Format: date-time
+       * @description When it stops working, for `expires_soon`.
+       */
+      expires_at?: string | null;
+      /**
+       * @description Why it cannot renew or stopped working: `unbound`, `settings_changed`,
+       *     `no_refresh_token`, `refused` or `rejected`.
+       */
+      reason?: string | null;
+      /**
+       * Format: date-time
+       * @description When it stopped working, for `needs_sign_in`, when known.
+       */
+      since?: string | null;
+      /** @description What the sign-in can still do. */
+      state: components["schemas"]["AgentMcpSignInState"];
+    };
+    /**
+     * @description What the agent's own sign-in to a catalog server can still do.
+     * @enum {string}
+     */
+    AgentMcpSignInState: "working" | "expires_soon" | "needs_sign_in";
     /**
      * @description An organization model an agent follows instead of pinning a model.
      * @enum {string}

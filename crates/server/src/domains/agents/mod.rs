@@ -25,6 +25,7 @@ pub mod health_check;
 mod lifecycle;
 mod managed;
 pub mod max_output_tokens;
+pub mod mcp_attachments;
 pub mod packages;
 pub mod preview;
 pub mod queries;

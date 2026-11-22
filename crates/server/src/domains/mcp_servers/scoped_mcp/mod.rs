@@ -745,6 +745,14 @@ async fn discover_catalog_tools(
                 invalidate_identity_cache(db, identity).await?;
             }
         }
+        // The agent's own login is part of its setup: with none that works,
+        // the model is told in place of the tools instead of losing them in
+        // silence. A person's own login stays theirs to add (mcp_deferred.rs).
+        if server.acts_as.uses_service_grant() {
+            return Ok(Some(vec![everruns_core::mcp_sign_in_required_tool(
+                server_name,
+            )]));
+        }
         return Ok(None);
     };
     let Some(identity) = cache_identity(org_id, preset_id, credential.acted_as, context) else {

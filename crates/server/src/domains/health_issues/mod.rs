@@ -6,6 +6,7 @@ pub mod commands;
 pub mod fixers;
 pub mod fixes;
 pub mod inspector;
+pub mod mcp_grants;
 pub mod model_health;
 pub mod quality;
 pub mod relevance_fallback;

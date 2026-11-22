@@ -113,6 +113,9 @@ struct ResolvedServer {
     connection: McpConnection,
     tool_discovery: bool,
     configuration: [u8; 32],
+    /// The server signs in as the agent's own account (`actsAs` service or
+    /// user_or_service), so a rejected sign-in is the agent's to fix.
+    signs_in_as_agent: bool,
 }
 
 fn resolve_servers(servers: &ScopedMcpServers) -> Vec<ResolvedServer> {
@@ -147,6 +150,7 @@ fn resolve_servers(servers: &ScopedMcpServers) -> Vec<ResolvedServer> {
                 },
                 tool_discovery: server.tool_discovery,
                 configuration,
+                signs_in_as_agent: server.acts_as.uses_service_grant(),
             })
         })
         .collect()
@@ -336,9 +340,9 @@ pub(crate) async fn discover_tool_definitions(
                 let key = (session_uuid, resolved.name.clone(), resolved.configuration);
                 let name = resolved.name.clone();
                 let connection = resolved.connection.clone();
-                cache
+                let tools = cache
                     .resolve_until(
-                        key,
+                        key.clone(),
                         move || {
                             discover_once(
                                 client.clone(),
@@ -349,7 +353,22 @@ pub(crate) async fn discover_tool_definitions(
                         },
                         deadline,
                     )
-                    .await
+                    .await;
+                // The server rejected the agent's own sign-in: tell the model
+                // in place of its tools instead of dropping them in silence
+                // (mcp_deferred.rs, "sign_in_required").
+                if tools.is_empty()
+                    && resolved.signs_in_as_agent
+                    && cache.readiness(&key).status
+                        == crate::host::McpDiscoveryStatus::AuthenticationRequired
+                {
+                    return build_definitions(
+                        session_uuid,
+                        &resolved.name,
+                        vec![crate::mcp_sign_in_required_tool(&resolved.name)],
+                    );
+                }
+                tools
             }
         });
     let result = stream::iter(discoveries)
@@ -755,6 +774,45 @@ mod tests {
                 1
             );
             assert!(egress.requests.load(Ordering::SeqCst) > before_reload);
+        }
+    }
+
+    /// A server that rejects the agent's own sign-in lists one tool telling
+    /// the model so, instead of disappearing from the turn; a server signing
+    /// in as nobody in particular still just drops out.
+    #[tokio::test]
+    async fn a_rejected_agent_sign_in_lists_the_sign_in_placeholder() {
+        use std::sync::atomic::{AtomicU16, AtomicUsize};
+        let egress = Arc::new(DiscoveryEgress {
+            requests: AtomicUsize::new(0),
+            status: AtomicU16::new(401),
+            slow_gate: None,
+        });
+        let client = Arc::new(McpClient::new(egress, Arc::new(crate::mcp::NoAuthProvider)));
+        let cache = Arc::new(McpDiscoveryCache::new());
+        let session = Uuid::new_v4();
+        let mut servers = servers_with(
+            "stend",
+            ScopedMcpServer {
+                url: "https://93.184.216.34/mcp".into(),
+                acts_as: crate::McpServerActsAs::Service,
+                ..Default::default()
+            },
+        );
+        servers.insert(
+            "anonymous".into(),
+            ScopedMcpServer {
+                url: "https://93.184.216.34/other".into(),
+                ..Default::default()
+            },
+        );
+        for _ in 0..2 {
+            let tools = discover_tool_definitions(&cache, client.clone(), session, &servers).await;
+            assert_eq!(
+                tools.iter().map(|tool| tool.name()).collect::<Vec<_>>(),
+                ["mcp_stend__sign_in_required"]
+            );
+            assert!(crate::is_mcp_sign_in_required_tool(tools[0].name()));
         }
     }
 

@@ -79,7 +79,7 @@ pub use backend::{
     OrgFeatureFlagCache,
 };
 pub use connection_resolver::{
-    DataPlaneGrant, DbConnectionResolver, GitHubAppTokenMinter, NoopConnectionResolver,
+    DataPlaneGrant, DbConnectionResolver, GitHubAppTokenMinter, GrantHealth, NoopConnectionResolver,
 };
 pub use encryption::{
     ENCRYPTED_COLUMNS, EncryptedColumn, EncryptedPayload, EncryptionService,

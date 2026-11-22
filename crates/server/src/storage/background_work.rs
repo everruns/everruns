@@ -31,6 +31,17 @@ pub struct ObservedIssue {
     pub opened: bool,
 }
 
+/// An active agent's service-account MCP OAuth grant that may need sign-in
+/// again soon (see `domains::health_issues::mcp_grants`).
+#[derive(Debug, sqlx::FromRow)]
+pub struct WatchedServiceGrantRow {
+    pub org_id: i64,
+    pub agent_id: Uuid,
+    pub virtual_user_id: Uuid,
+    /// `mcp_oauth_<server>`.
+    pub provider: String,
+}
+
 /// An agent's unattended spend over the last day against its own recent days.
 #[derive(Debug, sqlx::FromRow)]
 pub struct UnattendedSpendRow {
@@ -481,6 +492,28 @@ impl StorageBackend {
     }
 
     /// An agent's public id and display name.
+    /// Active agents' service-account MCP OAuth grants that are marked as
+    /// needing sign-in, or whose access token expires before `horizon`.
+    pub async fn service_mcp_grants_to_watch(
+        &self,
+        horizon: DateTime<Utc>,
+    ) -> Result<Vec<WatchedServiceGrantRow>> {
+        Ok(sqlx::query_as(
+            "SELECT a.org_id, a.id AS agent_id, c.virtual_user_id, c.provider
+             FROM agents a
+             JOIN virtual_users v ON v.id = a.virtual_user_id
+             JOIN virtual_user_connections c ON c.virtual_user_id = v.id
+             WHERE a.status = 'active' AND v.status = 'active' AND v.usage = 'service'
+               AND c.provider LIKE 'mcp_oauth_%' AND c.connection_type = 'oauth'
+               AND ((c.provider_metadata ? 'reconnect_required')
+                    OR (c.expires_at IS NOT NULL AND c.expires_at < $1))
+             ORDER BY a.org_id, a.id, c.provider",
+        )
+        .bind(horizon)
+        .fetch_all(self.database().pool())
+        .await?)
+    }
+
     pub async fn agent_label(&self, agent_id: Uuid) -> Result<Option<(String, String)>> {
         Ok(sqlx::query_as(
             "SELECT public_id, COALESCE(display_name, name) FROM agents WHERE id = $1",

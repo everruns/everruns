@@ -354,7 +354,7 @@ async fn stale_refresh_and_revocation_cannot_overwrite_reconnected_credentials()
         .is_none()
     );
     assert!(
-        !db.revoke_runtime_connection_if_unchanged(row.id, &[1])
+        !db.mark_runtime_connection_reconnect_required(row.id, &[1], "refused")
             .await
             .unwrap()
     );
@@ -365,6 +365,22 @@ async fn stale_refresh_and_revocation_cannot_overwrite_reconnected_credentials()
         .unwrap();
     assert_eq!(current.access_token_encrypted, Some(vec![3]));
     assert_eq!(current.refresh_token_encrypted, Some(vec![4]));
+    assert!(current.provider_metadata.is_none());
+    assert!(
+        db.mark_runtime_connection_reconnect_required(row.id, &[3], "refused")
+            .await
+            .unwrap()
+    );
+    let marked = db
+        .get_virtual_user_connection(account.id, "oauth-fixture")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        marked.provider_metadata.unwrap()["reconnect_required"]["reason"],
+        "refused"
+    );
+    assert_eq!(marked.access_token_encrypted, Some(vec![3]));
 }
 
 #[tokio::test]
