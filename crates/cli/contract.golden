@@ -202,6 +202,7 @@ history restore	--context-revision --entity-ref --expected-revision --fields... 
 history show	--context-revision --entity-ref --kind --reason --revision <entity_ref>
 images get	--context-revision --id --reason <id>
 images list	--context-revision --limit --offset --reason
+k8s cluster create	--name --provider!
 k8s destroy	--keep-namespace --local-only --name --yes/-y
 k8s doctor	--name
 k8s health	--name
@@ -211,7 +212,7 @@ k8s password	--name
 k8s port-forward	--name
 k8s status	--name
 k8s uninstall	--name
-k8s up	--admin-email --auth --bundled-postgres --chart --chart-version --context --data-plane --database-url --image-tag --ingress-class --name --namespace --no-open --port --provider --public-url --set... --timeout --values/-f... --yes/-y
+k8s up	--admin-email --auth --bundled-postgres --chart --chart-version --context --data-plane --database-url --image-tag --ingress-class --name --namespace --no-open --port --provider --public-url --set... --storage-class --timeout --values/-f... --yes/-y
 k8s upgrade	--chart-version --name --no-backup --timeout --yes/-y
 knowledge create	--context-revision --description --embedding-model-id --indexer-id --indexing --name! --reason --rules
 knowledge delete	--collection-id! --context-revision --reason
@@ -289,7 +290,7 @@ orgs quality-monitoring scores list	--context-revision --org! --reason
 orgs quality-monitoring scores review	--agrees! --context-revision --note --org! --reason --score!
 orgs resolve	--context-revision --id! --reason
 orgs select
-orgs update	--agentid-agents-per-owner --background-limits --base-harness-id --chat-model-id --coding-model-id --context-revision --default-harness-id --default-harness-name --default-model-id --default-provider-per-service --monthly-session-limit --name --org! --quality-monitoring --reason --research-model-id --self-healing --small-model-id --system-decisions --tool-approval-policy --web-search-defaults
+orgs update	--agentid-agents-per-owner --background-limits --base-harness-id --chat-model-id --coding-model-id --context-revision --default-harness-id --default-harness-name --default-model-id --default-provider-per-service --monthly-agent-limit --monthly-session-limit --name --org! --quality-monitoring --reason --research-model-id --self-healing --small-model-id --system-decisions --tool-approval-policy --web-search-defaults
 payments accounts create	--context-revision --label! --metadata --owner-id! --owner-type! --private-key --public-address --rail! --reason
 payments accounts disable	--context-revision --payment-account-id! --reason
 payments accounts get	--context-revision --payment-account-id! --reason

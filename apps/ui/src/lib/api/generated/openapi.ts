@@ -21942,6 +21942,12 @@ export interface components {
         id: string;
         /**
          * Format: int32
+         * @description Maximum agents this organization can create per UTC calendar month.
+         *     Built-in agents do not count; archiving or deleting never refunds.
+         */
+        monthly_agent_limit: number;
+        /**
+         * Format: int32
          * @description Maximum sessions this organization can create per UTC calendar month.
          */
         monthly_session_limit: number;
@@ -26072,6 +26078,12 @@ export interface components {
       effective_research_model_id?: string | null;
       /** @description External identifier (org_<32-hex-chars>) */
       id: string;
+      /**
+       * Format: int32
+       * @description Maximum agents this organization can create per UTC calendar month.
+       *     Built-in agents do not count; archiving or deleting never refunds.
+       */
+      monthly_agent_limit: number;
       /**
        * Format: int32
        * @description Maximum sessions this organization can create per UTC calendar month.
@@ -36223,6 +36235,11 @@ export interface components {
       default_provider_per_service?: {
         [key: string]: string;
       } | null;
+      /**
+       * Format: int32
+       * @description Maximum agents this organization can create per UTC calendar month.
+       */
+      monthly_agent_limit?: number | null;
       /**
        * Format: int32
        * @description Maximum sessions this organization can create per UTC calendar month.

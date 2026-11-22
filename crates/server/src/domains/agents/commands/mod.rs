@@ -103,15 +103,8 @@ impl Command for CreateAgent {
         validate_sandbox_template_sources(ctx, req.sandbox_policy.as_ref()).await?;
         check_high_risk_caps(ctx, &req.capabilities).await?;
 
-        // Enforce per-org agent cap (excludes soft-deleted) before insert.
-        let max = ctx.resource_limits.max_agents_per_org;
-        let count = ctx.db.count_agents_for_org(ctx.org_id()).await?;
-        if count >= max {
-            return Err(CommandError::conflict(format!(
-                "Agent limit reached (max {max})"
-            )));
-        }
-
+        // The monthly agent creation quota is enforced by the agents insert
+        // trigger (migration 20261122001517), so every create path counts.
         // Business rules
         q::ensure_name_available(&ctx.db, ctx.org_id(), &req.name, None).await?;
         let caps = normalize_capability_refs(

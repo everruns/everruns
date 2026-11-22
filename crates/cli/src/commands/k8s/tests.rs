@@ -90,6 +90,20 @@ fn up_parses_every_flag() {
     assert!(args.bundled_postgres);
     assert_eq!(args.set.len(), 2);
     assert_eq!(args.timeout, "15m");
+    assert_eq!(args.storage_class, "auto");
+}
+
+#[test]
+fn parses_an_explicit_storage_class_and_the_apple_cluster_command() {
+    let selected =
+        Cli::try_parse_from(["k8s", "up", "--bundled-postgres", "--storage-class", "fast"])
+            .unwrap();
+    assert!(matches!(selected.command, K8sCommand::Up(args) if args.storage_class == "fast"));
+    let cluster = Cli::try_parse_from(["k8s", "cluster", "create", "--provider", "apple"]).unwrap();
+    assert!(matches!(
+        cluster.command,
+        K8sCommand::Cluster(apple::ClusterCommand::Create(_))
+    ));
 }
 
 #[test]

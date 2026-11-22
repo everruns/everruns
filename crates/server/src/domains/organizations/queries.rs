@@ -50,6 +50,10 @@ pub async fn build_organization_response(
             crate::domains::organizations::types::DEFAULT_MONTHLY_SESSION_LIMIT,
             |s| s.monthly_session_limit,
         ),
+        monthly_agent_limit: settings.as_ref().map_or(
+            crate::domains::organizations::types::DEFAULT_MONTHLY_AGENT_LIMIT,
+            |s| s.monthly_agent_limit,
+        ),
         default_harness_id: settings.as_ref().and_then(|s| s.default_harness_id),
         base_harness_id: settings.as_ref().and_then(|s| s.base_harness_id),
         default_provider_per_service: settings

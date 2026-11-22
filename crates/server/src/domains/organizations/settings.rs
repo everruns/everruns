@@ -2,7 +2,10 @@
 //! use the same validation and transaction; audit remains on the HTTP adapter.
 use super::{
     queries as q,
-    types::{MAX_MONTHLY_SESSION_LIMIT, OrganizationResponse, UpdateOrganizationRequest},
+    types::{
+        MAX_MONTHLY_AGENT_LIMIT, MAX_MONTHLY_SESSION_LIMIT, OrganizationResponse,
+        UpdateOrganizationRequest,
+    },
 };
 use crate::domains::common::*;
 use crate::storage::{UpdateField, UpdateOrganization, UpdateOrganizationSettings};
@@ -93,6 +96,7 @@ impl Command for UpdateOrg {
             web_search_defaults,
             background_limits,
             monthly_session_limit,
+            monthly_agent_limit,
             self_healing,
             tool_approval_policy,
         } = self.request;
@@ -109,6 +113,12 @@ impl Command for UpdateOrg {
         {
             return Err(CommandError::bad_request(format!(
                 "monthly_session_limit must be between 1 and {MAX_MONTHLY_SESSION_LIMIT}"
+            )));
+        }
+        if monthly_agent_limit.is_some_and(|limit| !(1..=MAX_MONTHLY_AGENT_LIMIT).contains(&limit))
+        {
+            return Err(CommandError::bad_request(format!(
+                "monthly_agent_limit must be between 1 and {MAX_MONTHLY_AGENT_LIMIT}"
             )));
         }
         if let Some(limits) = &background_limits {
@@ -245,6 +255,7 @@ impl Command for UpdateOrg {
             || default_provider_per_service.is_some()
             || system_decisions.is_some()
             || monthly_session_limit.is_some()
+            || monthly_agent_limit.is_some()
         {
             let model_field = |value| match value {
                 None => UpdateField::Unchanged,
@@ -268,6 +279,7 @@ impl Command for UpdateOrg {
                             .map_or(UpdateField::Unchanged, UpdateField::Set),
                         system_decisions,
                         monthly_session_limit,
+                        monthly_agent_limit,
                     },
                 )
                 .await?;

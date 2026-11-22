@@ -49,7 +49,7 @@ metadata:
 spec:
   accessModes: [{{ .Values.dataPlane.storeVolume.accessMode }}]
   {{- with .Values.dataPlane.storeVolume.storageClass }}
-  storageClassName: {{ . }}
+  storageClassName: {{ . | quote }}
   {{- end }}
   resources:
     requests:
@@ -172,7 +172,7 @@ spec:
       spec:
         accessModes: [ReadWriteOnce]
         {{- with .Values.dataPlane.shard.storage.storageClass }}
-        storageClassName: {{ . }}
+        storageClassName: {{ . | quote }}
         {{- end }}
         resources:
           requests:
