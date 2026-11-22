@@ -181,6 +181,28 @@ impl SessionStorageStore for PlaneValues {
     }
 }
 
+/// Project a catalog stop before using a turn's discovery snapshot or asking
+/// the viewer to sign in. Neither a disabled nor an unavailable preset can
+/// provide tools, even when the last turn had a cached catalog.
+async fn catalog_discovery_block(
+    ctx: &Ctx,
+    record: &SessionMcpServer,
+) -> Result<Option<&'static str>, CommandError> {
+    let Some(preset) = &record.server.preset else {
+        return Ok(None);
+    };
+    let row = ctx
+        .db
+        .get_mcp_server_by_name(ctx.org_id(), preset.catalog_name())
+        .await?;
+    Ok(match row.as_ref().map(|row| row.status.as_str()) {
+        Some("active") => None,
+        Some("disabled") => Some("preset_disabled"),
+        // Archived/deleted presets are not returned by the live-name lookup.
+        _ => Some("preset_unavailable"),
+    })
+}
+
 /// The viewer's sign-in state for one chat-only server.
 async fn viewer_connection(
     ctx: &Ctx,
@@ -271,8 +293,13 @@ impl Command for ListChatMcpServers {
         };
         let mut servers = Vec::with_capacity(records.len());
         for record in records {
-            let connection = viewer_connection(ctx, &record).await?;
-            let effective = if discovery.contains_key(&record.name) {
+            let catalog_block = catalog_discovery_block(ctx, &record).await?;
+            let connection = if catalog_block.is_some() {
+                UserMcpConnectionStatus::NotNeeded
+            } else {
+                viewer_connection(ctx, &record).await?
+            };
+            let effective = if catalog_block.is_none() && discovery.contains_key(&record.name) {
                 super::scoped_mcp::materialize_scoped_mcp_servers(
                     &ctx.db,
                     ctx.org_id(),
@@ -305,7 +332,7 @@ impl Command for ListChatMcpServers {
                     Some(snapshot.status.clone())
                 });
             servers.push(ChatMcpServer {
-                discovery: status,
+                discovery: catalog_block.map(str::to_owned).or(status),
                 connection,
                 catalog_name: record
                     .server

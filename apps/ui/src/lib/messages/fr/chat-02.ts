@@ -45,6 +45,10 @@ export const messages: Readonly<Record<string, string>> = {
   "History trimming": "Réduction de l’historique",
   "estimated tokens": "tokens estimés",
   tokens: "tokens",
+  "MCP tools not loaded: catalog preset is disabled. Ask an admin to enable it.":
+    "Les outils MCP ne sont pas chargés : le préréglage du catalogue est désactivé. Demandez à un administrateur de l’activer.",
+  "MCP tools not loaded: catalog preset is unavailable. Choose an active preset.":
+    "Les outils MCP ne sont pas chargés : le préréglage du catalogue est indisponible. Choisissez un préréglage actif.",
   "Discovery state at the last turn": "État de la découverte au dernier tour",
   "Discovery pending": "Découverte en attente",
   "Tools need sign-in": "Connexion requise pour les outils",

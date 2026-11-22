@@ -320,6 +320,73 @@ async fn listing_and_removing_require_session_permissions() {
 }
 
 #[tokio::test]
+async fn chat_mcp_lists_disabled_and_missing_catalog_presets_without_sign_in_hint() {
+    let fixture = Fixture::new().await;
+    let row = fixture
+        .db
+        .create_mcp_server(
+            DEFAULT_ORG_ID,
+            crate::storage::CreateMcpServerRow {
+                name: "paused".into(),
+                description: None,
+                url: "https://paused.example.com/mcp".into(),
+                transport_type: "http".into(),
+                api_key_encrypted: None,
+                headers: None,
+                settings: None,
+            },
+        )
+        .await
+        .unwrap();
+    fixture
+        .db
+        .update_mcp_server(
+            DEFAULT_ORG_ID,
+            row.id.uuid(),
+            crate::storage::UpdateMcpServer {
+                status: Some("disabled".into()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+
+    for (preset, acts_as) in [
+        ("paused", McpServerActsAs::User),
+        ("gone", McpServerActsAs::None),
+    ] {
+        fixture
+            .put(
+                fixture.session,
+                preset,
+                ScopedMcpServer {
+                    preset: Some(format!("catalog:{preset}").parse().unwrap()),
+                    acts_as,
+                    ..Default::default()
+                },
+                user_mcp(),
+            )
+            .await;
+    }
+
+    let listed = fixture.list(&fixture.ctx(), fixture.session).await.unwrap();
+    for (name, reason) in [
+        ("paused", "preset_disabled"),
+        ("gone", "preset_unavailable"),
+    ] {
+        let server = listed.iter().find(|server| server.name == name).unwrap();
+        assert_eq!(server.discovery.as_deref(), Some(reason));
+        assert_eq!(server.connection, UserMcpConnectionStatus::NotNeeded);
+    }
+    let other = listed
+        .iter()
+        .find(|server| server.name == "linear")
+        .unwrap();
+    assert_eq!(other.connection, UserMcpConnectionStatus::NotConnected);
+    assert!(other.discovery.is_none());
+}
+
+#[tokio::test]
 async fn discovery_snapshot_is_hidden_after_attachment_changes_or_removal() {
     let fixture = Fixture::new().await;
     let snapshot = super::super::scoped_mcp::ReadinessSnapshot {

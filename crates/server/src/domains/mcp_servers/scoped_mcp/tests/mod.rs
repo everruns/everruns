@@ -1199,7 +1199,7 @@ fn scoped_mcp_validation_rejections_classify_as_bad_request() {
     )]);
     assert_bad_request(
         validate_scoped_mcp_servers(&stdio).unwrap_err(),
-        "unsupported transport",
+        "this deployment cannot run local stdio servers. Register a remote Streamable HTTP endpoint instead.",
     );
 
     let inline_identity = ScopedMcpServers::from([(

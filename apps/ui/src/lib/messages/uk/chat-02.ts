@@ -45,6 +45,10 @@ export const messages: Readonly<Record<string, string>> = {
   "History trimming": "Обрізання історії",
   "estimated tokens": "оцінених токенів",
   tokens: "токенів",
+  "MCP tools not loaded: catalog preset is disabled. Ask an admin to enable it.":
+    "Інструменти MCP не завантажено: шаблон каталогу вимкнено. Попросіть адміністратора ввімкнути його.",
+  "MCP tools not loaded: catalog preset is unavailable. Choose an active preset.":
+    "Інструменти MCP не завантажено: шаблон каталогу недоступний. Виберіть активний шаблон.",
   "Discovery state at the last turn": "Стан виявлення під час останнього ходу",
   "Discovery pending": "Виявлення очікується",
   "Tools need sign-in": "Для інструментів потрібен вхід",
