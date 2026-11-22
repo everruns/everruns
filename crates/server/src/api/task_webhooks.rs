@@ -56,6 +56,7 @@ impl TaskWebhookResponse {
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateTaskWebhookRequest {
     /// The URL to POST task terminal-state events to.
+    #[schema(example = "https://hooks.example.com/everruns/tasks")]
     pub url: String,
     /// Optional HMAC-SHA256 signing secret. When set, every delivery includes
     /// an `X-Everruns-Signature: sha256=<hex>` header.
@@ -63,6 +64,7 @@ pub struct CreateTaskWebhookRequest {
     pub secret: Option<String>,
     /// Whether the webhook starts enabled. Defaults to true.
     #[serde(default = "default_enabled")]
+    #[schema(example = true)]
     pub enabled: bool,
 }
 

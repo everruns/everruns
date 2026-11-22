@@ -14283,7 +14283,10 @@ export interface components {
       channel_config?: unknown;
       /** @description Transport used by the channel. */
       channel_type: components["schemas"]["ChannelType"];
-      /** @description Whether the channel can accept ingress traffic. */
+      /**
+       * @description Whether the channel can accept ingress traffic.
+       * @example true
+       */
       enabled?: boolean;
     };
     /**
@@ -14350,7 +14353,10 @@ export interface components {
       channel_config?: unknown;
       /** @description Transport used by the channel. */
       channel_type: components["schemas"]["ChannelType"];
-      /** @description Whether the channel can accept ingress traffic. */
+      /**
+       * @description Whether the channel can accept ingress traffic.
+       * @example true
+       */
       enabled?: boolean;
     };
     /** @description Request to create an agent key. */
@@ -14751,7 +14757,10 @@ export interface components {
       list_price_multiplier?: number | null;
       /** @description Which usage it applies to (see `CostRate.match`). */
       match?: Record<string, unknown> | null;
-      /** @description `model.tokens` or `sandbox.time`. */
+      /**
+       * @description `model.tokens` or `sandbox.time`.
+       * @example model.tokens
+       */
       meter: string;
       /**
        * Format: double
@@ -15609,14 +15618,20 @@ export interface components {
     };
     /** @description Request body for creating a task webhook. */
     CreateTaskWebhookRequest: {
-      /** @description Whether the webhook starts enabled. Defaults to true. */
+      /**
+       * @description Whether the webhook starts enabled. Defaults to true.
+       * @example true
+       */
       enabled?: boolean;
       /**
        * @description Optional HMAC-SHA256 signing secret. When set, every delivery includes
        *     an `X-Everruns-Signature: sha256=<hex>` header.
        */
       secret?: string | null;
-      /** @description The URL to POST task terminal-state events to. */
+      /**
+       * @description The URL to POST task terminal-state events to.
+       * @example https://hooks.example.com/everruns/tasks
+       */
       url: string;
     };
     /** @description Create an organization-scoped runtime account. */
@@ -21707,6 +21722,7 @@ export interface components {
          * Format: int32
          * @description How many agents one AgentID owner may sign in; null means the platform
          *     default.
+         * @example 5
          */
         agentid_agents_per_owner?: number | null;
         /**
@@ -21716,23 +21732,37 @@ export interface components {
          *     defaults when the organization never set any.
          */
         background_limits: components["schemas"]["BackgroundLimits"];
-        /** @description Base harness used when session creation omits harness_id. */
+        /**
+         * @description Base harness used when session creation omits harness_id.
+         * @example harness_01933b5a00007000800000000000001
+         */
         base_harness_id?: string | null;
-        /** @description Default for the built-in Everruns Chat. None inherits the agents/sessions default. */
+        /**
+         * @description Default for the built-in Everruns Chat. None inherits the agents/sessions default.
+         * @example model_01933b5a00007000800000000000001
+         */
         chat_model_id?: string | null;
         /**
          * @description Default for coding work: coding-harness agents and `coding` helpers.
          *     None falls back to the default model.
+         * @example model_01933b5a00007000800000000000001
          */
         coding_model_id?: string | null;
         /**
          * Format: date-time
          * @description When the organization was created
+         * @example 2026-11-01T12:00:00Z
          */
         created_at: string;
-        /** @description Default harness to preselect in the UI. */
+        /**
+         * @description Default harness to preselect in the UI.
+         * @example harness_01933b5a00007000800000000000001
+         */
         default_harness_id?: string | null;
-        /** @description Default LLM model for the organization. */
+        /**
+         * @description Default LLM model for the organization.
+         * @example model_01933b5a00007000800000000000001
+         */
         default_model_id?: string | null;
         /**
          * @description Org-level default provider per service (EVE-569), keyed by service kind.
@@ -21745,28 +21775,38 @@ export interface components {
          * @description The model the research model resolves to now: the selection, else the
          *     Automatic pick (Anthropic's recommended research model, then OpenAI's,
          *     then another provider's), else the default model.
+         * @example model_01933b5a00007000800000000000001
          */
         effective_research_model_id?: string | null;
-        /** @description External identifier (org_<32-hex-chars>) */
+        /**
+         * @description External identifier (org_<32-hex-chars>)
+         * @example org_00000000000000000000000000000001
+         */
         id: string;
         /**
          * Format: int32
          * @description Maximum agents this organization can create per UTC calendar month.
          *     Built-in agents do not count; archiving or deleting never refunds.
+         * @example 500
          */
         monthly_agent_limit: number;
         /**
          * Format: int32
          * @description Maximum sessions this organization can create per UTC calendar month.
+         * @example 10000
          */
         monthly_session_limit: number;
-        /** @description Display name */
+        /**
+         * @description Display name
+         * @example Acme Corporation
+         */
         name: string;
         /**
          * Format: date-time
          * @description When the org's creator finished or skipped the setup wizard. `null` means
          *     onboarding is still incomplete, which the UI uses to resume the user at
          *     `/orgs/{id}/setup`. Seeded/default and externally-synced orgs are complete.
+         * @example 2026-11-01T12:05:00Z
          */
         onboarding_completed_at?: string | null;
         /** @description Opt-in system-managed compaction monitoring. Disabled by default. */
@@ -21774,6 +21814,7 @@ export interface components {
         /**
          * @description Research model: the org's strongest model for hard reasoning and long
          *     research. None means Automatic.
+         * @example model_01933b5a00007000800000000000001
          */
         research_model_id?: string | null;
         /**
@@ -21783,7 +21824,10 @@ export interface components {
          *     organization never set any.
          */
         self_healing: components["schemas"]["SelfHealingPolicy"];
-        /** @description Optional small chat model, independent of the main chat and decision defaults. */
+        /**
+         * @description Optional small chat model, independent of the main chat and decision defaults.
+         * @example model_01933b5a00007000800000000000001
+         */
         small_model_id?: string | null;
         /**
          * @description Who answers deployment-owned decision checks: `deployment` (default)
@@ -21799,6 +21843,7 @@ export interface components {
         /**
          * Format: date-time
          * @description When the organization was last updated
+         * @example 2026-11-01T12:00:00Z
          */
         updated_at: string;
         /**
@@ -25845,6 +25890,7 @@ export interface components {
        * Format: int32
        * @description How many agents one AgentID owner may sign in; null means the platform
        *     default.
+       * @example 5
        */
       agentid_agents_per_owner?: number | null;
       /**
@@ -25854,23 +25900,37 @@ export interface components {
        *     defaults when the organization never set any.
        */
       background_limits: components["schemas"]["BackgroundLimits"];
-      /** @description Base harness used when session creation omits harness_id. */
+      /**
+       * @description Base harness used when session creation omits harness_id.
+       * @example harness_01933b5a00007000800000000000001
+       */
       base_harness_id?: string | null;
-      /** @description Default for the built-in Everruns Chat. None inherits the agents/sessions default. */
+      /**
+       * @description Default for the built-in Everruns Chat. None inherits the agents/sessions default.
+       * @example model_01933b5a00007000800000000000001
+       */
       chat_model_id?: string | null;
       /**
        * @description Default for coding work: coding-harness agents and `coding` helpers.
        *     None falls back to the default model.
+       * @example model_01933b5a00007000800000000000001
        */
       coding_model_id?: string | null;
       /**
        * Format: date-time
        * @description When the organization was created
+       * @example 2026-11-01T12:00:00Z
        */
       created_at: string;
-      /** @description Default harness to preselect in the UI. */
+      /**
+       * @description Default harness to preselect in the UI.
+       * @example harness_01933b5a00007000800000000000001
+       */
       default_harness_id?: string | null;
-      /** @description Default LLM model for the organization. */
+      /**
+       * @description Default LLM model for the organization.
+       * @example model_01933b5a00007000800000000000001
+       */
       default_model_id?: string | null;
       /**
        * @description Org-level default provider per service (EVE-569), keyed by service kind.
@@ -25883,28 +25943,38 @@ export interface components {
        * @description The model the research model resolves to now: the selection, else the
        *     Automatic pick (Anthropic's recommended research model, then OpenAI's,
        *     then another provider's), else the default model.
+       * @example model_01933b5a00007000800000000000001
        */
       effective_research_model_id?: string | null;
-      /** @description External identifier (org_<32-hex-chars>) */
+      /**
+       * @description External identifier (org_<32-hex-chars>)
+       * @example org_00000000000000000000000000000001
+       */
       id: string;
       /**
        * Format: int32
        * @description Maximum agents this organization can create per UTC calendar month.
        *     Built-in agents do not count; archiving or deleting never refunds.
+       * @example 500
        */
       monthly_agent_limit: number;
       /**
        * Format: int32
        * @description Maximum sessions this organization can create per UTC calendar month.
+       * @example 10000
        */
       monthly_session_limit: number;
-      /** @description Display name */
+      /**
+       * @description Display name
+       * @example Acme Corporation
+       */
       name: string;
       /**
        * Format: date-time
        * @description When the org's creator finished or skipped the setup wizard. `null` means
        *     onboarding is still incomplete, which the UI uses to resume the user at
        *     `/orgs/{id}/setup`. Seeded/default and externally-synced orgs are complete.
+       * @example 2026-11-01T12:05:00Z
        */
       onboarding_completed_at?: string | null;
       /** @description Opt-in system-managed compaction monitoring. Disabled by default. */
@@ -25912,6 +25982,7 @@ export interface components {
       /**
        * @description Research model: the org's strongest model for hard reasoning and long
        *     research. None means Automatic.
+       * @example model_01933b5a00007000800000000000001
        */
       research_model_id?: string | null;
       /**
@@ -25921,7 +25992,10 @@ export interface components {
        *     organization never set any.
        */
       self_healing: components["schemas"]["SelfHealingPolicy"];
-      /** @description Optional small chat model, independent of the main chat and decision defaults. */
+      /**
+       * @description Optional small chat model, independent of the main chat and decision defaults.
+       * @example model_01933b5a00007000800000000000001
+       */
       small_model_id?: string | null;
       /**
        * @description Who answers deployment-owned decision checks: `deployment` (default)
@@ -25937,6 +26011,7 @@ export interface components {
       /**
        * Format: date-time
        * @description When the organization was last updated
+       * @example 2026-11-01T12:00:00Z
        */
       updated_at: string;
       /**
@@ -28107,9 +28182,15 @@ export interface components {
     };
     /** @description Response body for the `resolve_org` operation. */
     ResolveOrgResponse: {
-      /** @description Public ID of the organization that owns the resource. */
+      /**
+       * @description Public ID of the organization that owns the resource.
+       * @example org_00000000000000000000000000000001
+       */
       org_id: string;
-      /** @description Organization name (for UX messaging). */
+      /**
+       * @description Organization name (for UX messaging).
+       * @example Acme Corporation
+       */
       org_name: string;
     };
     /**
@@ -35494,9 +35575,15 @@ export interface components {
     };
     /** @description New text for a fix. It must be checked again. */
     UpdateFindingFixRequest: {
-      /** @description The text to add to the agent's instructions. */
+      /**
+       * @description The text to add to the agent's instructions.
+       * @example Before replying, check the order status with the lookup tool.
+       */
       addition: string;
-      /** @description One line on what the change does. Unchanged when omitted. */
+      /**
+       * @description One line on what the change does. Unchanged when omitted.
+       * @example Check order status before answering
+       */
       summary?: string | null;
     };
     /** @description Request to update a harness. Only provided fields will be updated. */

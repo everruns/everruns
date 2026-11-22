@@ -45757,7 +45757,8 @@
           },
           "enabled": {
             "type": "boolean",
-            "description": "Whether the channel can accept ingress traffic."
+            "description": "Whether the channel can accept ingress traffic.",
+            "example": true
           }
         }
       },
@@ -45860,7 +45861,8 @@
           },
           "enabled": {
             "type": "boolean",
-            "description": "Whether the channel can accept ingress traffic."
+            "description": "Whether the channel can accept ingress traffic.",
+            "example": true
           }
         }
       },
@@ -46503,7 +46505,8 @@
           },
           "meter": {
             "type": "string",
-            "description": "`model.tokens` or `sandbox.time`."
+            "description": "`model.tokens` or `sandbox.time`.",
+            "example": "model.tokens"
           },
           "unit_price_usd": {
             "type": [
@@ -48089,7 +48092,8 @@
         "properties": {
           "enabled": {
             "type": "boolean",
-            "description": "Whether the webhook starts enabled. Defaults to true."
+            "description": "Whether the webhook starts enabled. Defaults to true.",
+            "example": true
           },
           "secret": {
             "type": [
@@ -48100,7 +48104,8 @@
           },
           "url": {
             "type": "string",
-            "description": "The URL to POST task terminal-state events to."
+            "description": "The URL to POST task terminal-state events to.",
+            "example": "https://hooks.example.com/everruns/tasks"
           }
         }
       },
@@ -59185,7 +59190,8 @@
                     "null"
                   ],
                   "format": "int32",
-                  "description": "How many agents one AgentID owner may sign in; null means the platform\ndefault."
+                  "description": "How many agents one AgentID owner may sign in; null means the platform\ndefault.",
+                  "example": 5
                 },
                 "background_limits": {
                   "$ref": "#/components/schemas/BackgroundLimits",
@@ -59196,40 +59202,46 @@
                     "string",
                     "null"
                   ],
-                  "description": "Base harness used when session creation omits harness_id."
+                  "description": "Base harness used when session creation omits harness_id.",
+                  "example": "harness_01933b5a00007000800000000000001"
                 },
                 "chat_model_id": {
                   "type": [
                     "string",
                     "null"
                   ],
-                  "description": "Default for the built-in Everruns Chat. None inherits the agents/sessions default."
+                  "description": "Default for the built-in Everruns Chat. None inherits the agents/sessions default.",
+                  "example": "model_01933b5a00007000800000000000001"
                 },
                 "coding_model_id": {
                   "type": [
                     "string",
                     "null"
                   ],
-                  "description": "Default for coding work: coding-harness agents and `coding` helpers.\nNone falls back to the default model."
+                  "description": "Default for coding work: coding-harness agents and `coding` helpers.\nNone falls back to the default model.",
+                  "example": "model_01933b5a00007000800000000000001"
                 },
                 "created_at": {
                   "type": "string",
                   "format": "date-time",
-                  "description": "When the organization was created"
+                  "description": "When the organization was created",
+                  "example": "2026-11-01T12:00:00Z"
                 },
                 "default_harness_id": {
                   "type": [
                     "string",
                     "null"
                   ],
-                  "description": "Default harness to preselect in the UI."
+                  "description": "Default harness to preselect in the UI.",
+                  "example": "harness_01933b5a00007000800000000000001"
                 },
                 "default_model_id": {
                   "type": [
                     "string",
                     "null"
                   ],
-                  "description": "Default LLM model for the organization."
+                  "description": "Default LLM model for the organization.",
+                  "example": "model_01933b5a00007000800000000000001"
                 },
                 "default_provider_per_service": {
                   "type": "object",
@@ -59246,16 +59258,19 @@
                     "string",
                     "null"
                   ],
-                  "description": "The model the research model resolves to now: the selection, else the\nAutomatic pick (Anthropic's recommended research model, then OpenAI's,\nthen another provider's), else the default model."
+                  "description": "The model the research model resolves to now: the selection, else the\nAutomatic pick (Anthropic's recommended research model, then OpenAI's,\nthen another provider's), else the default model.",
+                  "example": "model_01933b5a00007000800000000000001"
                 },
                 "id": {
                   "type": "string",
-                  "description": "External identifier (org_<32-hex-chars>)"
+                  "description": "External identifier (org_<32-hex-chars>)",
+                  "example": "org_00000000000000000000000000000001"
                 },
                 "monthly_agent_limit": {
                   "type": "integer",
                   "format": "int32",
                   "description": "Maximum agents this organization can create per UTC calendar month.\nBuilt-in agents do not count; archiving or deleting never refunds.",
+                  "example": 500,
                   "maximum": 100000,
                   "minimum": 1
                 },
@@ -59263,12 +59278,14 @@
                   "type": "integer",
                   "format": "int32",
                   "description": "Maximum sessions this organization can create per UTC calendar month.",
+                  "example": 10000,
                   "maximum": 100000,
                   "minimum": 1
                 },
                 "name": {
                   "type": "string",
-                  "description": "Display name"
+                  "description": "Display name",
+                  "example": "Acme Corporation"
                 },
                 "onboarding_completed_at": {
                   "type": [
@@ -59276,7 +59293,8 @@
                     "null"
                   ],
                   "format": "date-time",
-                  "description": "When the org's creator finished or skipped the setup wizard. `null` means\nonboarding is still incomplete, which the UI uses to resume the user at\n`/orgs/{id}/setup`. Seeded/default and externally-synced orgs are complete."
+                  "description": "When the org's creator finished or skipped the setup wizard. `null` means\nonboarding is still incomplete, which the UI uses to resume the user at\n`/orgs/{id}/setup`. Seeded/default and externally-synced orgs are complete.",
+                  "example": "2026-11-01T12:05:00Z"
                 },
                 "quality_monitoring": {
                   "$ref": "#/components/schemas/QualityMonitoringPolicy",
@@ -59287,7 +59305,8 @@
                     "string",
                     "null"
                   ],
-                  "description": "Research model: the org's strongest model for hard reasoning and long\nresearch. None means Automatic."
+                  "description": "Research model: the org's strongest model for hard reasoning and long\nresearch. None means Automatic.",
+                  "example": "model_01933b5a00007000800000000000001"
                 },
                 "self_healing": {
                   "$ref": "#/components/schemas/SelfHealingPolicy",
@@ -59298,7 +59317,8 @@
                     "string",
                     "null"
                   ],
-                  "description": "Optional small chat model, independent of the main chat and decision defaults."
+                  "description": "Optional small chat model, independent of the main chat and decision defaults.",
+                  "example": "model_01933b5a00007000800000000000001"
                 },
                 "system_decisions": {
                   "$ref": "#/components/schemas/SystemDecisions",
@@ -59311,7 +59331,8 @@
                 "updated_at": {
                   "type": "string",
                   "format": "date-time",
-                  "description": "When the organization was last updated"
+                  "description": "When the organization was last updated",
+                  "example": "2026-11-01T12:00:00Z"
                 },
                 "web_search_defaults": {
                   "$ref": "#/components/schemas/WebSearchDefaults",
@@ -66679,7 +66700,8 @@
               "null"
             ],
             "format": "int32",
-            "description": "How many agents one AgentID owner may sign in; null means the platform\ndefault."
+            "description": "How many agents one AgentID owner may sign in; null means the platform\ndefault.",
+            "example": 5
           },
           "background_limits": {
             "$ref": "#/components/schemas/BackgroundLimits",
@@ -66690,40 +66712,46 @@
               "string",
               "null"
             ],
-            "description": "Base harness used when session creation omits harness_id."
+            "description": "Base harness used when session creation omits harness_id.",
+            "example": "harness_01933b5a00007000800000000000001"
           },
           "chat_model_id": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Default for the built-in Everruns Chat. None inherits the agents/sessions default."
+            "description": "Default for the built-in Everruns Chat. None inherits the agents/sessions default.",
+            "example": "model_01933b5a00007000800000000000001"
           },
           "coding_model_id": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Default for coding work: coding-harness agents and `coding` helpers.\nNone falls back to the default model."
+            "description": "Default for coding work: coding-harness agents and `coding` helpers.\nNone falls back to the default model.",
+            "example": "model_01933b5a00007000800000000000001"
           },
           "created_at": {
             "type": "string",
             "format": "date-time",
-            "description": "When the organization was created"
+            "description": "When the organization was created",
+            "example": "2026-11-01T12:00:00Z"
           },
           "default_harness_id": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Default harness to preselect in the UI."
+            "description": "Default harness to preselect in the UI.",
+            "example": "harness_01933b5a00007000800000000000001"
           },
           "default_model_id": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Default LLM model for the organization."
+            "description": "Default LLM model for the organization.",
+            "example": "model_01933b5a00007000800000000000001"
           },
           "default_provider_per_service": {
             "type": "object",
@@ -66740,16 +66768,19 @@
               "string",
               "null"
             ],
-            "description": "The model the research model resolves to now: the selection, else the\nAutomatic pick (Anthropic's recommended research model, then OpenAI's,\nthen another provider's), else the default model."
+            "description": "The model the research model resolves to now: the selection, else the\nAutomatic pick (Anthropic's recommended research model, then OpenAI's,\nthen another provider's), else the default model.",
+            "example": "model_01933b5a00007000800000000000001"
           },
           "id": {
             "type": "string",
-            "description": "External identifier (org_<32-hex-chars>)"
+            "description": "External identifier (org_<32-hex-chars>)",
+            "example": "org_00000000000000000000000000000001"
           },
           "monthly_agent_limit": {
             "type": "integer",
             "format": "int32",
             "description": "Maximum agents this organization can create per UTC calendar month.\nBuilt-in agents do not count; archiving or deleting never refunds.",
+            "example": 500,
             "maximum": 100000,
             "minimum": 1
           },
@@ -66757,12 +66788,14 @@
             "type": "integer",
             "format": "int32",
             "description": "Maximum sessions this organization can create per UTC calendar month.",
+            "example": 10000,
             "maximum": 100000,
             "minimum": 1
           },
           "name": {
             "type": "string",
-            "description": "Display name"
+            "description": "Display name",
+            "example": "Acme Corporation"
           },
           "onboarding_completed_at": {
             "type": [
@@ -66770,7 +66803,8 @@
               "null"
             ],
             "format": "date-time",
-            "description": "When the org's creator finished or skipped the setup wizard. `null` means\nonboarding is still incomplete, which the UI uses to resume the user at\n`/orgs/{id}/setup`. Seeded/default and externally-synced orgs are complete."
+            "description": "When the org's creator finished or skipped the setup wizard. `null` means\nonboarding is still incomplete, which the UI uses to resume the user at\n`/orgs/{id}/setup`. Seeded/default and externally-synced orgs are complete.",
+            "example": "2026-11-01T12:05:00Z"
           },
           "quality_monitoring": {
             "$ref": "#/components/schemas/QualityMonitoringPolicy",
@@ -66781,7 +66815,8 @@
               "string",
               "null"
             ],
-            "description": "Research model: the org's strongest model for hard reasoning and long\nresearch. None means Automatic."
+            "description": "Research model: the org's strongest model for hard reasoning and long\nresearch. None means Automatic.",
+            "example": "model_01933b5a00007000800000000000001"
           },
           "self_healing": {
             "$ref": "#/components/schemas/SelfHealingPolicy",
@@ -66792,7 +66827,8 @@
               "string",
               "null"
             ],
-            "description": "Optional small chat model, independent of the main chat and decision defaults."
+            "description": "Optional small chat model, independent of the main chat and decision defaults.",
+            "example": "model_01933b5a00007000800000000000001"
           },
           "system_decisions": {
             "$ref": "#/components/schemas/SystemDecisions",
@@ -66805,7 +66841,8 @@
           "updated_at": {
             "type": "string",
             "format": "date-time",
-            "description": "When the organization was last updated"
+            "description": "When the organization was last updated",
+            "example": "2026-11-01T12:00:00Z"
           },
           "web_search_defaults": {
             "$ref": "#/components/schemas/WebSearchDefaults",
@@ -70708,11 +70745,13 @@
         "properties": {
           "org_id": {
             "type": "string",
-            "description": "Public ID of the organization that owns the resource."
+            "description": "Public ID of the organization that owns the resource.",
+            "example": "org_00000000000000000000000000000001"
           },
           "org_name": {
             "type": "string",
-            "description": "Organization name (for UX messaging)."
+            "description": "Organization name (for UX messaging).",
+            "example": "Acme Corporation"
           }
         }
       },
@@ -84339,14 +84378,16 @@
         "properties": {
           "addition": {
             "type": "string",
-            "description": "The text to add to the agent's instructions."
+            "description": "The text to add to the agent's instructions.",
+            "example": "Before replying, check the order status with the lookup tool."
           },
           "summary": {
             "type": [
               "string",
               "null"
             ],
-            "description": "One line on what the change does. Unchanged when omitted."
+            "description": "One line on what the change does. Unchanged when omitted.",
+            "example": "Check order status before answering"
           }
         }
       },

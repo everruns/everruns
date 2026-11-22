@@ -20,36 +20,38 @@ pub struct OrganizationResponse {
     /// Opt-in system-managed compaction monitoring. Disabled by default.
     pub quality_monitoring: crate::domains::observers::system::QualityMonitoringPolicy,
     /// External identifier (org_<32-hex-chars>)
+    #[schema(example = "org_00000000000000000000000000000001")]
     pub id: String,
     /// Display name
+    #[schema(example = "Acme Corporation")]
     pub name: String,
     /// Default LLM model for the organization.
-    #[schema(value_type = Option<String>)]
+    #[schema(value_type = Option<String>, example = "model_01933b5a00007000800000000000001")]
     pub default_model_id: Option<everruns_contracts::typed_id::ModelId>,
     /// Default for the built-in Everruns Chat. None inherits the agents/sessions default.
-    #[schema(value_type = Option<String>)]
+    #[schema(value_type = Option<String>, example = "model_01933b5a00007000800000000000001")]
     pub chat_model_id: Option<everruns_contracts::typed_id::ModelId>,
     /// Optional small chat model, independent of the main chat and decision defaults.
-    #[schema(value_type = Option<String>)]
+    #[schema(value_type = Option<String>, example = "model_01933b5a00007000800000000000001")]
     pub small_model_id: Option<everruns_contracts::typed_id::ModelId>,
     /// Research model: the org's strongest model for hard reasoning and long
     /// research. None means Automatic.
-    #[schema(value_type = Option<String>)]
+    #[schema(value_type = Option<String>, example = "model_01933b5a00007000800000000000001")]
     pub research_model_id: Option<everruns_contracts::typed_id::ModelId>,
     /// The model the research model resolves to now: the selection, else the
     /// Automatic pick (Anthropic's recommended research model, then OpenAI's,
     /// then another provider's), else the default model.
-    #[schema(value_type = Option<String>)]
+    #[schema(value_type = Option<String>, example = "model_01933b5a00007000800000000000001")]
     pub effective_research_model_id: Option<everruns_contracts::typed_id::ModelId>,
     /// Default for coding work: coding-harness agents and `coding` helpers.
     /// None falls back to the default model.
-    #[schema(value_type = Option<String>)]
+    #[schema(value_type = Option<String>, example = "model_01933b5a00007000800000000000001")]
     pub coding_model_id: Option<everruns_contracts::typed_id::ModelId>,
     /// Default harness to preselect in the UI.
-    #[schema(value_type = Option<String>)]
+    #[schema(value_type = Option<String>, example = "harness_01933b5a00007000800000000000001")]
     pub default_harness_id: Option<everruns_contracts::typed_id::HarnessId>,
     /// Base harness used when session creation omits harness_id.
-    #[schema(value_type = Option<String>)]
+    #[schema(value_type = Option<String>, example = "harness_01933b5a00007000800000000000001")]
     pub base_harness_id: Option<everruns_contracts::typed_id::HarnessId>,
     /// Org-level default provider per service (EVE-569), keyed by service kind.
     /// Empty when no org defaults are configured.
@@ -63,6 +65,7 @@ pub struct OrganizationResponse {
     pub system_decisions: crate::storage::SystemDecisions,
     /// How many agents one AgentID owner may sign in; null means the platform
     /// default.
+    #[schema(example = 5)]
     pub agentid_agents_per_owner: Option<i32>,
     /// Web search defaults: the provider agents on "Organization default"
     /// use, the Automatic order, whether model provider search is allowed,
@@ -75,11 +78,11 @@ pub struct OrganizationResponse {
     /// defaults when the organization never set any.
     pub background_limits: everruns_contracts::runtime::session_schedule::BackgroundLimits,
     /// Maximum sessions this organization can create per UTC calendar month.
-    #[schema(minimum = 1, maximum = 100000)]
+    #[schema(minimum = 1, maximum = 100000, example = 10000)]
     pub monthly_session_limit: i32,
     /// Maximum agents this organization can create per UTC calendar month.
     /// Built-in agents do not count; archiving or deleting never refunds.
-    #[schema(minimum = 1, maximum = 100000)]
+    #[schema(minimum = 1, maximum = 100000, example = 500)]
     pub monthly_agent_limit: i32,
     /// What Everruns does on its own when a finding opens (Settings →
     /// Limits): pause a repeating schedule automatically, and whether the
@@ -91,12 +94,15 @@ pub struct OrganizationResponse {
     /// the auto reviewer reads. Empty when the organization set no limits.
     pub tool_approval_policy: everruns_contracts::tool_approval_policy::OrgToolApprovalPolicy,
     /// When the organization was created
+    #[schema(example = "2026-11-01T12:00:00Z")]
     pub created_at: chrono::DateTime<chrono::Utc>,
     /// When the organization was last updated
+    #[schema(example = "2026-11-01T12:00:00Z")]
     pub updated_at: chrono::DateTime<chrono::Utc>,
     /// When the org's creator finished or skipped the setup wizard. `null` means
     /// onboarding is still incomplete, which the UI uses to resume the user at
     /// `/orgs/{id}/setup`. Seeded/default and externally-synced orgs are complete.
+    #[schema(example = "2026-11-01T12:05:00Z")]
     pub onboarding_completed_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
@@ -104,8 +110,10 @@ pub struct OrganizationResponse {
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct ResolveOrgResponse {
     /// Public ID of the organization that owns the resource.
+    #[schema(example = "org_00000000000000000000000000000001")]
     pub org_id: String,
     /// Organization name (for UX messaging).
+    #[schema(example = "Acme Corporation")]
     pub org_name: String,
 }
 

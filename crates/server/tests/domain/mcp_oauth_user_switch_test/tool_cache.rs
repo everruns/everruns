@@ -441,11 +441,15 @@ async fn persisted_grant_revoke_and_acts_as_transition_do_not_reuse_cache_entrie
         .delete_virtual_user_connection(fixture.identity_id, &fixture.provider)
         .await
         .unwrap();
+    // A revoked grant no longer drops the server silently: the agent sees a
+    // single sign-in-required tool and none of the cached service tools.
+    let revoked = fixture
+        .discover(fixture.session_a, McpServerActsAs::Service)
+        .await;
+    let names: Vec<_> = revoked.iter().map(|tool| tool.name().to_string()).collect();
     assert!(
-        fixture
-            .discover(fixture.session_a, McpServerActsAs::Service)
-            .await
-            .is_empty()
+        names.len() == 1 && names[0].ends_with("sign_in_required"),
+        "{names:?}"
     );
     assert!(
         fixture
