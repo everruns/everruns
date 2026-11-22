@@ -243,3 +243,7 @@ v1 implements the same contract trivially. It shares RDS, so `ApplyConfig` is a 
 ## Model providers
 
 An org's model provider travels as a connection of kind `llm_provider` with id `llm:<provider key>` (the provider's normalized name, the key an agent's `model.provider` names). Its settings carry what a driver needs besides the key (provider type, base URL, chat API, request options); its token secret is the API key, sealed like any secret. The control plane syncs the whole set whenever the org's providers change and when the org is enabled, seals a key again only when it changed, and removes connections for providers the org no longer has. A provider with a personal sign-in (`chatgpt`) is not the org's to share and is never sent. Only the executor running a turn opens the key, for its session's own org, and keeps it in memory for 30 s. Types: `everruns_contracts::dataplane::LlmProviderSettings`; control plane `domains/data_plane/providers.rs`; shard `providers.rs`.
+
+An organization can open its first chat before it has a model to name in the
+agent declaration. A call from that definition returns a configuration error
+locally. Selecting a model publishes a new revision for subsequent turns.

@@ -12,7 +12,8 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use everruns::hosting::services::{HostProviders, HostServices};
-use everruns::{Agent, AgentPackage, FunctionTool, Model};
+use everruns::{Agent, AgentPackage, FunctionTool, Model, Provider};
+use everruns_contracts::driver_registry::{ChatDriver, LlmResponseStream, Message};
 use serde_json::Value;
 
 /// What a node or executor serves for orgs on the data plane: their model
@@ -43,6 +44,24 @@ pub trait Host: Send + Sync + 'static {
 
 type ToolFactory = Arc<dyn Fn() -> FunctionTool + Send + Sync>;
 type ModelFactory = Arc<dyn Fn(&str) -> Option<Model> + Send + Sync>;
+
+// An empty organization can create and open a session before configuring its
+// first chat model. A call against that definition fails without using a provider.
+struct UnconfiguredChatModel;
+
+#[async_trait::async_trait]
+impl ChatDriver for UnconfiguredChatModel {
+    async fn chat_completion_stream(
+        &self,
+        _endpoint: &everruns_contracts::ProviderEndpoint,
+        _messages: Vec<Message>,
+        _config: &everruns_contracts::LlmCallConfig,
+    ) -> everruns_contracts::error::Result<LlmResponseStream> {
+        Err(everruns_contracts::error::AgentLoopError::config(
+            "Connect a provider and select a chat model in Settings → Models.",
+        ))
+    }
+}
 
 /// A host built from named tools and model providers.
 ///
@@ -167,19 +186,6 @@ impl Host for StandardHost {
                 client.parameters.clone(),
             );
         }
-        let model = manifest
-            .model
-            .as_ref()
-            .ok_or("the definition names no model")?;
-        // A provider this host serves itself wins; otherwise the org's own
-        // provider, by its key, when the org runs on the data plane.
-        let local = self
-            .providers
-            .get(
-                everruns_contracts::runtime_provider::ProviderKey::new(model.provider.as_str())
-                    .as_str(),
-            )
-            .and_then(|factory| factory(&model.model));
         // Decision: the `tool_approval` capability an agent names is served
         // here, its decisions kept in the session's storage
         // (`DurableToolApprover`), so a risky call parks the turn as a
@@ -230,18 +236,32 @@ impl Host for StandardHost {
             services = services.register(everruns_capabilities::capabilities::SubagentCapability);
         }
         services = hosted_capabilities(services, &manifest.capabilities);
-        let model = match (local, orgs) {
-            (Some(model), _) => model,
-            (None, Some(orgs)) => {
-                services = services.providers(orgs.providers.clone());
-                Model::on(model.provider.as_str(), model.model.as_str())
+        let model = match (manifest.model.as_ref(), orgs) {
+            (Some(spec), orgs) => {
+                // A direct host provider takes precedence over the org's provider.
+                let local = self
+                    .providers
+                    .get(spec.provider.as_str())
+                    .and_then(|factory| factory(&spec.model));
+                match (local, orgs) {
+                    (Some(model), _) => model,
+                    (None, Some(orgs)) => {
+                        services = services.providers(orgs.providers.clone());
+                        Model::on(spec.provider.as_str(), spec.model.as_str())
+                    }
+                    (None, None) => {
+                        return Err(format!(
+                            "this node does not serve {} on {}",
+                            spec.model, spec.provider
+                        ));
+                    }
+                }
             }
-            (None, None) => {
-                return Err(format!(
-                    "this node does not serve {} on {}",
-                    model.model, model.provider
-                ));
-            }
+            (None, Some(_)) => Model::new(
+                "unconfigured",
+                Provider::new("unconfigured", UnconfiguredChatModel),
+            ),
+            (None, None) => return Err("the definition names no model".into()),
         };
         // An org's MCP servers get their credentials per call, from the
         // calling session's org (`mcp.rs`).
@@ -277,6 +297,28 @@ impl Host for StandardHost {
 
     fn tools(&self) -> Vec<Value> {
         self.tool_definitions()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hosted_session_can_be_created_before_a_model_is_selected() {
+        let host = StandardHost::new();
+        let definition = serde_json::json!({
+            "schema_version": 1,
+            "name": "first-chat",
+            "instructions": "Help the user."
+        });
+        let orgs = OrgServices {
+            providers: Arc::new(crate::providers::OrgProviders::default()).host_providers(),
+            mcp: Arc::new(crate::mcp::OrgMcp::from_env()),
+        };
+
+        assert!(host.agent_with(&definition, Some(&orgs)).is_ok());
+        assert!(host.agent(&definition).is_err());
     }
 }
 
