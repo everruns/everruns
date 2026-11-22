@@ -107,12 +107,9 @@ async fn record_failed_attempt(
         event_type: None,
         subject: None,
         status: TriggerDeliveryStatus::Failed.as_str().to_string(),
-        reason: Some(error.to_string().chars().take(MAX_REASON_CHARS).collect()),
+        reason: Some(super::events::failure_reason(error, trigger_id)),
     };
     if let Err(record_error) = db.record_agent_trigger_delivery(row).await {
         tracing::warn!(%record_error, %trigger_id, "failed to record scheduled trigger failure");
     }
 }
-
-/// Bound on the stored failure reason.
-const MAX_REASON_CHARS: usize = 512;

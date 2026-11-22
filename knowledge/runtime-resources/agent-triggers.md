@@ -132,6 +132,11 @@ runs (`.../runs`) report the task's outcome (`queued`, `running`, `retrying`,
 `failed` with its error) rather than only that the tick queued it. Before this,
 a schedule that never started a session read as `completed` with no delivery.
 
+A failed delivery's reason is readable by the org's members, so an internal
+error is recorded as `Internal error (ref <id>)` and its details go only to the
+server log under that id; errors the caller can act on (disabled trigger,
+paused agent, missing agent) are recorded as they are.
+
 Webhook triggers expose the pipeline's knobs as optional templates
 (`event_id_template`, `subject_template`) and a `filter`, rendered against the
 same context as the message (for example `{{webhook.headers.x-github-delivery}}`
