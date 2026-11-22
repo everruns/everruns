@@ -30,8 +30,6 @@ Agent definitions and their configuration.
 | [`agents cost-plan`](#agents-cost-plan) | Suggest editable typical task workloads for agent cost planning. |
 | [`agents preview`](#agents-preview) | Preview the final agent shape with capabilities applied. |
 | [`agents resume`](#agents-resume) | Resume a paused agent: its published channels, triggers and schedules work again. |
-| [`agents mcp list`](#agents-mcp-list) | List an agent's MCP servers after capability, harness and agent layers are merged, with each server's sign-in state for the caller: whether it works, renews, expires or needs a person to sign in again. |
-| [`agents mcp revoke`](#agents-mcp-revoke) | Revoke the caller's own sign-in for an agent's MCP server, or the agent's shared sign-in when the caller has none (needs MCP server management). |
 | [`agents upsert`](#agents-upsert) | Upsert agent — create (201) or update (200) by ID. |
 | [`agents avatar generate`](#agents-avatar-generate) | Generate an agent's avatar with the organization's default image model and set it, in one step. |
 | [`agents avatar presets`](#agents-avatar-presets) | List the curated agent avatars: stable id, name, family, suggested role, description and search keywords. |
@@ -66,6 +64,8 @@ Agent definitions and their configuration.
 | [`agents health-checks list`](#agents-health-checks-list) | List recent health check runs for an agent. |
 | [`agents health-checks trigger`](#agents-health-checks-trigger) | Run a behavioral health check (generated smoke tests) against an agent. |
 | [`agents health-checks latest get`](#agents-health-checks-latest-get) | Get the latest health check run for an agent, with a stale-config flag. |
+| [`agents mcp list`](#agents-mcp-list) | List an agent's MCP servers after capability, harness and agent layers are merged, with each server's sign-in state for the caller: whether it works, renews, expires or needs a person to sign in again. |
+| [`agents mcp revoke`](#agents-mcp-revoke) | Revoke the caller's own sign-in for an agent's MCP server, or the agent's shared sign-in when the caller has none (needs MCP server management). |
 | [`agents scripts create`](#agents-scripts-create) | Create a saved shell script an agent owns. |
 | [`agents scripts delete`](#agents-scripts-delete) | Archive a saved script and free its name. |
 | [`agents scripts get`](#agents-scripts-get) | Get a single saved script by id. |
@@ -441,45 +441,6 @@ Example:
 ```bash
 # Let a paused agent start work again
 everruns agents resume agent_01h9 --reason 'Prompt fix verified'
-```
-
-## agents mcp list
-
-List an agent's MCP servers after capability, harness and agent layers are merged, with each server's sign-in state for the caller: whether it works, renews, expires or needs a person to sign in again.
-
-```bash
-everruns agents mcp list [OPTIONS] [ID]
-```
-
-| Flag | Description |
-|---|---|
-| `--id <ID>` | Agent ID (prefixed) or name. |
-
-Example:
-
-```bash
-# Check whether an agent's MCP sign-ins still work
-everruns agents mcp list agent_01h9
-```
-
-## agents mcp revoke
-
-Revoke the caller's own sign-in for an agent's MCP server, or the agent's shared sign-in when the caller has none (needs MCP server management). The attachment stays; sign in again on the agent's MCP sheet.
-
-```bash
-everruns agents mcp revoke [OPTIONS] [ID] [NAME]
-```
-
-| Flag | Description |
-|---|---|
-| `--id <ID>` | Agent ID (prefixed) or name. |
-| `--name <NAME>` | Effective MCP attachment name. |
-
-Example:
-
-```bash
-# Remove the agent's stend sign-in before signing in again
-everruns agents mcp revoke agent_01h9 stend --reason 'Sign-in stopped renewing'
 ```
 
 ## agents upsert
@@ -1204,6 +1165,45 @@ Example:
 ```bash
 # See the newest run and whether the agent changed since it
 everruns agents health-checks latest get --agent-id agent_01h9
+```
+
+## agents mcp list
+
+List an agent's MCP servers after capability, harness and agent layers are merged, with each server's sign-in state for the caller: whether it works, renews, expires or needs a person to sign in again.
+
+```bash
+everruns agents mcp list [OPTIONS] [ID]
+```
+
+| Flag | Description |
+|---|---|
+| `--id <ID>` | Agent ID (prefixed) or name. |
+
+Example:
+
+```bash
+# Check whether an agent's MCP sign-ins still work
+everruns agents mcp list agent_01h9
+```
+
+## agents mcp revoke
+
+Revoke the caller's own sign-in for an agent's MCP server, or the agent's shared sign-in when the caller has none (needs MCP server management). The attachment stays; sign in again on the agent's MCP sheet.
+
+```bash
+everruns agents mcp revoke [OPTIONS] [ID] [NAME]
+```
+
+| Flag | Description |
+|---|---|
+| `--id <ID>` | Agent ID (prefixed) or name. |
+| `--name <NAME>` | Effective MCP attachment name. |
+
+Example:
+
+```bash
+# Remove the agent's stend sign-in before signing in again
+everruns agents mcp revoke agent_01h9 stend --reason 'Sign-in stopped renewing'
 ```
 
 ## agents scripts create
