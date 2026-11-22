@@ -40,6 +40,9 @@ pub use everruns_contracts::dataplane::{
 /// How long opened provider material is reused.
 const KEEP: Duration = Duration::from_secs(30);
 
+pub(crate) const MODEL_NOT_CONFIGURED: &str =
+    "Connect a provider and select a chat model in Settings → Models.";
+
 /// The driver configuration of an `llm_provider` connection.
 pub trait SettingsExt {
     /// With `api_key` when it was opened.
@@ -261,6 +264,9 @@ impl ProviderStore for OrgProviders {
         provider: &ProviderKey,
         session: SessionId,
     ) -> Result<Option<ProviderConfig>> {
+        if provider.as_str().is_empty() {
+            return Err(AgentLoopError::config(MODEL_NOT_CONFIGURED));
+        }
         let Some(org) = self.material().and_then(|m| m.tenant(session)) else {
             return Ok(None);
         };
@@ -280,6 +286,16 @@ impl ProviderStore for OrgProviders {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn an_unconfigured_model_never_resolves_provider_credentials() {
+        let providers = OrgProviders::default();
+        let error = providers
+            .get_provider_config_for_session(&ProviderKey::new(""), SessionId::new())
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains(MODEL_NOT_CONFIGURED));
+    }
 
     struct Orgs;
 

@@ -167,19 +167,6 @@ impl Host for StandardHost {
                 client.parameters.clone(),
             );
         }
-        let model = manifest
-            .model
-            .as_ref()
-            .ok_or("the definition names no model")?;
-        // A provider this host serves itself wins; otherwise the org's own
-        // provider, by its key, when the org runs on the data plane.
-        let local = self
-            .providers
-            .get(
-                everruns_contracts::runtime_provider::ProviderKey::new(model.provider.as_str())
-                    .as_str(),
-            )
-            .and_then(|factory| factory(&model.model));
         // Decision: the `tool_approval` capability an agent names is served
         // here, its decisions kept in the session's storage
         // (`DurableToolApprover`), so a risky call parks the turn as a
@@ -230,18 +217,34 @@ impl Host for StandardHost {
             services = services.register(everruns_capabilities::capabilities::SubagentCapability);
         }
         services = hosted_capabilities(services, &manifest.capabilities);
-        let model = match (local, orgs) {
-            (Some(model), _) => model,
+        let model = match (manifest.model.as_ref(), orgs) {
+            (Some(spec), orgs) => {
+                // A direct host provider takes precedence over the org's provider.
+                let local = self
+                    .providers
+                    .get(spec.provider.as_str())
+                    .and_then(|factory| factory(&spec.model));
+                match (local, orgs) {
+                    (Some(model), _) => model,
+                    (None, Some(orgs)) => {
+                        services = services.providers(orgs.providers.clone());
+                        Model::on(spec.provider.as_str(), spec.model.as_str())
+                    }
+                    (None, None) => {
+                        return Err(format!(
+                            "this node does not serve {} on {}",
+                            spec.model, spec.provider
+                        ));
+                    }
+                }
+            }
             (None, Some(orgs)) => {
+                // An empty organization can open a chat during provider setup.
+                // The empty provider identity never resolves credentials.
                 services = services.providers(orgs.providers.clone());
-                Model::on(model.provider.as_str(), model.model.as_str())
+                Model::on("", "unconfigured")
             }
-            (None, None) => {
-                return Err(format!(
-                    "this node does not serve {} on {}",
-                    model.model, model.provider
-                ));
-            }
+            (None, None) => return Err("the definition names no model".into()),
         };
         // An org's MCP servers get their credentials per call, from the
         // calling session's org (`mcp.rs`).
@@ -359,4 +362,26 @@ pub fn declared_host_calls(definition: &Value) -> std::collections::BTreeSet<&'s
         queue.extend(capability.dependencies().into_iter().map(str::to_owned));
     }
     declared
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hosted_session_can_be_created_before_a_model_is_selected() {
+        let host = StandardHost::new();
+        let definition = serde_json::json!({
+            "schema_version": 1,
+            "name": "first-chat",
+            "instructions": "Help the user."
+        });
+        let orgs = OrgServices {
+            providers: Arc::new(crate::providers::OrgProviders::default()).host_providers(),
+            mcp: Arc::new(crate::mcp::OrgMcp::from_env()),
+        };
+
+        assert!(host.agent_with(&definition, Some(&orgs)).is_ok());
+        assert!(host.agent(&definition).is_err());
+    }
 }
