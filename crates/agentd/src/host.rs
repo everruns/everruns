@@ -12,8 +12,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use everruns::hosting::services::{HostProviders, HostServices};
-use everruns::{Agent, AgentPackage, FunctionTool, Model, Provider};
-use everruns_contracts::driver_registry::{ChatDriver, LlmResponseStream, Message};
+use everruns::{Agent, AgentPackage, FunctionTool, Model};
 use serde_json::Value;
 
 /// What a node or executor serves for orgs on the data plane: their model
@@ -44,24 +43,6 @@ pub trait Host: Send + Sync + 'static {
 
 type ToolFactory = Arc<dyn Fn() -> FunctionTool + Send + Sync>;
 type ModelFactory = Arc<dyn Fn(&str) -> Option<Model> + Send + Sync>;
-
-// An empty organization can create and open a session before configuring its
-// first chat model. A call against that definition fails without using a provider.
-struct UnconfiguredChatModel;
-
-#[async_trait::async_trait]
-impl ChatDriver for UnconfiguredChatModel {
-    async fn chat_completion_stream(
-        &self,
-        _endpoint: &everruns_contracts::ProviderEndpoint,
-        _messages: Vec<Message>,
-        _config: &everruns_contracts::LlmCallConfig,
-    ) -> everruns_contracts::error::Result<LlmResponseStream> {
-        Err(everruns_contracts::error::AgentLoopError::config(
-            "Connect a provider and select a chat model in Settings → Models.",
-        ))
-    }
-}
 
 /// A host built from named tools and model providers.
 ///
@@ -257,10 +238,12 @@ impl Host for StandardHost {
                     }
                 }
             }
-            (None, Some(_)) => Model::new(
-                "unconfigured",
-                Provider::new("unconfigured", UnconfiguredChatModel),
-            ),
+            (None, Some(orgs)) => {
+                // An empty organization can open a chat during provider setup.
+                // The empty provider identity never resolves credentials.
+                services = services.providers(orgs.providers.clone());
+                Model::on("", "unconfigured")
+            }
             (None, None) => return Err("the definition names no model".into()),
         };
         // An org's MCP servers get their credentials per call, from the
