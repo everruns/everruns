@@ -61,8 +61,8 @@ grep -q 'type: Recreate' <<<"$one" || fail "a single server must be replaced wit
 if grep -q 'kind: NetworkPolicy' <<<"$one"; then fail "network policies render when off"; fi
 
 echo "==> data plane v2 by default, v1 one setting away"
-grep -q 'name: check-agentd$' <<<"$one" || fail "v2 is the default but no shard renders"
-grep -q 'EVERRUNS_DEFAULT_DATA_PLANE_URL, value: "http://check-agentd-gateway:7000"' <<<"$one" \
+grep -q 'name: check-everruns-agentd$' <<<"$one" || fail "v2 is the default but no shard renders"
+grep -q 'EVERRUNS_DEFAULT_DATA_PLANE_URL, value: "http://check-everruns-agentd-gateway:7000"' <<<"$one" \
   || fail "the server does not reach the shard through the gateway Service over its ready nodes"
 grep -q 'INJECTED_CAPABILITIES_BASE_URL, value: "http://check-everruns-server:9000/api"' <<<"$one" \
   || fail "the server hands the data plane injected capabilities at an address it cannot reach"
@@ -74,16 +74,16 @@ grep -q 'AGENTD_STORE, value: "file:///store"' <<<"$one" || fail "without S3 the
 grep -q 'AGENTD_STORE, value: "s3://files/shards"' <<<"$out" || fail "with S3 the shards do not keep history there"
 v1="$(helm template check "$CHART" --set postgresql.enabled=true --set auth.adminEmail=admin@example.com \
   --set dataPlane.version=v1)"
-if grep -q 'agentd' <<<"$v1"; then fail "v1 renders the data plane"; fi
+if grep -q 'everruns-agentd' <<<"$v1"; then fail "v1 renders the data plane"; fi
 if grep -q 'check-everruns-edge' <<<"$v1"; then fail "v1 routes to an edge router that does not run"; fi
 grep -q 'EVERRUNS_DATA_PLANE, value: "v1"' <<<"$v1" || fail "v1 does not tell the server"
 kept="$(helm template check "$CHART" --set postgresql.enabled=true --set auth.adminEmail=admin@example.com \
   --set dataPlane.version=v1 --set dataPlane.keepRunning=true)"
-grep -q 'name: check-agentd$' <<<"$kept" || fail "keepRunning does not keep the shard"
+grep -q 'name: check-everruns-agentd$' <<<"$kept" || fail "keepRunning does not keep the shard"
 if grep -q 'EVERRUNS_DEFAULT_DATA_PLANE_URL' <<<"$kept"; then fail "v1 still places new organizations on v2"; fi
 three="$(helm template check "$CHART" --set postgresql.enabled=true --set auth.adminEmail=admin@example.com \
   --set dataPlane.shard.nodes=3)"
-grep -q 'check-agentd-2.check-agentd:7000' <<<"$three" || fail "three nodes are not in the topology"
+grep -q 'check-everruns-agentd-2.check-everruns-agentd:7000' <<<"$three" || fail "three nodes are not in the topology"
 
 echo "==> Ingress defaults to direct routing"
 direct=(--set postgresql.enabled=true --set auth.adminEmail=admin@example.com
