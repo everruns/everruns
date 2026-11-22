@@ -3336,6 +3336,7 @@
             },
             "enabled": {
               "description": "Whether the channel can accept ingress traffic.",
+              "example": true,
               "type": "boolean"
             }
           },
@@ -4091,6 +4092,7 @@
         },
         "meter": {
           "description": "`model.tokens` or `sandbox.time`.",
+          "example": "model.tokens",
           "type": "string"
         },
         "unit_price_usd": {
@@ -23996,10 +23998,12 @@
           "properties": {
             "addition": {
               "description": "The text to add to the agent's instructions.",
+              "example": "Before replying, check the order status with the lookup tool.",
               "type": "string"
             },
             "summary": {
               "description": "One line on what the change does. Unchanged when omitted.",
+              "example": "Check order status before answering",
               "type": [
                 "string",
                 "null"
