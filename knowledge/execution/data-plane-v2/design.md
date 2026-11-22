@@ -638,7 +638,7 @@ server's session domains.
 
 ## Testing
 
-Testing is a deliverable of every phase, not a later phase. funout's habit stays: a whole data plane runs on one machine with no database, control plane, cloud account or real model. Every run ends with an invariant check over every session, and a red check fails the run.
+Testing is a deliverable of every phase, not a later phase. This section is the target; what runs today, and which check covers which promise, is in [testing.md](testing.md). funout's habit stays: a whole data plane runs on one machine with no database, control plane, cloud account or real model. Every run ends with an invariant check over every session, and a red check fails the run.
 
 ### Simulators (`crates/agentd-testkit`, unpublished)
 
@@ -725,6 +725,7 @@ The simulation harness lands in plan step 5, with the first models (epochs, move
 
 The bar is what RDS gives us today: no loss from a node or zone failure, a
 small stated loss window from anything worse, and a point-in-time restore.
+The resulting promises, per failure, are in [guarantees.md](guarantees.md).
 
 | Failure | What happens | Data lost |
 | --- | --- | --- |

@@ -61,6 +61,10 @@ What it doesn't give you:
 - **Idempotence of side effects.** A tool that declares itself idempotent is run again after a crash, so if it POSTs to an external API it must make the repeat harmless, for example by forwarding the call's idempotency key (`ToolContext::idempotency_key`). An unfinished tool call with the default at-most-once declaration is not automatically replayed after a recorded start, but a crash after it acted and before its result was recorded leaves its outcome unknown.
 - **Real-time latency guarantees.** Persisting durable events adds storage latency and load; ephemeral streaming deltas can bypass PostgreSQL. LLM latency often dominates a turn, but that does not make storage overhead negligible under every workload.
 
+On [data plane v2](/sre/agentd/), the default for new organizations, the
+session log lives in agentd shards instead of PostgreSQL. The guarantees
+above hold there too; what each failure can cost is on that page.
+
 ## Durability in the Framework
 
 Rust applications that embed the [Framework](/framework/) share the execution

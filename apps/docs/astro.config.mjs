@@ -472,6 +472,7 @@ export default defineConfig({
                     { label: "Environment Variables", slug: "sre/environment-variables" },
                     { label: "Admin Container", slug: "sre/admin-container" },
                     { label: "System Doctor", slug: "sre/system-doctor" },
+                    { label: "Data Plane (agentd)", slug: "sre/agentd" },
                     { label: "Custom Agent Workers", slug: "how-to/custom-agent-workers" },
                     { label: "Cloudflare Agent", slug: "how-to/cloudflare-agent" },
                     {
