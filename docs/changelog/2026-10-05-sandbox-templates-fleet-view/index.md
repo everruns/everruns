@@ -34,3 +34,11 @@ See [Sandbox Templates](/features/sandbox-templates/).
 Idle sandboxes show their last recorded state. Organization admins can check
 the provider's current state in the detail drawer. The idle sweep retries failed
 pauses for sandboxes running in shards.
+
+## Update 2026-11-22
+
+The fleet automatically checks managed providers in the background and updates
+recorded states when a sandbox has stopped or disappeared. Checks become eligible
+again after five minutes and run in bounded batches. A provider failure keeps
+the recorded state until a later check succeeds. Activity and idle deadlines
+continue to reflect the session's work.
