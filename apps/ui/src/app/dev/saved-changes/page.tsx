@@ -21,6 +21,7 @@ const receipt: SavedPageChange = {
   revision: 4,
   stale: false,
   pending: false,
+  by: "page",
   fields: [
     { field: "display_name", from: "GPT-6.1 Sol", to: "GPT-6.1 Sol (fast)" },
     { field: "enabled", from: false, to: true },
@@ -37,6 +38,7 @@ const selection: SavedPageChange = {
   revision: 0,
   stale: false,
   pending: false,
+  by: "page",
   members: ["Muse Ember", "Muse Spark 1.1", "GPT-6 Luna"].map((label, index) => ({
     id: `model_${index}`,
     label,
