@@ -71,7 +71,10 @@ describe("MonitoringShardsView", () => {
       from: "2026-11-15T14:00:00Z",
       to: "2026-11-15T20:00:00Z",
       bucket_seconds: 60,
-      shards: [shard("shard-a"), shard("shard-b", { silent: true, nodes_answering: 2, running: 20 })],
+      shards: [
+        shard("shard-a"),
+        shard("shard-b", { silent: true, nodes_answering: 2, running: 20 }),
+      ],
     });
     renderView();
     expect(await screen.findByRole("button", { name: "shard-a" })).toBeInTheDocument();
