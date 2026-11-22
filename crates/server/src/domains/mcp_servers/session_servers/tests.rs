@@ -370,12 +370,18 @@ async fn chat_mcp_lists_disabled_and_missing_catalog_presets_without_sign_in_hin
     }
 
     let listed = fixture.list(&fixture.ctx(), fixture.session).await.unwrap();
-    for (name, reason) in [("paused", "preset_disabled"), ("gone", "preset_unavailable")] {
+    for (name, reason) in [
+        ("paused", "preset_disabled"),
+        ("gone", "preset_unavailable"),
+    ] {
         let server = listed.iter().find(|server| server.name == name).unwrap();
         assert_eq!(server.discovery.as_deref(), Some(reason));
         assert_eq!(server.connection, UserMcpConnectionStatus::NotNeeded);
     }
-    let other = listed.iter().find(|server| server.name == "linear").unwrap();
+    let other = listed
+        .iter()
+        .find(|server| server.name == "linear")
+        .unwrap();
     assert_eq!(other.connection, UserMcpConnectionStatus::NotConnected);
     assert!(other.discovery.is_none());
 }
