@@ -37,13 +37,14 @@ installs Everruns into the cluster `kubectl` points at:
 everruns k8s up
 ```
 
-It shows the cluster context and namespace (`everruns` by default) and asks
-before installing. Then it asks who signs in, the admin email, your PostgreSQL
+With multiple contexts on a first interactive run, choose a cluster from the
+list. The CLI shows the chosen context and namespace (`everruns` by default)
+and asks before installing. Then it asks who signs in, the admin email, your PostgreSQL
 URL (or a single PostgreSQL pod for trying it out), an optional public URL for
 an Ingress, and an LLM provider key, which it takes from `OPENAI_API_KEY`,
 `ANTHROPIC_API_KEY`, `GEMINI_API_KEY` or `OPENROUTER_API_KEY` when set. It checks the cluster first
 (Kubernetes version, permissions in the namespace, a default StorageClass when
-it needs volumes, KEDA when worker autoscaling is on), installs this CLI
+it needs volumes, and KEDA when worker autoscaling is on), installs this CLI
 version's chart, waits for the pods while it shows how many of each are ready,
 and signs the CLI in as profile `k8s`. `everruns k8s password` prints the
 generated admin password for the UI.
@@ -70,6 +71,30 @@ is doing; `uninstall` removes the workloads and keeps the data; `destroy`
 deletes everything after you type the install's name, including the namespace
 when nothing else is in it. All commands:
 [`everruns k8s`](/reference/cli/k8s/).
+
+## Local storage and Apple Container
+
+`k8s up` defaults to `--storage-class auto`. The CLI uses the cluster's
+default class for new PostgreSQL, NATS, cell data, and cell store volumes that
+need a class. Explicit storage classes in chart values take precedence.
+On a verified local kind, k3d, or Apple Container cluster without a default,
+the CLI offers to install Local Path Provisioner and waits for it to be ready.
+Pass `--yes` to accept on a verified local cluster. For a remote cluster,
+configure its default or pass `--storage-class <name>` with an existing class.
+Existing release volume templates keep their storage settings.
+
+On a Mac with a current Apple Container release, create a local cluster first:
+
+```bash
+everruns k8s cluster create --provider apple
+everruns k8s up --context everruns-dev --bundled-postgres
+```
+
+The command allocates 4 GB of memory, sets up storage, and gives the cluster read access to Apple
+Container's local image store. Use this cluster for trusted workloads. On a Mac
+without Kubernetes contexts, interactive `k8s up` can offer this setup.
+With bundled PostgreSQL, the server pod waits for the database Service before
+it starts the server and its migrations.
 
 ## Install with Helm
 

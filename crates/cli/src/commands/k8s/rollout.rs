@@ -4,7 +4,7 @@
 
 use std::io::Write;
 use std::path::PathBuf;
-use std::process::Stdio;
+use std::process::{Child, Command, Stdio};
 use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
@@ -13,38 +13,59 @@ use serde_json::Value;
 use super::cluster::Target;
 use crate::ui;
 
-/// `helm upgrade --install` with the values on stdin, so the database URL and
-/// provider keys never touch this machine's disk.
-pub(super) fn helm_apply(
+pub(super) struct ChartInputs<'a> {
+    pub values: &'a Value,
+    pub set: &'a [String],
+    pub files: &'a [PathBuf],
+    pub storage: &'a [String],
+}
+
+impl ChartInputs<'_> {
+    fn configure(&self, cmd: &mut Command, version: Option<&str>) {
+        if let Some(v) = version {
+            cmd.args(["--version", v]);
+        }
+        cmd.args(["--values", "-"]);
+        for file in self.files {
+            cmd.arg("--values").arg(file);
+        }
+        for value in self.set {
+            cmd.args(["--set", value]);
+        }
+        for value in self.storage {
+            cmd.args(["--set-string", value]);
+        }
+    }
+}
+
+/// Render the same value layers that install uses, so files and --set can
+/// override defaults and can disable volumes altogether.
+pub(super) fn helm_template(
     target: &Target,
     chart: &str,
     version: Option<&str>,
-    values: &Value,
-    set: &[String],
-    files: &[PathBuf],
-    timeout: &str,
-) -> Result<()> {
+    inputs: &ChartInputs<'_>,
+    upgrade: bool,
+) -> Result<Vec<u8>> {
     let mut cmd = target.helm();
-    cmd.args(["upgrade", "--install", &target.release, chart]);
-    if let Some(v) = version {
-        cmd.args(["--version", v]);
+    cmd.args(["template", &target.release, chart]);
+    if upgrade {
+        cmd.arg("--is-upgrade");
     }
-    cmd.args([
-        "--create-namespace",
-        "--wait",
-        "--timeout",
-        timeout,
-        "--values",
-        "-",
-    ]);
-    for f in files {
-        cmd.arg("--values").arg(f);
+    inputs.configure(&mut cmd, version);
+    let output = start_helm(cmd, inputs.values)?
+        .wait_with_output()
+        .context("Failed to render Helm chart")?;
+    if !output.status.success() {
+        bail!(
+            "Could not render the Helm chart before checking storage: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
     }
-    for s in set {
-        cmd.args(["--set", s]);
-    }
-    // Helm's own output (release notes) is noise next to the live pod
-    // counts; it is shown only when helm fails.
+    Ok(output.stdout)
+}
+
+fn start_helm(mut cmd: Command, values: &Value) -> Result<Child> {
     let mut child = cmd
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -57,6 +78,23 @@ pub(super) fn helm_apply(
         .context("helm has no stdin")?
         .write_all(serde_json::to_string(values)?.as_bytes())
         .context("Failed to pass the values to helm")?;
+    Ok(child)
+}
+
+/// `helm upgrade --install` with the values on stdin, so the database URL and
+/// provider keys never touch this machine's disk.
+pub(super) fn helm_apply(
+    target: &Target,
+    chart: &str,
+    version: Option<&str>,
+    inputs: &ChartInputs<'_>,
+    timeout: &str,
+) -> Result<()> {
+    let mut cmd = target.helm();
+    cmd.args(["upgrade", "--install", &target.release, chart]);
+    cmd.args(["--create-namespace", "--wait", "--timeout", timeout]);
+    inputs.configure(&mut cmd, version);
+    let child = start_helm(cmd, inputs.values)?;
 
     let spinner = ui::Spinner::start(match version {
         Some(v) => format!("Applying chart {v} and waiting for the pods"),
