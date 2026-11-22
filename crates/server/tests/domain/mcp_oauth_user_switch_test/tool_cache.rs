@@ -441,12 +441,13 @@ async fn persisted_grant_revoke_and_acts_as_transition_do_not_reuse_cache_entrie
         .delete_virtual_user_connection(fixture.identity_id, &fixture.provider)
         .await
         .unwrap();
-    assert!(
-        fixture
-            .discover(fixture.session_a, McpServerActsAs::Service)
-            .await
-            .is_empty()
-    );
+    // A revoked agent login is reported to the model as one
+    // `sign_in_required` tool instead of the server's tools vanishing (#5587).
+    let revoked = fixture
+        .discover(fixture.session_a, McpServerActsAs::Service)
+        .await;
+    assert_eq!(revoked.len(), 1);
+    assert!(revoked[0].name().ends_with("sign_in_required"));
     assert!(
         fixture
             .db
