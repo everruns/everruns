@@ -12,18 +12,17 @@ links:
 ---
 
 Ask **Main chat** for something long and it starts a thread, then keeps talking to
-you while the thread works. **Threads** in the chat header opens a panel on the
-right, sorted into Needs you, Working and Ready for review, and it opens by
-itself when a new thread starts. Click a thread to read it next to the chat.
+you while the thread works. **Threads** opens a panel on the right, sorted into
+Needs you, Working and Ready for review. The panel opens when a new thread
+starts. Click a thread to read it next to the chat.
 
 ![Threads panel beside Main chat with one thread needing an answer, two working with step counts, and one ready for review](./threads-panel@2x.png)
 
 **Side chats** replace subchats and can start their own threads. The
-conversation sits beside the page you are on (since 2026-11-11 the default
-[Chat first layout](/changelog/2026-11-11-chat-first-layout/) keeps it there);
-Cmd/Ctrl-Shift-J switches to full screen and back. This is
-now on for every organization: the Chat workspace and Chat background work
-opt-ins are gone. Home is now **Overview**, under Building, with a count of the
+conversation sits beside the page in the default
+[Chat first layout](/changelog/2026-11-11-chat-first-layout/). Cmd/Ctrl-Shift-J
+toggles full screen. Chat workspace and background work are on for every
+organization. Home is now **Overview**, under Building, with a count of the
 items waiting there. See [Platform Chat](/built-ins/harnesses/platform-chat/).
 
 ## Update 2026-11-20
