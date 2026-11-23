@@ -150,6 +150,9 @@ def main():
     p.add_argument("--every", type=float, default=0.5, help="sample interval, seconds")
     p.add_argument("--out", default=os.path.join(ROOT, "target", "shard-soak"))
     p.add_argument("--keep", action="store_true", help="leave the fleet running")
+    p.add_argument("--max-unaccounted", type=float, default=None, metavar="SHARE",
+                   help="fail when a node's live heap beyond its counted sources passes this "
+                        "share of its limit (the memory design's remainder check, e.g. 0.15)")
     p.add_argument("--heap-profile", metavar="DIR",
                    help="dump jemalloc heap profiles here (build with --features heap-profile)")
     a = p.parse_args()
@@ -189,6 +192,7 @@ def main():
     peak = {n: 0.0 for n in NODES}
     peak_log = {n: 0 for n in NODES}
     peak_unaccounted = {n: 0 for n in NODES}
+    peak_remainder = {n: 0 for n in NODES}
     try:
         while drive.poll() is None:
             now = time.time()
@@ -222,6 +226,9 @@ def main():
                 rss = rss_mb(pid) if pid else 0.0
                 st = stats(n) or {}
                 counted = (st.get("resident_mb") or 0) + (st.get("wal_held_mb") or 0)
+                # Live heap beyond the counted sources: what the remainder
+                # check gates on (rss also holds fragmentation and code).
+                live = ((st.get("heap") or {}).get("allocated_mb")) if st else None
                 row["nodes"][n] = {"rss_mb": round(rss), "log_mb": st.get("wal_held_mb"),
                                    "resident_mb": st.get("resident_mb"),
                                    "unaccounted_mb": round(rss - counted) if st else None,
@@ -233,6 +240,8 @@ def main():
                 peak_log[n] = max(peak_log[n], st.get("wal_held_mb") or 0)
                 if st:
                     peak_unaccounted[n] = max(peak_unaccounted[n], rss - counted)
+                if live is not None:
+                    peak_remainder[n] = max(peak_remainder[n], live - counted)
                 if pid and rss > cfg["limit_mb"] and n not in down_until:
                     # What the kubelet does to a container past its limit.
                     fleet.kill(0, n)
@@ -268,11 +277,19 @@ def main():
         "peak_rss_share_of_limit": round(max(peak.values()) / cfg["limit_mb"], 3),
         "peak_log_mb": peak_log,
         "peak_unaccounted_mb": {n: round(v) for n, v in peak_unaccounted.items()},
+        # Live heap (jemalloc allocated) beyond resident events and the log.
+        "peak_remainder_mb": {n: round(v) for n, v in peak_remainder.items()},
+        "peak_remainder_share_of_limit": round(max(peak_remainder.values()) / cfg["limit_mb"], 3),
     }
     with open(os.path.join(a.out, "summary.json"), "w") as f:
         json.dump(summary, f, indent=2)
     print(json.dumps(summary, indent=2))
-    if oom or crashes or report.get("errors") or missing or drive.returncode:
+    over = a.max_unaccounted is not None and \
+        summary["peak_remainder_share_of_limit"] > a.max_unaccounted
+    if over:
+        print(f"remainder {summary['peak_remainder_share_of_limit']} of the limit is over "
+              f"{a.max_unaccounted}", flush=True)
+    if oom or crashes or over or report.get("errors") or missing or drive.returncode:
         sys.exit(f"failed: {len(oom)} out-of-memory kills, {len(crashes)} crashes, "
                  f"{report.get('errors')} errors, "
                  f"{missing} turns missing, driver exit {drive.returncode}")
