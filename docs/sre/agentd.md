@@ -143,6 +143,13 @@ Start with a test organization, then a few small ones, then the rest. The
 `everruns_default` network is the Compose guide's (a project in a folder named
 `everruns`); use your project's name if it differs.
 
+To keep new organizations on v1 for now, set `EVERRUNS_DATA_PLANE=v1`.
+Organizations agentd already took before that and that never ran a session
+there go back with `dataplane to-v1 local` (every such organization) or
+`dataplane to-v1 local <org id> ...`. One that ran sessions on agentd stays:
+the command lists it with its session count, because sessions do not move
+back to v1.
+
 ## Watch it
 
 Each shard node and executor serves Prometheus metrics at `/metrics`. The

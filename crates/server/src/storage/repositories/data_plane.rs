@@ -36,6 +36,18 @@ macro_rules! org_columns {
     };
 }
 
+/// What [`Database::dp_return_org_to_v1`] did.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ReturnToV1 {
+    /// Back on v1; it was on this data plane.
+    Returned(String),
+    /// Left alone: this many sessions live on its data plane, and nothing
+    /// moves a session from v2 back to v1.
+    HasSessions(i64),
+    /// Not on a data plane (already v1).
+    NotOnDataPlane,
+}
+
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct DpConfigItemRow {
     pub kind: String,
@@ -198,7 +210,7 @@ impl Database {
         Ok(sqlx::query_as(concat!(
             "SELECT ",
             org_columns!(),
-            " FROM dp_orgs WHERE org_id = $1"
+            " FROM dp_orgs WHERE org_id = $1 AND returned_at IS NULL"
         ))
         .bind(org_id)
         .fetch_optional(&self.pool)
@@ -206,7 +218,8 @@ impl Database {
     }
 
     /// Put `org_id` on `data_plane_id` with its new data key. An org already
-    /// on a data plane keeps its key.
+    /// on a data plane keeps its key; one that went back to v1 (`to-v1`)
+    /// comes back with the new plane and key, delivered from scratch.
     pub async fn dp_insert_org(
         &self,
         org_id: i64,
@@ -216,7 +229,14 @@ impl Database {
     ) -> Result<DpOrgRow> {
         sqlx::query(
             "INSERT INTO dp_orgs (org_id, data_plane_id, data_key_id, data_key_encrypted)
-             VALUES ($1, $2, $3, $4) ON CONFLICT (org_id) DO NOTHING",
+             VALUES ($1, $2, $3, $4)
+             ON CONFLICT (org_id) DO UPDATE SET
+                data_plane_id = EXCLUDED.data_plane_id,
+                data_key_id = EXCLUDED.data_key_id,
+                data_key_encrypted = EXCLUDED.data_key_encrypted,
+                enabled = false, delivered_epoch = 0, delivered_version = 0,
+                returned_at = NULL, updated_at = now()
+             WHERE dp_orgs.returned_at IS NOT NULL",
         )
         .bind(org_id)
         .bind(data_plane_id)
@@ -253,7 +273,7 @@ impl Database {
             org_columns!(),
             " FROM dp_orgs
               WHERE (NOT enabled OR delivered_epoch <> $1 OR delivered_version < version)
-                AND next_attempt_at <= now()
+                AND next_attempt_at <= now() AND returned_at IS NULL
               ORDER BY next_attempt_at LIMIT $2"
         ))
         .bind(epoch)
@@ -507,7 +527,7 @@ impl Database {
     /// Whether `org_id` has, or had, sessions on a data plane.
     pub async fn dp_org_ever(&self, org_id: i64) -> Result<bool> {
         Ok(sqlx::query_scalar::<_, i32>(
-            "SELECT 1 FROM dp_orgs WHERE org_id = $1
+            "SELECT 1 FROM dp_orgs WHERE org_id = $1 AND returned_at IS NULL
              UNION ALL
              SELECT 1 FROM dp_session_summaries WHERE org_id = $1
              LIMIT 1",
@@ -557,6 +577,49 @@ impl Database {
         .execute(&self.pool)
         .await?;
         Ok(())
+    }
+
+    /// Orgs on `data_plane_id` (not gone back to v1).
+    pub async fn dp_plane_orgs(&self, data_plane_id: &str) -> Result<Vec<i64>> {
+        Ok(sqlx::query_scalar(
+            "SELECT org_id FROM dp_orgs
+              WHERE data_plane_id = $1 AND returned_at IS NULL ORDER BY org_id",
+        )
+        .bind(data_plane_id)
+        .fetch_all(&self.pool)
+        .await?)
+    }
+
+    /// Send `org_id` back to v1 if it never had a session on its data
+    /// plane. The row stays, marked with the time ([`Self::dp_org`] then
+    /// answers `None`), so the org's config history is kept and enabling it
+    /// again reuses the row.
+    pub async fn dp_return_org_to_v1(&self, org_id: i64) -> Result<ReturnToV1> {
+        let mut tx = self.pool.begin().await?;
+        let plane: Option<String> = sqlx::query_scalar(
+            "SELECT data_plane_id FROM dp_orgs
+              WHERE org_id = $1 AND returned_at IS NULL FOR UPDATE",
+        )
+        .bind(org_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        let Some(plane) = plane else {
+            return Ok(ReturnToV1::NotOnDataPlane);
+        };
+        let sessions: i64 =
+            sqlx::query_scalar("SELECT count(*) FROM dp_session_summaries WHERE org_id = $1")
+                .bind(org_id)
+                .fetch_one(&mut *tx)
+                .await?;
+        if sessions > 0 {
+            return Ok(ReturnToV1::HasSessions(sessions));
+        }
+        sqlx::query("UPDATE dp_orgs SET returned_at = now(), updated_at = now() WHERE org_id = $1")
+            .bind(org_id)
+            .execute(&mut *tx)
+            .await?;
+        tx.commit().await?;
+        Ok(ReturnToV1::Returned(plane))
     }
 
     pub async fn dp_insert_org_event(

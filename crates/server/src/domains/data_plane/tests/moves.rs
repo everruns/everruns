@@ -451,3 +451,66 @@ async fn a_v2_forks_files_come_from_a_snapshot_or_file_by_file() {
             .any(|f| f["path"] == "/data.bin" && f["is_readonly"] == true)
     );
 }
+
+/// `everruns-dataplane to-v1`: an org placed on a data plane that never ran a
+/// session there goes back to v1, keeping its row; one with sessions stays;
+/// the default placement does not take it again; enabling it puts it back.
+#[tokio::test]
+async fn an_org_without_v2_sessions_goes_back_to_v1_and_can_return() {
+    use crate::storage::ReturnToV1;
+    let (cp, _, _) = control_plane().await;
+    let empty = ORG + 1;
+    enable_org(&cp, empty, "dp-1").await.unwrap();
+    let now = chrono::Utc::now();
+    let session = everruns_contracts::typed_id::SessionId::new().to_string();
+    cp.db
+        .dp_upsert_session_summary(crate::storage::DpSessionSummary {
+            session_id: &session,
+            org_id: ORG,
+            data_plane_id: "dp-1",
+            agent_id: "agent",
+            session_version: 0,
+            title: "",
+            status: "started",
+            turns: 0,
+            cost_micros: 0,
+            created_at: now,
+            last_activity_at: now,
+        })
+        .await
+        .unwrap();
+    let on_plane = cp.db.dp_plane_orgs("dp-1").await.unwrap();
+    assert!(
+        on_plane.contains(&ORG) && on_plane.contains(&empty),
+        "{on_plane:?}"
+    );
+
+    assert_eq!(
+        cp.db.dp_return_org_to_v1(ORG).await.unwrap(),
+        ReturnToV1::HasSessions(1)
+    );
+    assert!(cp.db.dp_org(ORG).await.unwrap().is_some());
+    assert_eq!(
+        cp.db.dp_return_org_to_v1(empty).await.unwrap(),
+        ReturnToV1::Returned("dp-1".into())
+    );
+    assert!(cp.db.dp_org(empty).await.unwrap().is_none());
+    assert!(!cp.db.dp_plane_orgs("dp-1").await.unwrap().contains(&empty));
+    assert_eq!(
+        cp.db.dp_return_org_to_v1(empty).await.unwrap(),
+        ReturnToV1::NotOnDataPlane
+    );
+    assert!(
+        !cp.db
+            .dp_orgs_to_place(1000, None)
+            .await
+            .unwrap()
+            .contains(&empty),
+        "a returned org keeps its row, so the default plane does not take it again"
+    );
+
+    let row = enable_org(&cp, empty, "dp-1").await.unwrap();
+    assert_eq!(row.data_plane_id, "dp-1");
+    assert!(!row.enabled, "delivered again from scratch");
+    assert!(cp.db.dp_plane_orgs("dp-1").await.unwrap().contains(&empty));
+}

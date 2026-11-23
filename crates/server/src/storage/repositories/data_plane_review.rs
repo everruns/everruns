@@ -11,7 +11,7 @@ impl Database {
     pub async fn dp_orgs_settings_behind(&self, limit: i64) -> Result<Vec<(i64, i64)>> {
         Ok(sqlx::query_as(
             "SELECT org_id, settings_rev FROM dp_orgs
-              WHERE settings_rev > settings_synced_rev
+              WHERE settings_rev > settings_synced_rev AND returned_at IS NULL
               ORDER BY org_id LIMIT $1",
         )
         .bind(limit)

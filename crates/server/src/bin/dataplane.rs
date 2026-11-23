@@ -10,7 +10,7 @@ use std::sync::Arc;
 use anyhow::{Context, Result};
 use everruns_contracts::dataplane::OrgState;
 use everruns_server::domains::data_plane::{self, ControlPlane, Link};
-use everruns_server::storage::{Database, EncryptionService, StorageBackend};
+use everruns_server::storage::{Database, EncryptionService, ReturnToV1, StorageBackend};
 
 const HELP: &str = r#"
 everruns-dataplane - operate data planes (v2)
@@ -29,12 +29,19 @@ USAGE:
     everruns-dataplane reconcile <org_public_id> [--keep | --drop]
     everruns-dataplane move <org_public_id> [<session_id> | --archived]
     everruns-dataplane move-orgs <data_plane_id> <org_public_id>... [--archived]
+    everruns-dataplane to-v1 <data_plane_id> [<org_public_id>...]
 
 `enable` switches an org to a data plane: its new sessions run there. After a
 database restore, run `diff` for every v2 org, resolve what it lists, then
 `bump-epoch`: every data plane then takes a full snapshot. What a snapshot
 lacked the data plane sets aside: `reconcile` lists it, `--keep` sends it
 again as config, `--drop` forgets it. Running turns finish either way.
+
+`to-v1` sends orgs on a data plane back to the platform's own workers (v1):
+the named ones, or every org on it. Only an org that never ran a session
+there goes back; one that did is listed with its session count and left
+alone, since nothing moves a session from v2 back to v1. `enable` puts an org
+back on a data plane later.
 
 `rejoin` is for a data plane started over empty (new disks, new store
 prefix): every org on it is enabled again and sent a full snapshot, since
@@ -299,6 +306,43 @@ async fn main() -> Result<()> {
                     "{incomplete} of {} orgs are not fully moved; run move-orgs again",
                     reports.len()
                 );
+            }
+        }
+        "to-v1" => {
+            let plane = args.get(1).context("a data plane id is required")?;
+            let orgs = if args.len() > 2 {
+                let mut orgs = Vec::new();
+                for name in &args[2..] {
+                    orgs.push(org(&db, Some(name)).await?);
+                }
+                orgs
+            } else {
+                db.dp_plane_orgs(plane).await?
+            };
+            let mut kept = 0;
+            for org_id in orgs {
+                let name = data_plane::org_public(org_id);
+                match db.dp_return_org_to_v1(org_id).await? {
+                    ReturnToV1::Returned(on) => {
+                        db.dp_insert_org_event(
+                            org_id,
+                            "returned_to_v1",
+                            &format!("left {on}"),
+                            "operator",
+                            chrono::Utc::now(),
+                        )
+                        .await?;
+                        println!("{name} back on v1 (was on {on})");
+                    }
+                    ReturnToV1::HasSessions(n) => {
+                        kept += 1;
+                        println!("{name} kept on {plane}: {n} sessions run there");
+                    }
+                    ReturnToV1::NotOnDataPlane => println!("{name} already on v1"),
+                }
+            }
+            if kept > 0 {
+                anyhow::bail!("{kept} orgs have sessions on {plane} and stay there");
             }
         }
         other => {
