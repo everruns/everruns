@@ -65,6 +65,7 @@ pub mod install_tls;
 pub mod lookups;
 pub mod mcp;
 pub mod memory;
+pub mod memwatch;
 pub mod metrics;
 pub mod moves;
 pub mod network;

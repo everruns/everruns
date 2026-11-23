@@ -114,6 +114,15 @@ pub struct Stats {
     /// overhead in what `resident_mb` and `wal_held_mb` do not cover.
     #[serde(default)]
     pub heap: crate::heap::Heap,
+    /// The container's memory less inactive file pages, and its limit
+    /// (`memwatch.rs`); 0 outside a cgroup v2 container.
+    #[serde(default)]
+    pub container_mb: u64,
+    #[serde(default)]
+    pub container_limit_mb: u64,
+    /// Restarts that followed a run at the memory limit, across restarts.
+    #[serde(default)]
+    pub oom_kills: u64,
     pub metrics: crate::metrics::MetricsReport,
 }
 
@@ -257,6 +266,9 @@ async fn stats(State(node): State<Arc<Node>>) -> Json<Stats> {
         wal_held_mb: node.wal.held_bytes() >> 20,
         feed_pending: node.shared.state.read().feed.records.len(),
         heap: crate::heap::heap(),
+        container_mb: crate::memwatch::working().0 >> 20,
+        container_limit_mb: crate::memwatch::working().1 >> 20,
+        oom_kills: crate::memwatch::oom_kills(),
         metrics: node.metrics.report(),
     })
 }
@@ -458,6 +470,29 @@ async fn metrics(State(node): State<Arc<Node>>) -> impl IntoResponse {
         "agentd_shard_heap_resident_bytes",
         "Pages the allocator holds resident, including kept free pages and metadata (jemalloc).",
         (heap.resident_mb << 20) as f64,
+    );
+    // What the node does not account for: live bytes beyond its resident
+    // events and its Raft log (the memory design's "remainder").
+    w.gauge(
+        "agentd_memory_unaccounted_bytes",
+        "Live heap bytes beyond resident events and the Raft log.",
+        ((heap.allocated_mb << 20).saturating_sub(resident_bytes + node.wal.held_bytes())) as f64,
+    );
+    let (working, limit) = crate::memwatch::working();
+    w.gauge(
+        "agentd_memory_container_bytes",
+        "The container's memory less inactive file pages: what the kernel kills on.",
+        working as f64,
+    );
+    w.gauge(
+        "agentd_memory_limit_bytes",
+        "The container's memory limit; 0 for none.",
+        limit as f64,
+    );
+    w.counter(
+        "agentd_memory_oom_kills_total",
+        "Restarts of this node that followed a run at its memory limit, across restarts.",
+        crate::memwatch::oom_kills() as f64,
     );
     crate::pressure::write_metrics(&node.pressure, &mut w);
     w.gauge(

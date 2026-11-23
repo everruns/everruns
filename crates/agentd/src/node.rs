@@ -349,6 +349,7 @@ impl Node {
         tokio::spawn(self.clone().scheduler_loop());
         tokio::spawn(self.clone().liveness_loop());
         tokio::spawn(self.clone().unload_loop());
+        crate::memwatch::spawn(self.cfg.data_dir.clone());
         tokio::spawn(self.clone().pressure_loop());
         tokio::spawn(self.clone().catchup_loop());
         tokio::spawn(self.clone().register_loop());
