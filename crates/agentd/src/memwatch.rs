@@ -77,6 +77,80 @@ fn working_bytes(current: &str, stat: &str) -> u64 {
     current.saturating_sub(inactive)
 }
 
+/// An executor's memory, read the way the kernel counts it: the
+/// container's working bytes against `configured` (bytes) or the
+/// container's limit; the process's resident set when it runs in no
+/// container (local fleets, tests). A limit of 0 means none.
+pub fn reading(configured: u64) -> (u64, u64) {
+    let (working, container) = working();
+    let limit = if configured > 0 {
+        configured
+    } else {
+        container
+    };
+    let used = if container > 0 {
+        working
+    } else {
+        rss_mb() << 20
+    };
+    (used, limit)
+}
+
+/// What a turn reserves of its executor's memory before it starts.
+pub const TURN_BASE: u64 = 8 << 20;
+/// Permille of the limit turns may hold together; the rest is headroom
+/// and the shard mirrors.
+const TURNS_SHARE: u64 = 750;
+/// Permille of the limit at which an executor hands its newest turns
+/// back and starts none, and at which it drains and restarts.
+const STOP_AT: u64 = 950;
+const RESTART_AT: u64 = 980;
+
+/// What an executor does about its memory now.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum ExecLevel {
+    Ok,
+    /// Start nothing; hand the newest running turns back (they resume on
+    /// another executor from the session's log).
+    Stop,
+    /// Drain and exit with [`RESTART_EXIT`]; Kubernetes restarts it.
+    Restart,
+}
+
+/// Exit code of an executor that restarted itself before the kernel would
+/// have killed it.
+pub const RESTART_EXIT: i32 = 75;
+
+pub fn exec_level(used: u64, limit: u64) -> ExecLevel {
+    if limit == 0 {
+        return ExecLevel::Ok;
+    }
+    let permille = used.saturating_mul(1000) / limit;
+    if permille >= RESTART_AT {
+        ExecLevel::Restart
+    } else if permille >= STOP_AT {
+        ExecLevel::Stop
+    } else {
+        ExecLevel::Ok
+    }
+}
+
+/// Turns an executor may start with what its memory has left: the turns'
+/// share of the limit less what is in use, in [`TURN_BASE`] units. No
+/// limit: no bound.
+///
+/// Decision: an executor takes turns by memory, not by slot count. In EKS
+/// run 44355318472 a slow shard pulled every free slot into itself after a
+/// node kill; with memory credits a turn that holds more leaves fewer
+/// slots to fill.
+pub fn turn_credits(used: u64, limit: u64) -> usize {
+    if limit == 0 {
+        return usize::MAX;
+    }
+    let turns = (u128::from(limit) * u128::from(TURNS_SHARE) / 1000) as u64;
+    (turns.saturating_sub(used) / TURN_BASE) as usize
+}
+
 /// Out-of-memory kills counted for this node, across its restarts.
 pub fn oom_kills() -> u64 {
     OOM_KILLS.load(Ordering::Relaxed)
@@ -155,6 +229,19 @@ mod tests {
         // A stat that reports more inactive pages than usage (a race
         // between the two reads) does not wrap.
         assert_eq!(working_bytes("100", "inactive_file 300"), 0);
+    }
+
+    #[test]
+    fn an_executor_takes_turns_by_memory() {
+        let gib = 1u64 << 30;
+        assert_eq!(turn_credits(0, 0), usize::MAX, "no limit, no bound");
+        // 4 GiB: turns may hold 3 GiB, 1 GiB in use leaves 2 GiB.
+        assert_eq!(turn_credits(gib, 4 * gib), (2 * gib / TURN_BASE) as usize);
+        assert_eq!(turn_credits(3 * gib, 4 * gib), 0);
+        assert_eq!(exec_level(900, 1000), ExecLevel::Ok);
+        assert_eq!(exec_level(950, 1000), ExecLevel::Stop);
+        assert_eq!(exec_level(980, 1000), ExecLevel::Restart);
+        assert_eq!(exec_level(5000, 0), ExecLevel::Ok);
     }
 
     #[test]

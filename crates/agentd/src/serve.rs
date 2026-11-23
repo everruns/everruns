@@ -249,6 +249,7 @@ pub async fn start(cfg: ServeConfig, host: Arc<dyn Host>) -> anyhow::Result<Serv
             mirror_sessions: 1024,
             pull_wait: Duration::from_secs(1),
             dream_sweep: Duration::from_secs(60),
+            memory_limit: 0,
         },
         host,
     )?;

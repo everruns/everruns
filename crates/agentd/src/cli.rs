@@ -129,6 +129,10 @@ enum Mode {
         /// Address for `/health` and `/metrics`.
         #[arg(long)]
         listen: Option<SocketAddr>,
+        /// Memory limit in MiB turns are admitted against; 0: the
+        /// container's.
+        #[arg(long, env = "AGENTD_EXECUTOR_MEMORY_LIMIT_MB", default_value = "0")]
+        memory_limit_mb: u64,
     },
     /// Run the edge router: one public URL for the control plane and the
     /// data plane (`edge.rs`).
@@ -448,6 +452,7 @@ pub async fn run(host: impl Host) -> anyhow::Result<()> {
             mirror_sessions,
             cache_mb,
             listen,
+            memory_limit_mb,
         } => {
             let id = match id {
                 Some(id) => id,
@@ -461,6 +466,7 @@ pub async fn run(host: impl Host) -> anyhow::Result<()> {
                 mirror_sessions,
                 pull_wait: Duration::from_secs(1),
                 dream_sweep: Duration::from_secs(60),
+                memory_limit: memory_limit_mb << 20,
             };
             serve_executor(cfg, host, listen).await
         }
@@ -868,6 +874,7 @@ pub async fn serve_executor(
     tokio::select! {
         _ = term.recv() => {}
         _ = tokio::signal::ctrl_c() => {}
+        _ = executor.restart_wanted.notified() => {}
     }
     tracing::info!(running = executor.running(), "draining");
     executor.drain();
@@ -880,6 +887,10 @@ pub async fn serve_executor(
     }
     if executor.running() > 0 {
         tracing::warn!(running = executor.running(), "drain limit reached; leaving");
+    }
+    if executor.wants_restart() {
+        // A distinct code, so the restart counts as the executor's own.
+        std::process::exit(crate::memwatch::RESTART_EXIT);
     }
     Ok(())
 }

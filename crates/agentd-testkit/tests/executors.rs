@@ -8,7 +8,8 @@
 //! from an executor; the workspace survives executors and a move; an
 //! executor runs a session again after it moved shards; a shard short of
 //! memory sheds new work while admitted turns finish; a shard with Raft on
-//! its own listener and threads fails over like any other; a shard that
+//! its own listener and threads fails over like any other; an executor
+//! out of memory takes no turns and drains; a shard that
 //! stops committing sheds new work and takes it again once it commits; only
 //! the leader says a session is missing; Raft's own listener takes large
 //! snapshot chunks.
@@ -22,6 +23,27 @@ use std::time::{Duration, Instant};
 use everruns_agentd::remote::EXECUTOR_IDS;
 use serde_json::json;
 use support::{Fleet, answers, pulled, types};
+
+/// An executor out of memory takes no turns and drains to restart; the
+/// turn runs on an executor with room (memory design, "Executor").
+#[tokio::test(flavor = "multi_thread")]
+async fn an_executor_out_of_memory_takes_no_turns_and_drains() {
+    let mut fleet = Fleet::start().await;
+    // A 1 MiB limit: whatever this process holds is past 98% of it.
+    let full = fleet.executor_limited(1, 8, 1 << 20);
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !full.wants_restart() {
+        assert!(Instant::now() < deadline, "the full executor did not drain");
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    let session = fleet.create("worker").await;
+    fleet.say(&session, "go").await;
+    tokio::time::sleep(Duration::from_secs(2)).await;
+    assert_eq!(pulled(&full), 0, "the full executor took a turn");
+    let roomy = fleet.executor(2);
+    fleet.turns(&session, 1).await;
+    assert!(pulled(&roomy) >= 1);
+}
 
 #[tokio::test(flavor = "multi_thread")]
 async fn turns_run_on_executors_not_nodes() {
