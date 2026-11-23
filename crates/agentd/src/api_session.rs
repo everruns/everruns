@@ -313,6 +313,11 @@ async fn schedules(
         }));
     }
     let Some(action) = body.action else {
+        // Reads are linearizable (`api_files.rs`): a replica that has not
+        // applied a committed delete would show the schedule after its 204.
+        crate::api_files::read_barrier(&node)
+            .await
+            .map_err(|error| (StatusCode::SERVICE_UNAVAILABLE, error.to_string()))?;
         let listed = crate::api::lookup(&node, id, |s| {
             let live: Vec<_> = s
                 .platform
