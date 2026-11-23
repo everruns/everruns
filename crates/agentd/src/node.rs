@@ -228,7 +228,7 @@ impl Node {
             // at the same moment, so the memory peak of a build hit the
             // whole shard at once: in run 45077134741 all three nodes of a
             // shard ran out of memory together and the shard lost quorum.
-            snapshot_policy: SnapshotPolicy::LogsSinceLast(staggered(
+            snapshot_policy: SnapshotPolicy::LogsSinceLast(crate::sm::staggered(
                 cfg.snapshot_every,
                 cfg.node_id,
             )),
@@ -1485,25 +1485,5 @@ fn release_free_pages() {
     // SAFETY: malloc_trim only releases free heap pages.
     unsafe {
         libc::malloc_trim(0);
-    }
-}
-
-/// The snapshot interval of `node`: `every` for node 1, a tenth more for
-/// each later node, so replicas of one shard build their snapshots apart.
-fn staggered(every: u64, node: NodeId) -> u64 {
-    every + every / 10 * node.saturating_sub(1).min(9)
-}
-
-#[cfg(test)]
-mod snapshot_points {
-    use super::staggered;
-
-    #[test]
-    fn replicas_of_one_shard_snapshot_apart() {
-        assert_eq!(staggered(20_000, 1), 20_000);
-        assert_eq!(staggered(20_000, 2), 22_000);
-        assert_eq!(staggered(20_000, 3), 24_000);
-        // Large ids stay within twice the interval.
-        assert_eq!(staggered(20_000, 1_000), 38_000);
     }
 }

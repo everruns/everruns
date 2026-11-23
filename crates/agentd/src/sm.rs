@@ -1026,15 +1026,31 @@ impl RaftStateMachine<TypeConfig> for StateMachine {
     }
 }
 
+/// The snapshot interval of `node`: `every` for node 1, a tenth more for
+/// each later node, so replicas of one shard build their snapshots apart.
+pub(crate) fn staggered(every: u64, node: crate::types::NodeId) -> u64 {
+    every + every / 10 * node.saturating_sub(1).min(9)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::event_allowance;
+    use super::{event_allowance, staggered};
 
     const GB: u64 = 1 << 30;
+
+    #[test]
+    fn replicas_of_one_shard_snapshot_apart() {
+        assert_eq!(staggered(20_000, 1), 20_000);
+        assert_eq!(staggered(20_000, 2), 22_000);
+        assert_eq!(staggered(20_000, 3), 24_000);
+        // Large ids stay within twice the interval.
+        assert_eq!(staggered(20_000, 1_000), 38_000);
+    }
 
     /// Before a snapshot install: everything the store holds goes, an
     /// unstored tail stays (no other copy exists), and a busy session keeps
     /// what its next turn reads.
+
     #[test]
     fn shedding_drops_only_stored_events() {
         use crate::state::{SessionState, ShardState};
