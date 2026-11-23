@@ -22,6 +22,12 @@ analysis and the first baseline: [agents-1m analysis](agents-1m-analysis.md).
 
 ## Shape
 
+- **agentd only.** The 1M goal is about agentd, data plane v2 (shard
+  nodes, executors, edge router), not the Everruns server (owner,
+  2026-11-23). Points that touch the control plane measure agentd's side of
+  the link: carrying on while the controller is down, streaming records out,
+  issuing allowances.
+
 - **One folder per goal, no shared engine.** Everything a validator needs
   lives in `validators/<goal>/`, plain Python from the standard library, so
   it runs anywhere the repository is checked out. The common parts get

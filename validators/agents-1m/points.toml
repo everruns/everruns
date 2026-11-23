@@ -206,15 +206,15 @@ watches = ["crates/agentd/src/edge.rs", "crates/agentd/src/dp.rs", "crates/agent
 
 [[point]]
 id = "D2"
-title = "Control plane takes in the feed from 1M agents (DB under 60%)"
+title = "agentd streams 1M agents' records out to its controller (p99 lag)"
 weight = 3
 direction = "at_most"
-target = "0.6"
-unit = "DB CPU share"
+target = "5"
+unit = "s stream lag p99"
 cheapest = "L2"
 scales = "shared"
-built_from = "synthetic feed generator (new)"
-watches = ["crates/server/src/domains/dataplane"]
+built_from = "stream consumer at the 1M record rate (new)"
+watches = ["crates/agentd/src/install_stream.rs", "crates/agentd/src/stream.rs"]
 
 [[point]]
 id = "D3"

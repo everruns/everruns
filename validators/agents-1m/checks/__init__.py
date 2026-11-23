@@ -59,7 +59,7 @@ NOT_BUILT = {
     "B2": ("L2", "agentd-drive peak profile: 3x rate for 10 minutes, shed share and retries"),
     "B3": ("L2", "agentd-drive open loop at the ramp rate (sessions created a second)"),
     "B4": ("L2", "drive reports with model time split out of turn time"),
-    "D2": ("L2", "synthetic feed generator: 1M agents' records into the control plane"),
+    "D2": ("L2", "stream consumer reading 1M agents' records from /v1/stream"),
     "D3": ("L2", "synthetic spend-grant requests at the 1M rate"),
     "D4": ("L1", "in-process directory and edge router holding 1M sessions"),
     "D6": ("L1", "KWOK cluster with hundreds of shards and ~700 pods"),

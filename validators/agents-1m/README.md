@@ -1,5 +1,9 @@
 # agents-1m: can Everruns run 1,000,000 agents at once?
 
+The target is agentd (data plane v2: shard nodes, executors, edge router)
+only. The Everruns server is out of scope; tests stand in for it with the
+testkit's fake control plane.
+
 ```bash
 validators/agents-1m/validate --plan     # what to do next (seconds, runs nothing)
 validators/agents-1m/validate --quick    # model + simulation levels, the report (seconds)

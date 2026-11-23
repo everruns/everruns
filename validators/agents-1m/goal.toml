@@ -5,6 +5,12 @@
 # recorded under another fingerprint earn nothing. A climbing agent never
 # edits this file. Everything outside the [approval] table is fingerprinted.
 #
+# Scope (owner, 2026-11-23): agentd only, meaning data plane v2 (shard nodes,
+# executors, edge router). The Everruns server is outside the goal: tests
+# stand in for it with the testkit's fake control plane, and its points are
+# about agentd's side of the link (E5 controller down, D2 stream out, D3
+# allowances).
+#
 # Defaults scale up the 75k gate (EKS run 45197793040, 2026-11-23: 72,537
 # agents, 725,370 turns, 218.7 turns/s, 0 errors, 0 out-of-memory kills).
 
