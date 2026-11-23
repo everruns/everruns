@@ -23,13 +23,19 @@ RUN = os.path.join(HERE, "fixtures", "runs", "45197793040")
 class EndToEnd(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
-        self.saved = (T.RESULTS, T.ATTEMPTS, T.CHECKPOINTS)
+        self.saved = (T.RESULTS, T.ATTEMPTS, T.CHECKPOINTS, T.watch_hash, T.changed_since)
         T.RESULTS = os.path.join(self.tmp, "results.jsonl")
         T.ATTEMPTS = os.path.join(self.tmp, "attempts.jsonl")
         T.CHECKPOINTS = os.path.join(self.tmp, "checkpoints")
+        # Decision: the fixture run's code counts as the code under test. With
+        # real git digests, any change to the code a point watches (agentd)
+        # halves the imported run's credit, so this test failed on every PR
+        # that touched agentd. Freshness has its own tests in test_scoring.
+        T.watch_hash = lambda paths, commit=None: "fixture"
+        T.changed_since = lambda commit, paths: False
 
     def tearDown(self):
-        T.RESULTS, T.ATTEMPTS, T.CHECKPOINTS = self.saved
+        T.RESULTS, T.ATTEMPTS, T.CHECKPOINTS, T.watch_hash, T.changed_since = self.saved
         shutil.rmtree(self.tmp)
 
     def main(self, *args):
