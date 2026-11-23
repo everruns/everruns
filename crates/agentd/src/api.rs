@@ -110,6 +110,10 @@ pub struct Stats {
     /// Feed records the control plane has not acknowledged yet.
     #[serde(default)]
     pub feed_pending: usize,
+    /// The allocator's own figures, to tell live data from allocator
+    /// overhead in what `resident_mb` and `wal_held_mb` do not cover.
+    #[serde(default)]
+    pub heap: crate::heap::Heap,
     pub metrics: crate::metrics::MetricsReport,
 }
 
@@ -252,6 +256,7 @@ async fn stats(State(node): State<Arc<Node>>) -> Json<Stats> {
         wal: node.wal.stats(),
         wal_held_mb: node.wal.held_bytes() >> 20,
         feed_pending: node.shared.state.read().feed.records.len(),
+        heap: crate::heap::heap(),
         metrics: node.metrics.report(),
     })
 }
@@ -442,6 +447,17 @@ async fn metrics(State(node): State<Arc<Node>>) -> impl IntoResponse {
         "agentd_shard_rss_bytes",
         "Process resident set size.",
         (rss_mb() << 20) as f64,
+    );
+    let heap = crate::heap::heap();
+    w.gauge(
+        "agentd_shard_heap_allocated_bytes",
+        "Bytes allocated and not freed (jemalloc).",
+        (heap.allocated_mb << 20) as f64,
+    );
+    w.gauge(
+        "agentd_shard_heap_resident_bytes",
+        "Pages the allocator holds resident, including kept free pages and metadata (jemalloc).",
+        (heap.resident_mb << 20) as f64,
     );
     crate::pressure::write_metrics(&node.pressure, &mut w);
     w.gauge(

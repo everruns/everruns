@@ -54,6 +54,7 @@ pub mod gateway_v1;
 mod gateway_wait;
 pub mod gateway_work;
 pub mod group;
+pub mod heap;
 pub mod host;
 pub mod hosting;
 pub mod inspect;

@@ -28,6 +28,11 @@ reads, so this runs on Linux only (in a container on a Mac). Build first:
 
   cargo build --release -p everruns-agentd-testkit --bins
   AGENTD_BIN_DIR=target/release scripts/agentd/shard_soak.py
+
+Each sample also carries the allocator's figures (`heap`) and what the node
+does not account for: its resident set less resident events and the Raft
+log (`unaccounted_mb`). `--heap-profile DIR` (a build with `--features
+heap-profile`) has jemalloc dump heap profiles into DIR, for `jeprof`.
 """
 import argparse, json, os, signal, subprocess, sys, threading, time, urllib.request
 
@@ -120,6 +125,8 @@ def main():
     p.add_argument("--every", type=float, default=0.5, help="sample interval, seconds")
     p.add_argument("--out", default=os.path.join(ROOT, "target", "shard-soak"))
     p.add_argument("--keep", action="store_true", help="leave the fleet running")
+    p.add_argument("--heap-profile", metavar="DIR",
+                   help="dump jemalloc heap profiles here (build with --features heap-profile)")
     a = p.parse_args()
     if not os.path.exists("/proc/self/status"):
         sys.exit("needs Linux (/proc): run it in a container on other systems")
@@ -129,6 +136,13 @@ def main():
     samples = open(os.path.join(a.out, "samples.jsonl"), "w")
     print(json.dumps({"scale": a.scale, **cfg}), flush=True)
 
+    if a.heap_profile:
+        os.makedirs(a.heap_profile, exist_ok=True)
+        # A sample every 1 MiB allocated; a dump every 4 GiB allocated, and
+        # one at exit.
+        os.environ["_RJEM_MALLOC_CONF"] = (
+            "prof:true,prof_active:true,lg_prof_sample:20,lg_prof_interval:32,prof_final:true,"
+            f"prof_prefix:{os.path.abspath(a.heap_profile)}/jeprof")
     start_fleet(cfg)
     started = time.time()
     drive = subprocess.Popen(
@@ -147,6 +161,7 @@ def main():
     down_until = {}  # node -> time it comes back
     peak = {n: 0.0 for n in NODES}
     peak_log = {n: 0 for n in NODES}
+    peak_unaccounted = {n: 0 for n in NODES}
     try:
         while drive.poll() is None:
             now = time.time()
@@ -171,13 +186,18 @@ def main():
                 pid = node_pid(n)
                 rss = rss_mb(pid) if pid else 0.0
                 st = stats(n) or {}
+                counted = (st.get("resident_mb") or 0) + (st.get("wal_held_mb") or 0)
                 row["nodes"][n] = {"rss_mb": round(rss), "log_mb": st.get("wal_held_mb"),
                                    "resident_mb": st.get("resident_mb"),
+                                   "unaccounted_mb": round(rss - counted) if st else None,
+                                   "heap": st.get("heap"),
                                    "sessions": st.get("sessions"),
                                    "active_turns": st.get("active_turns"),
                                    "queued_inputs": st.get("queued_inputs")}
                 peak[n] = max(peak[n], rss)
                 peak_log[n] = max(peak_log[n], st.get("wal_held_mb") or 0)
+                if st:
+                    peak_unaccounted[n] = max(peak_unaccounted[n], rss - counted)
                 if pid and rss > cfg["limit_mb"] and n not in down_until:
                     # What the kubelet does to a container past its limit.
                     fleet.kill(0, n)
@@ -203,6 +223,7 @@ def main():
         "peak_rss_mb": {n: round(v) for n, v in peak.items()},
         "peak_rss_share_of_limit": round(max(peak.values()) / cfg["limit_mb"], 3),
         "peak_log_mb": peak_log,
+        "peak_unaccounted_mb": {n: round(v) for n, v in peak_unaccounted.items()},
     }
     with open(os.path.join(a.out, "summary.json"), "w") as f:
         json.dump(summary, f, indent=2)

@@ -87,6 +87,8 @@ everruns-drivers = { workspace = true, features = [
 everruns-llmsim.workspace = true
 # The `agentd` binary's allocator (see `main.rs`).
 tikv-jemallocator.workspace = true
+# Allocator figures for `/shard/stats` (`heap.rs`).
+tikv-jemalloc-ctl.workspace = true
 
 [[bin]]
 name = "agentd"
