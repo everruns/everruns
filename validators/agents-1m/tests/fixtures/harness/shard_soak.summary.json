@@ -1,0 +1,8 @@
+{"scale": 1.0, "config": {"sessions": 25000, "budget_mb": 9216, "limit_mb": 14336, "snapshot_every": 20000, "pressure_turns": 1024, "ramp": 600},
+ "secs": 4210, "turns": 250000, "errors": 0,
+ "chaos": [{"t": 600.2, "killed": ["node 1", "executor 1"]}],
+ "oom_kills": [],
+ "peak_rss_mb": {"1": 9920, "2": 10480, "3": 10110},
+ "peak_rss_share_of_limit": 0.731,
+ "peak_log_mb": {"1": 610, "2": 655, "3": 640},
+ "peak_unaccounted_mb": {"1": 6400, "2": 6950, "3": 6600}}

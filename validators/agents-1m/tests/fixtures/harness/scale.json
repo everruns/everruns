@@ -1,0 +1,4 @@
+[{"shards": 1, "sessions": 20000, "turns": 40000, "errors": 0, "turns_per_sec": 410.0, "create_secs": 31.0, "rss_mb": 2100},
+ {"shards": 2, "sessions": 20000, "turns": 40000, "errors": 0, "turns_per_sec": 790.0, "create_secs": 17.0, "rss_mb": 1200},
+ {"shards": 4, "sessions": 20000, "turns": 40000, "errors": 0, "turns_per_sec": 1480.0, "create_secs": 9.5, "rss_mb": 700},
+ {"shards": 8, "sessions": 20000, "turns": 40000, "errors": 0, "turns_per_sec": 2600.0, "create_secs": 5.8, "rss_mb": 420}]
