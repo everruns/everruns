@@ -222,7 +222,16 @@ impl Node {
             // chunks.
             snapshot_max_chunk_size: 16 << 20,
             max_payload_entries: 256,
-            snapshot_policy: SnapshotPolicy::LogsSinceLast(cfg.snapshot_every),
+            // Decision: each node snapshots at its own point, a tenth of
+            // the interval apart (node 1 every N entries, node 2 every
+            // 1.1 N, ...). At one shared N every replica built its snapshot
+            // at the same moment, so the memory peak of a build hit the
+            // whole shard at once: in run 45077134741 all three nodes of a
+            // shard ran out of memory together and the shard lost quorum.
+            snapshot_policy: SnapshotPolicy::LogsSinceLast(staggered(
+                cfg.snapshot_every,
+                cfg.node_id,
+            )),
             // A follower further behind than this gets a snapshot.
             //
             // Decision: keep 256 entries by default, not 2048. The kept
@@ -1476,5 +1485,25 @@ fn release_free_pages() {
     // SAFETY: malloc_trim only releases free heap pages.
     unsafe {
         libc::malloc_trim(0);
+    }
+}
+
+/// The snapshot interval of `node`: `every` for node 1, a tenth more for
+/// each later node, so replicas of one shard build their snapshots apart.
+fn staggered(every: u64, node: NodeId) -> u64 {
+    every + every / 10 * node.saturating_sub(1).min(9)
+}
+
+#[cfg(test)]
+mod snapshot_points {
+    use super::staggered;
+
+    #[test]
+    fn replicas_of_one_shard_snapshot_apart() {
+        assert_eq!(staggered(20_000, 1), 20_000);
+        assert_eq!(staggered(20_000, 2), 22_000);
+        assert_eq!(staggered(20_000, 3), 24_000);
+        // Large ids stay within twice the interval.
+        assert_eq!(staggered(20_000, 1_000), 38_000);
     }
 }

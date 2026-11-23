@@ -804,6 +804,21 @@ impl StateMachine {
         write_snapshot_file(&self.dir, meta, data)
     }
 
+    /// [`write_current`](Self::write_current) of `state`, encoded as it is
+    /// written rather than into memory first.
+    fn write_current_from(&self, meta: &Meta, state: &ShardState) -> io::Result<()> {
+        fs::create_dir_all(&self.dir)?;
+        let tmp = self.dir.join("current.snap.tmp");
+        let mut file = io::BufWriter::with_capacity(1 << 20, fs::File::create(&tmp)?);
+        file.write_all(&snapshot_header(meta)?)?;
+        serde_json::to_writer(&mut file, state)?;
+        let file = file.into_inner().map_err(|e| e.into_error())?;
+        file.sync_all()?;
+        fs::rename(&tmp, self.dir.join("current.snap"))?;
+        fs::File::open(&self.dir)?.sync_all()?;
+        Ok(())
+    }
+
     /// The shard state as a snapshot holds it: metadata and segment lists,
     /// plus each session's events that are not stored yet, inline.
     ///
@@ -850,10 +865,8 @@ impl RaftSnapshotBuilder<TypeConfig> for StateMachine {
         let started = Instant::now();
         let mut state = self.snapshot_state();
         state.share_definitions();
-        let data = bytes::Bytes::from(serde_json::to_vec(&state).map_err(sm_err)?);
         let (last_applied, membership) = (state.last_applied, state.membership.clone());
         let (inc, clock_ms) = (state.incarnation, state.clock_ms);
-        drop(state);
         let seq = self
             .snapshot_seq
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -866,12 +879,29 @@ impl RaftSnapshotBuilder<TypeConfig> for StateMachine {
             last_membership: membership,
             snapshot_id,
         };
-        let (dir, written, file_data) = (self.clone(), meta.clone(), data.clone());
-        tokio::task::spawn_blocking(move || dir.write_current(&written, &file_data))
-            .await
-            .map_err(sm_err)?
-            .map_err(sm_err)?;
-        self.shared.archive(&meta, data, inc, clock_ms);
+        // Decision: the copy goes straight to the file, and the copy is
+        // dropped before anything reads the file back. Serializing into
+        // memory held the live state, its copy and the encoded copy at
+        // once: 13.2 GB at 25 000 sessions per shard (run 44396952768),
+        // and past a 14 GiB node with Phase 2's longer unstored tails
+        // (run 45077134741), on all three nodes together.
+        let (dir, written) = (self.clone(), meta.clone());
+        tokio::task::spawn_blocking(move || {
+            let result = dir.write_current_from(&written, &state);
+            drop(state);
+            result
+        })
+        .await
+        .map_err(sm_err)?
+        .map_err(sm_err)?;
+        // Only the leader copies its snapshot to the object store; it reads
+        // the file back once the copy is gone.
+        if self.shared.leading.load(Ordering::Relaxed)
+            && let Some((_, data)) = self.read_current().map_err(sm_err)?
+        {
+            self.shared
+                .archive(&meta, bytes::Bytes::from(data), inc, clock_ms);
+        }
         self.shared
             .snapshot_ms
             .store(started.elapsed().as_millis() as u64, Ordering::Relaxed);
