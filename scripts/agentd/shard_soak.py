@@ -20,8 +20,10 @@ sustained load, then losing a node. That is one shard's shape, and it scales:
   executors are killed and come back after `--down-for` seconds, as a pod
   restart does;
 - a node whose resident set passes its scaled limit is killed and restarted,
-  as the kubelet's out-of-memory kill does, and counted. The run fails on
-  any such kill and on any error the driver reports.
+  as the kubelet's out-of-memory kill does, and counted. A node that exits
+  on its own is restarted too: exit 75 is a controlled restart before the
+  limit (`pressure.rs`, counted under `restarts`), any other exit a crash.
+  The run fails on any kill or crash and on any error the driver reports.
 
 The memory figures come from /proc, which is what agentd's own pressure loop
 reads, so this runs on Linux only (in a container on a Mac). Build first:
@@ -79,6 +81,22 @@ def node_pid(n):
             return int(f.read())
     except (FileNotFoundError, ValueError):
         return None
+
+
+def exit_code(pid):
+    """A node process's exit code once it exited on its own, else None."""
+    try:
+        done, status = os.waitpid(pid, os.WNOHANG)
+    except ChildProcessError:
+        try:
+            os.kill(pid, 0)
+            return None
+        except ProcessLookupError:
+            return -1
+    return os.waitstatus_to_exitcode(status) if done else None
+
+
+RESTART_EXIT = 75  # memwatch::RESTART_EXIT: a node restarting itself
 
 
 def stats(n):
@@ -164,6 +182,8 @@ def main():
     reader.start()
 
     oom = []        # (t, node, rss) for every emulated out-of-memory kill
+    restarts = []   # (t, node) for every node that restarted itself (exit 75)
+    crashes = []    # (t, node, code) for any other exit
     chaos = []
     down_until = {}  # node -> time it comes back
     peak = {n: 0.0 for n in NODES}
@@ -191,6 +211,14 @@ def main():
             row = {"t": t, "nodes": {}}
             for n in NODES:
                 pid = node_pid(n)
+                code = exit_code(pid) if pid and n not in down_until else None
+                if code is not None:
+                    # As Kubernetes does: the container starts again.
+                    (restarts if code == RESTART_EXIT else crashes).append(
+                        {"t": t, "node": n} | ({} if code == RESTART_EXIT else {"code": code}))
+                    print(f"t={t}: node {n} exited ({code}); restarting", flush=True)
+                    down_until[n] = now + 1
+                    continue
                 rss = rss_mb(pid) if pid else 0.0
                 st = stats(n) or {}
                 counted = (st.get("resident_mb") or 0) + (st.get("wal_held_mb") or 0)
@@ -234,6 +262,8 @@ def main():
         "errors": report.get("errors"),
         "chaos": chaos,
         "oom_kills": oom,
+        "restarts": restarts,
+        "crashes": crashes,
         "peak_rss_mb": {n: round(v) for n, v in peak.items()},
         "peak_rss_share_of_limit": round(max(peak.values()) / cfg["limit_mb"], 3),
         "peak_log_mb": peak_log,
@@ -242,8 +272,9 @@ def main():
     with open(os.path.join(a.out, "summary.json"), "w") as f:
         json.dump(summary, f, indent=2)
     print(json.dumps(summary, indent=2))
-    if oom or report.get("errors") or missing or drive.returncode:
-        sys.exit(f"failed: {len(oom)} out-of-memory kills, {report.get('errors')} errors, "
+    if oom or crashes or report.get("errors") or missing or drive.returncode:
+        sys.exit(f"failed: {len(oom)} out-of-memory kills, {len(crashes)} crashes, "
+                 f"{report.get('errors')} errors, "
                  f"{missing} turns missing, driver exit {drive.returncode}")
 
 

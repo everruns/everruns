@@ -93,23 +93,26 @@ fn working_bytes(current: &str, stat: &str) -> u64 {
     current.saturating_sub(inactive)
 }
 
-/// An executor's memory, read the way the kernel counts it: the
-/// container's working bytes against `configured` (bytes) or the
-/// container's limit; the process's resident set when it runs in no
-/// container (local fleets, tests). A limit of 0 means none.
+/// A process's memory against its limit, read the way the kernel counts
+/// it: the container's working bytes against the container's limit. A
+/// limit of 0 means none.
+///
+/// Decision: a `configured` limit (bytes) is the process's own, so it is
+/// compared with the process's resident set. Several processes can share
+/// one container (a local fleet, the soak's nodes and executors), and the
+/// container's working bytes would then count them all against each one's
+/// limit. Without one, the container's figures decide, the resident set
+/// standing in outside a container.
 pub fn reading(configured: u64) -> (u64, u64) {
+    if configured > 0 {
+        return (rss_mb() << 20, configured);
+    }
     let (working, container) = working();
-    let limit = if configured > 0 {
-        configured
+    if container > 0 {
+        (working, container)
     } else {
-        container
-    };
-    let used = if container > 0 {
-        working
-    } else {
-        rss_mb() << 20
-    };
-    (used, limit)
+        (rss_mb() << 20, 0)
+    }
 }
 
 /// What a turn reserves of its executor's memory before it starts.

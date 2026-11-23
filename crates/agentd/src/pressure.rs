@@ -409,7 +409,7 @@ impl Node {
         loop {
             tick.tick().await;
             self.pressure
-                .record_own(crate::memwatch::reading(self.pressure.limit).0);
+                .record_own(crate::memwatch::reading(self.cfg.memory_limit).0);
             let stalled = {
                 let metrics = self.raft.metrics().borrow().clone();
                 self.pressure.record_progress(
