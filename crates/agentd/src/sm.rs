@@ -134,6 +134,36 @@ impl Shared {
         )
     }
 
+    /// Put back the payloads `events` of `session` hold by reference
+    /// (`payload.rs`), for readers that hand events out. A session that
+    /// never held one is not scanned.
+    pub async fn resolved(&self, session: SessionId, events: &mut [Event]) -> anyhow::Result<()> {
+        if self.holds_blobs(session) {
+            crate::payload::resolve(&self.store, events).await?;
+        }
+        Ok(())
+    }
+
+    /// [`resolved`](Self::resolved) for shared events.
+    pub async fn resolved_shared(
+        &self,
+        session: SessionId,
+        events: &mut [Arc<Event>],
+    ) -> anyhow::Result<()> {
+        if self.holds_blobs(session) {
+            crate::payload::resolve_shared(&self.store, events).await?;
+        }
+        Ok(())
+    }
+
+    fn holds_blobs(&self, session: SessionId) -> bool {
+        self.state
+            .read()
+            .sessions
+            .get(&session)
+            .is_some_and(|s| s.blobs)
+    }
+
     /// What an executor needs of the session's log, among sequences
     /// `from..=to` (`to`: the end when `None`): the context events
     /// ([`is_context`](crate::store::is_context)) before `full_from`, and
@@ -767,6 +797,7 @@ fn stub(s: &SessionState) -> SessionState {
         sqldb: s.sqldb.clone(),
         branch: s.branch,
         labels: s.labels.clone(),
+        blobs: s.blobs,
     }
 }
 

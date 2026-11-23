@@ -73,6 +73,7 @@ pub mod node;
 pub mod node_control;
 mod node_restore;
 pub mod org_token;
+pub mod payload;
 pub mod platform;
 mod platform_calls;
 pub mod platform_store;

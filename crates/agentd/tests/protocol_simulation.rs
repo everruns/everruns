@@ -243,6 +243,7 @@ impl World {
                     definition: Some(definition.clone()),
                     now_ms: world.now,
                     seed,
+                    blobs: false,
                 },
             );
             assert!(matches!(created, Response::Value { .. }), "{created:?}");
@@ -452,6 +453,7 @@ impl World {
                 definition: None,
                 now_ms,
                 seed,
+                blobs: false,
             },
             Reply::None,
         );

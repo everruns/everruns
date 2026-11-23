@@ -58,6 +58,15 @@ pub fn working() -> (u64, u64) {
     )
 }
 
+/// This process's resident set size, from `/proc` (0 elsewhere).
+pub(crate) fn rss_mb() -> u64 {
+    std::fs::read_to_string("/proc/self/statm")
+        .ok()
+        .and_then(|s| s.split_whitespace().nth(1)?.parse::<u64>().ok())
+        .map(|pages| pages * 4096 / (1024 * 1024))
+        .unwrap_or(0)
+}
+
 fn working_bytes(current: &str, stat: &str) -> u64 {
     let current: u64 = current.trim().parse().unwrap_or(0);
     let inactive = stat

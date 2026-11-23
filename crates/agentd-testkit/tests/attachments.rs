@@ -136,3 +136,57 @@ async fn an_upload_the_control_plane_copied_is_seen() {
     let (status, refused) = command(&fleet, &cp, ORG, &session, "messages", missing).await;
     assert_eq!(status, StatusCode::CONFLICT, "{refused}");
 }
+
+/// A message over 256 KB is kept by reference: the shard's state (and so
+/// its log, snapshots and stored segments) holds a short reference, and
+/// every reader that hands events out gets the whole text back (memory
+/// design, step 2). Tool results need no test of their own here: Engine
+/// cuts them at 64 KiB before they become events.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_large_message_is_kept_by_reference_and_read_whole() {
+    let mut fleet = Fleet::start().await;
+    fleet.executor(1);
+    let session = fleet.create("echo").await;
+    let long = "a long paste. ".repeat(600 * 1024 / 14);
+    fleet.say(&session, &long).await;
+    fleet.turns(&session, 1).await;
+
+    let events = fleet.events(&session).await;
+    let message = events
+        .iter()
+        .find(|e| e["type"] == "input.message")
+        .expect("the message")
+        .to_string();
+    assert!(message.contains(&long), "the reader got the whole text");
+    let all = serde_json::to_string(&events).unwrap();
+    assert!(
+        !all.contains("agentd-blob:"),
+        "a reference reached a reader"
+    );
+
+    let (_, addr) = fleet.addrs(0)[0].clone();
+    let image = reqwest::get(format!("http://{addr}/shard/sessions/{session}/image"))
+        .await
+        .unwrap()
+        .text()
+        .await
+        .unwrap();
+    assert!(
+        image.contains("agentd-blob:"),
+        "the shard holds a reference"
+    );
+    assert!(
+        image.len() < 256 * 1024,
+        "the shard holds the text whole: {} bytes",
+        image.len()
+    );
+
+    // A client cannot name a stored payload.
+    let (status, _, refused) = fleet
+        .post_once(
+            &format!("/v1/sessions/{session}/messages"),
+            json!({ "text": format!("\u{0}agentd-blob:{}:1", "a".repeat(64)) }),
+        )
+        .await;
+    assert!(status >= 400, "{status} {refused}");
+}

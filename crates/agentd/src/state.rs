@@ -48,6 +48,9 @@ pub enum Command {
         definition: Option<serde_json::Value>,
         now_ms: i64,
         seed: EventId,
+        /// The command carries payloads by reference (`payload.rs`).
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        blobs: bool,
     },
     /// Bill `session`'s spend to `tenant`. Set once, right after create,
     /// before the session takes input; a different tenant is refused.
@@ -175,6 +178,9 @@ pub enum Command {
         request: EventRequest,
         expected: Option<Option<i32>>,
         now_ms: i64,
+        /// The event carries payloads by reference (`payload.rs`).
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        blobs: bool,
     },
     /// A Framework write under epoch `fence`.
     Write {
@@ -509,6 +515,10 @@ pub struct SessionState {
     /// every feed record about it, so agentd's stream filters on them.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub labels: BTreeMap<String, String>,
+    /// Some event holds a payload by reference (`payload.rs`): readers
+    /// that hand events out resolve them. Never unset.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub blobs: bool,
 }
 
 fn is_zero(n: &u64) -> bool {
@@ -786,6 +796,7 @@ impl ShardState {
                 definition,
                 now_ms,
                 seed,
+                blobs,
             } => {
                 use everruns::hosting::spi::session_commands::SessionCommand;
                 let create = matches!(command, SessionCommand::Create { .. });
@@ -815,6 +826,7 @@ impl ShardState {
                 }
                 match state.command(session, command, now_ms, seed) {
                     Ok((value, events)) => {
+                        state.blobs |= blobs;
                         for event in events {
                             changes.push(Change::Event(session, std::sync::Arc::new(event)));
                         }
@@ -1062,10 +1074,12 @@ impl ShardState {
                 request,
                 expected,
                 now_ms,
+                blobs,
             } => {
                 let Some(state) = self.session_mut(session) else {
                     return self.missing(session);
                 };
+                state.blobs |= blobs;
                 let applied = state.append(fence, event_id, request, expected, now_ms);
                 self.applied(session, applied, changes)
             }

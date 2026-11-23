@@ -876,6 +876,7 @@ impl Node {
                 tracing::info!(target: "everruns_agentd::prof", ?v, "proposals");
             }
         }
+        let command = crate::payload::offload(&self.shared.store, command).await?;
         let deadline = started + Duration::from_secs(15);
         let mut backoff = Duration::from_millis(10);
         loop {
