@@ -643,25 +643,19 @@ impl Node {
             }
             // Decision: the Raft log keeps every entry in memory until a
             // snapshot lets it purge them, and entries carry the events. So
-            // the log counts against the memory budget too: past a quarter
-            // of it, take a snapshot and purge.
+            // the log counts against the memory budget too (threshold and
+            // spacing: `sm::log_wants_snapshot`).
             //
             // Only the entries after the last snapshot count. The purge
             // keeps `keep_log` entries behind it for lagging followers, and
-            // with large entries those alone passed the quarter: the node
+            // with large entries those alone passed the threshold: the node
             // then snapshotted the whole shard every few seconds while idle
-            // (13 times in 3 minutes at 37 000 sessions, two at the same
-            // index), which is what filled memory and disk in the
-            // 75 000-session run.
-            //
-            // A snapshot copies the whole shard state, so with many sessions
-            // it is not cheap: wait at least ten times as long as the last
-            // one took, or snapshots alone would eat the node.
-            let cost = Duration::from_millis(
+            // (13 times in 3 minutes at 37 000 sessions), which is what
+            // filled memory and disk in the 75 000-session run.
+            let took = Duration::from_millis(
                 self.shared
                     .snapshot_ms
-                    .load(std::sync::atomic::Ordering::Relaxed)
-                    * 10,
+                    .load(std::sync::atomic::Ordering::Relaxed),
             );
             let snapshot = self
                 .raft
@@ -669,9 +663,13 @@ impl Node {
                 .borrow()
                 .snapshot
                 .map_or(0, |id| id.index);
-            if self.wal.held_after(snapshot) > self.cfg.memory_budget / 4
-                && last_snapshot.elapsed() > cost.max(Duration::from_secs(5))
-            {
+            if crate::sm::log_wants_snapshot(
+                self.wal.held_after(snapshot),
+                self.cfg.memory_budget,
+                self.cfg.node_id,
+                last_snapshot.elapsed(),
+                took,
+            ) {
                 last_snapshot = Instant::now();
                 let _ = self.raft.trigger().snapshot().await;
                 trim = true;

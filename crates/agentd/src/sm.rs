@@ -1033,9 +1033,51 @@ pub(crate) fn staggered(every: u64, node: crate::types::NodeId) -> u64 {
     every + every / 10 * node.saturating_sub(1).min(9)
 }
 
+/// Whether a node takes a snapshot now to purge its Raft log: `held` bytes
+/// of entries after the last snapshot passed a sixteenth of the memory
+/// `budget` (staggered by node), and it is ten times as long as the last
+/// snapshot took since it was taken (at least five seconds).
+///
+/// Decision: a sixteenth, not a quarter. The log costs about two and a half
+/// times its entries' bytes in resident memory (decoded copies, replication
+/// buffers), and the entry-count trigger alone left 300 to 500 seconds
+/// between snapshots under load. In the 75 000-agent gate (EKS run
+/// 45179434646) five nodes ran out of memory holding 1.0 to 1.6 GB of log
+/// against a quarter-budget trigger of 2.25 GB that never fired; a snapshot
+/// there dropped the node's memory by 3.5 GB for 1.4 GB of log.
+pub(crate) fn log_wants_snapshot(
+    held: u64,
+    budget: u64,
+    node: crate::types::NodeId,
+    since_last: std::time::Duration,
+    last_took: std::time::Duration,
+) -> bool {
+    let wait = (last_took * 10).max(std::time::Duration::from_secs(5));
+    held > staggered(budget / 16, node) && since_last > wait
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{event_allowance, staggered};
+    use super::{event_allowance, log_wants_snapshot, staggered};
+    use std::time::Duration;
+
+    #[test]
+    fn a_log_past_a_sixteenth_of_the_budget_takes_a_snapshot() {
+        let budget = 9 * GB;
+        let s = Duration::from_secs;
+        // The gate's dying nodes held 1.0 to 1.6 GB of log.
+        assert!(log_wants_snapshot(GB, budget, 1, s(60), s(3)));
+        // Below a sixteenth (576 MiB on 9 GiB) the entry count decides.
+        assert!(!log_wants_snapshot(500 << 20, budget, 1, s(60), s(3)));
+        // Later replicas wait a tenth more each, so a shard's nodes do not
+        // all build at once.
+        assert!(log_wants_snapshot(600 << 20, budget, 1, s(60), s(3)));
+        assert!(!log_wants_snapshot(600 << 20, budget, 2, s(60), s(3)));
+        // Not sooner than ten times the last snapshot took, at least 5 s.
+        assert!(!log_wants_snapshot(GB, budget, 1, s(20), s(3)));
+        assert!(!log_wants_snapshot(GB, budget, 1, s(4), Duration::ZERO));
+        assert!(log_wants_snapshot(GB, budget, 1, s(6), Duration::ZERO));
+    }
 
     const GB: u64 = 1 << 30;
 
