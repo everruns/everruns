@@ -52,6 +52,31 @@ page is the state of it.
 | Recovery drill | `scripts/agentd/drill.py`, `agentd-drill.yml` | Weekly, and by hand at full size | A whole shard lost with SIGKILL under load, rebuilt from the store: every session finishes, no tool ran twice, rebuild time and shipping lag | The survivor path (the drill rebuilds from the store alone) |
 | Load runs | SaaS `dataplane-load.yml` on EKS | By hand before a release that changes agentd, once the memory bench passes | The 75k fleet with the production feature mix, a node and executors killed mid-run; errors, OOM kills, SLO gauges, object store writes by kind | Anything rarer than a run surfaces |
 
+## When a change needs the 75k run
+
+The 75k run costs about an hour and real money on EKS, so it is the check of
+last resort, not a check per change (user decision, 2026-11-23). Before a
+release, look at what the release changed in `crates/agentd*`:
+
+- **Run it** when a change touches what a shard node holds in memory or how
+  that grows over a long run: the log, snapshots (when they fire, what they
+  build), shipping to the object store, the memory pressure loop and
+  overload levels, Raft replication and catch-up after a restart, or turn
+  admission and queuing under load. These failed only at full size before
+  (2026-11-22 and 2026-11-23: every replica of a shard out of memory at one
+  snapshot; minutes of log held under load, then a node restart).
+- **Skip it** when a change stays inside one turn or one request (a new
+  shard command, an API field, a capability, the edge's routing table, the
+  CLI), when it is test or tooling only, or when the release's earlier 75k
+  run already covered the same code path unchanged.
+- **Either way, the cheaper checks come first**: the memory bench for what a
+  session holds, the fleet tests and drill for failures, and the one-shard
+  soak (`scripts/agentd/shard_soak.py`) for the long-run memory shape. A
+  change that needs the 75k run runs the soak first, so the 75k run is a
+  confirmation rather than the way a regression is found.
+
+Record the decision and its reason in the PR.
+
 ## Which check covers which promise
 
 | Guarantee | Checks |
