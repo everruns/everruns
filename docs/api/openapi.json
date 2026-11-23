@@ -63945,6 +63945,26 @@
           }
         }
       },
+      "ModelDeprecation": {
+        "type": "object",
+        "description": "A vendor's announced retirement of a model that still works today.\n\nProfiles keep a deprecated model so existing agents keep running and people can see\nthe date coming; once the vendor stops serving it, the profile is dropped from the\nregistry (see [`ModelProfile`]). Discovery fills this from the vendor's own catalog\nwhere one says so (OpenRouter `expiration_date`).",
+        "properties": {
+          "replacement": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Model id the vendor recommends moving to, when it names one."
+          },
+          "retires_on": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Date the vendor stops serving the model (YYYY-MM-DD), when announced."
+          }
+        }
+      },
       "ModelJob": {
         "type": "string",
         "description": "A job a preset assigns a model to.",
@@ -64185,7 +64205,7 @@
       },
       "ModelProfile": {
         "type": "object",
-        "description": "LLM Model Profile describing model capabilities\nBased on models.dev structure (<https://models.dev/api.json>)\n\nThe registry of profiles lives in `crate::model_profile_data::profiles`; retired models are\ndropped from it as vendors sunset them.",
+        "description": "LLM Model Profile describing model capabilities\nBased on models.dev structure (<https://models.dev/api.json>)\n\nThe registry of profiles lives in `crate::model_profile_data::profiles`. A model the\nvendor has scheduled for retirement stays with [`ModelProfile::deprecation`] set; it is\ndropped from the registry once the vendor sunsets it.",
         "required": [
           "name",
           "family",
@@ -64217,6 +64237,17 @@
               {
                 "$ref": "#/components/schemas/DecisionModelProfile",
                 "description": "Typed semantics when this profile describes a decision model."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "deprecation": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ModelDeprecation",
+                "description": "Set when the vendor has announced the model's retirement."
               },
               {
                 "type": "null"

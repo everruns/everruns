@@ -55,6 +55,10 @@ pub struct OpenRouterModelInfo {
     /// Provider-reported knowledge cutoff, when available.
     #[serde(default)]
     pub knowledge_cutoff: Option<String>,
+    /// Date OpenRouter stops serving the model (YYYY-MM-DD), set once the
+    /// upstream vendor schedules its retirement.
+    #[serde(default)]
+    pub expiration_date: Option<String>,
 }
 
 /// Modality metadata from OpenRouter's `architecture` object.
@@ -202,6 +206,10 @@ impl OpenRouterModelInfo {
             model_card_url: None,
             decisions: None,
             images: None,
+            deprecation: self
+                .expiration_date
+                .as_deref()
+                .and_then(ModelDeprecation::retiring_on),
         }
     }
 }
@@ -329,6 +337,23 @@ mod openrouter_tests {
                 "supported_parameters":["include_reasoning","max_tokens","reasoning","response_format","structured_outputs","temperature","tool_choice","tools","top_p"]
             })
         );
+    }
+
+    #[test]
+    fn expiration_date_marks_the_profile_deprecated() {
+        let mut model = parse(NEMOTRON_JSON);
+        assert_eq!(model.to_discovered_profile().deprecation, None);
+
+        model.expiration_date = Some("2026-12-11".into());
+        let profile = model.to_discovered_profile();
+        assert!(profile.is_deprecated());
+        assert_eq!(
+            serde_json::to_value(&profile).unwrap()["deprecation"],
+            serde_json::json!({"retires_on": "2026-12-11"})
+        );
+
+        model.expiration_date = Some("  ".into());
+        assert!(!model.to_discovered_profile().is_deprecated());
     }
 
     #[test]

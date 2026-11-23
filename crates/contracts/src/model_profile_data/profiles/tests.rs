@@ -930,3 +930,14 @@ fn gemini_4_family_profiles_match_google_pricing_and_thinking_levels() {
         );
     }
 }
+
+#[test]
+fn announced_retirements_carry_date_and_replacement() {
+    let opus = get_model_profile("anthropic", "claude-opus-4-5-20251101").unwrap();
+    let deprecation = opus.deprecation.expect("Opus 4.5 retirement is announced");
+    assert_eq!(deprecation.retires_on.as_deref(), Some("2027-01-22"));
+    assert_eq!(deprecation.replacement.as_deref(), Some("claude-opus-5-5"));
+    // The replacement must itself be a live profile.
+    let replacement = get_model_profile("anthropic", "claude-opus-5-5").unwrap();
+    assert!(!replacement.is_deprecated());
+}

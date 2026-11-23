@@ -42,6 +42,7 @@ fn openai_embedding_profile(name: &str, family: &str, input_cost: f64) -> ModelP
         model_card_url: None,
         decisions: None,
         images: None,
+        deprecation: None,
     }
 }
 
@@ -99,6 +100,7 @@ pub(super) fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             model_card_url: None,
             decisions: None,
             images: None,
+            deprecation: None,
         }),
 
         "o3-pro" => Some(ModelProfile {
@@ -141,6 +143,7 @@ pub(super) fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             model_card_url: None,
             decisions: None,
             images: None,
+            deprecation: None,
         }),
 
         // GPT-4.1 family models
@@ -184,6 +187,7 @@ pub(super) fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             model_card_url: None,
             decisions: None,
             images: None,
+            deprecation: None,
         }),
 
         "gpt-4.1-mini" => Some(ModelProfile {
@@ -226,6 +230,7 @@ pub(super) fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             model_card_url: None,
             decisions: None,
             images: None,
+            deprecation: None,
         }),
 
         // GPT-5 family models
@@ -270,6 +275,7 @@ pub(super) fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             model_card_url: None,
             decisions: None,
             images: None,
+            deprecation: None,
         }),
 
         "gpt-5-mini" => Some(ModelProfile {
@@ -312,6 +318,7 @@ pub(super) fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             model_card_url: None,
             decisions: None,
             images: None,
+            deprecation: None,
         }),
 
         "gpt-5-nano" => Some(ModelProfile {
@@ -354,6 +361,7 @@ pub(super) fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             model_card_url: None,
             decisions: None,
             images: None,
+            deprecation: None,
         }),
 
         "gpt-5-pro" => Some(ModelProfile {
@@ -396,6 +404,7 @@ pub(super) fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             model_card_url: None,
             decisions: None,
             images: None,
+            deprecation: None,
         }),
 
         // GPT-5.1 models: default none, supports none/low/medium/high
@@ -439,6 +448,7 @@ pub(super) fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             model_card_url: None,
             decisions: None,
             images: None,
+            deprecation: None,
         }),
 
         // GPT-5.2 models: supports xhigh, 400K context
@@ -482,6 +492,7 @@ pub(super) fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             model_card_url: None,
             decisions: None,
             images: None,
+            deprecation: None,
         }),
 
         "gpt-5.2-pro" => Some(ModelProfile {
@@ -524,6 +535,7 @@ pub(super) fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             model_card_url: None,
             decisions: None,
             images: None,
+            deprecation: None,
         }),
 
         // GPT-5.3 Codex: same pricing as 5.2, 25% faster inference
@@ -567,6 +579,7 @@ pub(super) fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             model_card_url: None,
             decisions: None,
             images: None,
+            deprecation: None,
         }),
 
         // GPT-5.6 series: current flagship family, publicly released 2026-07-09.
@@ -625,6 +638,7 @@ pub(super) fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             model_card_url: None,
             decisions: None,
             images: None,
+            deprecation: None,
         }),
 
         "gpt-5.6-terra" => Some(ModelProfile {
@@ -673,6 +687,7 @@ pub(super) fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             model_card_url: None,
             decisions: None,
             images: None,
+            deprecation: None,
         }),
 
         "gpt-5.6-luna" => Some(ModelProfile {
@@ -721,6 +736,7 @@ pub(super) fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             model_card_url: None,
             decisions: None,
             images: None,
+            deprecation: None,
         }),
 
         // GPT-5.5 family: flagship reasoning models. Released 2026-04-23.
@@ -768,6 +784,7 @@ pub(super) fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             model_card_url: None,
             decisions: None,
             images: None,
+            deprecation: None,
         }),
 
         "gpt-5.5-pro" => Some(ModelProfile {
@@ -810,6 +827,7 @@ pub(super) fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             model_card_url: None,
             decisions: None,
             images: None,
+            deprecation: None,
         }),
 
         // GPT-5.4 family: reasoning models with 1.05M context, tool_search, native phases.
@@ -861,6 +879,7 @@ pub(super) fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             model_card_url: None,
             decisions: None,
             images: None,
+            deprecation: None,
         }),
 
         "gpt-5.4-mini" => Some(ModelProfile {
@@ -903,6 +922,7 @@ pub(super) fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             model_card_url: None,
             decisions: None,
             images: None,
+            deprecation: None,
         }),
 
         "gpt-5.4-nano" => Some(ModelProfile {
@@ -945,6 +965,7 @@ pub(super) fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             model_card_url: None,
             decisions: None,
             images: None,
+            deprecation: None,
         }),
 
         "gpt-5.4-pro" => Some(ModelProfile {
@@ -993,6 +1014,7 @@ pub(super) fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             model_card_url: None,
             decisions: None,
             images: None,
+            deprecation: None,
         }),
 
         _ => None,

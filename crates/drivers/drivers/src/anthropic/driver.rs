@@ -1522,15 +1522,9 @@ impl AnthropicModelInfo {
             limits,
             modalities,
             reasoning_effort,
-            speed: None,
-            verbosity: None,
-            tool_search: false,
-            supported_parameters: Vec::new(),
-            supports_phases: false,
             supports_server_compaction: false, // only curated direct profiles prove it
-            model_card_url: None,
-            decisions: None,
-            images: None,
+            // Speed, verbosity, tool search, phases, cards and deprecation are curated only.
+            ..ModelProfile::minimal(String::new())
         }
     }
 
