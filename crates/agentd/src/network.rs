@@ -286,7 +286,9 @@ impl Isolation {
         let _entered = runtime.enter();
         let listener = tokio::net::TcpListener::from_std(listener)?;
         runtime.spawn(async move {
-            if let Err(error) = axum::serve(listener, router(raft, catchup)).await {
+            if let Err(error) =
+                axum::serve(listener, router(raft, catchup).into_make_service()).await
+            {
                 tracing::error!(%error, "raft listener stopped");
             }
         });

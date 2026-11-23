@@ -490,7 +490,7 @@ pub async fn run(host: impl Host) -> anyhow::Result<()> {
             let edge = crate::edge::Edge::with_prefix(gateway, &control_plane, tokens, &api_prefix);
             let listener = tokio::net::TcpListener::bind(listen).await?;
             tracing::info!(%listen, control_plane, "edge listening");
-            axum::serve(listener, edge.router()).await?;
+            axum::serve(listener, edge.router().into_make_service()).await?;
             Ok(())
         }
         Mode::Restore {
@@ -564,7 +564,7 @@ pub async fn run(host: impl Host) -> anyhow::Result<()> {
             }
             let listener = tokio::net::TcpListener::bind(listen).await?;
             tracing::info!(%listen, install, "gateway listening");
-            axum::serve(listener, app).await?;
+            axum::serve(listener, app.into_make_service()).await?;
             Ok(())
         }
         Mode::Serve {
@@ -827,7 +827,12 @@ pub async fn serve_node_with(
             crate::catchup::guard,
         ));
     tracing::info!(shard, node = id, %listen, "node listening");
-    let server = tokio::spawn(async move { axum::serve(listener, app).await });
+    // Decision: serve a make-service, not the router. axum 0.8 serving a
+    // `Router` rebuilds its route table (a map of every route) for each
+    // connection and keeps it while the connection lives: ~280 MB on a node
+    // that 7,000 streams reconnected to after a peer's kill (heap profile,
+    // 2026-11-23). `into_make_service` builds it once.
+    let server = tokio::spawn(async move { axum::serve(listener, app.into_make_service()).await });
     if !join && let Err(error) = node.bootstrap().await {
         // Decision: a node that can't form its shard stops serving too, so
         // it reads as down rather than as a member that never elects.
@@ -868,7 +873,7 @@ pub async fn serve_executor(
         let app = crate::executor::router(executor.clone());
         let listener = tokio::net::TcpListener::bind(listen).await?;
         tracing::info!(%listen, "executor listening");
-        tokio::spawn(async move { axum::serve(listener, app).await });
+        tokio::spawn(async move { axum::serve(listener, app.into_make_service()).await });
     }
     let mut term = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
     tokio::select! {

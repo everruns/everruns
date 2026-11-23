@@ -273,7 +273,7 @@ pub async fn start(cfg: ServeConfig, host: Arc<dyn Host>) -> anyhow::Result<Serv
     tasks.push(tokio::spawn(async move {
         match tls {
             Some(files) => crate::install_tls::serve(public, app, &files).await,
-            None => Ok(axum::serve(public, app).await?),
+            None => Ok(axum::serve(public, app.into_make_service()).await?),
         }
     }));
     tasks.push(tokio::spawn(crate::install_stream::trim_loop_task(
