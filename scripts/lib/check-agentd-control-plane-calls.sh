@@ -11,8 +11,9 @@
 #
 # What it checks: in `crates/agentd/src`, outside tests, the control plane's
 # outbound paths (`/dp/v1/tenants/...` and `/dp/v1/feed`) appear only in the
-# allowlisted files. Inbound `/dp/v1/orgs/...` routes the shard serves are not
-# calls and are not checked.
+# allowlisted files. Routes served (`.route(...)` lines: the shard's inbound
+# `/dp/v1/orgs/...`, and the control plane a standalone install runs for its
+# own shards, `install_stream.rs`) are not calls and are not checked.
 #
 # Fix a violation by serving the call from an injected server or by pushing
 # the value as desired state, not by adding to the allowlist.
@@ -52,7 +53,7 @@ while IFS= read -r -d '' file; do
   done
   [ "$skip" -eq 1 ] && continue
   hits=$(awk '/^[[:space:]]*#\[cfg\(test\)\]/ { exit } { print FILENAME ":" FNR ": " $0 }' "$file" \
-    | grep -E "$PATTERN" | grep -vE ':[0-9]+: *//' || true)
+    | grep -E "$PATTERN" | grep -vE ':[0-9]+: *//' | grep -vE ':[0-9]+: *\.route\(' || true)
   if [ -n "$hits" ]; then
     echo "$hits" | sed 's/^/  /'
     FAILED=1
