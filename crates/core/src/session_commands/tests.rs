@@ -351,14 +351,46 @@ fn branch_selection_commits_canonical_ranges_at_the_next_revision_and_replays() 
         fingerprint: plan.fingerprint.clone(),
         value: plan.reply.clone(),
     });
-    let replay = prepare(select(3, ranges), retry.clone()).unwrap();
+    let replay = prepare(select(3, ranges.clone()), retry.clone()).unwrap();
     assert!(replay.replay);
     assert_eq!(replay.reply, plan.reply);
     assert!(matches!(replay.control, ControlUpdate::None));
     assert!(
-        prepare(select(3, None), retry).is_err(),
+        prepare(select(3, None), retry.clone()).is_err(),
         "a reused identity with different input must conflict"
     );
+
+    // A host that keeps the fingerprint as its digest answers the same.
+    retry.previous = Some(CommandReceipt {
+        fingerprint: fingerprint_digest(&plan.fingerprint),
+        value: plan.reply.clone(),
+    });
+    let replay = prepare(select(3, ranges), retry.clone()).unwrap();
+    assert!(replay.replay);
+    assert_eq!(replay.reply, plan.reply);
+    assert!(prepare(select(3, None), retry).is_err());
+}
+
+#[test]
+fn a_fingerprint_digest_ignores_key_order_but_not_content() {
+    let full = json!({"b": 1, "a": [true, null, "x", {"d": 2.5, "c": "y"}]});
+    let reordered: Value =
+        serde_json::from_str(r#"{"a":[true,null,"x",{"c":"y","d":2.5}],"b":1}"#).unwrap();
+    let digest = fingerprint_digest(&full);
+    assert!(same_fingerprint(&digest, &reordered));
+    assert!(!same_fingerprint(
+        &digest,
+        &json!({"a": [true, null, "x"], "b": 1})
+    ));
+    assert!(!same_fingerprint(
+        &digest,
+        &json!({"b": "1", "a": [true, null, "x", {"d": 2.5, "c": "y"}]})
+    ));
+    // A full fingerprint compares as it always did, even one that holds
+    // the digest's key beside others.
+    assert!(same_fingerprint(&full, &reordered));
+    let lookalike = json!({"$fingerprint_sha256": "x", "other": 1});
+    assert!(same_fingerprint(&lookalike, &lookalike.clone()));
 }
 
 #[test]

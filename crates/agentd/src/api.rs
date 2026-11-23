@@ -464,13 +464,7 @@ async fn metrics(State(node): State<Arc<Node>>) -> impl IntoResponse {
         "Pages the allocator holds resident, including kept free pages and metadata (jemalloc).",
         (heap.resident_mb << 20) as f64,
     );
-    // What the node does not account for: live bytes beyond its resident
-    // events and its Raft log (the memory design's "remainder").
-    w.gauge(
-        "agentd_memory_unaccounted_bytes",
-        "Live heap bytes beyond resident events and the Raft log.",
-        ((heap.allocated_mb << 20).saturating_sub(resident_bytes + node.wal.held_bytes())) as f64,
-    );
+    crate::pressure::write_ledger(&node, &mut w);
     let (working, limit) = crate::memwatch::working();
     w.gauge(
         "agentd_memory_container_bytes",

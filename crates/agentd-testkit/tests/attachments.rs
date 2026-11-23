@@ -146,7 +146,8 @@ async fn an_upload_the_control_plane_copied_is_seen() {
 async fn a_large_message_is_kept_by_reference_and_read_whole() {
     let mut fleet = Fleet::start().await;
     fleet.executor(1);
-    let session = fleet.create("echo").await;
+    // In shard 0, whose node's image is read below.
+    let session = fleet.create_in("echo", 0).await;
     let long = "a long paste. ".repeat(600 * 1024 / 14);
     fleet.say(&session, &long).await;
     fleet.turns(&session, 1).await;

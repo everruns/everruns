@@ -528,6 +528,53 @@ pub fn write_metrics(p: &Pressure, w: &mut crate::prom::Writer) {
     );
 }
 
+/// The node's memory by source, and each capped source's cap: the memory
+/// design's ledger. `unaccounted` is live heap beyond the counted sources
+/// (the remainder the design keeps under 15% of the limit); `fragmentation`
+/// is what the allocator holds beyond live bytes.
+pub(crate) fn write_ledger(node: &Node, w: &mut crate::prom::Writer) {
+    let events = node.shared.resident().0;
+    let log = node.wal.held_bytes();
+    let heap = crate::heap::heap();
+    let allocated = heap.allocated_mb << 20;
+    let unaccounted = allocated.saturating_sub(events + log);
+    w.gauge(
+        "agentd_memory_unaccounted_bytes",
+        "Live heap bytes beyond resident events and the Raft log.",
+        unaccounted as f64,
+    );
+    let base = crate::prom::render(&[
+        ("shard", &node.cfg.shard.to_string()),
+        ("node", &node.cfg.node_id.to_string()),
+    ]);
+    let row = |source: &str, bytes: u64| (crate::prom::render(&[("source", source)]), bytes as f64);
+    w.family(
+        "agentd_memory_bytes",
+        "gauge",
+        "The node's memory by source (events and raft_log counted, unaccounted live heap, allocator fragmentation).",
+        &base,
+        [
+            row("events", events),
+            row("raft_log", log),
+            row("unaccounted", unaccounted),
+            row(
+                "fragmentation",
+                (heap.resident_mb << 20).saturating_sub(allocated),
+            ),
+        ],
+    );
+    w.family(
+        "agentd_memory_cap_bytes",
+        "gauge",
+        "Where each capped source is held down: events unload past the budget, the log snapshots past a sixteenth of it.",
+        &base,
+        [
+            row("events", node.cfg.memory_budget),
+            row("raft_log", node.cfg.memory_budget / 16),
+        ],
+    );
+}
+
 /// The memory limit of the container this process runs in, if it has one
 /// (cgroup v2, then v1).
 pub fn container_limit() -> Option<u64> {

@@ -35,6 +35,8 @@ use everruns_contracts::typed_id::SessionId;
 use everruns_core::events::Event;
 use futures::stream::{self, StreamExt};
 
+/// Bytes in memory per two encoded bytes of an event (`Shared::resident`).
+const IN_MEMORY_PER_ENCODED: u64 = 3;
 /// The shard state shared between the Raft state machine and the node's
 /// executor, scheduler and API.
 pub struct Shared {
@@ -376,7 +378,12 @@ impl Shared {
         self.last_snapshot.lock().elapsed()
     }
 
-    /// Estimated bytes of resident events, and their count.
+    /// Estimated bytes of resident events in memory, and their count.
+    ///
+    /// Decision: an event in memory takes about half again its encoded
+    /// size (parsed values, maps, string headers). Counting encoded bytes
+    /// put the journal at 115 MB on a node whose heap profile held 170 MB
+    /// of it (2026-11-23), so the budget let it grow past what it allows.
     pub fn resident(&self) -> (u64, usize) {
         let events: usize = self
             .state
@@ -386,7 +393,7 @@ impl Shared {
             .map(|s| s.events.len())
             .sum();
         (
-            events as u64 * self.event_bytes.load(Ordering::Relaxed),
+            events as u64 * self.event_bytes.load(Ordering::Relaxed) * IN_MEMORY_PER_ENCODED / 2,
             events,
         )
     }

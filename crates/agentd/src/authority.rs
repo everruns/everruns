@@ -531,7 +531,9 @@ impl crate::state::SessionState {
             a.commands.insert(
                 key,
                 CommandReceipt {
-                    fingerprint: plan.fingerprint,
+                    // Its digest: the full value of an admission is the
+                    // whole message, held again for every recent receipt.
+                    fingerprint: session_commands::fingerprint_digest(&plan.fingerprint),
                     value: plan.reply.clone(),
                 },
             );
