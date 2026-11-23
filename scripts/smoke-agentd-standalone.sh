@@ -5,7 +5,8 @@
 # the container and check the agent and the session are still there.
 #
 # Usage: AGENTD_TAG=latest scripts/smoke-agentd-standalone.sh
-# A tag published before `agentd serve` existed is skipped, not failed.
+# A tag published before `agentd serve` existed, or with no agentd image,
+# is skipped, not failed.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -16,7 +17,12 @@ WORK="$(mktemp -d)"
 export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-agentd-smoke}"
 fail() { echo "::error title=agentd standalone smoke::$*" >&2; exit 1; }
 
-docker image inspect "$IMAGE" >/dev/null 2>&1 || docker pull -q "$IMAGE" >/dev/null
+# Like the other Compose smokes (scripts/lib/smoke-turn.sh), a tag whose
+# agentd image is not published, or not public yet, is skipped.
+if ! docker image inspect "$IMAGE" >/dev/null 2>&1 && ! docker pull -q "$IMAGE" >/dev/null 2>&1; then
+  echo "::notice title=agentd standalone smoke::$IMAGE is not published; skipped"
+  exit 0
+fi
 if ! docker run --rm "$IMAGE" serve --help >/dev/null 2>&1; then
   echo "::notice title=agentd standalone smoke::$IMAGE has no \`serve\`; skipped"
   exit 0
