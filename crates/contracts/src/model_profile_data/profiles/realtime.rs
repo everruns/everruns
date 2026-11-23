@@ -35,6 +35,7 @@ pub(super) fn profile_data(model_id: &str) -> Option<ModelProfile> {
             model_card_url: None,
             decisions: None,
             images: None,
+            deprecation: None,
         }),
 
         // GPT-Realtime-2.1. Source: models.dev (openai provider). Cost is left
@@ -74,6 +75,7 @@ pub(super) fn profile_data(model_id: &str) -> Option<ModelProfile> {
             model_card_url: None,
             decisions: None,
             images: None,
+            deprecation: None,
         }),
         _ => None,
     }

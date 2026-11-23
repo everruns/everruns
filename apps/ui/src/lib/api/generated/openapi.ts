@@ -24316,6 +24316,20 @@ export interface components {
       output: number;
     };
     /**
+     * @description A vendor's announced retirement of a model that still works today.
+     *
+     *     Profiles keep a deprecated model so existing agents keep running and people can see
+     *     the date coming; once the vendor stops serving it, the profile is dropped from the
+     *     registry (see [`ModelProfile`]). Discovery fills this from the vendor's own catalog
+     *     where one says so (OpenRouter `expiration_date`).
+     */
+    ModelDeprecation: {
+      /** @description Model id the vendor recommends moving to, when it names one. */
+      replacement?: string | null;
+      /** @description Date the vendor stops serving the model (YYYY-MM-DD), when announced. */
+      retires_on?: string | null;
+    };
+    /**
      * @description A job a preset assigns a model to.
      * @enum {string}
      */
@@ -24427,14 +24441,16 @@ export interface components {
      * @description LLM Model Profile describing model capabilities
      *     Based on models.dev structure (<https://models.dev/api.json>)
      *
-     *     The registry of profiles lives in `crate::model_profile_data::profiles`; retired models are
-     *     dropped from it as vendors sunset them.
+     *     The registry of profiles lives in `crate::model_profile_data::profiles`. A model the
+     *     vendor has scheduled for retirement stays with [`ModelProfile::deprecation`] set; it is
+     *     dropped from the registry once the vendor sunsets it.
      */
     ModelProfile: {
       /** @description Whether the model supports file/image attachments */
       attachment: boolean;
       cost?: components["schemas"]["ModelCost"] | null;
       decisions?: components["schemas"]["DecisionModelProfile"] | null;
+      deprecation?: components["schemas"]["ModelDeprecation"] | null;
       /** @description Short human-readable description of the model's strengths and intended use */
       description?: string | null;
       /** @description Model family (e.g., "gpt-5.6-sol", "claude-sonnet-5") */

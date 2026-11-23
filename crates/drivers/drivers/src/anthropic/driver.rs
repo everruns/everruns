@@ -1531,6 +1531,7 @@ impl AnthropicModelInfo {
             model_card_url: None,
             decisions: None,
             images: None,
+            deprecation: None,
         }
     }
 

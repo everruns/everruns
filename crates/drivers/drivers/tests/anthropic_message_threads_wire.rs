@@ -16,7 +16,7 @@ use wiremock::{
 };
 
 fn config() -> LlmCallConfig {
-    let mut config = LlmCallConfig::new("claude-sonnet-4-5");
+    let mut config = LlmCallConfig::new("claude-sonnet-5-5");
     config.max_tokens = Some(1024);
     config.capture_request = true;
     config
@@ -69,7 +69,7 @@ fn response(
     } else {
         json!([{"type":"text","text":"47"}])
     };
-    let message = json!({"id":format!("msg_{index}"),"model":"claude-sonnet-4-5","role":"assistant","type":"message","content":content,"stop_reason":stop,"usage":{"input_tokens":10,"output_tokens":2}});
+    let message = json!({"id":format!("msg_{index}"),"model":"claude-sonnet-5-5","role":"assistant","type":"message","content":content,"stop_reason":stop,"usage":{"input_tokens":10,"output_tokens":2}});
     let template = ResponseTemplate::new(200).insert_header("connection", "close");
     if body["stream"] == false {
         return template.set_body_json(message);

@@ -192,6 +192,8 @@ impl ModelService {
             model_card_url: hardcoded.model_card_url.or(discovered.model_card_url),
             decisions: hardcoded.decisions,
             images: hardcoded.images.or(discovered.images),
+            // The curated date wins; a provider catalog that announces one fills the gap.
+            deprecation: hardcoded.deprecation.or(discovered.deprecation),
         }
     }
 }

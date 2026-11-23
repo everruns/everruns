@@ -358,6 +358,8 @@ impl MistralModelInfo {
             model_card_url: None,
             decisions: None,
             images: None,
+            // Deprecated models never reach this (see `is_canonical_chat_model`).
+            deprecation: None,
         }
     }
 }

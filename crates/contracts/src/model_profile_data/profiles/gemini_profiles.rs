@@ -90,6 +90,7 @@ pub(super) fn gemini_profile_data(model_id: &str) -> Option<ModelProfile> {
             model_card_url: None,
             decisions: None,
             images: None,
+            deprecation: None,
         }),
 
         // Gemini 3.6/3.7/3.8 Flash and 3.5 Flash Lite. Source: models.dev
@@ -176,6 +177,7 @@ pub(super) fn gemini_profile_data(model_id: &str) -> Option<ModelProfile> {
             model_card_url: None,
             decisions: None,
             images: None,
+            deprecation: None,
         }),
 
         // Gemini 3.1 Flash Lite — low-latency, high-volume tier. Source:
@@ -227,6 +229,7 @@ pub(super) fn gemini_profile_data(model_id: &str) -> Option<ModelProfile> {
             model_card_url: None,
             decisions: None,
             images: None,
+            deprecation: None,
         }),
 
         "gemini-2.5-pro" => Some(ModelProfile {
@@ -274,6 +277,7 @@ pub(super) fn gemini_profile_data(model_id: &str) -> Option<ModelProfile> {
             model_card_url: None,
             decisions: None,
             images: None,
+            deprecation: None,
         }),
 
         "gemini-2.5-flash" => Some(ModelProfile {
@@ -321,6 +325,7 @@ pub(super) fn gemini_profile_data(model_id: &str) -> Option<ModelProfile> {
             model_card_url: None,
             decisions: None,
             images: None,
+            deprecation: None,
         }),
 
         _ => None,
@@ -384,6 +389,7 @@ fn gemini_flash(
         model_card_url: None,
         decisions: None,
         images: None,
+        deprecation: None,
     }
 }
 

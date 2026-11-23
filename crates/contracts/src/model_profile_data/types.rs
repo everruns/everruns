@@ -473,11 +473,51 @@ pub struct GifLimits {
     pub default_frame_ms: u16,
 }
 
+/// A vendor's announced retirement of a model that still works today.
+///
+/// Profiles keep a deprecated model so existing agents keep running and people can see
+/// the date coming; once the vendor stops serving it, the profile is dropped from the
+/// registry (see [`ModelProfile`]). Discovery fills this from the vendor's own catalog
+/// where one says so (OpenRouter `expiration_date`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct ModelDeprecation {
+    /// Date the vendor stops serving the model (YYYY-MM-DD), when announced.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retires_on: Option<String>,
+    /// Model id the vendor recommends moving to, when it names one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub replacement: Option<String>,
+}
+
+impl ModelDeprecation {
+    /// A retirement on `date`. Accepts a bare date or an RFC 3339 timestamp and keeps
+    /// the date part; returns `None` for a blank value.
+    pub fn retiring_on(date: &str) -> Option<Self> {
+        let date = date.trim();
+        if date.is_empty() {
+            return None;
+        }
+        let day = date.split(['T', ' ']).next().unwrap_or(date);
+        Some(Self {
+            retires_on: Some(day.to_string()),
+            replacement: None,
+        })
+    }
+
+    /// Name the recommended replacement model.
+    pub fn with_replacement(mut self, model_id: impl Into<String>) -> Self {
+        self.replacement = Some(model_id.into());
+        self
+    }
+}
+
 /// LLM Model Profile describing model capabilities
 /// Based on models.dev structure (<https://models.dev/api.json>)
 ///
-/// The registry of profiles lives in `crate::model_profile_data::profiles`; retired models are
-/// dropped from it as vendors sunset them.
+/// The registry of profiles lives in `crate::model_profile_data::profiles`. A model the
+/// vendor has scheduled for retirement stays with [`ModelProfile::deprecation`] set; it is
+/// dropped from the registry once the vendor sunsets it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct ModelProfile {
@@ -558,9 +598,17 @@ pub struct ModelProfile {
     /// What the model makes when this profile describes an image model.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub images: Option<ImageModelProfile>,
+    /// Set when the vendor has announced the model's retirement.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deprecation: Option<ModelDeprecation>,
 }
 
 impl ModelProfile {
+    /// Whether the vendor has announced this model's retirement.
+    pub fn is_deprecated(&self) -> bool {
+        self.deprecation.is_some()
+    }
+
     /// Whether this profile advertises a provider request parameter.
     pub fn supports_parameter(&self, parameter: &str) -> bool {
         self.supported_parameters
@@ -599,6 +647,7 @@ impl ModelProfile {
             model_card_url: None,
             decisions: None,
             images: None,
+            deprecation: None,
         }
     }
 }
@@ -606,6 +655,36 @@ impl ModelProfile {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn deprecation_keeps_the_date_part_and_rejects_blank_values() {
+        let from_timestamp = ModelDeprecation::retiring_on("2026-11-30T17:00:00Z").unwrap();
+        assert_eq!(from_timestamp.retires_on.as_deref(), Some("2026-11-30"));
+        assert_eq!(
+            ModelDeprecation::retiring_on(" 2026-12-11 ")
+                .unwrap()
+                .retires_on
+                .as_deref(),
+            Some("2026-12-11")
+        );
+        assert_eq!(ModelDeprecation::retiring_on("   "), None);
+
+        let with_replacement = from_timestamp.with_replacement("claude-sonnet-5-5");
+        assert_eq!(
+            serde_json::to_value(&with_replacement).unwrap(),
+            serde_json::json!({"retires_on": "2026-11-30", "replacement": "claude-sonnet-5-5"})
+        );
+    }
+
+    #[test]
+    fn profile_without_deprecation_omits_the_field() {
+        let profile = ModelProfile::minimal("m");
+        assert!(!profile.is_deprecated());
+        let json = serde_json::to_value(&profile).unwrap();
+        assert!(!json.as_object().unwrap().contains_key("deprecation"));
+        let back: ModelProfile = serde_json::from_value(json).unwrap();
+        assert_eq!(back.deprecation, None);
+    }
 
     #[test]
     fn test_model_limits_input_omitted_when_none() {
