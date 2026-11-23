@@ -200,8 +200,6 @@ delegate! {
         -> CheckOutboundToolRateLimitResponse;
     invoke_slack_action => handle_invoke_slack_action(InvokeSlackActionRequest)
         -> InvokeSlackActionResponse;
-    execute_machine_payment => handle_execute_machine_payment(ExecuteMachinePaymentRequest)
-        -> ExecuteMachinePaymentResponse;
     authorize_session_creation => handle_authorize_session_creation(AuthorizeSessionCreationRequest)
         -> AuthorizeSessionCreationResponse;
 }

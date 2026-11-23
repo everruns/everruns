@@ -372,6 +372,7 @@ fn event(sequence: i64, turn: &str, event_type: &str, data: Value) -> DeliveryEv
         data,
         input_message_id: Some(turn.into()),
         turn_id: Some(format!("logical-{turn}")),
+        turn_traceparent: None,
     }
 }
 
@@ -857,6 +858,7 @@ async fn a_stream_turn_yields_its_own_events_and_ends_at_the_turn_end() {
             data: json!({"delta": "hi"}),
             input_message_id: None,
             turn_id: None,
+            turn_traceparent: None,
         },
     );
     port.reply(&session, "turn_1", "hi there");

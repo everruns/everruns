@@ -32,6 +32,10 @@ struct Recorder {
     stream: bool,
     surface: bool,
     approvals: bool,
+    approval_failure: Option<&'static str>,
+    reply_failure: Option<&'static str>,
+    stop_failure: bool,
+    slack: bool,
     progress: bool,
     fail_start: bool,
     reactions: bool,
@@ -50,7 +54,7 @@ impl Recorder {
 #[async_trait]
 impl ChannelDeliveryAdapter for Recorder {
     fn platform(&self) -> &str {
-        "test"
+        if self.slack { "slack" } else { "test" }
     }
     async fn deliver(
         &self,
@@ -109,7 +113,10 @@ impl ChannelReactionSurface for Recorder {
         _: &DeliveryContext,
     ) -> Result<Option<String>, DeliveryResult> {
         self.push(Call::Post(message.text.clone()));
-        Ok(Some("C1:posted".into()))
+        match self.reply_failure {
+            Some(error) => Err(DeliveryResult::PermanentError(error.into())),
+            None => Ok(Some("C1:posted".into())),
+        }
     }
     async fn react(
         &self,
@@ -132,7 +139,10 @@ impl ChannelApprovalPrompt for Recorder {
         _: &DeliveryContext,
     ) -> DeliveryResult {
         self.push(Call::Approval(prompt.action.clone()));
-        DeliveryResult::Ok
+        match self.approval_failure {
+            Some(error) => DeliveryResult::TransientError(error.into()),
+            None => DeliveryResult::Ok,
+        }
     }
 }
 
@@ -168,7 +178,11 @@ impl ChannelStreamDelivery for Recorder {
     }
     async fn stop(&self, _: &str, _: &DeliveryContext) -> DeliveryResult {
         self.push(Call::Stop);
-        DeliveryResult::Ok
+        if self.stop_failure {
+            DeliveryResult::PermanentError("PRIVATE_ERROR https://slack.example".into())
+        } else {
+            DeliveryResult::Ok
+        }
     }
 }
 
@@ -208,6 +222,7 @@ fn event_for(turn: &str, event_type: &str, data: Value) -> DeliveryEvent {
         data,
         input_message_id: Some(turn.into()),
         turn_id: None,
+        turn_traceparent: None,
     }
 }
 
@@ -612,12 +627,33 @@ fn envelopes_are_read_from_the_canonical_shape() {
         "type": "output.message.delta",
         "sequence": 7,
         "context": {"input_message_id": "message_1"},
-        "data": {"delta": "x"}
+        "data": {"delta": "x"},
+        "metadata": {(crate::causal::TURN_TRACEPARENT_KEY):
+            "00-11111111111111111111111111111111-2222222222222222-01"}
     });
     let event = DeliveryEvent::from_envelope(&envelope).unwrap();
     assert_eq!(event.sequence, Some(7));
     assert_eq!(event.input_message_id.as_deref(), Some("message_1"));
     assert_eq!(event.data["delta"], "x");
+    assert!(
+        event.turn_traceparent.is_none(),
+        "only committed starts carry a parent"
+    );
+    let mut turn_start = envelope;
+    turn_start["type"] = json!(TURN_STARTED);
+    assert!(
+        DeliveryEvent::from_envelope(&turn_start)
+            .unwrap()
+            .turn_traceparent
+            .is_some()
+    );
+    turn_start["sequence"] = Value::Null;
+    assert!(
+        DeliveryEvent::from_envelope(&turn_start)
+            .unwrap()
+            .turn_traceparent
+            .is_none()
+    );
     assert!(!event.is_terminal());
     assert!(DeliveryEvent::from_envelope(&json!({"data": {}})).is_none());
 }
@@ -677,6 +713,68 @@ async fn an_approval_pause_is_drawn_and_counts_as_delivered() {
         vec![Call::Approval("Merge the PR".into())],
         "no end-of-turn notice after a prompt"
     );
+}
+
+#[cfg(feature = "otel")]
+#[tokio::test]
+async fn slack_delivery_traces_distinguish_a_finished_turn_from_delivery_failure() {
+    use crate::host::observability::delivery::test_support::DeliveryTraceFixture;
+
+    let trace = DeliveryTraceFixture::new();
+    for (failed, stream) in [(false, false), (true, false), (false, true), (true, true)] {
+        let carrier = trace.completed_turn_carrier();
+        let recorder = Arc::new(Recorder {
+            approvals: true,
+            reactions: true,
+            slack: true,
+            stream,
+            stop_failure: failed && stream,
+            approval_failure: failed.then_some("PRIVATE_ERROR https://slack.example"),
+            reply_failure: failed.then_some("PRIVATE_ERROR https://slack.example"),
+            ..Recorder::default()
+        });
+        let mut delivery = delivery(&recorder, DeliveryOptions::default());
+        delivery.set_observer(Some(trace.observer()));
+        delivery.context.auth_token = "PRIVATE_TOKEN".into();
+        // The detached delivery task learns the trusted anchor from the
+        // committed turn.start, not from the current thread or raw input.
+        let start = DeliveryEvent::from_envelope(&json!({
+            "type": TURN_STARTED, "sequence": 1,
+            "context": {"input_message_id": TURN},
+            "metadata": {(crate::causal::TURN_TRACEPARENT_KEY): carrier}
+        }))
+        .unwrap();
+        delivery.observe(&start).await;
+        delivery
+            .observe(&approval_completed("PRIVATE_PROMPT"))
+            .await;
+        if stream {
+            delivery.observe(&delta("m1", "PRIVATE_")).await;
+        }
+        delivery.observe(&completed("m1", "PRIVATE_REPLY")).await;
+        delivery.observe(&event(TURN_COMPLETED, json!({}))).await;
+
+        assert!(delivery.is_finished());
+        assert!(
+            delivery.delivered(),
+            "a failed send still allows the existing notice"
+        );
+        let mut expected = vec![Call::Approval("PRIVATE_PROMPT".into())];
+        if stream {
+            expected.extend([
+                Call::Start,
+                Call::Append("PRIVATE_REPLY".into()),
+                Call::Stop,
+            ]);
+        } else {
+            expected.push(Call::Post("PRIVATE_REPLY".into()));
+            if failed {
+                expected.push(Call::Post("The agent finished without a reply.".into()));
+            }
+        }
+        assert_eq!(recorder.calls(), expected);
+        trace.assert_deliveries(&carrier, failed);
+    }
 }
 
 #[tokio::test]

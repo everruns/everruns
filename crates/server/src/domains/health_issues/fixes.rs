@@ -546,8 +546,10 @@ impl Command for CheckFindingFix {
 #[derive(Debug, Deserialize, Serialize, ToSchema)]
 pub struct UpdateFindingFixRequest {
     /// The text to add to the agent's instructions.
+    #[schema(example = "Before replying, check the order status with the lookup tool.")]
     pub addition: String,
     /// One line on what the change does. Unchanged when omitted.
+    #[schema(example = "Check order status before answering")]
     pub summary: Option<String>,
 }
 

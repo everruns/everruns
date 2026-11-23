@@ -6295,130 +6295,6 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/payments/accounts": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * List payment accounts
-     * @description List payment accounts.
-     */
-    get: operations["list_payment_accounts"];
-    put?: never;
-    /**
-     * Create payment account
-     * @description Create a new payment account.
-     */
-    post: operations["create_payment_account"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/payments/accounts/{payment_account_id}": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * Get payment account
-     * @description Get a payment account by ID.
-     */
-    get: operations["get_payment_account"];
-    put?: never;
-    post?: never;
-    /**
-     * Disable payment account
-     * @description Disable a payment account without deleting it.
-     */
-    delete: operations["disable_payment_account"];
-    options?: never;
-    head?: never;
-    /**
-     * Update payment account
-     * @description Update a payment account. Only provided fields are modified.
-     */
-    patch: operations["update_payment_account"];
-    trace?: never;
-  };
-  "/v1/payments/attempts": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * List payment attempts
-     * @description List recent payment attempts (operator audit view).
-     */
-    get: operations["list_payment_attempts"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/payments/policies": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * List payment policies
-     * @description List payment policies.
-     */
-    get: operations["list_payment_policies"];
-    put?: never;
-    /**
-     * Create payment policy
-     * @description Create a new payment policy.
-     */
-    post: operations["create_payment_policy"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/payments/policies/{payment_policy_id}": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * Get payment policy
-     * @description Get a payment policy by ID.
-     */
-    get: operations["get_payment_policy"];
-    put?: never;
-    post?: never;
-    /**
-     * Disable payment policy
-     * @description Disable a payment policy without deleting it.
-     */
-    delete: operations["disable_payment_policy"];
-    options?: never;
-    head?: never;
-    /**
-     * Update payment policy
-     * @description Update a payment policy. Only provided fields are modified.
-     */
-    patch: operations["update_payment_policy"];
-    trace?: never;
-  };
   "/v1/plugin_marketplaces": {
     parameters: {
       query?: never;
@@ -14407,7 +14283,10 @@ export interface components {
       channel_config?: unknown;
       /** @description Transport used by the channel. */
       channel_type: components["schemas"]["ChannelType"];
-      /** @description Whether the channel can accept ingress traffic. */
+      /**
+       * @description Whether the channel can accept ingress traffic.
+       * @example true
+       */
       enabled?: boolean;
     };
     /**
@@ -14474,7 +14353,10 @@ export interface components {
       channel_config?: unknown;
       /** @description Transport used by the channel. */
       channel_type: components["schemas"]["ChannelType"];
-      /** @description Whether the channel can accept ingress traffic. */
+      /**
+       * @description Whether the channel can accept ingress traffic.
+       * @example true
+       */
       enabled?: boolean;
     };
     /** @description Request to create an agent key. */
@@ -14875,7 +14757,10 @@ export interface components {
       list_price_multiplier?: number | null;
       /** @description Which usage it applies to (see `CostRate.match`). */
       match?: Record<string, unknown> | null;
-      /** @description `model.tokens` or `sandbox.time`. */
+      /**
+       * @description `model.tokens` or `sandbox.time`.
+       * @example model.tokens
+       */
       meter: string;
       /**
        * Format: double
@@ -15394,127 +15279,6 @@ export interface components {
        */
       name: string;
     };
-    /** @description Request body for the `create_payment_account` operation. */
-    CreatePaymentAccountRequest: {
-      /**
-       * @description Human-readable label. Safe to render in user-facing messages.
-       * @example Refund agent · USDC on Base
-       */
-      label: string;
-      /**
-       * @description Free-form metadata attached to this account (caller-defined; opaque to the platform).
-       *     Example: `{"team": "support", "cost_center": "ops"}`.
-       */
-      metadata?: unknown;
-      /**
-       * @description Prefixed identifier of the owning principal. Must use the prefix that matches `owner_type`
-       *     (see above). Example below pairs with `owner_type = "virtual_user"`.
-       * @example identity_01933b5a00007000800000000000001
-       */
-      owner_id: string;
-      /**
-       * @description Principal class that owns the account. One of: `user`, `virtual_user`, `organization`.
-       *     The prefix on `owner_id` must match this: `user` → `user_…`, `virtual_user` → `identity_…`,
-       *     `organization` → `org_…`.
-       * @example virtual_user
-       */
-      owner_type: string;
-      /**
-       * @description Private key material for the rail. Stored encrypted; never returned in responses.
-       *     Example shown as an obvious placeholder — supply a real 32-byte hex value at create time.
-       * @example 0x<your-32-byte-hex-private-key>
-       */
-      private_key?: string | null;
-      /**
-       * @description Public address on the rail (chain address, account number, etc.). Optional; can be filled in later.
-       * @example 0x742d35Cc6634C0532925a3b844Bc454e4438f44e
-       */
-      public_address?: string | null;
-      /**
-       * @description Settlement rail this account operates on. One of: `mpp_tempo`, `x402_base`.
-       * @example x402_base
-       */
-      rail: string;
-    };
-    /** @description Request body for the `create_payment_policy` operation. */
-    CreatePaymentPolicyRequest: {
-      /**
-       * @description Capability IDs this policy permits paid calls for. Empty list means no capability gating.
-       * @example [
-       *       "weather.lookup",
-       *       "shipping.quote"
-       *     ]
-       */
-      allowed_capabilities?: string[];
-      /**
-       * @description HTTP host allowlist for paid outbound calls. Empty list means no host gating.
-       * @example [
-       *       "api.shippo.com",
-       *       "api.openweathermap.org"
-       *     ]
-       */
-      allowed_hosts?: string[];
-      /**
-       * Format: double
-       * @description Maximum cumulative amount (USD) over a rolling 24 hours, enforced before signing by reserving each request's maximum. `None` means no per-day cap.
-       * @example 100
-       */
-      max_amount_usd_per_day?: number | null;
-      /**
-       * Format: double
-       * @description Maximum amount (USD) any single paid request may settle for. **Enforced** by the payment authority at policy selection. `None` means no per-request cap.
-       * @example 5
-       */
-      max_amount_usd_per_request?: number | null;
-      /**
-       * Format: double
-       * @description Maximum cumulative amount (USD) per agent turn, enforced before signing by reserving each request's maximum against the turn. A request with no turn binding fails closed. `None` means no per-turn cap.
-       * @example 20
-       */
-      max_amount_usd_per_turn?: number | null;
-      /**
-       * @description Free-form metadata attached to this policy.
-       *     Example: `{"owner_team": "ops", "ticket": "OPS-1248"}`.
-       */
-      metadata?: unknown;
-      /**
-       * @description Payment account this policy authorizes spending from. Accepts a prefixed `payacct_…`
-       *     identifier or a bare UUID.
-       * @example payacct_01933b5a00007000800000000000001
-       */
-      payment_account_id: string;
-      /**
-       * @description Preferred settlement rails in priority order; the authority picks the first available.
-       * @example [
-       *       "x402_base",
-       *       "mpp_tempo"
-       *     ]
-       */
-      rail_preference?: string[];
-      /**
-       * Format: double
-       * @description Threshold (USD) above which a request would require explicit human approval. **Advisory only — not yet enforced.** Stored for forward compatibility; no approval gate is wired up yet. `None` disables the (future) gate.
-       * @example 10
-       */
-      require_approval_above_usd?: number | null;
-      /**
-       * @description Prefixed identifier of the bound subject. Must use the prefix matching `subject_type`
-       *     (see above). Example below pairs with `subject_type = "virtual_user"`.
-       * @example identity_01933b5a00007000800000000000001
-       */
-      subject_id: string;
-      /**
-       * @description Class of subject this policy binds to. One of: `user`, `virtual_user`,
-       *     `agent`, `agent_channel`, `session`, `org`.
-       *     The prefix on `subject_id` must match: `user`→`user_…`, `virtual_user`→`identity_…`,
-       *     `agent`→`agent_…`, `agent_channel`→`appchan_…` (an endpoint kept the
-       *     identifier it carried as an App channel), `session`→`session_…`,
-       *     `org`→`org_…`. The identifier must be the API-facing one — an internal
-       *     uuid will be stored and then never match (EVE-1130).
-       * @example virtual_user
-       */
-      subject_type: string;
-    };
     /** @description Start an idle session on an Agent API channel. The body may be empty. Send a message to begin a turn. */
     CreatePlatformAgentSessionRequest: {
       /** @description Optional title for the session. */
@@ -15854,14 +15618,20 @@ export interface components {
     };
     /** @description Request body for creating a task webhook. */
     CreateTaskWebhookRequest: {
-      /** @description Whether the webhook starts enabled. Defaults to true. */
+      /**
+       * @description Whether the webhook starts enabled. Defaults to true.
+       * @example true
+       */
       enabled?: boolean;
       /**
        * @description Optional HMAC-SHA256 signing secret. When set, every delivery includes
        *     an `X-Everruns-Signature: sha256=<hex>` header.
        */
       secret?: string | null;
-      /** @description The URL to POST task terminal-state events to. */
+      /**
+       * @description The URL to POST task terminal-state events to.
+       * @example https://hooks.example.com/everruns/tasks
+       */
       url: string;
     };
     /** @description Create an organization-scoped runtime account. */
@@ -21952,6 +21722,7 @@ export interface components {
          * Format: int32
          * @description How many agents one AgentID owner may sign in; null means the platform
          *     default.
+         * @example 5
          */
         agentid_agents_per_owner?: number | null;
         /**
@@ -21961,23 +21732,37 @@ export interface components {
          *     defaults when the organization never set any.
          */
         background_limits: components["schemas"]["BackgroundLimits"];
-        /** @description Base harness used when session creation omits harness_id. */
+        /**
+         * @description Base harness used when session creation omits harness_id.
+         * @example harness_01933b5a00007000800000000000001
+         */
         base_harness_id?: string | null;
-        /** @description Default for the built-in Everruns Chat. None inherits the agents/sessions default. */
+        /**
+         * @description Default for the built-in Everruns Chat. None inherits the agents/sessions default.
+         * @example model_01933b5a00007000800000000000001
+         */
         chat_model_id?: string | null;
         /**
          * @description Default for coding work: coding-harness agents and `coding` helpers.
          *     None falls back to the default model.
+         * @example model_01933b5a00007000800000000000001
          */
         coding_model_id?: string | null;
         /**
          * Format: date-time
          * @description When the organization was created
+         * @example 2026-11-01T12:00:00Z
          */
         created_at: string;
-        /** @description Default harness to preselect in the UI. */
+        /**
+         * @description Default harness to preselect in the UI.
+         * @example harness_01933b5a00007000800000000000001
+         */
         default_harness_id?: string | null;
-        /** @description Default LLM model for the organization. */
+        /**
+         * @description Default LLM model for the organization.
+         * @example model_01933b5a00007000800000000000001
+         */
         default_model_id?: string | null;
         /**
          * @description Org-level default provider per service (EVE-569), keyed by service kind.
@@ -21990,28 +21775,38 @@ export interface components {
          * @description The model the research model resolves to now: the selection, else the
          *     Automatic pick (Anthropic's recommended research model, then OpenAI's,
          *     then another provider's), else the default model.
+         * @example model_01933b5a00007000800000000000001
          */
         effective_research_model_id?: string | null;
-        /** @description External identifier (org_<32-hex-chars>) */
+        /**
+         * @description External identifier (org_<32-hex-chars>)
+         * @example org_00000000000000000000000000000001
+         */
         id: string;
         /**
          * Format: int32
          * @description Maximum agents this organization can create per UTC calendar month.
          *     Built-in agents do not count; archiving or deleting never refunds.
+         * @example 500
          */
         monthly_agent_limit: number;
         /**
          * Format: int32
          * @description Maximum sessions this organization can create per UTC calendar month.
+         * @example 10000
          */
         monthly_session_limit: number;
-        /** @description Display name */
+        /**
+         * @description Display name
+         * @example Acme Corporation
+         */
         name: string;
         /**
          * Format: date-time
          * @description When the org's creator finished or skipped the setup wizard. `null` means
          *     onboarding is still incomplete, which the UI uses to resume the user at
          *     `/orgs/{id}/setup`. Seeded/default and externally-synced orgs are complete.
+         * @example 2026-11-01T12:05:00Z
          */
         onboarding_completed_at?: string | null;
         /** @description Opt-in system-managed compaction monitoring. Disabled by default. */
@@ -22019,6 +21814,7 @@ export interface components {
         /**
          * @description Research model: the org's strongest model for hard reasoning and long
          *     research. None means Automatic.
+         * @example model_01933b5a00007000800000000000001
          */
         research_model_id?: string | null;
         /**
@@ -22028,7 +21824,10 @@ export interface components {
          *     organization never set any.
          */
         self_healing: components["schemas"]["SelfHealingPolicy"];
-        /** @description Optional small chat model, independent of the main chat and decision defaults. */
+        /**
+         * @description Optional small chat model, independent of the main chat and decision defaults.
+         * @example model_01933b5a00007000800000000000001
+         */
         small_model_id?: string | null;
         /**
          * @description Who answers deployment-owned decision checks: `deployment` (default)
@@ -22044,6 +21843,7 @@ export interface components {
         /**
          * Format: date-time
          * @description When the organization was last updated
+         * @example 2026-11-01T12:00:00Z
          */
         updated_at: string;
         /**
@@ -26090,6 +25890,7 @@ export interface components {
        * Format: int32
        * @description How many agents one AgentID owner may sign in; null means the platform
        *     default.
+       * @example 5
        */
       agentid_agents_per_owner?: number | null;
       /**
@@ -26099,23 +25900,37 @@ export interface components {
        *     defaults when the organization never set any.
        */
       background_limits: components["schemas"]["BackgroundLimits"];
-      /** @description Base harness used when session creation omits harness_id. */
+      /**
+       * @description Base harness used when session creation omits harness_id.
+       * @example harness_01933b5a00007000800000000000001
+       */
       base_harness_id?: string | null;
-      /** @description Default for the built-in Everruns Chat. None inherits the agents/sessions default. */
+      /**
+       * @description Default for the built-in Everruns Chat. None inherits the agents/sessions default.
+       * @example model_01933b5a00007000800000000000001
+       */
       chat_model_id?: string | null;
       /**
        * @description Default for coding work: coding-harness agents and `coding` helpers.
        *     None falls back to the default model.
+       * @example model_01933b5a00007000800000000000001
        */
       coding_model_id?: string | null;
       /**
        * Format: date-time
        * @description When the organization was created
+       * @example 2026-11-01T12:00:00Z
        */
       created_at: string;
-      /** @description Default harness to preselect in the UI. */
+      /**
+       * @description Default harness to preselect in the UI.
+       * @example harness_01933b5a00007000800000000000001
+       */
       default_harness_id?: string | null;
-      /** @description Default LLM model for the organization. */
+      /**
+       * @description Default LLM model for the organization.
+       * @example model_01933b5a00007000800000000000001
+       */
       default_model_id?: string | null;
       /**
        * @description Org-level default provider per service (EVE-569), keyed by service kind.
@@ -26128,28 +25943,38 @@ export interface components {
        * @description The model the research model resolves to now: the selection, else the
        *     Automatic pick (Anthropic's recommended research model, then OpenAI's,
        *     then another provider's), else the default model.
+       * @example model_01933b5a00007000800000000000001
        */
       effective_research_model_id?: string | null;
-      /** @description External identifier (org_<32-hex-chars>) */
+      /**
+       * @description External identifier (org_<32-hex-chars>)
+       * @example org_00000000000000000000000000000001
+       */
       id: string;
       /**
        * Format: int32
        * @description Maximum agents this organization can create per UTC calendar month.
        *     Built-in agents do not count; archiving or deleting never refunds.
+       * @example 500
        */
       monthly_agent_limit: number;
       /**
        * Format: int32
        * @description Maximum sessions this organization can create per UTC calendar month.
+       * @example 10000
        */
       monthly_session_limit: number;
-      /** @description Display name */
+      /**
+       * @description Display name
+       * @example Acme Corporation
+       */
       name: string;
       /**
        * Format: date-time
        * @description When the org's creator finished or skipped the setup wizard. `null` means
        *     onboarding is still incomplete, which the UI uses to resume the user at
        *     `/orgs/{id}/setup`. Seeded/default and externally-synced orgs are complete.
+       * @example 2026-11-01T12:05:00Z
        */
       onboarding_completed_at?: string | null;
       /** @description Opt-in system-managed compaction monitoring. Disabled by default. */
@@ -26157,6 +25982,7 @@ export interface components {
       /**
        * @description Research model: the org's strongest model for hard reasoning and long
        *     research. None means Automatic.
+       * @example model_01933b5a00007000800000000000001
        */
       research_model_id?: string | null;
       /**
@@ -26166,7 +25992,10 @@ export interface components {
        *     organization never set any.
        */
       self_healing: components["schemas"]["SelfHealingPolicy"];
-      /** @description Optional small chat model, independent of the main chat and decision defaults. */
+      /**
+       * @description Optional small chat model, independent of the main chat and decision defaults.
+       * @example model_01933b5a00007000800000000000001
+       */
       small_model_id?: string | null;
       /**
        * @description Who answers deployment-owned decision checks: `deployment` (default)
@@ -26182,6 +26011,7 @@ export interface components {
       /**
        * Format: date-time
        * @description When the organization was last updated
+       * @example 2026-11-01T12:00:00Z
        */
       updated_at: string;
       /**
@@ -27273,229 +27103,6 @@ export interface components {
       total: number;
     };
     /**
-     * @description A payment account — the org-scoped source of funds for paid agent calls.
-     *     Each account binds an owning principal (user, virtual user, or org)
-     *     to one settlement rail and tracks its provisioning lifecycle.
-     */
-    PaymentAccount: {
-      /**
-       * Format: date-time
-       * @description Timestamp when this account was created (RFC 3339).
-       * @example 2026-04-01T10:00:00Z
-       */
-      created_at: string;
-      /** @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/). */
-      id: components["schemas"]["payacctId"];
-      /**
-       * @description Human-readable label for this account. Safe to render in user-facing messages.
-       * @example Production USDC ops wallet
-       */
-      label: string;
-      /** @description Free-form metadata attached to this account (caller-defined; opaque to the platform). */
-      metadata: unknown;
-      /**
-       * @description Owning organization's prefixed public identifier.
-       * @example org_01933b5a000070008000000000000001
-       */
-      organization_id: string;
-      /**
-       * @description Prefixed identifier of the owning principal (e.g. `user_…`, `agent_…`, `org_…`).
-       * @example agent_01933b5a000070008000000000000001
-       */
-      owner_id: string;
-      /** @description Principal class that owns this account (user, virtual user, or organization). */
-      owner_type: components["schemas"]["PaymentOwnerType"];
-      /**
-       * @description Public address on the rail (chain address, account number, etc.). Optional; `None` until provisioning completes.
-       * @example 0x70997970C51812dc3A010C7d01b50e0d17dc79C8
-       */
-      public_address?: string | null;
-      /** @description Settlement rail this account operates on. */
-      rail: components["schemas"]["PaymentRail"];
-      /** @description Current lifecycle status of this account. */
-      status: components["schemas"]["PaymentStatus"];
-      /**
-       * Format: date-time
-       * @description Timestamp when this account was last updated (RFC 3339).
-       * @example 2026-05-20T14:00:00Z
-       */
-      updated_at: string;
-    };
-    /**
-     * @description A single paid-call settlement attempt — the durable record of one
-     *     authorization+settlement cycle issued through the payment authority.
-     *     Persisted regardless of outcome so failed attempts remain auditable.
-     */
-    PaymentAttempt: {
-      /**
-       * Format: double
-       * @description Amount actually charged (USD).
-       * @example 0.014
-       */
-      amount_usd: number;
-      /**
-       * @description Capability ID that originated this paid call.
-       * @example paid_search
-       */
-      capability: string;
-      /**
-       * Format: date-time
-       * @description Timestamp when this attempt was created (RFC 3339).
-       * @example 2026-05-25T10:14:00Z
-       */
-      created_at: string;
-      /**
-       * @description ISO 4217 currency code for the charge (typically `USD`).
-       * @example USD
-       */
-      currency: string;
-      /**
-       * @description Human-readable error message when `status` is `failed`; `None` otherwise.
-       * @example rail.insufficient_funds: settled balance below minimum
-       */
-      error_message?: string | null;
-      /** @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/). */
-      id: components["schemas"]["payattId"];
-      /**
-       * @description Capability-specific operation name that originated this paid call.
-       * @example search.query
-       */
-      operation: string;
-      /**
-       * @description Owning organization's prefixed public identifier.
-       * @example org_01933b5a000070008000000000000001
-       */
-      organization_id: string;
-      payment_account_id?: components["schemas"]["payacctId"] | null;
-      rail?: components["schemas"]["PaymentRail"] | null;
-      /** @description Rail-specific receipt payload (transaction id, block reference, signature, etc.). */
-      receipt: unknown;
-      /**
-       * @description Stable hash of the outbound request used to detect replays. `None` when not applicable.
-       * @example sha256:9f1e2a4c3d5b6e8a0b2c4d6e8f0a1b3c5d7e9f0a1b2c4d6e8f0a1b2c4d6e8f0a
-       */
-      request_hash?: string | null;
-      /**
-       * @description Session that initiated the paid call, if any.
-       * @example session_01933b5a000070008000000000000001
-       */
-      session_id?: string | null;
-      /** @description Current lifecycle status of this attempt. */
-      status: components["schemas"]["PaymentStatus"];
-      /**
-       * @description Destination URL of the paid outbound call.
-       * @example https://api.example.com/v1/search
-       */
-      target_url: string;
-      /**
-       * Format: date-time
-       * @description Timestamp when this attempt was last updated (RFC 3339).
-       * @example 2026-05-25T10:14:02Z
-       */
-      updated_at: string;
-    };
-    /**
-     * @description Principal class that owns a payment account.
-     * @enum {string}
-     */
-    PaymentOwnerType: "user" | "virtual_user" | "organization";
-    /**
-     * @description A payment policy — the binding between a paying account and a subject
-     *     (virtual user, session) that controls which paid calls are
-     *     authorized and at what spend caps.
-     */
-    PaymentPolicy: {
-      /**
-       * @description Capability IDs this policy permits paid calls for. Empty list means no capability gating.
-       * @example [
-       *       "paid_search",
-       *       "paid_image_gen"
-       *     ]
-       */
-      allowed_capabilities: string[];
-      /**
-       * @description HTTP host allowlist for paid outbound calls. Empty list means no host gating.
-       * @example [
-       *       "api.openai.com",
-       *       "api.anthropic.com"
-       *     ]
-       */
-      allowed_hosts: string[];
-      /**
-       * Format: date-time
-       * @description Timestamp when this policy was created (RFC 3339).
-       * @example 2026-04-01T10:00:00Z
-       */
-      created_at: string;
-      /** @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/). */
-      id: components["schemas"]["paypolId"];
-      /**
-       * Format: double
-       * @description Maximum cumulative amount (USD) over a rolling 24 hours, enforced before signing by reserving each request's maximum. `None` means no per-day cap.
-       * @example 50
-       */
-      max_amount_usd_per_day?: number | null;
-      /**
-       * Format: double
-       * @description Maximum amount (USD) any single paid request may settle for. **Enforced** by the payment authority at policy selection. `None` means no per-request cap.
-       * @example 2.5
-       */
-      max_amount_usd_per_request?: number | null;
-      /**
-       * Format: double
-       * @description Maximum cumulative amount (USD) per agent turn, enforced before signing by reserving each request's maximum against the turn. A request with no turn binding fails closed. `None` means no per-turn cap.
-       * @example 5
-       */
-      max_amount_usd_per_turn?: number | null;
-      /** @description Free-form metadata attached to this policy. */
-      metadata: unknown;
-      /**
-       * @description Owning organization's prefixed public identifier.
-       * @example org_01933b5a000070008000000000000001
-       */
-      organization_id: string;
-      /** @description Payment account this policy authorizes spending from. */
-      payment_account_id: components["schemas"]["payacctId"];
-      /** @description Preferred settlement rails in priority order; the authority picks the first available. */
-      rail_preference: components["schemas"]["PaymentRail"][];
-      /**
-       * Format: double
-       * @description Threshold (USD) above which a request would require explicit human approval. **Advisory only — not yet enforced.** Stored on the policy for forward compatibility; no approval gate is wired up yet. `None` disables the (future) gate.
-       * @example 10
-       */
-      require_approval_above_usd?: number | null;
-      /** @description Current lifecycle status of this policy. */
-      status: components["schemas"]["PaymentStatus"];
-      /**
-       * @description Prefixed identifier of the bound subject.
-       * @example identity_01933b5a000070008000000000000001
-       */
-      subject_id: string;
-      /**
-       * @description Class of subject this policy binds to (e.g. `virtual_user`, `session`).
-       * @example virtual_user
-       */
-      subject_type: string;
-      /**
-       * Format: date-time
-       * @description Timestamp when this policy was last updated (RFC 3339).
-       * @example 2026-05-20T14:00:00Z
-       */
-      updated_at: string;
-    };
-    /**
-     * @description Payment rail used to settle a machine payment.
-     * @enum {string}
-     */
-    PaymentRail: "mpp_tempo" | "x402_base";
-    /**
-     * @description Lifecycle state of a payment account, policy, or attempt. The shared
-     *     vocabulary keeps account/policy admin and attempt settlement on the
-     *     same status taxonomy.
-     * @enum {string}
-     */
-    PaymentStatus: "active" | "disabled" | "pending" | "succeeded" | "failed" | "released";
-    /**
      * @description A held-back tool call the session waits on. Same shape as serve's
      *     `pending_approvals` item, plus `answerable`.
      */
@@ -28575,9 +28182,15 @@ export interface components {
     };
     /** @description Response body for the `resolve_org` operation. */
     ResolveOrgResponse: {
-      /** @description Public ID of the organization that owns the resource. */
+      /**
+       * @description Public ID of the organization that owns the resource.
+       * @example org_00000000000000000000000000000001
+       */
       org_id: string;
-      /** @description Organization name (for UX messaging). */
+      /**
+       * @description Organization name (for UX messaging).
+       * @example Acme Corporation
+       */
       org_name: string;
     };
     /**
@@ -35962,9 +35575,15 @@ export interface components {
     };
     /** @description New text for a fix. It must be checked again. */
     UpdateFindingFixRequest: {
-      /** @description The text to add to the agent's instructions. */
+      /**
+       * @description The text to add to the agent's instructions.
+       * @example Before replying, check the order status with the lookup tool.
+       */
       addition: string;
-      /** @description One line on what the change does. Unchanged when omitted. */
+      /**
+       * @description One line on what the change does. Unchanged when omitted.
+       * @example Check order status before answering
+       */
       summary?: string | null;
     };
     /** @description Request to update a harness. Only provided fields will be updated. */
@@ -36329,91 +35948,6 @@ export interface components {
       system_decisions?: components["schemas"]["SystemDecisions"] | null;
       tool_approval_policy?: components["schemas"]["OrgToolApprovalPolicy"] | null;
       web_search_defaults?: components["schemas"]["WebSearchDefaults"] | null;
-    };
-    /** @description Request body for the `update_payment_account` operation. */
-    UpdatePaymentAccountRequest: {
-      /**
-       * @description New label, if changing.
-       * @example Refund agent · USDC on Base (prod)
-       */
-      label?: string | null;
-      /**
-       * @description New free-form metadata. Replaces the existing metadata blob entirely when set.
-       *     Example: `{"team": "support", "cost_center": "ops-2026"}`.
-       */
-      metadata?: unknown;
-      /**
-       * @description New private key material. Set to `Some(...)` to rotate; omit to leave unchanged.
-       *     Example shown as an obvious placeholder — supply a real 32-byte hex value when rotating.
-       * @example 0x<your-32-byte-hex-private-key>
-       */
-      private_key?: string | null;
-      /** @description New public address. The outer `Option` indicates whether to update; the inner allows clearing the field. */
-      public_address?: string | null;
-      /**
-       * @description New lifecycle status. Valid values: `active`, `disabled`.
-       * @example disabled
-       */
-      status?: string | null;
-    };
-    /** @description Request body for the `update_payment_policy` operation. */
-    UpdatePaymentPolicyRequest: {
-      /**
-       * @description New capability allowlist. Outer `None` leaves the field unchanged.
-       * @example [
-       *       "weather.lookup",
-       *       "shipping.quote",
-       *       "currency.convert"
-       *     ]
-       */
-      allowed_capabilities?: string[] | null;
-      /**
-       * @description New host allowlist. Outer `None` leaves the field unchanged.
-       * @example [
-       *       "api.shippo.com",
-       *       "api.openweathermap.org",
-       *       "api.exchangerate.host"
-       *     ]
-       */
-      allowed_hosts?: string[] | null;
-      /**
-       * Format: double
-       * @description New per-day cap (USD). Outer `None` leaves the field unchanged; inner `None` clears the cap.
-       */
-      max_amount_usd_per_day?: number | null;
-      /**
-       * Format: double
-       * @description New per-request cap (USD). **Enforced** by the payment authority. Outer `None` leaves the field unchanged; inner `None` clears the cap.
-       */
-      max_amount_usd_per_request?: number | null;
-      /**
-       * Format: double
-       * @description New per-turn cap (USD). Outer `None` leaves the field unchanged; inner `None` clears the cap.
-       */
-      max_amount_usd_per_turn?: number | null;
-      /**
-       * @description New free-form metadata. Replaces the existing metadata blob entirely when set.
-       *     Example: `{"owner_team": "ops", "ticket": "OPS-1248", "review_due": "2026-09-01"}`.
-       */
-      metadata?: unknown;
-      /**
-       * @description New rail preference order. Outer `None` leaves the field unchanged.
-       * @example [
-       *       "mpp_tempo",
-       *       "x402_base"
-       *     ]
-       */
-      rail_preference?: string[] | null;
-      /**
-       * Format: double
-       * @description New approval threshold (USD). **Advisory only — not yet enforced.** Outer `None` leaves the field unchanged; inner `None` disables the (future) gate.
-       */
-      require_approval_above_usd?: number | null;
-      /**
-       * @description New lifecycle status. Valid values: `active`, `disabled`.
-       * @example disabled
-       */
-      status?: string | null;
     };
     /** @description Request body for updating a plugin marketplace. */
     UpdatePluginMarketplaceRequest: {
@@ -39283,21 +38817,6 @@ export interface components {
      * @example model_01933b5a000070008000000000000001
      */
     modelId: string;
-    /**
-     * @description Prefixed identifier with 'payacct' prefix
-     * @example payacct_01933b5a000070008000000000000001
-     */
-    payacctId: string;
-    /**
-     * @description Prefixed identifier with 'payatt' prefix
-     * @example payatt_01933b5a000070008000000000000001
-     */
-    payattId: string;
-    /**
-     * @description Prefixed identifier with 'paypol' prefix
-     * @example paypol_01933b5a000070008000000000000001
-     */
-    paypolId: string;
     /**
      * @description Prefixed identifier with 'sbxtpl' prefix
      * @example sbxtpl_01933b5a000070008000000000000001
@@ -54867,363 +54386,6 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["TraceScore"] | null;
-        };
-      };
-    };
-  };
-  list_payment_accounts: {
-    parameters: {
-      query?: {
-        /** @description Filter to a single owner class (user, virtual user, or organization). */
-        owner_type?: string | null;
-        /** @description Filter to a specific owner principal id. */
-        owner_id?: string | null;
-      };
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description List payment accounts */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["PaymentAccount"][];
-        };
-      };
-    };
-  };
-  create_payment_account: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["CreatePaymentAccountRequest"];
-      };
-    };
-    responses: {
-      /** @description Payment account created */
-      201: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["PaymentAccount"];
-        };
-      };
-      /** @description Invalid input */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  get_payment_account: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Payment account ID */
-        payment_account_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Payment account */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["PaymentAccount"];
-        };
-      };
-      /** @description Not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  disable_payment_account: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Payment account ID */
-        payment_account_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Payment account disabled */
-      204: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  update_payment_account: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Payment account ID */
-        payment_account_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["UpdatePaymentAccountRequest"];
-      };
-    };
-    responses: {
-      /** @description Payment account updated */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["PaymentAccount"];
-        };
-      };
-      /** @description Invalid input */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  list_payment_attempts: {
-    parameters: {
-      query?: {
-        /** @description Filter to attempts originating from a specific session. */
-        session_id?: string | null;
-        /** @description Maximum number of attempts returned. Defaults to 50. */
-        limit?: number;
-      };
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description List payment attempts */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["PaymentAttempt"][];
-        };
-      };
-    };
-  };
-  list_payment_policies: {
-    parameters: {
-      query?: {
-        /** @description Filter to policies that authorize a specific payment account. */
-        payment_account_id?: string | null;
-        /** @description Filter to a single subject class. */
-        subject_type?: string | null;
-        /** @description Filter to a specific subject principal id. */
-        subject_id?: string | null;
-      };
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description List payment policies */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["PaymentPolicy"][];
-        };
-      };
-    };
-  };
-  create_payment_policy: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["CreatePaymentPolicyRequest"];
-      };
-    };
-    responses: {
-      /** @description Payment policy created */
-      201: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["PaymentPolicy"];
-        };
-      };
-      /** @description Invalid input */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  get_payment_policy: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Payment policy ID */
-        payment_policy_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Payment policy */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["PaymentPolicy"];
-        };
-      };
-      /** @description Not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  disable_payment_policy: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Payment policy ID */
-        payment_policy_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Payment policy disabled */
-      204: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  update_payment_policy: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Payment policy ID */
-        payment_policy_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["UpdatePaymentPolicyRequest"];
-      };
-    };
-    responses: {
-      /** @description Payment policy updated */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["PaymentPolicy"];
-        };
-      };
-      /** @description Invalid input */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
         };
       };
     };

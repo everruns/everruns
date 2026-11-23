@@ -13,6 +13,7 @@ pub struct CreateAgentChannelRequest {
     pub channel_config: Value,
     /// Whether the channel can accept ingress traffic.
     #[serde(default = "default_true")]
+    #[schema(example = true)]
     pub enabled: bool,
 }
 

@@ -5,20 +5,14 @@ use crate::runtime::{DeploymentGrade, FeatureFlagDefinition, FeatureFlagGrade};
 
 // Registration defaults are shared with the hosted catalog: promoting a default
 // must change API availability and actual registry composition together.
-/// Default rollout grade for Docker execution.
-pub const DOCKER_CAPABILITY_DEFAULT_GRADE: FeatureFlagGrade = FeatureFlagGrade::Off;
 /// Default rollout grade for container sandboxes.
 pub const CONTAINER_SANDBOX_DEFAULT_GRADE: FeatureFlagGrade = FeatureFlagGrade::Off;
 /// Default rollout grade for Lua execution.
 pub const LUA_DEFAULT_GRADE: FeatureFlagGrade = FeatureFlagGrade::Off;
-/// Default rollout grade for machine payments.
-pub const MACHINE_PAYMENTS_DEFAULT_GRADE: FeatureFlagGrade = FeatureFlagGrade::Off;
 
 /// Deployment availability for optional execution infrastructure.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct InternalFeatureFlags {
-    /// Docker execution is available for registration.
-    pub docker_capability: bool,
     /// Container sandbox execution is available for registration.
     pub container_sandbox: bool,
     /// Lua execution is available for registration.
@@ -36,10 +30,6 @@ impl InternalFeatureFlags {
         let enabled =
             |name, default| FeatureFlagGrade::from_env(name, default).available(deployment);
         Self {
-            docker_capability: enabled(
-                "FEATURE_DOCKER_CAPABILITY",
-                DOCKER_CAPABILITY_DEFAULT_GRADE,
-            ),
             container_sandbox: enabled(
                 "FEATURE_CONTAINER_SANDBOX",
                 CONTAINER_SANDBOX_DEFAULT_GRADE,
@@ -51,7 +41,6 @@ impl InternalFeatureFlags {
     /// Whether the named infrastructure gate permits registration.
     pub fn is_enabled(&self, flag: &str) -> bool {
         match flag {
-            "docker_capability" => self.docker_capability,
             "container_sandbox" => self.container_sandbox,
             "lua" => self.lua,
             _ => false,
@@ -79,14 +68,10 @@ impl ExecutionFeatureDecisions {
     /// Whether a named gate permits capability registration.
     pub fn is_enabled(&self, flag: &str) -> bool {
         match flag {
-            "docker_capability" | "container_sandbox" | "lua" => self.internal.is_enabled(flag),
+            "container_sandbox" | "lua" => self.internal.is_enabled(flag),
             _ => FeatureFlagGrade::from_env(
                 &format!("FEATURE_{}", flag.to_ascii_uppercase()),
-                if flag == "machine_payments" {
-                    MACHINE_PAYMENTS_DEFAULT_GRADE
-                } else {
-                    FeatureFlagGrade::Off
-                },
+                FeatureFlagGrade::Off,
             )
             .available(self.deployment),
         }
@@ -121,10 +106,8 @@ mod tests {
     fn grade_overrides_apply_to_capability_registration() {
         const CHILD: &str = "EVERRUNS_FEATURE_GRADE_TEST_CHILD";
         const KEYS: &[&str] = &[
-            "FEATURE_DOCKER_CAPABILITY",
             "FEATURE_CONTAINER_SANDBOX",
             "FEATURE_LUA",
-            "FEATURE_MACHINE_PAYMENTS",
             "FEATURE_UNKNOWN",
         ];
         let cases = [
@@ -150,13 +133,7 @@ mod tests {
             .zip(expected)
             {
                 let decisions = ExecutionFeatureDecisions::from_env(deployment);
-                for name in [
-                    "docker_capability",
-                    "container_sandbox",
-                    "lua",
-                    "machine_payments",
-                    "unknown",
-                ] {
+                for name in ["container_sandbox", "lua", "unknown"] {
                     let expected = available;
                     assert_eq!(
                         decisions.is_enabled(name),

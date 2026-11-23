@@ -11,7 +11,7 @@ import { useRouter } from "next/navigation";
 import { useUiTranslations } from "@/providers/locale-provider";
 import { SettingsIcon } from "@/components/icons/facet-icons";
 import Link from "next/link";
-import { notFound, usePathname } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { IconTile } from "@/components/layout/page-layout";
 
@@ -29,7 +29,7 @@ export default function SettingsLayout({ children }: SettingsLayoutProps) {
   const ui = useUiTranslations();
   const pathname = usePathname();
   const router = useRouter();
-  const { flags, isLoading: featureFlagsLoading } = useFeatureFlagsState();
+  const { flags } = useFeatureFlagsState();
   const { hasRole } = useOrg();
   const can = useNavigationPolicy();
   const settingsSections = visibleNavigationSections(
@@ -39,16 +39,6 @@ export default function SettingsLayout({ children }: SettingsLayoutProps) {
     process.env.NODE_ENV === "development",
     can,
   );
-  const machinePaymentsEnabled = flags.machine_payments;
-
-  if (
-    !featureFlagsLoading &&
-    !machinePaymentsEnabled &&
-    pathname.startsWith("/settings/payments")
-  ) {
-    notFound();
-  }
-
   return (
     <div className="settings-workspace flex h-full flex-col">
       <div className="flex items-center gap-4 border-b px-6 py-4">

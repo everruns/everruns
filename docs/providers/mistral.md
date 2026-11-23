@@ -28,13 +28,6 @@ you run on any other provider.
 
 ## Configure in Everruns
 
-The Mistral AI provider is behind the `mistral` feature flag, which is
-off by default. A self-hosted deployment turns it on by setting
-`FEATURE_MISTRAL=prod` (on for every organization) or `adoption`
-(organizations opt in). Until then, Mistral AI does not appear in the provider
-picker and the API refuses to create a `mistral` provider. Mistral models remain
-reachable through OpenRouter either way.
-
 1. Go to **Settings** → **Providers** and click **Add provider**.
 2. Choose **Mistral AI**.
 3. Paste your API key. Create one in
@@ -135,7 +128,7 @@ fail the call rather than reporting a successful partial answer. Background
 responses, WebSockets, server-side compaction, hosted tools, token-counting,
 function namespaces, and forced tool selection are not exposed by this
 integration. OpenAI-only service-tier and verbosity settings are omitted.
-The existing Mistral feature flag and model discovery behavior are unchanged.
+Model discovery behavior is unchanged.
 
 ## Links
 

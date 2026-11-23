@@ -35,7 +35,6 @@
 * [Harnesses](harnesses/) - Manual UI cases.
 * [Images](images/) - Manual UI cases.
 * [Knowledge indexes](knowledge_indexes/) - Manual UI cases.
-* [Machine payments](machine_payments/) - Manual UI cases.
 * [MCP servers](mcp_servers/) - Manual UI cases.
 * [Memory](memory/) - Manual UI cases.
 * [Models](models/) - Manual UI cases.

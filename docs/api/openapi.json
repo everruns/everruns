@@ -24275,591 +24275,6 @@
         }
       }
     },
-    "/v1/payments/accounts": {
-      "get": {
-        "tags": [
-          "payments"
-        ],
-        "summary": "List payment accounts",
-        "description": "List payment accounts.",
-        "operationId": "list_payment_accounts",
-        "parameters": [
-          {
-            "name": "owner_type",
-            "in": "query",
-            "description": "Filter to a single owner class (user, virtual user, or organization).",
-            "required": false,
-            "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
-            }
-          },
-          {
-            "name": "owner_id",
-            "in": "query",
-            "description": "Filter to a specific owner principal id.",
-            "required": false,
-            "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "List payment accounts",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/PaymentAccount"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "x-docs": {
-          "audience": "public",
-          "availability": "Requires machine_payments; disabled by default",
-          "group": "operations-billing",
-          "support": "experimental"
-        }
-      },
-      "post": {
-        "tags": [
-          "payments"
-        ],
-        "summary": "Create payment account",
-        "description": "Create a new payment account.",
-        "operationId": "create_payment_account",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreatePaymentAccountRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "description": "Payment account created",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PaymentAccount"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid input",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        },
-        "x-docs": {
-          "audience": "public",
-          "availability": "Requires machine_payments; disabled by default",
-          "group": "operations-billing",
-          "support": "experimental"
-        }
-      }
-    },
-    "/v1/payments/accounts/{payment_account_id}": {
-      "get": {
-        "tags": [
-          "payments"
-        ],
-        "summary": "Get payment account",
-        "description": "Get a payment account by ID.",
-        "operationId": "get_payment_account",
-        "parameters": [
-          {
-            "name": "payment_account_id",
-            "in": "path",
-            "description": "Payment account ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Payment account",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PaymentAccount"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        },
-        "x-docs": {
-          "audience": "public",
-          "availability": "Requires machine_payments; disabled by default",
-          "group": "operations-billing",
-          "support": "experimental"
-        }
-      },
-      "delete": {
-        "tags": [
-          "payments"
-        ],
-        "summary": "Disable payment account",
-        "description": "Disable a payment account without deleting it.",
-        "operationId": "disable_payment_account",
-        "parameters": [
-          {
-            "name": "payment_account_id",
-            "in": "path",
-            "description": "Payment account ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "Payment account disabled"
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        },
-        "x-docs": {
-          "audience": "public",
-          "availability": "Requires machine_payments; disabled by default",
-          "group": "operations-billing",
-          "support": "experimental"
-        }
-      },
-      "patch": {
-        "tags": [
-          "payments"
-        ],
-        "summary": "Update payment account",
-        "description": "Update a payment account. Only provided fields are modified.",
-        "operationId": "update_payment_account",
-        "parameters": [
-          {
-            "name": "payment_account_id",
-            "in": "path",
-            "description": "Payment account ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdatePaymentAccountRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Payment account updated",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PaymentAccount"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid input",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        },
-        "x-docs": {
-          "audience": "public",
-          "availability": "Requires machine_payments; disabled by default",
-          "group": "operations-billing",
-          "support": "experimental"
-        }
-      }
-    },
-    "/v1/payments/attempts": {
-      "get": {
-        "tags": [
-          "payments"
-        ],
-        "summary": "List payment attempts",
-        "description": "List recent payment attempts (operator audit view).",
-        "operationId": "list_payment_attempts",
-        "parameters": [
-          {
-            "name": "session_id",
-            "in": "query",
-            "description": "Filter to attempts originating from a specific session.",
-            "required": false,
-            "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
-            }
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "description": "Maximum number of attempts returned. Defaults to 50.",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "format": "int64"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "List payment attempts",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/PaymentAttempt"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "x-docs": {
-          "audience": "public",
-          "availability": "Requires machine_payments; disabled by default",
-          "group": "operations-billing",
-          "support": "experimental"
-        }
-      }
-    },
-    "/v1/payments/policies": {
-      "get": {
-        "tags": [
-          "payments"
-        ],
-        "summary": "List payment policies",
-        "description": "List payment policies.",
-        "operationId": "list_payment_policies",
-        "parameters": [
-          {
-            "name": "payment_account_id",
-            "in": "query",
-            "description": "Filter to policies that authorize a specific payment account.",
-            "required": false,
-            "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
-            }
-          },
-          {
-            "name": "subject_type",
-            "in": "query",
-            "description": "Filter to a single subject class.",
-            "required": false,
-            "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
-            }
-          },
-          {
-            "name": "subject_id",
-            "in": "query",
-            "description": "Filter to a specific subject principal id.",
-            "required": false,
-            "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "List payment policies",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/PaymentPolicy"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "x-docs": {
-          "audience": "public",
-          "availability": "Requires machine_payments; disabled by default",
-          "group": "operations-billing",
-          "support": "experimental"
-        }
-      },
-      "post": {
-        "tags": [
-          "payments"
-        ],
-        "summary": "Create payment policy",
-        "description": "Create a new payment policy.",
-        "operationId": "create_payment_policy",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreatePaymentPolicyRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "description": "Payment policy created",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PaymentPolicy"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid input",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        },
-        "x-docs": {
-          "audience": "public",
-          "availability": "Requires machine_payments; disabled by default",
-          "group": "operations-billing",
-          "support": "experimental"
-        }
-      }
-    },
-    "/v1/payments/policies/{payment_policy_id}": {
-      "get": {
-        "tags": [
-          "payments"
-        ],
-        "summary": "Get payment policy",
-        "description": "Get a payment policy by ID.",
-        "operationId": "get_payment_policy",
-        "parameters": [
-          {
-            "name": "payment_policy_id",
-            "in": "path",
-            "description": "Payment policy ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Payment policy",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PaymentPolicy"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        },
-        "x-docs": {
-          "audience": "public",
-          "availability": "Requires machine_payments; disabled by default",
-          "group": "operations-billing",
-          "support": "experimental"
-        }
-      },
-      "delete": {
-        "tags": [
-          "payments"
-        ],
-        "summary": "Disable payment policy",
-        "description": "Disable a payment policy without deleting it.",
-        "operationId": "disable_payment_policy",
-        "parameters": [
-          {
-            "name": "payment_policy_id",
-            "in": "path",
-            "description": "Payment policy ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "Payment policy disabled"
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        },
-        "x-docs": {
-          "audience": "public",
-          "availability": "Requires machine_payments; disabled by default",
-          "group": "operations-billing",
-          "support": "experimental"
-        }
-      },
-      "patch": {
-        "tags": [
-          "payments"
-        ],
-        "summary": "Update payment policy",
-        "description": "Update a payment policy. Only provided fields are modified.",
-        "operationId": "update_payment_policy",
-        "parameters": [
-          {
-            "name": "payment_policy_id",
-            "in": "path",
-            "description": "Payment policy ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdatePaymentPolicyRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Payment policy updated",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PaymentPolicy"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid input",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        },
-        "x-docs": {
-          "audience": "public",
-          "availability": "Requires machine_payments; disabled by default",
-          "group": "operations-billing",
-          "support": "experimental"
-        }
-      }
-    },
     "/v1/plugin_marketplaces": {
       "get": {
         "tags": [
@@ -46342,7 +45757,8 @@
           },
           "enabled": {
             "type": "boolean",
-            "description": "Whether the channel can accept ingress traffic."
+            "description": "Whether the channel can accept ingress traffic.",
+            "example": true
           }
         }
       },
@@ -46445,7 +45861,8 @@
           },
           "enabled": {
             "type": "boolean",
-            "description": "Whether the channel can accept ingress traffic."
+            "description": "Whether the channel can accept ingress traffic.",
+            "example": true
           }
         }
       },
@@ -47088,7 +46505,8 @@
           },
           "meter": {
             "type": "string",
-            "description": "`model.tokens` or `sandbox.time`."
+            "description": "`model.tokens` or `sandbox.time`.",
+            "example": "model.tokens"
           },
           "unit_price_usd": {
             "type": [
@@ -48112,155 +47530,6 @@
           }
         }
       },
-      "CreatePaymentAccountRequest": {
-        "type": "object",
-        "description": "Request body for the `create_payment_account` operation.",
-        "required": [
-          "owner_type",
-          "owner_id",
-          "rail",
-          "label"
-        ],
-        "properties": {
-          "label": {
-            "type": "string",
-            "description": "Human-readable label. Safe to render in user-facing messages.",
-            "example": "Refund agent · USDC on Base"
-          },
-          "metadata": {
-            "description": "Free-form metadata attached to this account (caller-defined; opaque to the platform).\nExample: `{\"team\": \"support\", \"cost_center\": \"ops\"}`."
-          },
-          "owner_id": {
-            "type": "string",
-            "description": "Prefixed identifier of the owning principal. Must use the prefix that matches `owner_type`\n(see above). Example below pairs with `owner_type = \"virtual_user\"`.",
-            "example": "identity_01933b5a00007000800000000000001"
-          },
-          "owner_type": {
-            "type": "string",
-            "description": "Principal class that owns the account. One of: `user`, `virtual_user`, `organization`.\nThe prefix on `owner_id` must match this: `user` → `user_…`, `virtual_user` → `identity_…`,\n`organization` → `org_…`.",
-            "example": "virtual_user"
-          },
-          "private_key": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Private key material for the rail. Stored encrypted; never returned in responses.\nExample shown as an obvious placeholder — supply a real 32-byte hex value at create time.",
-            "example": "0x<your-32-byte-hex-private-key>"
-          },
-          "public_address": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Public address on the rail (chain address, account number, etc.). Optional; can be filled in later.",
-            "example": "0x742d35Cc6634C0532925a3b844Bc454e4438f44e"
-          },
-          "rail": {
-            "type": "string",
-            "description": "Settlement rail this account operates on. One of: `mpp_tempo`, `x402_base`.",
-            "example": "x402_base"
-          }
-        }
-      },
-      "CreatePaymentPolicyRequest": {
-        "type": "object",
-        "description": "Request body for the `create_payment_policy` operation.",
-        "required": [
-          "payment_account_id",
-          "subject_type",
-          "subject_id"
-        ],
-        "properties": {
-          "allowed_capabilities": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "Capability IDs this policy permits paid calls for. Empty list means no capability gating.",
-            "example": [
-              "weather.lookup",
-              "shipping.quote"
-            ]
-          },
-          "allowed_hosts": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "HTTP host allowlist for paid outbound calls. Empty list means no host gating.",
-            "example": [
-              "api.shippo.com",
-              "api.openweathermap.org"
-            ]
-          },
-          "max_amount_usd_per_day": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "format": "double",
-            "description": "Maximum cumulative amount (USD) over a rolling 24 hours, enforced before signing by reserving each request's maximum. `None` means no per-day cap.",
-            "example": 100
-          },
-          "max_amount_usd_per_request": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "format": "double",
-            "description": "Maximum amount (USD) any single paid request may settle for. **Enforced** by the payment authority at policy selection. `None` means no per-request cap.",
-            "example": 5
-          },
-          "max_amount_usd_per_turn": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "format": "double",
-            "description": "Maximum cumulative amount (USD) per agent turn, enforced before signing by reserving each request's maximum against the turn. A request with no turn binding fails closed. `None` means no per-turn cap.",
-            "example": 20
-          },
-          "metadata": {
-            "description": "Free-form metadata attached to this policy.\nExample: `{\"owner_team\": \"ops\", \"ticket\": \"OPS-1248\"}`."
-          },
-          "payment_account_id": {
-            "type": "string",
-            "description": "Payment account this policy authorizes spending from. Accepts a prefixed `payacct_…`\nidentifier or a bare UUID.",
-            "example": "payacct_01933b5a00007000800000000000001"
-          },
-          "rail_preference": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "Preferred settlement rails in priority order; the authority picks the first available.",
-            "example": [
-              "x402_base",
-              "mpp_tempo"
-            ]
-          },
-          "require_approval_above_usd": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "format": "double",
-            "description": "Threshold (USD) above which a request would require explicit human approval. **Advisory only — not yet enforced.** Stored for forward compatibility; no approval gate is wired up yet. `None` disables the (future) gate.",
-            "example": 10
-          },
-          "subject_id": {
-            "type": "string",
-            "description": "Prefixed identifier of the bound subject. Must use the prefix matching `subject_type`\n(see above). Example below pairs with `subject_type = \"virtual_user\"`.",
-            "example": "identity_01933b5a00007000800000000000001"
-          },
-          "subject_type": {
-            "type": "string",
-            "description": "Class of subject this policy binds to. One of: `user`, `virtual_user`,\n`agent`, `agent_channel`, `session`, `org`.\nThe prefix on `subject_id` must match: `user`→`user_…`, `virtual_user`→`identity_…`,\n`agent`→`agent_…`, `agent_channel`→`appchan_…` (an endpoint kept the\nidentifier it carried as an App channel), `session`→`session_…`,\n`org`→`org_…`. The identifier must be the API-facing one — an internal\nuuid will be stored and then never match (EVE-1130).",
-            "example": "virtual_user"
-          }
-        }
-      },
       "CreatePlatformAgentSessionRequest": {
         "type": "object",
         "description": "Start an idle session on an Agent API channel. The body may be empty. Send a message to begin a turn.",
@@ -48823,7 +48092,8 @@
         "properties": {
           "enabled": {
             "type": "boolean",
-            "description": "Whether the webhook starts enabled. Defaults to true."
+            "description": "Whether the webhook starts enabled. Defaults to true.",
+            "example": true
           },
           "secret": {
             "type": [
@@ -48834,7 +48104,8 @@
           },
           "url": {
             "type": "string",
-            "description": "The URL to POST task terminal-state events to."
+            "description": "The URL to POST task terminal-state events to.",
+            "example": "https://hooks.example.com/everruns/tasks"
           }
         }
       },
@@ -59919,7 +59190,8 @@
                     "null"
                   ],
                   "format": "int32",
-                  "description": "How many agents one AgentID owner may sign in; null means the platform\ndefault."
+                  "description": "How many agents one AgentID owner may sign in; null means the platform\ndefault.",
+                  "example": 5
                 },
                 "background_limits": {
                   "$ref": "#/components/schemas/BackgroundLimits",
@@ -59930,40 +59202,46 @@
                     "string",
                     "null"
                   ],
-                  "description": "Base harness used when session creation omits harness_id."
+                  "description": "Base harness used when session creation omits harness_id.",
+                  "example": "harness_01933b5a00007000800000000000001"
                 },
                 "chat_model_id": {
                   "type": [
                     "string",
                     "null"
                   ],
-                  "description": "Default for the built-in Everruns Chat. None inherits the agents/sessions default."
+                  "description": "Default for the built-in Everruns Chat. None inherits the agents/sessions default.",
+                  "example": "model_01933b5a00007000800000000000001"
                 },
                 "coding_model_id": {
                   "type": [
                     "string",
                     "null"
                   ],
-                  "description": "Default for coding work: coding-harness agents and `coding` helpers.\nNone falls back to the default model."
+                  "description": "Default for coding work: coding-harness agents and `coding` helpers.\nNone falls back to the default model.",
+                  "example": "model_01933b5a00007000800000000000001"
                 },
                 "created_at": {
                   "type": "string",
                   "format": "date-time",
-                  "description": "When the organization was created"
+                  "description": "When the organization was created",
+                  "example": "2026-11-01T12:00:00Z"
                 },
                 "default_harness_id": {
                   "type": [
                     "string",
                     "null"
                   ],
-                  "description": "Default harness to preselect in the UI."
+                  "description": "Default harness to preselect in the UI.",
+                  "example": "harness_01933b5a00007000800000000000001"
                 },
                 "default_model_id": {
                   "type": [
                     "string",
                     "null"
                   ],
-                  "description": "Default LLM model for the organization."
+                  "description": "Default LLM model for the organization.",
+                  "example": "model_01933b5a00007000800000000000001"
                 },
                 "default_provider_per_service": {
                   "type": "object",
@@ -59980,16 +59258,19 @@
                     "string",
                     "null"
                   ],
-                  "description": "The model the research model resolves to now: the selection, else the\nAutomatic pick (Anthropic's recommended research model, then OpenAI's,\nthen another provider's), else the default model."
+                  "description": "The model the research model resolves to now: the selection, else the\nAutomatic pick (Anthropic's recommended research model, then OpenAI's,\nthen another provider's), else the default model.",
+                  "example": "model_01933b5a00007000800000000000001"
                 },
                 "id": {
                   "type": "string",
-                  "description": "External identifier (org_<32-hex-chars>)"
+                  "description": "External identifier (org_<32-hex-chars>)",
+                  "example": "org_00000000000000000000000000000001"
                 },
                 "monthly_agent_limit": {
                   "type": "integer",
                   "format": "int32",
                   "description": "Maximum agents this organization can create per UTC calendar month.\nBuilt-in agents do not count; archiving or deleting never refunds.",
+                  "example": 500,
                   "maximum": 100000,
                   "minimum": 1
                 },
@@ -59997,12 +59278,14 @@
                   "type": "integer",
                   "format": "int32",
                   "description": "Maximum sessions this organization can create per UTC calendar month.",
+                  "example": 10000,
                   "maximum": 100000,
                   "minimum": 1
                 },
                 "name": {
                   "type": "string",
-                  "description": "Display name"
+                  "description": "Display name",
+                  "example": "Acme Corporation"
                 },
                 "onboarding_completed_at": {
                   "type": [
@@ -60010,7 +59293,8 @@
                     "null"
                   ],
                   "format": "date-time",
-                  "description": "When the org's creator finished or skipped the setup wizard. `null` means\nonboarding is still incomplete, which the UI uses to resume the user at\n`/orgs/{id}/setup`. Seeded/default and externally-synced orgs are complete."
+                  "description": "When the org's creator finished or skipped the setup wizard. `null` means\nonboarding is still incomplete, which the UI uses to resume the user at\n`/orgs/{id}/setup`. Seeded/default and externally-synced orgs are complete.",
+                  "example": "2026-11-01T12:05:00Z"
                 },
                 "quality_monitoring": {
                   "$ref": "#/components/schemas/QualityMonitoringPolicy",
@@ -60021,7 +59305,8 @@
                     "string",
                     "null"
                   ],
-                  "description": "Research model: the org's strongest model for hard reasoning and long\nresearch. None means Automatic."
+                  "description": "Research model: the org's strongest model for hard reasoning and long\nresearch. None means Automatic.",
+                  "example": "model_01933b5a00007000800000000000001"
                 },
                 "self_healing": {
                   "$ref": "#/components/schemas/SelfHealingPolicy",
@@ -60032,7 +59317,8 @@
                     "string",
                     "null"
                   ],
-                  "description": "Optional small chat model, independent of the main chat and decision defaults."
+                  "description": "Optional small chat model, independent of the main chat and decision defaults.",
+                  "example": "model_01933b5a00007000800000000000001"
                 },
                 "system_decisions": {
                   "$ref": "#/components/schemas/SystemDecisions",
@@ -60045,7 +59331,8 @@
                 "updated_at": {
                   "type": "string",
                   "format": "date-time",
-                  "description": "When the organization was last updated"
+                  "description": "When the organization was last updated",
+                  "example": "2026-11-01T12:00:00Z"
                 },
                 "web_search_defaults": {
                   "$ref": "#/components/schemas/WebSearchDefaults",
@@ -67413,7 +66700,8 @@
               "null"
             ],
             "format": "int32",
-            "description": "How many agents one AgentID owner may sign in; null means the platform\ndefault."
+            "description": "How many agents one AgentID owner may sign in; null means the platform\ndefault.",
+            "example": 5
           },
           "background_limits": {
             "$ref": "#/components/schemas/BackgroundLimits",
@@ -67424,40 +66712,46 @@
               "string",
               "null"
             ],
-            "description": "Base harness used when session creation omits harness_id."
+            "description": "Base harness used when session creation omits harness_id.",
+            "example": "harness_01933b5a00007000800000000000001"
           },
           "chat_model_id": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Default for the built-in Everruns Chat. None inherits the agents/sessions default."
+            "description": "Default for the built-in Everruns Chat. None inherits the agents/sessions default.",
+            "example": "model_01933b5a00007000800000000000001"
           },
           "coding_model_id": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Default for coding work: coding-harness agents and `coding` helpers.\nNone falls back to the default model."
+            "description": "Default for coding work: coding-harness agents and `coding` helpers.\nNone falls back to the default model.",
+            "example": "model_01933b5a00007000800000000000001"
           },
           "created_at": {
             "type": "string",
             "format": "date-time",
-            "description": "When the organization was created"
+            "description": "When the organization was created",
+            "example": "2026-11-01T12:00:00Z"
           },
           "default_harness_id": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Default harness to preselect in the UI."
+            "description": "Default harness to preselect in the UI.",
+            "example": "harness_01933b5a00007000800000000000001"
           },
           "default_model_id": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Default LLM model for the organization."
+            "description": "Default LLM model for the organization.",
+            "example": "model_01933b5a00007000800000000000001"
           },
           "default_provider_per_service": {
             "type": "object",
@@ -67474,16 +66768,19 @@
               "string",
               "null"
             ],
-            "description": "The model the research model resolves to now: the selection, else the\nAutomatic pick (Anthropic's recommended research model, then OpenAI's,\nthen another provider's), else the default model."
+            "description": "The model the research model resolves to now: the selection, else the\nAutomatic pick (Anthropic's recommended research model, then OpenAI's,\nthen another provider's), else the default model.",
+            "example": "model_01933b5a00007000800000000000001"
           },
           "id": {
             "type": "string",
-            "description": "External identifier (org_<32-hex-chars>)"
+            "description": "External identifier (org_<32-hex-chars>)",
+            "example": "org_00000000000000000000000000000001"
           },
           "monthly_agent_limit": {
             "type": "integer",
             "format": "int32",
             "description": "Maximum agents this organization can create per UTC calendar month.\nBuilt-in agents do not count; archiving or deleting never refunds.",
+            "example": 500,
             "maximum": 100000,
             "minimum": 1
           },
@@ -67491,12 +66788,14 @@
             "type": "integer",
             "format": "int32",
             "description": "Maximum sessions this organization can create per UTC calendar month.",
+            "example": 10000,
             "maximum": 100000,
             "minimum": 1
           },
           "name": {
             "type": "string",
-            "description": "Display name"
+            "description": "Display name",
+            "example": "Acme Corporation"
           },
           "onboarding_completed_at": {
             "type": [
@@ -67504,7 +66803,8 @@
               "null"
             ],
             "format": "date-time",
-            "description": "When the org's creator finished or skipped the setup wizard. `null` means\nonboarding is still incomplete, which the UI uses to resume the user at\n`/orgs/{id}/setup`. Seeded/default and externally-synced orgs are complete."
+            "description": "When the org's creator finished or skipped the setup wizard. `null` means\nonboarding is still incomplete, which the UI uses to resume the user at\n`/orgs/{id}/setup`. Seeded/default and externally-synced orgs are complete.",
+            "example": "2026-11-01T12:05:00Z"
           },
           "quality_monitoring": {
             "$ref": "#/components/schemas/QualityMonitoringPolicy",
@@ -67515,7 +66815,8 @@
               "string",
               "null"
             ],
-            "description": "Research model: the org's strongest model for hard reasoning and long\nresearch. None means Automatic."
+            "description": "Research model: the org's strongest model for hard reasoning and long\nresearch. None means Automatic.",
+            "example": "model_01933b5a00007000800000000000001"
           },
           "self_healing": {
             "$ref": "#/components/schemas/SelfHealingPolicy",
@@ -67526,7 +66827,8 @@
               "string",
               "null"
             ],
-            "description": "Optional small chat model, independent of the main chat and decision defaults."
+            "description": "Optional small chat model, independent of the main chat and decision defaults.",
+            "example": "model_01933b5a00007000800000000000001"
           },
           "system_decisions": {
             "$ref": "#/components/schemas/SystemDecisions",
@@ -67539,7 +66841,8 @@
           "updated_at": {
             "type": "string",
             "format": "date-time",
-            "description": "When the organization was last updated"
+            "description": "When the organization was last updated",
+            "example": "2026-11-01T12:00:00Z"
           },
           "web_search_defaults": {
             "$ref": "#/components/schemas/WebSearchDefaults",
@@ -69381,353 +68684,6 @@
           "kind": "list",
           "model": "#/components/schemas/Session"
         }
-      },
-      "PaymentAccount": {
-        "type": "object",
-        "description": "A payment account — the org-scoped source of funds for paid agent calls.\nEach account binds an owning principal (user, virtual user, or org)\nto one settlement rail and tracks its provisioning lifecycle.",
-        "required": [
-          "id",
-          "organization_id",
-          "owner_type",
-          "owner_id",
-          "rail",
-          "label",
-          "status",
-          "metadata",
-          "created_at",
-          "updated_at"
-        ],
-        "properties": {
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "description": "Timestamp when this account was created (RFC 3339).",
-            "example": "2026-04-01T10:00:00Z"
-          },
-          "id": {
-            "$ref": "#/components/schemas/payacctId",
-            "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/)."
-          },
-          "label": {
-            "type": "string",
-            "description": "Human-readable label for this account. Safe to render in user-facing messages.",
-            "example": "Production USDC ops wallet"
-          },
-          "metadata": {
-            "description": "Free-form metadata attached to this account (caller-defined; opaque to the platform)."
-          },
-          "organization_id": {
-            "type": "string",
-            "description": "Owning organization's prefixed public identifier.",
-            "example": "org_01933b5a000070008000000000000001"
-          },
-          "owner_id": {
-            "type": "string",
-            "description": "Prefixed identifier of the owning principal (e.g. `user_…`, `agent_…`, `org_…`).",
-            "example": "agent_01933b5a000070008000000000000001"
-          },
-          "owner_type": {
-            "$ref": "#/components/schemas/PaymentOwnerType",
-            "description": "Principal class that owns this account (user, virtual user, or organization)."
-          },
-          "public_address": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Public address on the rail (chain address, account number, etc.). Optional; `None` until provisioning completes.",
-            "example": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8"
-          },
-          "rail": {
-            "$ref": "#/components/schemas/PaymentRail",
-            "description": "Settlement rail this account operates on."
-          },
-          "status": {
-            "$ref": "#/components/schemas/PaymentStatus",
-            "description": "Current lifecycle status of this account."
-          },
-          "updated_at": {
-            "type": "string",
-            "format": "date-time",
-            "description": "Timestamp when this account was last updated (RFC 3339).",
-            "example": "2026-05-20T14:00:00Z"
-          }
-        }
-      },
-      "PaymentAttempt": {
-        "type": "object",
-        "description": "A single paid-call settlement attempt — the durable record of one\nauthorization+settlement cycle issued through the payment authority.\nPersisted regardless of outcome so failed attempts remain auditable.",
-        "required": [
-          "id",
-          "organization_id",
-          "capability",
-          "operation",
-          "amount_usd",
-          "currency",
-          "target_url",
-          "status",
-          "receipt",
-          "created_at",
-          "updated_at"
-        ],
-        "properties": {
-          "amount_usd": {
-            "type": "number",
-            "format": "double",
-            "description": "Amount actually charged (USD).",
-            "example": 0.014
-          },
-          "capability": {
-            "type": "string",
-            "description": "Capability ID that originated this paid call.",
-            "example": "paid_search"
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "description": "Timestamp when this attempt was created (RFC 3339).",
-            "example": "2026-05-25T10:14:00Z"
-          },
-          "currency": {
-            "type": "string",
-            "description": "ISO 4217 currency code for the charge (typically `USD`).",
-            "example": "USD"
-          },
-          "error_message": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Human-readable error message when `status` is `failed`; `None` otherwise.",
-            "example": "rail.insufficient_funds: settled balance below minimum"
-          },
-          "id": {
-            "$ref": "#/components/schemas/payattId",
-            "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/)."
-          },
-          "operation": {
-            "type": "string",
-            "description": "Capability-specific operation name that originated this paid call.",
-            "example": "search.query"
-          },
-          "organization_id": {
-            "type": "string",
-            "description": "Owning organization's prefixed public identifier.",
-            "example": "org_01933b5a000070008000000000000001"
-          },
-          "payment_account_id": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/payacctId",
-                "description": "Payment account that settled (or attempted to settle) this attempt. `None` if no account could be resolved."
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "rail": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/PaymentRail",
-                "description": "Settlement rail actually used. `None` if the attempt failed before rail selection."
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "receipt": {
-            "description": "Rail-specific receipt payload (transaction id, block reference, signature, etc.)."
-          },
-          "request_hash": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Stable hash of the outbound request used to detect replays. `None` when not applicable.",
-            "example": "sha256:9f1e2a4c3d5b6e8a0b2c4d6e8f0a1b3c5d7e9f0a1b2c4d6e8f0a1b2c4d6e8f0a"
-          },
-          "session_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Session that initiated the paid call, if any.",
-            "example": "session_01933b5a000070008000000000000001"
-          },
-          "status": {
-            "$ref": "#/components/schemas/PaymentStatus",
-            "description": "Current lifecycle status of this attempt."
-          },
-          "target_url": {
-            "type": "string",
-            "description": "Destination URL of the paid outbound call.",
-            "example": "https://api.example.com/v1/search"
-          },
-          "updated_at": {
-            "type": "string",
-            "format": "date-time",
-            "description": "Timestamp when this attempt was last updated (RFC 3339).",
-            "example": "2026-05-25T10:14:02Z"
-          }
-        }
-      },
-      "PaymentOwnerType": {
-        "type": "string",
-        "description": "Principal class that owns a payment account.",
-        "enum": [
-          "user",
-          "virtual_user",
-          "organization"
-        ]
-      },
-      "PaymentPolicy": {
-        "type": "object",
-        "description": "A payment policy — the binding between a paying account and a subject\n(virtual user, session) that controls which paid calls are\nauthorized and at what spend caps.",
-        "required": [
-          "id",
-          "organization_id",
-          "payment_account_id",
-          "subject_type",
-          "subject_id",
-          "allowed_capabilities",
-          "allowed_hosts",
-          "rail_preference",
-          "status",
-          "metadata",
-          "created_at",
-          "updated_at"
-        ],
-        "properties": {
-          "allowed_capabilities": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "Capability IDs this policy permits paid calls for. Empty list means no capability gating.",
-            "example": [
-              "paid_search",
-              "paid_image_gen"
-            ]
-          },
-          "allowed_hosts": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "HTTP host allowlist for paid outbound calls. Empty list means no host gating.",
-            "example": [
-              "api.openai.com",
-              "api.anthropic.com"
-            ]
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "description": "Timestamp when this policy was created (RFC 3339).",
-            "example": "2026-04-01T10:00:00Z"
-          },
-          "id": {
-            "$ref": "#/components/schemas/paypolId",
-            "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/)."
-          },
-          "max_amount_usd_per_day": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "format": "double",
-            "description": "Maximum cumulative amount (USD) over a rolling 24 hours, enforced before signing by reserving each request's maximum. `None` means no per-day cap.",
-            "example": 50
-          },
-          "max_amount_usd_per_request": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "format": "double",
-            "description": "Maximum amount (USD) any single paid request may settle for. **Enforced** by the payment authority at policy selection. `None` means no per-request cap.",
-            "example": 2.5
-          },
-          "max_amount_usd_per_turn": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "format": "double",
-            "description": "Maximum cumulative amount (USD) per agent turn, enforced before signing by reserving each request's maximum against the turn. A request with no turn binding fails closed. `None` means no per-turn cap.",
-            "example": 5
-          },
-          "metadata": {
-            "description": "Free-form metadata attached to this policy."
-          },
-          "organization_id": {
-            "type": "string",
-            "description": "Owning organization's prefixed public identifier.",
-            "example": "org_01933b5a000070008000000000000001"
-          },
-          "payment_account_id": {
-            "$ref": "#/components/schemas/payacctId",
-            "description": "Payment account this policy authorizes spending from."
-          },
-          "rail_preference": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/PaymentRail"
-            },
-            "description": "Preferred settlement rails in priority order; the authority picks the first available."
-          },
-          "require_approval_above_usd": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "format": "double",
-            "description": "Threshold (USD) above which a request would require explicit human approval. **Advisory only — not yet enforced.** Stored on the policy for forward compatibility; no approval gate is wired up yet. `None` disables the (future) gate.",
-            "example": 10
-          },
-          "status": {
-            "$ref": "#/components/schemas/PaymentStatus",
-            "description": "Current lifecycle status of this policy."
-          },
-          "subject_id": {
-            "type": "string",
-            "description": "Prefixed identifier of the bound subject.",
-            "example": "identity_01933b5a000070008000000000000001"
-          },
-          "subject_type": {
-            "type": "string",
-            "description": "Class of subject this policy binds to (e.g. `virtual_user`, `session`).",
-            "example": "virtual_user"
-          },
-          "updated_at": {
-            "type": "string",
-            "format": "date-time",
-            "description": "Timestamp when this policy was last updated (RFC 3339).",
-            "example": "2026-05-20T14:00:00Z"
-          }
-        }
-      },
-      "PaymentRail": {
-        "type": "string",
-        "description": "Payment rail used to settle a machine payment.",
-        "enum": [
-          "mpp_tempo",
-          "x402_base"
-        ]
-      },
-      "PaymentStatus": {
-        "type": "string",
-        "description": "Lifecycle state of a payment account, policy, or attempt. The shared\nvocabulary keeps account/policy admin and attempt settlement on the\nsame status taxonomy.",
-        "enum": [
-          "active",
-          "disabled",
-          "pending",
-          "succeeded",
-          "failed",
-          "released"
-        ]
       },
       "PendingApprovalView": {
         "type": "object",
@@ -71789,11 +70745,13 @@
         "properties": {
           "org_id": {
             "type": "string",
-            "description": "Public ID of the organization that owns the resource."
+            "description": "Public ID of the organization that owns the resource.",
+            "example": "org_00000000000000000000000000000001"
           },
           "org_name": {
             "type": "string",
-            "description": "Organization name (for UX messaging)."
+            "description": "Organization name (for UX messaging).",
+            "example": "Acme Corporation"
           }
         }
       },
@@ -85420,14 +84378,16 @@
         "properties": {
           "addition": {
             "type": "string",
-            "description": "The text to add to the agent's instructions."
+            "description": "The text to add to the agent's instructions.",
+            "example": "Before replying, check the order status with the lookup tool."
           },
           "summary": {
             "type": [
               "string",
               "null"
             ],
-            "description": "One line on what the change does. Unchanged when omitted."
+            "description": "One line on what the change does. Unchanged when omitted.",
+            "example": "Check order status before answering"
           }
         }
       },
@@ -86279,139 +85239,6 @@
                 "type": "null"
               }
             ]
-          }
-        }
-      },
-      "UpdatePaymentAccountRequest": {
-        "type": "object",
-        "description": "Request body for the `update_payment_account` operation.",
-        "properties": {
-          "label": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "New label, if changing.",
-            "example": "Refund agent · USDC on Base (prod)"
-          },
-          "metadata": {
-            "description": "New free-form metadata. Replaces the existing metadata blob entirely when set.\nExample: `{\"team\": \"support\", \"cost_center\": \"ops-2026\"}`."
-          },
-          "private_key": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "New private key material. Set to `Some(...)` to rotate; omit to leave unchanged.\nExample shown as an obvious placeholder — supply a real 32-byte hex value when rotating.",
-            "example": "0x<your-32-byte-hex-private-key>"
-          },
-          "public_address": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "New public address. The outer `Option` indicates whether to update; the inner allows clearing the field."
-          },
-          "status": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "New lifecycle status. Valid values: `active`, `disabled`.",
-            "example": "disabled"
-          }
-        }
-      },
-      "UpdatePaymentPolicyRequest": {
-        "type": "object",
-        "description": "Request body for the `update_payment_policy` operation.",
-        "properties": {
-          "allowed_capabilities": {
-            "type": [
-              "array",
-              "null"
-            ],
-            "items": {
-              "type": "string"
-            },
-            "description": "New capability allowlist. Outer `None` leaves the field unchanged.",
-            "example": [
-              "weather.lookup",
-              "shipping.quote",
-              "currency.convert"
-            ]
-          },
-          "allowed_hosts": {
-            "type": [
-              "array",
-              "null"
-            ],
-            "items": {
-              "type": "string"
-            },
-            "description": "New host allowlist. Outer `None` leaves the field unchanged.",
-            "example": [
-              "api.shippo.com",
-              "api.openweathermap.org",
-              "api.exchangerate.host"
-            ]
-          },
-          "max_amount_usd_per_day": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "format": "double",
-            "description": "New per-day cap (USD). Outer `None` leaves the field unchanged; inner `None` clears the cap."
-          },
-          "max_amount_usd_per_request": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "format": "double",
-            "description": "New per-request cap (USD). **Enforced** by the payment authority. Outer `None` leaves the field unchanged; inner `None` clears the cap."
-          },
-          "max_amount_usd_per_turn": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "format": "double",
-            "description": "New per-turn cap (USD). Outer `None` leaves the field unchanged; inner `None` clears the cap."
-          },
-          "metadata": {
-            "description": "New free-form metadata. Replaces the existing metadata blob entirely when set.\nExample: `{\"owner_team\": \"ops\", \"ticket\": \"OPS-1248\", \"review_due\": \"2026-09-01\"}`."
-          },
-          "rail_preference": {
-            "type": [
-              "array",
-              "null"
-            ],
-            "items": {
-              "type": "string"
-            },
-            "description": "New rail preference order. Outer `None` leaves the field unchanged.",
-            "example": [
-              "mpp_tempo",
-              "x402_base"
-            ]
-          },
-          "require_approval_above_usd": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "format": "double",
-            "description": "New approval threshold (USD). **Advisory only — not yet enforced.** Outer `None` leaves the field unchanged; inner `None` disables the (future) gate."
-          },
-          "status": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "New lifecycle status. Valid values: `active`, `disabled`.",
-            "example": "disabled"
           }
         }
       },
@@ -91399,24 +90226,6 @@
         "example": "model_01933b5a000070008000000000000001",
         "pattern": "^model_[0-9a-f]{32}$"
       },
-      "payacctId": {
-        "type": "string",
-        "description": "Prefixed identifier with 'payacct' prefix",
-        "example": "payacct_01933b5a000070008000000000000001",
-        "pattern": "^payacct_[0-9a-f]{32}$"
-      },
-      "payattId": {
-        "type": "string",
-        "description": "Prefixed identifier with 'payatt' prefix",
-        "example": "payatt_01933b5a000070008000000000000001",
-        "pattern": "^payatt_[0-9a-f]{32}$"
-      },
-      "paypolId": {
-        "type": "string",
-        "description": "Prefixed identifier with 'paypol' prefix",
-        "example": "paypol_01933b5a000070008000000000000001",
-        "pattern": "^paypol_[0-9a-f]{32}$"
-      },
       "sbxtplId": {
         "type": "string",
         "description": "Prefixed identifier with 'sbxtpl' prefix",
@@ -91681,11 +90490,6 @@
       "x-displayName": "Budgets"
     },
     {
-      "name": "payments",
-      "description": "Machine payment wallet, policy, and attempt endpoints",
-      "x-displayName": "Payments"
-    },
-    {
       "name": "task-webhooks",
       "description": "Outbound HTTP webhooks fired on terminal task transitions",
       "x-displayName": "Task webhooks"
@@ -91807,12 +90611,11 @@
         "sandbox-templates",
         "sandboxes",
         "budgets",
-        "payments",
         "task-webhooks",
         "audit_logs",
         "commands"
       ],
-      "x-description": "Operate durable execution, schedules, sandbox infrastructure, budgets, payments and audit logs.",
+      "x-description": "Operate durable execution, schedules, sandbox infrastructure, budgets and audit logs.",
       "x-slug": "operations-billing"
     }
   ]

@@ -261,6 +261,16 @@ hosted store keeps:
   no activity for an hour, provider cleanup failed) are computed in the fleet
   query, so they filter and page like any other column.
 
+Provider status is refreshed automatically by a bounded cluster-once background
+job ([status sync](../../crates/server/src/background/sandbox_status_sync/mod.rs)).
+Each managed primary Sandbox becomes eligible for another check after five
+minutes. Checks use its pinned specification and credential, reading the current
+instance from its owning runtime, including shards. They update the fleet's
+observation without starting compute, changing runtime state, or advancing the
+activity clock. Unreachable providers retain their recorded state and wait for
+the next check. Concurrent lifecycle writes invalidate an in-flight observation.
+Large fleets are checked in batches, with the oldest check first.
+
 An idle running row shows **Last recorded running**. Organization admins can
 check the provider's current state in the detail drawer. The fleet list reads
 stored records and makes no provider requests.

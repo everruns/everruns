@@ -200,7 +200,7 @@ pub async fn dispatch_trigger_event(
             }
             (
                 TriggerDeliveryStatus::Failed,
-                Some(truncate(&error.to_string(), MAX_EVENT_FIELD_LEN)),
+                Some(failure_reason(error, trigger.id)),
                 None,
             )
         }
@@ -401,6 +401,23 @@ fn clean_field(value: Option<String>) -> Option<String> {
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
         .map(|value| truncate(&value, MAX_EVENT_FIELD_LEN))
+}
+
+/// The reason a failed delivery records, which org members can read.
+///
+/// THREAT[TM-TRIGGER-006]: an internal error stays internal. The delivery gets a
+/// reference id and the server log gets the details under that id; caller
+/// errors (bad request, not found, forbidden, ...) are recorded as they are.
+pub(super) fn failure_reason(
+    error: &CommandError,
+    trigger_id: everruns_contracts::typed_id::TriggerId,
+) -> String {
+    if let crate::domains::common::CommandErrorKind::Internal(inner) = &error.kind {
+        let reference = uuid::Uuid::now_v7();
+        tracing::error!(%reference, %trigger_id, error = %format!("{inner:#}"), "agent trigger run failed");
+        return format!("Internal error (ref {reference})");
+    }
+    truncate(&error.to_string(), MAX_EVENT_FIELD_LEN)
 }
 
 fn truncate(value: &str, max: usize) -> String {

@@ -268,18 +268,6 @@ impl RuntimeHostAdapter for InProcessRuntime {
         }
     }
 
-    fn payment_authority(
-        &self,
-        _: i64,
-        agent: Option<AgentId>,
-    ) -> Option<Arc<dyn crate::tool_execution::PaymentAuthority>> {
-        self.extensions
-            .authorities
-            .payment
-            .as_ref()
-            .and_then(|payment| payment(agent))
-    }
-
     fn session_creation_authority(
         &self,
         _: i64,

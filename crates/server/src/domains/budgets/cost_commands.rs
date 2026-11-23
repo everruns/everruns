@@ -111,6 +111,7 @@ impl Command for ListCostRates {
 #[derive(Debug, Deserialize, Serialize, ToSchema)]
 pub struct CreateCostRate {
     /// `model.tokens` or `sandbox.time`.
+    #[schema(example = "model.tokens")]
     pub meter: String,
     /// Which usage it applies to (see `CostRate.match`).
     #[serde(default)]

@@ -80,6 +80,14 @@ impl TurnSteering {
         &self,
         input: AcceptedTurnInput,
     ) -> std::result::Result<(), TurnSteeringPushError> {
+        let mut input = input;
+        if let Some(metadata) = &mut input.input.metadata {
+            metadata.remove(crate::engine::tool_steering::REDIRECT_TURN);
+        }
+        self.push(input)
+    }
+
+    fn push(&self, input: AcceptedTurnInput) -> std::result::Result<(), TurnSteeringPushError> {
         let mut state = self.state.lock().expect("turn steering lock poisoned");
         if !state.open {
             return Err(TurnSteeringPushError::Closed(Box::new(input)));
@@ -89,6 +97,21 @@ impl TurnSteering {
         }
         state.inputs.push_back(input);
         Ok(())
+    }
+
+    /// Explicitly redirect the identified turn; ordinary `try_push` messages
+    /// retain the usual FIFO next-reason behavior.
+    pub fn try_redirect(
+        &self,
+        input: AcceptedTurnInput,
+        turn_id: TurnId,
+    ) -> std::result::Result<(), TurnSteeringPushError> {
+        let mut input = input;
+        input.input = input.input.with_metadata(
+            crate::engine::tool_steering::REDIRECT_TURN,
+            serde_json::Value::String(turn_id.to_string()),
+        );
+        self.push(input)
     }
 
     /// Take every input accepted so far, leaving the ingress open.
@@ -224,6 +247,12 @@ impl<'a> InProcessInbox<'a> {
 
 #[async_trait]
 impl TurnInbox for InProcessInbox<'_> {
+    fn tool_batch_steering(
+        &self,
+    ) -> Option<Arc<dyn crate::engine::tool_steering::ToolBatchSteering>> {
+        Some(Arc::new(self.steering.clone()))
+    }
+
     async fn take(&self, session_id: SessionId) -> Result<Vec<MessageId>> {
         let mut message_ids = self
             .runtime
@@ -284,5 +313,15 @@ impl TurnInbox for InProcessInbox<'_> {
         self.runtime
             .park_turn(session_id, turn_id, client_tool_calls, resume);
         Ok(())
+    }
+}
+
+#[async_trait]
+impl crate::engine::tool_steering::ToolBatchSteering for TurnSteering {
+    async fn redirected(&self, turn_id: TurnId) -> Result<bool> {
+        let state = self.state.lock().expect("turn steering lock poisoned");
+        Ok(state.inputs.iter().any(|input| {
+            crate::engine::tool_steering::targets(input.input().metadata.as_ref(), turn_id)
+        }))
     }
 }

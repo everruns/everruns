@@ -535,3 +535,43 @@ Benefits:
 1. **Tool Validation**: Only registered tools can be executed
 2. **Policy Enforcement**: `requires_approval` tools pause for user confirmation (future)
 3. **Rate Limiting**: Per-agent rate limits (future)
+
+## Explicit mid-batch redirection
+
+The Framework's targeted `Session::redirect_with_id` accepts a new user input
+for an exact turn identity. Ordinary sends keep their existing next-reason FIFO
+semantics; metadata on ordinary Framework sends cannot opt into redirection.
+A stale target becomes ordinary input and cannot affect a different turn.
+
+Admission is checked after the scheduler's class and concurrency waits, before
+a fresh call starts. Already admitted calls settle normally. A queued call
+that loses admission gets an error result paired with its original call ID and
+`skipped` lifecycle status, never a fabricated successful result or a
+`tool.started` event. Results retain model order. The redirect is consumed only
+at the next reason boundary. Client/approval-held batches keep their existing
+settlement behavior; redirection does not grant permission or answer a hold.
+
+In-process turns read their steering queue. Session actors read the retained
+journal beyond the cursor captured at the batch boundary without advancing it.
+This works through the actor-store port rather than relying on a local signal
+reaching another worker. A failed admission read fails closed after running
+siblings settle. A skipped fresh durable claim is retained as a settled error
+and reused on replay. An ambiguous pre-existing running claim is not redispatched after a
+redirect, even when normally idempotent; it returns the existing interrupted,
+uncertain outcome. This also covers a crash between claiming a queued call and
+retaining its skip: redirection never claims an uncertain earlier execution
+never happened. The admission check is not an
+atomic transaction with a remote tool invocation: a call admitted just before
+a redirect may still run. This is safe-boundary steering, not interruption.
+
+The journal probe is a committed-ingress read, not a lifecycle flush. A
+Framework hosting profile that can admit a redirect keeps this gate, including
+remote Durable Object authorities. The platform execution-only worker does
+not expose explicit redirect admission and makes no new reads for it. In
+admitting profiles, each not-yet-redirected tool admission reads the authority
+(up to additional pages if needed). A separate per-batch cursor avoids reading
+old events again on later sequential admissions; concurrently admitted tools
+can read overlapping pages. Once the matching redirect is observed, the
+remaining calls skip without reads. This bounds redundant event payload, not
+remote round trips; measure RTT where the authority is remote. Local hints
+alone cannot provide the same cross-worker ordering.

@@ -65,9 +65,7 @@ fn deployment_flags() {
         // SAFETY: set once, before this binary starts any fleet thread or
         // builds the hosted catalog.
         unsafe {
-            for flag in ["DOCKER_CAPABILITY", "CONTAINER_SANDBOX", "MACHINE_PAYMENTS"] {
-                std::env::set_var(format!("FEATURE_{flag}"), "internal");
-            }
+            std::env::set_var("FEATURE_CONTAINER_SANDBOX", "internal");
         }
     });
 }

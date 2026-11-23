@@ -51,6 +51,19 @@ function DiscoveryBadge({ server }: { server: ChatMcpServer }) {
   const ui = useUiTranslations();
   const title = ui("Discovery state at the last turn");
   switch (server.discovery) {
+    // The catalog reason is current configuration, not a last-turn snapshot.
+    case "preset_disabled":
+      return (
+        <p className="basis-full text-xs text-muted-foreground">
+          {ui("MCP tools not loaded: catalog preset is disabled. Ask an admin to enable it.")}
+        </p>
+      );
+    case "preset_unavailable":
+      return (
+        <p className="basis-full text-xs text-muted-foreground">
+          {ui("MCP tools not loaded: catalog preset is unavailable. Choose an active preset.")}
+        </p>
+      );
     case "pending":
       return (
         <Badge variant="outline" title={title}>

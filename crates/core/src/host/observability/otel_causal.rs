@@ -207,7 +207,7 @@ fn causal_span_context(link: &CausalLink) -> SpanContext {
 
 const TURN_ANCHOR_KEY: &str = "everruns.turn_traceparent";
 
-pub(super) fn traceparent(context: &SpanContext) -> String {
+pub(crate) fn traceparent(context: &SpanContext) -> String {
     format!(
         "00-{}-{}-{:02x}",
         context.trace_id(),
@@ -217,7 +217,10 @@ pub(super) fn traceparent(context: &SpanContext) -> String {
 }
 
 pub(super) fn turn_anchor(metadata: Option<&serde_json::Value>) -> Option<SpanContext> {
-    let value = metadata?.get(TURN_ANCHOR_KEY)?.as_str()?;
+    committed_turn_span_context(metadata?.get(TURN_ANCHOR_KEY)?.as_str()?)
+}
+
+pub(crate) fn committed_turn_span_context(value: &str) -> Option<SpanContext> {
     let link = CausalLink::from_traceparent(value)?;
     // This value comes only from the committed turn event, never input metadata.
     Some(SpanContext::new(

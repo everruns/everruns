@@ -7,6 +7,7 @@ pub mod plane;
 pub mod queries;
 pub mod recordings;
 pub mod service;
+mod status;
 pub mod types;
 
 pub use commands::*;

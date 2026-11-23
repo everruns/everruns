@@ -441,12 +441,14 @@ async fn persisted_grant_revoke_and_acts_as_transition_do_not_reuse_cache_entrie
         .delete_virtual_user_connection(fixture.identity_id, &fixture.provider)
         .await
         .unwrap();
-    assert!(
-        fixture
-            .discover(fixture.session_a, McpServerActsAs::Service)
-            .await
-            .is_empty()
-    );
+    let missing = fixture
+        .discover(fixture.session_a, McpServerActsAs::Service)
+        .await;
+    assert_eq!(missing.len(), 1);
+    assert!(everruns_core::is_mcp_sign_in_required_tool(
+        missing[0].name()
+    ));
+    assert_eq!(fixture.egress.calls(), 1);
     assert!(
         fixture
             .db

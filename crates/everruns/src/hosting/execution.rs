@@ -125,6 +125,7 @@ pub(crate) async fn run(
         state,
         session,
         after_release: activation.actor.attempts == 1,
+        supports_tool_batch_redirect: engine.profile()?.supports_tool_batch_redirect(),
         revision: super::TurnRevision {
             behavior: activation.binding.behavior.clone(),
             framework: activation.binding.framework,
@@ -172,6 +173,7 @@ struct FrameworkHosts {
     /// The previous lease was released, not lost: no earlier epoch can have
     /// left a receipt for the input this one starts fresh.
     after_release: bool,
+    supports_tool_batch_redirect: bool,
     /// What this activation runs; retained on each turn it starts.
     revision: super::TurnRevision,
 }
@@ -191,6 +193,11 @@ impl FrameworkHosts {
 #[async_trait]
 impl ActorHosts for FrameworkHosts {
     type Host = InProcessRuntime;
+
+    fn supports_tool_batch_redirect(&self) -> bool {
+        self.supports_tool_batch_redirect
+    }
+
     fn host(&self, _: HostTurn, signals: &TurnSignals) -> Self::Host {
         if let Some(fence) = &signals.fence {
             self.epoch.observe_fence(fence);

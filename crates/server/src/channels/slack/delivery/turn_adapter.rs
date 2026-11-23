@@ -24,7 +24,6 @@ use everruns_core::channel::{
     ChannelApprovalPrompt, ChannelDeliveryAdapter, ChannelProgressSurface, ChannelReactionSurface,
     ChannelStreamDelivery, DeliveryContext, DeliveryResult, OutboundChannelMessage,
 };
-use tracing::error;
 
 use crate::channels::slack::approvals::{ApprovalBinding, build_approval_blocks};
 use everruns_integrations::slack_channel::actions::upload_file;
@@ -258,9 +257,6 @@ impl ChannelApprovalPrompt for SlackTurnAdapter {
             .await
             .map_err(|error| SlackApiError::Transient(error.to_string())),
         };
-        if let Err(error) = &posted {
-            error!(%session_id, %error, "Failed to post the Slack approval ask");
-        }
         result(posted)
     }
 }

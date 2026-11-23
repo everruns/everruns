@@ -28,6 +28,7 @@ pub use webhook::{WEBHOOK_PLATFORM, WebhookDriver};
 use std::sync::Arc;
 
 use everruns_core::channel_runtime::ChannelHost;
+use everruns_core::host::observability::delivery::OtelDeliveryObserver;
 
 use crate::domains::messages::MessageService;
 use crate::domains::sessions::SessionService;
@@ -89,7 +90,8 @@ impl ServerChannels {
             messages,
         )))
         .store(Arc::new(PgChannelStore::new(db)))
-        .resolver(Arc::new(resolver.clone()));
+        .resolver(Arc::new(resolver.clone()))
+        .delivery_observer(Arc::new(OtelDeliveryObserver::default()));
         if let Some(egress) = egress {
             builder = builder.egress(egress);
         }

@@ -85,7 +85,7 @@ specified, and testable against a fixed vector.
 
 | Dependency | Replacement | Evidence it is equivalent |
 |---|---|---|
-| `ethers-signers`, `ethers-core` | [`domains/payments/eip712.rs`](../../crates/server/src/domains/payments/eip712.rs) on `k256` + `sha3` | A signature vector captured from the ethers implementation, pinned in `authority.rs`, passed unchanged across the swap |
+| `ethers-signers`, `ethers-core` | Removed with machine payments (2026-11); the x402 rail was the only signer | Nothing left to sign |
 | `metrics-exporter-prometheus` | [`api/prometheus_recorder.rs`](../../crates/server/src/api/prometheus_recorder.rs) | Exposition-format unit tests; see [Prometheus Metrics](../operations/prometheus-metrics.md) for the shape change |
 | `git2`'s TLS backend | [`domains/git_fetch.rs`](../../crates/server/src/domains/git_fetch.rs), smart-HTTP v2 over the rustls client | Protocol unit tests plus an `#[ignore]`d end-to-end fetch against a real remote |
 | `sysinfo` | [`everruns-durable::sysstat`](../../crates/durable/src/sysstat.rs), reading `/proc` | Unit tests on a Linux host; returns `None` elsewhere rather than a fabricated zero |
@@ -93,21 +93,7 @@ specified, and testable against a fixed vector.
 | `minijinja` | Single-pass substitution in the durable bench report | Placeholder-coverage test over the real template |
 | `fetchkit`'s `render-rakers` | Removed; browserless and deno serve JS rendering | Product-contract change, recorded under TM-TOOL-024 |
 
-Three of these deserve their reasoning kept:
-
-### Payments signing is in-tree because both libraries were worse
-
-`ethers-rs` is retired upstream, so the move was forced. Its maintained successor
-`alloy-signer-local` was measured before adopting it and came out at **103 exclusive
-crates against ethers' 64**, because it drags the consensus, network, RLP, and KZG stack
-to sign one struct. The x402 rail needs exactly one EIP-712 struct over secp256k1, which
-is fully specified; in-tree it costs 15 crates.
-
-This is the one place the "don't own crypto" instinct was overridden, and it was
-overridden on evidence: a known-answer vector proves byte-equivalence with the
-implementation it replaced, and the module carries independent checks — signature
-recovery to the signing address, low-S form, EIP-55 vectors from the specification, and
-per-field digest separation. Any change there must keep that vector passing.
+Two of these deserve their reasoning kept:
 
 ### git2 stays; only its transport left
 

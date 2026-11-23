@@ -14,6 +14,8 @@ mod braintrust_delivery;
 #[cfg(feature = "braintrust")]
 mod braintrust_egress;
 pub mod composite;
+#[cfg(all(feature = "otel", feature = "channels"))]
+pub mod delivery;
 #[cfg(any(feature = "otel", feature = "braintrust"))]
 mod generation_attrs;
 #[cfg(feature = "otel")]

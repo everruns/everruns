@@ -18,7 +18,6 @@
 * [Feature Flags](feature-flags.md) - Feature flags system.
 * [Budgeting Specification](budgeting.md) - Extensible budgeting system.
 * [Usage Tracking Specification](usage-tracking.md) - LLM token usage tracking.
-* [Machine Payments](machine-payments.md) - Capability-side payments to external paid services.
 * [Secret-leak Guardrails](secret-leak-guardrails.md) - Defense-in-depth semantic detection and deterministic known-value redaction.
 * [CI Secret Handling](ci-secret-handling.md) - Keeping runtime-fetched credentials out of Actions logs.
 

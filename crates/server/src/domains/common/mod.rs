@@ -380,7 +380,6 @@ impl CommandMeta {
             "plugins" => Some("plugins"),
             "observers" => Some("observers"),
             "agent_views" => Some("agent_views"),
-            "payments" => Some("machine_payments"),
             _ => None,
         }
     }

@@ -28,7 +28,7 @@ use everruns_contracts::typed_id::{AgentId, MessageId};
 use crate::delegation_services::{SessionCreationAuthority, SubagentSpawnStore};
 use crate::engine::tool_detach::ToolDetacher;
 use crate::host::WaitsOnPerson;
-use crate::tool_execution::{BudgetChecker, OutboundToolRateLimiter, PaymentAuthority};
+use crate::tool_execution::{BudgetChecker, OutboundToolRateLimiter};
 use crate::{
     DecisionsService, EgressService, UtilityLlmService,
     connection_services::ProviderCredentialStore, durability::DurableToolResultStore,
@@ -36,7 +36,7 @@ use crate::{
     session_services::LeasedResourceStore, session_services::SessionResourceRegistry,
 };
 
-/// A service chosen per agent (budgets and payment are per agent).
+/// A service chosen per agent (budgets are per agent).
 pub type PerAgent<T> = Arc<dyn Fn(Option<AgentId>) -> Option<Arc<T>> + Send + Sync>;
 
 /// A service chosen per agent and admitted input.
@@ -86,8 +86,6 @@ pub struct CompositionExtensions {
 pub struct AuthorityExtensions {
     /// Budget checks before model and tool calls.
     pub budget: Option<PerAgent<dyn BudgetChecker>>,
-    /// Payment for paid tools.
-    pub payment: Option<PerAgent<dyn PaymentAuthority>>,
     /// Creating child sessions (subagents, teams).
     pub session_creation: Option<Arc<dyn SessionCreationAuthority>>,
     /// The organization's outbound tool-call rate limiter.

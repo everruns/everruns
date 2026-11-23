@@ -365,4 +365,15 @@ pub trait SessionActorStore: Send + Sync {
         after_sequence: Option<i32>,
         limit: u32,
     ) -> Result<ActorJournal>;
+    /// Read committed ingress without forcing an executing turn's buffered
+    /// lifecycle events to flush. Admission probes never need those events.
+    async fn read_admission_journal(
+        &self,
+        session_id: SessionId,
+        after_sequence: Option<i32>,
+        limit: u32,
+    ) -> Result<ActorJournal> {
+        self.read_actor_journal(session_id, after_sequence, limit)
+            .await
+    }
 }
