@@ -8,6 +8,7 @@ pub mod org;
 
 use std::collections::BTreeMap;
 use std::net::SocketAddr;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -107,6 +108,9 @@ pub struct Fleet {
     raft_ports: Vec<TcpSocket>,
     /// Why nodes stopped serving on their own; any entry fails the test.
     failed: Arc<Mutex<Vec<String>>>,
+    /// Set before the test stops a node, so the error its serve returns
+    /// as the runtime winds down (a cancelled task) is not a failure.
+    stopping: BTreeMap<(u32, u64), Arc<AtomicBool>>,
 }
 
 impl Drop for Fleet {
@@ -183,6 +187,7 @@ impl Fleet {
             ports,
             raft_ports,
             failed: Arc::default(),
+            stopping: BTreeMap::new(),
             dir,
         };
         for (shard, members) in &topology.shards {
@@ -231,10 +236,14 @@ impl Fleet {
         let host = Arc::new(everruns_agentd_testkit::host());
         let topology = self.topology.clone();
         let failed = self.failed.clone();
+        let stopping = Arc::new(AtomicBool::new(false));
+        self.stopping.insert((shard, node), stopping.clone());
         rt.spawn(async move {
             let served =
                 everruns_agentd::cli::serve_node_on(cfg, host, topology, listener, false).await;
-            if let Err(error) = served {
+            if let Err(error) = served
+                && !stopping.load(Ordering::SeqCst)
+            {
                 failed
                     .lock()
                     .unwrap()
@@ -385,6 +394,9 @@ impl Fleet {
     }
 
     pub fn kill_node(&mut self, shard: u32, node: u64) {
+        if let Some(stopping) = self.stopping.get(&(shard, node)) {
+            stopping.store(true, Ordering::SeqCst);
+        }
         if let Some(rt) = self
             .nodes
             .get_mut(&(shard, node))
