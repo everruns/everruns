@@ -219,11 +219,18 @@ def main():
         reader.join(timeout=30)
         if not a.keep:
             subprocess.run([sys.executable, os.path.join(ROOT, "scripts/agentd/fleet.py"), "down"])
+    missing = (report.get("sessions") or 0) * a.turns - (report.get("turns_completed") or 0)
     summary = {
         "scale": a.scale,
         "config": cfg,
         "secs": round(time.time() - started),
+        # Sessions arrive open loop (Poisson) for the ramp, so a run starts
+        # about sessions +- sqrt(sessions); what must hold is that every
+        # session that started finished every turn.
+        "sessions_started": report.get("sessions"),
         "turns": report.get("turns_completed"),
+        "turns_missing": missing,
+        "stalled": report.get("stalled"),
         "errors": report.get("errors"),
         "chaos": chaos,
         "oom_kills": oom,
@@ -235,9 +242,9 @@ def main():
     with open(os.path.join(a.out, "summary.json"), "w") as f:
         json.dump(summary, f, indent=2)
     print(json.dumps(summary, indent=2))
-    if oom or report.get("errors") or drive.returncode:
+    if oom or report.get("errors") or missing or drive.returncode:
         sys.exit(f"failed: {len(oom)} out-of-memory kills, {report.get('errors')} errors, "
-                 f"driver exit {drive.returncode}")
+                 f"{missing} turns missing, driver exit {drive.returncode}")
 
 
 if __name__ == "__main__":
