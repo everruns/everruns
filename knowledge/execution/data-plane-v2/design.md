@@ -2460,6 +2460,22 @@ the finalization work: encode a snapshot without a full copy of the
 state, and stagger the nodes' snapshots; after chaos the shard that lost
 a node still draws 16,000 running turns against 2,700 elsewhere.
 
+**Phase 2 gate (2026-11-23).** The same mix and chaos, on the storage
+change (every-replica ack, 10 s log shipping). Saas run 45179434646 ran
+72,421 agents and 724,210 turns with 0 errors but failed the gate: five
+cell nodes were killed out of memory 1,000 to 1,400 s after chaos. Snapshots
+fired on entry count only, 300 to 500 s apart under load; the log reached
+1.3 to 1.6 GB, which costs about 2.5 times that in the node's memory, and
+the bytes trigger (a quarter of the budget, 2.25 GB) never fired. A node now
+also snapshots once the log passes a sixteenth of the budget, staggered per
+node and no sooner than ten times the last snapshot's build time
+(`sm::log_wants_snapshot`). Run 45197793040 then **passed**: 72,537 agents,
+725,370 turns, 0 errors, no restarts, 219 turns/s; peak log 0.60 to 0.75 GB
+and peak node memory 10.1 to 11.5 GB (80% of 14 GiB, down from 13.7 GB);
+971,380 object store writes, 947,238 of them session segments. The scaled
+one-shard soak (`scripts/agentd/shard_soak.py`) is how the next change of
+this kind is caught before a 75k run.
+
 ### Corrections after the architecture review (2026-11-09)
 
 A review of the merged steps 1 to 3 against the code, not the plan, found
