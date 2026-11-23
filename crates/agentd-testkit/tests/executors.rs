@@ -412,8 +412,8 @@ async fn approved(agent: &str, tool: &str) {
     assert_eq!(answers(&events), vec!["Changed, as approved.".to_string()]);
 }
 
-/// A shard whose node is near its memory limit refuses new input and new
-/// sessions with 429 and a retry hint, lets the turn it already admitted
+/// A shard whose node is past its memory limit refuses new input and new
+/// sessions with 429 and a retry hint, lets the turn it already started
 /// finish, gets no new sessions from the gateway, and takes work again once
 /// memory frees.
 #[tokio::test(flavor = "multi_thread")]
@@ -422,7 +422,15 @@ async fn a_shard_short_of_memory_sheds_new_work_and_finishes_admitted_turns() {
     fleet.executor(1);
     let session = fleet.create_in("slow", 1).await;
     fleet.say(&session, "go").await;
-    // Shard 1's only node now measures itself against 1 MiB: shedding.
+    // At Emergency a shard starts no turns, so this one starts first.
+    fleet
+        .until("the turn starts", || async {
+            types(&fleet.events(&session).await).contains(&"turn.started")
+        })
+        .await;
+    // Shard 1's only node now measures itself against 1 MiB: past every
+    // level, so at Emergency. A restart is due but a test fleet only
+    // counts it (`pressure::enable_restart`).
     fleet.restart_with_memory_limit(1, 1, 1 << 20);
     fleet.leader(1).await;
     let say = |text: &str| json!({ "text": text });
@@ -473,7 +481,15 @@ async fn a_shard_short_of_memory_sheds_new_work_and_finishes_admitted_turns() {
         .lines()
         .find(|l| l.starts_with("agentd_shard_overload_level{"))
         .unwrap_or_default();
-    assert!(level.ends_with(" 2"), "shedding: {level}");
+    assert!(level.ends_with(" 3"), "emergency: {level}");
+    let restarts = metrics
+        .lines()
+        .find(|l| l.starts_with("agentd_memory_actions_total{") && l.contains("restart"))
+        .unwrap_or_default();
+    assert!(
+        restarts.ends_with(" 1"),
+        "a restart was due once: {restarts}"
+    );
     // Memory frees: the shard takes work again.
     fleet.restart_with_memory_limit(1, 1, 1 << 40);
     fleet.leader(1).await;

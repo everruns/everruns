@@ -70,7 +70,10 @@ enum Mode {
         #[arg(long, env = "AGENTD_RAFT_PORT_OFFSET", default_value = "0")]
         raft_port_offset: u16,
         /// Also unload sessions idle this many seconds (0: only under pressure).
-        #[arg(long, env = "AGENTD_UNLOAD_IDLE_SECS", default_value = "0")]
+        /// Decision: 10 minutes by default, as `serve` and the Helm chart
+        /// do: an idle session's events otherwise stay resident until the
+        /// node is short of memory (memory design, step 3).
+        #[arg(long, env = "AGENTD_UNLOAD_IDLE_SECS", default_value = "600")]
         unload_idle_secs: u64,
         #[arg(long, default_value = "5000")]
         claim_ttl_ms: u64,
@@ -442,7 +445,14 @@ pub async fn run(host: impl Host) -> anyhow::Result<()> {
                 },
                 control_plane: control_plane.map(crate::node_control::ControlPlane::new),
             };
-            serve_node(cfg, host, source, addr.parse()?, join).await
+            // A node out of memory restarts itself (`pressure`, level 4).
+            crate::pressure::enable_restart();
+            tokio::select! {
+                served = serve_node(cfg, host, source, addr.parse()?, join) => served,
+                () = crate::pressure::restart_requested() => {
+                    std::process::exit(crate::memwatch::RESTART_EXIT)
+                }
+            }
         }
         Mode::Executor {
             topology,

@@ -402,7 +402,7 @@ impl Executor {
                 .filter(|(s, _)| !shed.contains(*s))
                 .map(|(s, at)| (*at, *s))
                 .collect();
-            by_age.sort_by(|a, b| b.0.cmp(&a.0));
+            by_age.sort_by_key(|(at, _)| std::cmp::Reverse(*at));
             let n = by_age.len().div_ceil(4);
             by_age.into_iter().take(n).map(|(_, s)| s).collect()
         };

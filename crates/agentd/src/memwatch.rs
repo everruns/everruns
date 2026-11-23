@@ -14,18 +14,28 @@
 //!   The count lives in the same file, so it survives the restarts it
 //!   counts. A clean stop writes nothing special: one at 95% would be
 //!   counted too, which errs toward reporting.
+//! - A node that restarts itself before the kernel would kill it
+//!   (`pressure`, level 4) marks its last heartbeat `restarting`, so the
+//!   next start counts a controlled restart, not a kill.
 //! - One reading per process: the container's memory is the process's. In
 //!   a fleet test, several nodes share a process and the last one started
 //!   sets the count, which no test reads.
 
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
 /// Out-of-memory kills of this node's data directory, across restarts.
 static OOM_KILLS: AtomicU64 = AtomicU64::new(0);
+/// Controlled restarts of this node's data directory, across restarts.
+static RESTARTS: AtomicU64 = AtomicU64::new(0);
+/// Set once this process is restarting itself: heartbeats stop, so the
+/// marked last one stays.
+static RESTARTING: AtomicBool = AtomicBool::new(false);
+/// Serializes heartbeat writes with [`note_restart`].
+static WRITING: parking_lot::Mutex<()> = parking_lot::Mutex::new(());
 
 /// A last reading at or above this share of the limit means the exit that
 /// followed was the kernel's kill.
@@ -40,6 +50,12 @@ pub struct Heartbeat {
     pub limit_bytes: u64,
     /// Out-of-memory kills counted so far.
     pub oom_kills: u64,
+    /// Controlled restarts counted so far.
+    #[serde(default)]
+    pub restarts: u64,
+    /// The run that wrote this restarted itself.
+    #[serde(default)]
+    pub restarting: bool,
 }
 
 /// The container's usage less what the kernel reclaims before killing,
@@ -162,8 +178,9 @@ pub fn previous_exit(last: Option<Heartbeat>) -> Heartbeat {
     let Some(last) = last else {
         return Heartbeat::default();
     };
-    let killed =
-        last.limit_bytes > 0 && last.working_bytes as f64 >= last.limit_bytes as f64 * KILLED_AT;
+    let killed = !last.restarting
+        && last.limit_bytes > 0
+        && last.working_bytes as f64 >= last.limit_bytes as f64 * KILLED_AT;
     if killed {
         tracing::warn!(
             working_mb = last.working_bytes >> 20,
@@ -173,8 +190,26 @@ pub fn previous_exit(last: Option<Heartbeat>) -> Heartbeat {
     }
     Heartbeat {
         oom_kills: last.oom_kills + u64::from(killed),
+        restarting: false,
         ..last
     }
+}
+
+/// Controlled restarts counted for this node, across its restarts.
+pub fn restarts() -> u64 {
+    RESTARTS.load(Ordering::Relaxed)
+}
+
+/// Mark the last heartbeat in `data_dir` as a controlled restart and stop
+/// writing heartbeats; the process exits next.
+pub fn note_restart(data_dir: &Path) {
+    let _one = WRITING.lock();
+    RESTARTING.store(true, Ordering::Relaxed);
+    let mut beat = read(data_dir).unwrap_or_default();
+    beat.restarts += 1;
+    beat.restarting = true;
+    RESTARTS.store(beat.restarts, Ordering::Relaxed);
+    write(data_dir, &beat);
 }
 
 fn path(data_dir: &Path) -> PathBuf {
@@ -199,6 +234,7 @@ fn write(data_dir: &Path, beat: &Heartbeat) {
 pub fn spawn(data_dir: PathBuf) {
     let mut beat = previous_exit(read(&data_dir));
     OOM_KILLS.store(beat.oom_kills, Ordering::Relaxed);
+    RESTARTS.store(beat.restarts, Ordering::Relaxed);
     tokio::spawn(async move {
         let mut tick = tokio::time::interval(Duration::from_secs(1));
         loop {
@@ -210,8 +246,12 @@ pub fn spawn(data_dir: PathBuf) {
                     .map_or(0, |d| d.as_secs()),
                 working_bytes,
                 limit_bytes,
-                oom_kills: beat.oom_kills,
+                ..beat
             };
+            let _one = WRITING.lock();
+            if RESTARTING.load(Ordering::Relaxed) {
+                return;
+            }
             write(&data_dir, &beat);
         }
     });
@@ -251,9 +291,18 @@ mod tests {
             working_bytes: working,
             limit_bytes: 1000,
             oom_kills: kills,
+            ..Heartbeat::default()
         };
         assert_eq!(previous_exit(Some(at(960, 2))).oom_kills, 3);
         assert_eq!(previous_exit(Some(at(940, 2))).oom_kills, 2);
+        // A run that restarted itself at its limit was not killed.
+        let restarted = previous_exit(Some(Heartbeat {
+            restarting: true,
+            restarts: 1,
+            ..at(990, 2)
+        }));
+        assert_eq!((restarted.oom_kills, restarted.restarts), (2, 1));
+        assert!(!restarted.restarting, "the next run starts unmarked");
         // No limit: nothing to compare with.
         let unlimited = Heartbeat {
             limit_bytes: 0,
@@ -274,6 +323,7 @@ mod tests {
                 working_bytes: 990,
                 limit_bytes: 1000,
                 oom_kills: 4,
+                ..Heartbeat::default()
             },
         );
         let beat = previous_exit(read(dir.path()));
