@@ -1,0 +1,2 @@
+{"sessions": 50000, "turns": 100000, "errors": 0, "turns_per_sec": 488.0, "turn": {"p50_ms": 800.0}, "admit": null, "rss_peak": 2900,
+ "rss_end": {"c0n1": 1800}, "wall": 2400, "check": {"ok": true, "failed_sessions": 0, "totals": {"sessions": 50000}, "err": null}}

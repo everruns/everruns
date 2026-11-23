@@ -1,0 +1,3 @@
+# The goal file of the 1M agents validator defines what its score means;
+# only the project owner changes it (validators/agents-1m/README.md).
+/validators/agents-1m/goal.toml @chaliy

@@ -1,0 +1,714 @@
+{
+"backlog": [
+{
+"queued": 0,
+"running": 0,
+"t": 1
+},
+{
+"queued": 278,
+"running": 829,
+"t": 31
+},
+{
+"queued": 367,
+"running": 1226,
+"t": 62
+},
+{
+"queued": 329,
+"running": 1456,
+"t": 93
+},
+{
+"queued": 495,
+"running": 1838,
+"t": 121
+},
+{
+"queued": 522,
+"running": 2069,
+"t": 148
+},
+{
+"queued": 652,
+"running": 2423,
+"t": 175
+},
+{
+"queued": 754,
+"running": 2718,
+"t": 201
+},
+{
+"queued": 1807,
+"running": 4113,
+"t": 229
+},
+{
+"queued": 2921,
+"running": 6682,
+"t": 255
+},
+{
+"queued": 2852,
+"running": 7611,
+"t": 282
+},
+{
+"queued": 7027,
+"running": 7788,
+"t": 316
+},
+{
+"queued": 12148,
+"running": 7495,
+"t": 350
+},
+{
+"queued": 15982,
+"running": 8105,
+"t": 384
+},
+{
+"queued": 19927,
+"running": 8057,
+"t": 418
+},
+{
+"queued": 23870,
+"running": 8759,
+"t": 452
+},
+{
+"queued": 27302,
+"running": 8689,
+"t": 482
+},
+{
+"queued": 31021,
+"running": 8547,
+"t": 510
+},
+{
+"queued": 33619,
+"running": 10446,
+"t": 538
+},
+{
+"queued": 39236,
+"running": 10717,
+"t": 566
+},
+{
+"queued": 41106,
+"running": 10198,
+"t": 593
+},
+{
+"queued": 43487,
+"running": 9591,
+"t": 620
+},
+{
+"queued": 41050,
+"running": 12233,
+"t": 651
+},
+{
+"queued": 42605,
+"running": 13193,
+"t": 684
+},
+{
+"queued": 41192,
+"running": 20075,
+"t": 712
+},
+{
+"queued": 37716,
+"running": 20442,
+"t": 745
+},
+{
+"queued": 35740,
+"running": 21001,
+"t": 776
+},
+{
+"queued": 36046,
+"running": 16928,
+"t": 808
+},
+{
+"queued": 36398,
+"running": 16018,
+"t": 842
+},
+{
+"queued": 37776,
+"running": 14399,
+"t": 874
+},
+{
+"queued": 38033,
+"running": 12697,
+"t": 908
+},
+{
+"queued": 38221,
+"running": 10834,
+"t": 945
+},
+{
+"queued": 38492,
+"running": 10638,
+"t": 976
+},
+{
+"queued": 38680,
+"running": 10723,
+"t": 1006
+},
+{
+"queued": 39441,
+"running": 10121,
+"t": 1036
+},
+{
+"queued": 38923,
+"running": 9575,
+"t": 1068
+},
+{
+"queued": 39587,
+"running": 9543,
+"t": 1097
+},
+{
+"queued": 39744,
+"running": 8840,
+"t": 1126
+},
+{
+"queued": 39416,
+"running": 9045,
+"t": 1155
+},
+{
+"queued": 39068,
+"running": 9106,
+"t": 1184
+},
+{
+"queued": 39308,
+"running": 9049,
+"t": 1212
+},
+{
+"queued": 39660,
+"running": 8706,
+"t": 1240
+},
+{
+"queued": 39060,
+"running": 9442,
+"t": 1268
+},
+{
+"queued": 38606,
+"running": 9119,
+"t": 1294
+},
+{
+"queued": 37837,
+"running": 9449,
+"t": 1321
+},
+{
+"queued": 37438,
+"running": 9427,
+"t": 1347
+},
+{
+"queued": 37149,
+"running": 9329,
+"t": 1375
+},
+{
+"queued": 36579,
+"running": 9093,
+"t": 1401
+},
+{
+"queued": 36634,
+"running": 8825,
+"t": 1428
+},
+{
+"queued": 37115,
+"running": 8406,
+"t": 1454
+},
+{
+"queued": 37053,
+"running": 8280,
+"t": 1480
+},
+{
+"queued": 35249,
+"running": 9302,
+"t": 1507
+},
+{
+"queued": 34611,
+"running": 9319,
+"t": 1533
+},
+{
+"queued": 33096,
+"running": 9868,
+"t": 1563
+},
+{
+"queued": 31809,
+"running": 10390,
+"t": 1590
+},
+{
+"queued": 31617,
+"running": 10327,
+"t": 1617
+},
+{
+"queued": 31856,
+"running": 9570,
+"t": 1643
+},
+{
+"queued": 31829,
+"running": 8774,
+"t": 1670
+},
+{
+"queued": 31548,
+"running": 8591,
+"t": 1697
+},
+{
+"queued": 31301,
+"running": 8208,
+"t": 1724
+},
+{
+"queued": 30614,
+"running": 8651,
+"t": 1750
+},
+{
+"queued": 27682,
+"running": 15118,
+"t": 1778
+},
+{
+"queued": 26145,
+"running": 16875,
+"t": 1804
+},
+{
+"queued": 23718,
+"running": 16743,
+"t": 1833
+},
+{
+"queued": 23929,
+"running": 14015,
+"t": 1863
+},
+{
+"queued": 24187,
+"running": 11615,
+"t": 1894
+},
+{
+"queued": 22940,
+"running": 10463,
+"t": 1920
+},
+{
+"queued": 21931,
+"running": 12228,
+"t": 1949
+},
+{
+"queued": 19927,
+"running": 15310,
+"t": 1976
+},
+{
+"queued": 18478,
+"running": 16492,
+"t": 2007
+},
+{
+"queued": 17322,
+"running": 14340,
+"t": 2035
+},
+{
+"queued": 15033,
+"running": 14784,
+"t": 2064
+},
+{
+"queued": 14392,
+"running": 13075,
+"t": 2094
+},
+{
+"queued": 15251,
+"running": 10623,
+"t": 2122
+},
+{
+"queued": 14888,
+"running": 9444,
+"t": 2149
+},
+{
+"queued": 13807,
+"running": 8803,
+"t": 2176
+},
+{
+"queued": 12611,
+"running": 8180,
+"t": 2210
+},
+{
+"queued": 11300,
+"running": 9467,
+"t": 2238
+},
+{
+"queued": 8428,
+"running": 11303,
+"t": 2266
+},
+{
+"queued": 6834,
+"running": 11434,
+"t": 2297
+},
+{
+"queued": 5430,
+"running": 10162,
+"t": 2324
+},
+{
+"queued": 4396,
+"running": 9081,
+"t": 2351
+},
+{
+"queued": 3279,
+"running": 8141,
+"t": 2377
+},
+{
+"queued": 2384,
+"running": 8031,
+"t": 2404
+},
+{
+"queued": 1083,
+"running": 8038,
+"t": 2431
+},
+{
+"queued": 386,
+"running": 5592,
+"t": 2458
+},
+{
+"queued": 486,
+"running": 2817,
+"t": 2484
+},
+{
+"queued": 276,
+"running": 2560,
+"t": 2510
+},
+{
+"queued": 391,
+"running": 2347,
+"t": 2537
+},
+{
+"queued": 263,
+"running": 2056,
+"t": 2563
+},
+{
+"queued": 219,
+"running": 1929,
+"t": 2588
+},
+{
+"queued": 191,
+"running": 1650,
+"t": 2614
+},
+{
+"queued": 158,
+"running": 1404,
+"t": 2641
+},
+{
+"queued": 97,
+"running": 1162,
+"t": 2667
+},
+{
+"queued": 119,
+"running": 1078,
+"t": 2695
+},
+{
+"queued": 83,
+"running": 906,
+"t": 2722
+},
+{
+"queued": 78,
+"running": 790,
+"t": 2748
+},
+{
+"queued": 60,
+"running": 636,
+"t": 2774
+},
+{
+"queued": 47,
+"running": 551,
+"t": 2801
+},
+{
+"queued": 39,
+"running": 421,
+"t": 2828
+},
+{
+"queued": 25,
+"running": 317,
+"t": 2854
+},
+{
+"queued": 25,
+"running": 264,
+"t": 2881
+},
+{
+"queued": 15,
+"running": 231,
+"t": 2908
+},
+{
+"queued": 12,
+"running": 140,
+"t": 2935
+},
+{
+"queued": 11,
+"running": 143,
+"t": 2962
+},
+{
+"queued": 9,
+"running": 93,
+"t": 2988
+},
+{
+"queued": 11,
+"running": 84,
+"t": 3018
+},
+{
+"queued": 1,
+"running": 76,
+"t": 3029
+},
+{
+"queued": 3,
+"running": 51,
+"t": 3056
+},
+{
+"queued": 3,
+"running": 41,
+"t": 3084
+},
+{
+"queued": 1,
+"running": 31,
+"t": 3112
+},
+{
+"queued": 1,
+"running": 18,
+"t": 3140
+},
+{
+"queued": 0,
+"running": 13,
+"t": 3168
+},
+{
+"queued": 1,
+"running": 9,
+"t": 3196
+},
+{
+"queued": 1,
+"running": 8,
+"t": 3222
+},
+{
+"queued": 0,
+"running": 4,
+"t": 3249
+},
+{
+"queued": 0,
+"running": 4,
+"t": 3275
+},
+{
+"queued": 0,
+"running": 2,
+"t": 3301
+},
+{
+"queued": 0,
+"running": 0,
+"t": 3326
+},
+{
+"queued": 1,
+"running": 2,
+"t": 3352
+},
+{
+"queued": 0,
+"running": 2,
+"t": 3377
+},
+{
+"queued": 0,
+"running": 0,
+"t": 3403
+},
+{
+"queued": 0,
+"running": 1,
+"t": 3429
+},
+{
+"queued": 0,
+"running": 0,
+"t": 3455
+}
+],
+"compute_usd_estimate": 2.31,
+"drivers": 3,
+"errors": 0,
+"first_errors": [],
+"nodes": {
+"m6a.12xlarge": 1
+},
+"peak_node_rss_mb": 11484,
+"peak_queued_inputs": 43487,
+"peak_running_turns": 21001,
+"peak_sessions": 79905,
+"reports": 3,
+"restarts": {},
+"sessions": 72537,
+"shed": 9940,
+"store_puts": {
+"blob": 0,
+"feed": 0,
+"incarnation": 0,
+"log": 24087,
+"other": 0,
+"retired": 0,
+"segment": 947238,
+"snapshot": 55
+},
+"stream_errors": 23,
+"streamed_events": 12876996,
+"streaming_sessions": 14506,
+"turn": [
+{
+"count": 242430,
+"max_ms": 1123695.693,
+"p50_ms": 102613.943,
+"p90_ms": 235105.143,
+"p99_ms": 441305.937
+},
+{
+"count": 242350,
+"max_ms": 1207008.532,
+"p50_ms": 103018.963,
+"p90_ms": 235742.069,
+"p99_ms": 442756.863
+},
+{
+"count": 240590,
+"max_ms": 1091387.051,
+"p50_ms": 102781.081,
+"p90_ms": 235865.094,
+"p99_ms": 440360.889
+}
+],
+"turns_completed": 725370,
+"turns_per_sec": 218.7,
+"usage": {
+"components": {
+"cell": {
+"cpu_cores_avg": 11.22,
+"cpu_cores_peak": 16.81,
+"memory_mb_peak": 91003,
+"memory_mb_peak_one_pod": 14167,
+"pods": 9
+},
+"driver": {
+"cpu_cores_avg": 0.52,
+"cpu_cores_peak": 0.96,
+"memory_mb_peak": 8337,
+"memory_mb_peak_one_pod": 2827,
+"pods": 3
+},
+"executor": {
+"cpu_cores_avg": 17.14,
+"cpu_cores_peak": 28.15,
+"memory_mb_peak": 28815,
+"memory_mb_peak_one_pod": 3625,
+"pods": 8
+}
+},
+"machines": {
+"i-0076f90043475564f": {
+"cpu_util_avg": 0.64,
+"cpu_util_peak": 0.95,
+"cpus": 48,
+"memory_mb": 189152,
+"memory_mb_used_peak": 115702
+}
+},
+"readings": 124
+},
+"usd_per_agent_hour_estimate": 3e-05,
+"vcpus": 48
+}

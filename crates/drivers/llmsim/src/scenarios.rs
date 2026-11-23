@@ -48,8 +48,14 @@ use llmsim::scenario_stream::{Pacing, word_tokens};
 use llmsim::{SimError, SimTurn};
 
 /// Scenarios for everruns features llmsim does not know about, such as
-/// subagents. They are parsed by `local_scenarios_are_valid`.
-const LOCAL_SCENARIOS: [&str; 1] = [include_str!("../scenarios/subagent-fanout.json")];
+/// subagents, and the coding-agent load of the 1M agents validator
+/// (`coding-profile.json`, generated from measured coding sessions by
+/// `validators/agents-1m/workload/generate.py`; do not edit by hand). They are
+/// parsed by `local_scenarios_are_valid`.
+const LOCAL_SCENARIOS: [&str; 2] = [
+    include_str!("../scenarios/subagent-fanout.json"),
+    include_str!("../scenarios/coding-profile.json"),
+];
 
 static BUILTIN_SET: LazyLock<ScenarioSet> = LazyLock::new(|| {
     let mut set = ScenarioSet::builtin();
@@ -521,11 +527,10 @@ mod tests {
         for json in LOCAL_SCENARIOS {
             ScenarioSet::from_json(json).unwrap();
         }
-        assert!(
-            builtin_scenario_names()
-                .iter()
-                .any(|n| n == "subagent-fanout")
-        );
+        let names = builtin_scenario_names();
+        assert!(names.iter().any(|n| n == "subagent-fanout"));
+        assert!(names.iter().any(|n| n == "coding-p50"));
+        assert!(names.iter().any(|n| n == "coding-p99"));
     }
 
     #[tokio::test(start_paused = true)]

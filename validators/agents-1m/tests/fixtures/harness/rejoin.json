@@ -1,0 +1,2 @@
+{"sessions": 3000, "turns_completed": 30000, "errors": 0, "first_errors": [], "stream_errors": 0, "leader": 2, "follower": 3,
+ "term_at_restart": 4, "leader_terms_after_restart": [4], "follower_gap_at_end": 12, "peak_leader_rss_mb": 690, "caught_up_secs": 14.5, "ok": true}

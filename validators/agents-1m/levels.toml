@@ -1,0 +1,35 @@
+# Levels of certainty. A point's credit is m x c x f, kept at its best level.
+# The certainty weights are starting guesses; the prediction record after
+# each cloud run is how they get corrected.
+
+[L0]
+name = "model"
+certainty = 0.15
+what = "Arithmetic from measured per-agent costs, plus a scaling curve fit"
+paid = false
+
+[L1]
+name = "simulation"
+certainty = 0.30
+what = "Fleet tests with llmsim, the cluster simulation of the whole fleet, the realism check"
+paid = false
+
+[L2]
+name = "local"
+certainty = 0.50
+what = "Real processes on a local machine (the Mac mini), one shard at full 1M density"
+paid = false
+
+[L3]
+name = "cloud-slice"
+certainty = 0.80
+what = "EKS at goal density per shard; 1/8 of the goal (125,000 agents) by default"
+paid = true
+usd_estimate = [5, 20]
+
+[L4]
+name = "full"
+certainty = 1.00
+what = "EKS, the whole goal file; only with the owner's recorded approval"
+paid = true
+usd_estimate = [50, 200]

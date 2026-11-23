@@ -198,6 +198,8 @@ def main():
     p.add_argument("--concurrency", type=int, default=400)
     p.add_argument("--think", type=float, default=0.5, help="mean pause between a session's turns, seconds")
     p.add_argument("--record", action="store_true", help="write the result as the baseline")
+    p.add_argument("--no-baseline", action="store_true",
+                   help="print the result without comparing it (another load, e.g. the 1M validator's)")
     p.add_argument("--keep", action="store_true", help="leave the fleet running")
     a = p.parse_args()
     try:
@@ -214,6 +216,9 @@ def main():
         with open(BASELINE, "w") as f:
             json.dump(result, f, indent=2)
             f.write("\n")
+        print(json.dumps(result, indent=2))
+        return
+    if a.no_baseline:
         print(json.dumps(result, indent=2))
         return
     with open(BASELINE) as f:
