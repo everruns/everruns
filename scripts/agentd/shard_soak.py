@@ -106,6 +106,30 @@ def stats(n):
         return None
 
 
+def memory_metrics(n):
+    """The node's memory ledger from /metrics: bytes by source (MB), its
+    memory level and its memory actions, or None."""
+    try:
+        with urllib.request.urlopen(f"http://{fleet.addr(0, n)}/metrics", timeout=1.0) as r:
+            text = r.read().decode()
+    except Exception:
+        return None
+    out = {"sources_mb": {}, "level": None, "actions": {}}
+    for line in text.splitlines():
+        if line.startswith("#") or " " not in line:
+            continue
+        series, value = line.rsplit(" ", 1)
+        label = lambda key: series.split(f'{key}="', 1)[1].split('"', 1)[0] \
+            if f'{key}="' in series else None
+        if series.startswith("agentd_memory_bytes{"):
+            out["sources_mb"][label("source")] = round(float(value) / 2**20)
+        elif series.startswith("agentd_memory_level{"):
+            out["level"] = int(float(value))
+        elif series.startswith("agentd_memory_actions_total{"):
+            out["actions"][label("action")] = int(float(value))
+    return out
+
+
 def scaled(a):
     s = a.scale
     return {
@@ -193,6 +217,11 @@ def main():
     peak_log = {n: 0 for n in NODES}
     peak_unaccounted = {n: 0 for n in NODES}
     peak_remainder = {n: 0 for n in NODES}
+    peak_sources = {n: {} for n in NODES}  # source -> peak MB, from /metrics
+    peak_level = {n: 0 for n in NODES}
+    actions = {n: {} for n in NODES}       # last seen per process; summed over restarts
+    seen = {n: {} for n in NODES}
+    samples_taken = 0
     try:
         while drive.poll() is None:
             now = time.time()
@@ -213,6 +242,8 @@ def main():
                         fleet.start(0, key)
                     del down_until[key]
             row = {"t": t, "nodes": {}}
+            samples_taken += 1
+            scrape = samples_taken % max(1, round(5 / a.every)) == 0
             for n in NODES:
                 pid = node_pid(n)
                 code = exit_code(pid) if pid and n not in down_until else None
@@ -236,6 +267,18 @@ def main():
                                    "sessions": st.get("sessions"),
                                    "active_turns": st.get("active_turns"),
                                    "queued_inputs": st.get("queued_inputs")}
+                mem = memory_metrics(n) if scrape else None
+                if mem:
+                    row["nodes"][n]["memory"] = mem
+                    for source, mb in mem["sources_mb"].items():
+                        peak_sources[n][source] = max(peak_sources[n].get(source, 0), mb)
+                    peak_level[n] = max(peak_level[n], mem["level"] or 0)
+                    for action, count in mem["actions"].items():
+                        # A restarted node counts from 0 again.
+                        last = seen[n].get(action, 0)
+                        actions[n][action] = actions[n].get(action, 0) + (
+                            count - last if count >= last else count)
+                        seen[n][action] = count
                 peak[n] = max(peak[n], rss)
                 peak_log[n] = max(peak_log[n], st.get("wal_held_mb") or 0)
                 if st:
@@ -280,6 +323,11 @@ def main():
         # Live heap (jemalloc allocated) beyond resident events and the log.
         "peak_remainder_mb": {n: round(v) for n, v in peak_remainder.items()},
         "peak_remainder_share_of_limit": round(max(peak_remainder.values()) / cfg["limit_mb"], 3),
+        # From each node's /metrics every 5 s: agentd_memory_bytes{source},
+        # agentd_memory_level and agentd_memory_actions_total.
+        "peak_memory_mb_by_source": peak_sources,
+        "peak_memory_level": peak_level,
+        "memory_actions": actions,
     }
     with open(os.path.join(a.out, "summary.json"), "w") as f:
         json.dump(summary, f, indent=2)
