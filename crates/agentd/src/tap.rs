@@ -35,11 +35,37 @@ impl ShardState {
     /// same result, on every replica.
     pub fn apply(&mut self, command: Command, changes: &mut Vec<Change>) -> Response {
         let start = changes.len();
+        let feed_before = self.feed.records.len();
         let response = self.apply_command(command, changes);
         if !self.orgs.taps.is_empty() {
             self.tap(start, changes);
         }
+        self.label_feed(feed_before);
         response
+    }
+
+    /// Copy their session's labels onto the feed records this command
+    /// added. Decision: one pass here rather than at every place a record
+    /// is made; the labels never change, so every replica writes the same.
+    fn label_feed(&mut self, before: usize) {
+        let added = self.feed.records.len().saturating_sub(before);
+        if added == 0 {
+            return;
+        }
+        let sessions = &self.sessions;
+        for record in self.feed.records.iter_mut().rev().take(added) {
+            let labels = record
+                .record
+                .session_id()
+                .and_then(|id| id.parse::<everruns_contracts::typed_id::SessionId>().ok())
+                .and_then(|id| sessions.get(&id))
+                .map(|s| &s.labels);
+            if let Some(labels) = labels
+                && !labels.is_empty()
+            {
+                record.labels = labels.clone();
+            }
+        }
     }
 
     pub(super) fn set_taps(&mut self, taps: BTreeMap<String, Vec<String>>) -> Response {

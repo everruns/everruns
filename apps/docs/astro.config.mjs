@@ -309,6 +309,7 @@ export default defineConfig({
                     { label: "Self-hosted: on your machine", slug: "getting-started/run-locally" },
                     { label: "Self-hosted: Docker Compose", slug: "getting-started/docker-compose" },
                     { label: "Self-hosted: Kubernetes", slug: "getting-started/kubernetes" },
+                    { label: "agentd on its own", slug: "getting-started/agentd" },
                     { label: "Everruns Demo", slug: "getting-started/cloud" },
                     { label: "Concepts", slug: "getting-started/concepts" },
                     { label: "Use in AI Tools", slug: "getting-started/use-in-ai-tools" },
@@ -474,6 +475,8 @@ export default defineConfig({
                     { label: "Environment Variables", slug: "sre/environment-variables" },
                     { label: "Admin Container", slug: "sre/admin-container" },
                     { label: "System Doctor", slug: "sre/system-doctor" },
+                    { label: "Data Plane (agentd)", slug: "sre/agentd" },
+                    { label: "agentd API", slug: "reference/agentd-api" },
                     { label: "Custom Agent Workers", slug: "how-to/custom-agent-workers" },
                     { label: "Cloudflare Agent", slug: "how-to/cloudflare-agent" },
                     {

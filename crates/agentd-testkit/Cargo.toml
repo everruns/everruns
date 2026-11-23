@@ -37,6 +37,12 @@ jsonwebtoken.workspace = true
 aws-lc-rs = "1"
 base64.workspace = true
 
+[features]
+# jemalloc heap profiling for `agentd-testnode`: run it with
+# `_RJEM_MALLOC_CONF=prof:true,...` (`scripts/agentd/shard_soak.py
+# --heap-profile`) and read the dumps with `jeprof`.
+heap-profile = ["tikv-jemallocator/profiling"]
+
 [dev-dependencies]
 tempfile.workspace = true
 tar.workspace = true

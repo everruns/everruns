@@ -479,6 +479,11 @@ pub struct FeedRecord {
     /// When the thing the record reports happened; the control plane's
     /// feed lag is measured from it.
     pub at_unix_ms: i64,
+    /// The labels of the session the record is about, as it was created
+    /// with them (agentd's stream filters on them); empty for records about
+    /// no session, and for sessions created without labels.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub labels: std::collections::BTreeMap<String, String>,
     #[serde(flatten)]
     pub record: Record,
 }
@@ -647,6 +652,40 @@ pub enum Record {
     /// A record of a type this reader does not know.
     #[serde(other)]
     Unknown,
+}
+
+impl Record {
+    /// The session the record is about, if it is about one.
+    pub fn session_id(&self) -> Option<&str> {
+        match self {
+            Record::Usage { session_id, .. }
+            | Record::Session { session_id, .. }
+            | Record::Event { session_id, .. }
+            | Record::TaskTransition { session_id, .. }
+            | Record::SessionResource { session_id, .. }
+            | Record::Lease { session_id, .. }
+            | Record::Subagent { session_id, .. } => Some(session_id),
+            _ => None,
+        }
+    }
+
+    /// The record's type as it goes on the wire (`type`).
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Record::Usage { .. } => "Usage",
+            Record::Session { .. } => "Session",
+            Record::SecretRefreshed { .. } => "SecretRefreshed",
+            Record::ConfigApplied { .. } => "ConfigApplied",
+            Record::Event { .. } => "Event",
+            Record::TaskTransition { .. } => "TaskTransition",
+            Record::SessionResource { .. } => "SessionResource",
+            Record::Lease { .. } => "Lease",
+            Record::Subagent { .. } => "Subagent",
+            Record::OrgEvent { .. } => "OrgEvent",
+            Record::Health { .. } => "Health",
+            Record::Unknown => "Unknown",
+        }
+    }
 }
 
 /// Where a subagent came from ([`Record::Subagent`]): the session that

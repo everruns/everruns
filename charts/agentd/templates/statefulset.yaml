@@ -1,0 +1,170 @@
+{{- $keys := or .Values.apiKeys.existingSecret .Values.apiKeys.keys }}
+{{- if not (or $keys .Values.jwksUrl .Values.tls.clientCaSecret) }}
+{{- fail "agentd needs credentials: apiKeys.existingSecret, apiKeys.keys, jwksUrl or tls.clientCaSecret" }}
+{{- end }}
+{{- if and .Values.tls.clientCaSecret (not .Values.tls.secretName) }}
+{{- fail "tls.clientCaSecret needs tls.secretName" }}
+{{- end }}
+# One replica: `agentd serve` is a whole install with a one-node shard. For
+# several nodes run the shard, executors and gateway separately (the
+# everruns chart's dataPlane does).
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "agentd.fullname" . }}
+  labels:
+    {{- include "agentd.labels" . | nindent 4 }}
+spec:
+  serviceName: {{ include "agentd.fullname" . }}
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "agentd.selector" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "agentd.labels" . | nindent 8 }}
+      annotations:
+        checksum/keys: {{ .Values.apiKeys.keys | toJson | sha256sum }}
+    spec:
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      # Turns hand off and the log is durable on every write, so a stop needs
+      # no long grace.
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: agentd
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default (ternary "latest" (printf "v%s" .Chart.AppVersion) (eq .Chart.AppVersion "latest")) }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["serve", "--data", "/data", "--listen", "0.0.0.0:7700"]
+          ports:
+            - name: api
+              containerPort: 7700
+          env:
+            - name: AGENTD_SLOTS
+              value: {{ .Values.slots | quote }}
+            - name: AGENTD_MEMORY_BUDGET_MB
+              value: {{ .Values.memoryBudgetMb | quote }}
+            {{- if $keys }}
+            - name: AGENTD_API_KEYS_FILE
+              value: /etc/agentd/keys/api-keys
+            {{- end }}
+            {{- with .Values.jwksUrl }}
+            - name: AGENTD_JWKS_URL
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.store }}
+            - name: AGENTD_STORE
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.groupLabel }}
+            - name: AGENTD_GROUP_LABEL
+              value: {{ . | quote }}
+            {{- end }}
+            {{- if .Values.envSecrets }}
+            - name: AGENTD_ENV_SECRETS
+              value: "true"
+            {{- end }}
+            {{- with .Values.dpKey.existingSecret }}
+            - name: AGENTD_DP_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ . }}
+                  key: dp-key
+            {{- end }}
+            {{- if .Values.tls.secretName }}
+            - name: AGENTD_TLS_CERT
+              value: /etc/agentd/tls/tls.crt
+            - name: AGENTD_TLS_KEY
+              value: /etc/agentd/tls/tls.key
+            {{- end }}
+            {{- if .Values.tls.clientCaSecret }}
+            - name: AGENTD_CLIENT_CA
+              value: /etc/agentd/client-ca/ca.crt
+            {{- end }}
+            {{- with .Values.env }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- with .Values.envFrom }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          # /health stays open whatever the auth; a TCP probe works under
+          # mTLS too, where an HTTP probe has no client certificate.
+          readinessProbe:
+            tcpSocket:
+              port: api
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: api
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: tmp
+              mountPath: /tmp
+            {{- if $keys }}
+            - name: keys
+              mountPath: /etc/agentd/keys
+              readOnly: true
+            {{- end }}
+            {{- if .Values.tls.secretName }}
+            - name: tls
+              mountPath: /etc/agentd/tls
+              readOnly: true
+            {{- end }}
+            {{- if .Values.tls.clientCaSecret }}
+            - name: client-ca
+              mountPath: /etc/agentd/client-ca
+              readOnly: true
+            {{- end }}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        {{- if $keys }}
+        - name: keys
+          secret:
+            secretName: {{ include "agentd.keysSecret" . }}
+        {{- end }}
+        {{- with .Values.tls.secretName }}
+        - name: tls
+          secret:
+            secretName: {{ . }}
+        {{- end }}
+        {{- with .Values.tls.clientCaSecret }}
+        - name: client-ca
+          secret:
+            secretName: {{ . }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        {{- with .Values.persistence.storageClass }}
+        storageClassName: {{ . }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.persistence.size }}

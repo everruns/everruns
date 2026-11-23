@@ -11,6 +11,8 @@
 # right after its images publish, and a daily run catches drift from either.
 # Each smoke runs a turn on data plane v2 (the default) when the tag has a
 # shard image, else on v1 (scripts/lib/smoke-turn.sh); DATA_PLANE forces one.
+# `agentd` runs agentd on its own (infra/agentd/compose.yaml) against a
+# stand-in model; a tag from before `agentd serve` is skipped.
 name: Compose Smoke
 
 on:
@@ -34,6 +36,8 @@ on:
       - 'crates/cli/**'
       - 'scripts/smoke-everruns-docker.sh'
       - 'scripts/lib/smoke-turn.sh'
+      - 'infra/agentd/**'
+      - 'scripts/smoke-agentd-standalone.sh'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -97,3 +101,16 @@ jobs:
         env:
           EVERRUNS_TAG: ${{ inputs.tag || 'latest' }}
         run: scripts/smoke-everruns-docker.sh target/debug/everruns
+
+  agentd:
+    name: agentd Standalone Smoke
+    runs-on: ubuntu-latest
+    if: github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event != 'pull_request')
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Run agentd on its own
+        env:
+          AGENTD_TAG: ${{ inputs.tag || 'latest' }}
+        run: scripts/smoke-agentd-standalone.sh

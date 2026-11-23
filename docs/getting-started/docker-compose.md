@@ -151,6 +151,9 @@ in the shard. Data plane v2 needs images from the release that
 made it the default or later; an older `EVERRUNS_TAG` has no `agentd`
 image, so run v1 with it.
 
+What the data plane promises about your sessions, how to keep its copies
+off this machine, and how to restore it: [Data plane (agentd)](/sre/agentd/).
+
 ### Run Multiple Copies
 
 If you want multiple Everruns compose stacks on the same machine, set both a Compose project name and host-port overrides:

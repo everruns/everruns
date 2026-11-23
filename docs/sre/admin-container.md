@@ -20,6 +20,7 @@ docker build --target admin -f docker/Dockerfile.unified -t everruns-admin .
 | `migrate` | Run pending database migrations, the same way server startup does |
 | `migrate-info` | Show migration status |
 | `reencrypt` | Re-encrypt secrets with new key |
+| `dataplane` | Operate data planes: move organizations onto agentd, check where one runs ([Data plane (agentd)](/sre/agentd/#move-organizations-from-v1); `dataplane help`) |
 | `shell` | Interactive shell for debugging |
 | `help` | Show usage information |
 

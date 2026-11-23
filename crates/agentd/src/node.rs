@@ -4,7 +4,6 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::PathBuf;
 
-use futures::StreamExt;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -176,6 +175,9 @@ pub struct Node {
     moving: Mutex<HashSet<SessionId>>,
     /// Ships the committed log to the object store while this node leads.
     pub(crate) shipper: crate::ship::Shipper,
+    /// Ship-first writes skip waiting for every voter until then
+    /// (`Node::held_everywhere`).
+    pub(crate) replicas_slow_until: Mutex<Option<Instant>>,
     /// The shard's members (voters and learners) as Raft last committed
     /// them, refreshed by the liveness loop.
     members: parking_lot::RwLock<BTreeMap<NodeId, String>>,
@@ -220,7 +222,16 @@ impl Node {
             // chunks.
             snapshot_max_chunk_size: 16 << 20,
             max_payload_entries: 256,
-            snapshot_policy: SnapshotPolicy::LogsSinceLast(cfg.snapshot_every),
+            // Decision: each node snapshots at its own point, a tenth of
+            // the interval apart (node 1 every N entries, node 2 every
+            // 1.1 N, ...). At one shared N every replica built its snapshot
+            // at the same moment, so the memory peak of a build hit the
+            // whole shard at once: in run 45077134741 all three nodes of a
+            // shard ran out of memory together and the shard lost quorum.
+            snapshot_policy: SnapshotPolicy::LogsSinceLast(crate::sm::staggered(
+                cfg.snapshot_every,
+                cfg.node_id,
+            )),
             // A follower further behind than this gets a snapshot.
             //
             // Decision: keep 256 entries by default, not 2048. The kept
@@ -284,6 +295,7 @@ impl Node {
                 gateway: std::sync::OnceLock::new(),
                 moving: Mutex::default(),
                 shipper: crate::ship::Shipper::new(shared_store, cfg.shard, ship_wal),
+                replicas_slow_until: Mutex::default(),
                 members: parking_lot::RwLock::new(cfg.members.clone()),
                 dispatch: Default::default(),
                 control: Default::default(),
@@ -337,6 +349,7 @@ impl Node {
         tokio::spawn(self.clone().scheduler_loop());
         tokio::spawn(self.clone().liveness_loop());
         tokio::spawn(self.clone().unload_loop());
+        crate::memwatch::spawn(self.cfg.data_dir.clone());
         tokio::spawn(self.clone().pressure_loop());
         tokio::spawn(self.clone().catchup_loop());
         tokio::spawn(self.clone().register_loop());
@@ -631,25 +644,19 @@ impl Node {
             }
             // Decision: the Raft log keeps every entry in memory until a
             // snapshot lets it purge them, and entries carry the events. So
-            // the log counts against the memory budget too: past a quarter
-            // of it, take a snapshot and purge.
+            // the log counts against the memory budget too (threshold and
+            // spacing: `sm::log_wants_snapshot`).
             //
             // Only the entries after the last snapshot count. The purge
             // keeps `keep_log` entries behind it for lagging followers, and
-            // with large entries those alone passed the quarter: the node
+            // with large entries those alone passed the threshold: the node
             // then snapshotted the whole shard every few seconds while idle
-            // (13 times in 3 minutes at 37 000 sessions, two at the same
-            // index), which is what filled memory and disk in the
-            // 75 000-session run.
-            //
-            // A snapshot copies the whole shard state, so with many sessions
-            // it is not cheap: wait at least ten times as long as the last
-            // one took, or snapshots alone would eat the node.
-            let cost = Duration::from_millis(
+            // (13 times in 3 minutes at 37 000 sessions), which is what
+            // filled memory and disk in the 75 000-session run.
+            let took = Duration::from_millis(
                 self.shared
                     .snapshot_ms
-                    .load(std::sync::atomic::Ordering::Relaxed)
-                    * 10,
+                    .load(std::sync::atomic::Ordering::Relaxed),
             );
             let snapshot = self
                 .raft
@@ -657,24 +664,40 @@ impl Node {
                 .borrow()
                 .snapshot
                 .map_or(0, |id| id.index);
-            if self.wal.held_after(snapshot) > self.cfg.memory_budget / 4
-                && last_snapshot.elapsed() > cost.max(Duration::from_secs(5))
-            {
+            if crate::sm::log_wants_snapshot(
+                self.wal.held_after(snapshot),
+                self.cfg.memory_budget,
+                self.cfg.node_id,
+                last_snapshot.elapsed(),
+                took,
+            ) {
                 last_snapshot = Instant::now();
                 let _ = self.raft.trigger().snapshot().await;
                 trim = true;
             }
             self.shared.sweep_watchers();
-            if self.is_leader() {
-                self.store_events().await;
-            }
-            let mut sessions = Vec::new();
-            let (bytes, events) = self.shared.resident();
+            let (bytes, _) = self.shared.resident();
             let budget = crate::sm::event_allowance(
                 self.cfg.memory_budget,
                 crate::api::rss_mb() << 20,
                 bytes,
             );
+            if self.is_leader() {
+                // Idle sessions' events wait a minute to be stored, unless
+                // the node needs them unloaded sooner (`Shared::flush`).
+                let idle_for = if bytes > budget * 8 / 10 {
+                    Duration::ZERO
+                } else {
+                    self.cfg
+                        .unload_idle
+                        .map_or(crate::sm::FLUSH_IDLE_AFTER, |age| {
+                            age.min(crate::sm::FLUSH_IDLE_AFTER)
+                        })
+                };
+                self.store_events(idle_for).await;
+            }
+            let mut sessions = Vec::new();
+            let (bytes, events) = self.shared.resident();
             if bytes > budget {
                 let per_event = (bytes / events.max(1) as u64).max(1);
                 let mut to_free = bytes.saturating_sub(budget * 8 / 10) / per_event;
@@ -714,39 +737,6 @@ impl Node {
                 .fetch_add(freed as u64, std::sync::atomic::Ordering::Relaxed);
             tracing::debug!(freed, "unloaded idle sessions");
         }
-    }
-
-    /// Leader only: store sessions' unstored events in the object store and
-    /// record the segments with `Stored`, so every replica can unload them.
-    /// A compaction (one segment for a trailing run) then deletes the pieces
-    /// it replaces.
-    async fn store_events(&self) {
-        let stored = self.shared.flush(512).await;
-        if stored.is_empty() {
-            return;
-        }
-        let compacted: Vec<_> = stored
-            .iter()
-            .filter(|(_, _, compact)| *compact)
-            .map(|(session, seg, _)| (*session, *seg))
-            .collect();
-        let commands = stored
-            .into_iter()
-            .map(|(session, seg, _)| Command::Stored { session, seg })
-            .collect();
-        if let Err(error) = self.propose(Command::Batch { commands }).await {
-            tracing::debug!(%error, "recording stored segments failed");
-            return;
-        }
-        let store = self.shared.store.clone();
-        tokio::spawn(async move {
-            futures::stream::iter(compacted)
-                .for_each_concurrent(16, |(session, seg)| {
-                    let store = store.clone();
-                    async move { store.prune_segments(session, seg).await }
-                })
-                .await;
-        });
     }
 
     /// Decision: the shard's membership lives in Raft, not in the topology
@@ -1263,6 +1253,16 @@ impl Node {
             }
             if !self.allowance_ready(&state, s, now) {
                 return; // the control loop is asking for its tenant's money
+            }
+            if let Some(limit) = self.tenants.turn_limit(s.tenant.as_deref()) {
+                let running = state
+                    .sessions
+                    .values()
+                    .filter(|o| o.tenant == s.tenant && o.authority.executing(now))
+                    .count();
+                if running >= limit as usize {
+                    return; // the group's cap; the next tick looks again
+                }
             }
             if self.holds_turns(&state) {
                 if matches!(self.cfg.executors, ExecutorMode::Pull { .. }) {

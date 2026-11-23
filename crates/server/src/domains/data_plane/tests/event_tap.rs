@@ -86,6 +86,7 @@ fn tapped(index: u64, org: i64, session: SessionId, event: Value) -> FeedRecord 
         ordinal: 0,
         org_id: org_public(org),
         at_unix_ms: chrono::Utc::now().timestamp_millis(),
+        labels: Default::default(),
         record: Record::Event {
             session_id: session.to_string(),
             event,

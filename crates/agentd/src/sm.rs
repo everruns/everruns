@@ -238,15 +238,28 @@ impl Shared {
 
     /// Leader only: store up to `limit` sessions' events that are not in
     /// the object store yet, and return the segments to record with
-    /// `Stored`. A session qualifies once idle, or once its unstored tail
-    /// reaches [`FLUSH_BUSY_AT`] events; one with [`COMPACT_AT`] segments has
-    /// a run of them rewritten as one (see
+    /// `Stored`. A session qualifies once idle for `idle_for`, or once its
+    /// unstored tail reaches [`FLUSH_BUSY_AT`] events; one with
+    /// [`COMPACT_AT`] segments has a run of them rewritten as one (see
     /// [`compaction_range`](crate::state::SessionState::compaction_range)).
     /// The flag marks a compaction.
-    pub async fn flush(&self, limit: usize) -> Vec<(SessionId, SegRef, bool)> {
+    ///
+    /// Decision: an idle session waits [`FLUSH_IDLE_AFTER`] before its tail
+    /// is stored, not one pass of the loop. A conversation's next message
+    /// usually comes within a minute, and storing after every turn cost two
+    /// object writes a turn (the 75 000-session run's largest share of
+    /// requests). The events are in the Raft log and the snapshots until
+    /// then, so waiting loses nothing; the node passes zero when it needs
+    /// the memory back (`Node::store_events`).
+    pub async fn flush(
+        &self,
+        limit: usize,
+        idle_for: std::time::Duration,
+    ) -> Vec<(SessionId, SegRef, bool)> {
         // Per session: a compaction of stored segments `(from, to)`, or a
         // flush of the unstored tail.
         let jobs: Vec<(SessionId, Option<(i32, i32)>)> = {
+            let touched = self.touched.lock();
             let state = self.state.read();
             state
                 .sessions
@@ -257,7 +270,9 @@ impl Shared {
                     let compact = (s.segments.len() >= COMPACT_AT)
                         .then(|| s.compaction_range())
                         .flatten();
-                    (compact.is_some() || (tail > 0 && (s.idle() || tail >= FLUSH_BUSY_AT)))
+                    let quiet =
+                        s.idle() && touched.get(id).is_none_or(|at| at.elapsed() >= idle_for);
+                    (compact.is_some() || (tail > 0 && (quiet || tail >= FLUSH_BUSY_AT)))
                         .then_some((*id, compact))
                 })
                 .take(limit)
@@ -543,7 +558,7 @@ pub(crate) fn archived_parts(meta: &Meta, data: bytes::Bytes) -> io::Result<[byt
 /// The current snapshot in `dir`, a node's snapshot directory: its
 /// metadata and state. The state is the file's own buffer with the header
 /// cut off, not a copy.
-fn read_snapshot_file(dir: &std::path::Path) -> io::Result<Option<(Meta, Vec<u8>)>> {
+pub(crate) fn read_snapshot_file(dir: &std::path::Path) -> io::Result<Option<(Meta, Vec<u8>)>> {
     match fs::read(dir.join("current.snap")) {
         Ok(mut bytes) => {
             let (meta, at) = split_snapshot(&bytes)?;
@@ -718,6 +733,9 @@ const COMPACT_AT: usize = 16;
 /// Store a running turn's events once this many are not stored yet.
 const FLUSH_BUSY_AT: i32 = 64;
 
+/// Store an idle session's events once it has been quiet this long.
+pub const FLUSH_IDLE_AFTER: std::time::Duration = std::time::Duration::from_secs(60);
+
 /// What a move carries of a session: its metadata and the events the
 /// object store doesn't hold yet (history stays in the store).
 pub fn move_image(s: &SessionState) -> SessionState {
@@ -748,6 +766,7 @@ fn stub(s: &SessionState) -> SessionState {
         platform: s.platform.clone(),
         sqldb: s.sqldb.clone(),
         branch: s.branch,
+        labels: s.labels.clone(),
     }
 }
 
@@ -784,6 +803,21 @@ impl StateMachine {
 
     fn write_current(&self, meta: &Meta, data: &[u8]) -> io::Result<()> {
         write_snapshot_file(&self.dir, meta, data)
+    }
+
+    /// [`write_current`](Self::write_current) of `state`, encoded as it is
+    /// written rather than into memory first.
+    fn write_current_from(&self, meta: &Meta, state: &ShardState) -> io::Result<()> {
+        fs::create_dir_all(&self.dir)?;
+        let tmp = self.dir.join("current.snap.tmp");
+        let mut file = io::BufWriter::with_capacity(1 << 20, fs::File::create(&tmp)?);
+        file.write_all(&snapshot_header(meta)?)?;
+        serde_json::to_writer(&mut file, state)?;
+        let file = file.into_inner().map_err(|e| e.into_error())?;
+        file.sync_all()?;
+        fs::rename(&tmp, self.dir.join("current.snap"))?;
+        fs::File::open(&self.dir)?.sync_all()?;
+        Ok(())
     }
 
     /// The shard state as a snapshot holds it: metadata and segment lists,
@@ -832,10 +866,8 @@ impl RaftSnapshotBuilder<TypeConfig> for StateMachine {
         let started = Instant::now();
         let mut state = self.snapshot_state();
         state.share_definitions();
-        let data = bytes::Bytes::from(serde_json::to_vec(&state).map_err(sm_err)?);
         let (last_applied, membership) = (state.last_applied, state.membership.clone());
         let (inc, clock_ms) = (state.incarnation, state.clock_ms);
-        drop(state);
         let seq = self
             .snapshot_seq
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -848,12 +880,29 @@ impl RaftSnapshotBuilder<TypeConfig> for StateMachine {
             last_membership: membership,
             snapshot_id,
         };
-        let (dir, written, file_data) = (self.clone(), meta.clone(), data.clone());
-        tokio::task::spawn_blocking(move || dir.write_current(&written, &file_data))
-            .await
-            .map_err(sm_err)?
-            .map_err(sm_err)?;
-        self.shared.archive(&meta, data, inc, clock_ms);
+        // Decision: the copy goes straight to the file, and the copy is
+        // dropped before anything reads the file back. Serializing into
+        // memory held the live state, its copy and the encoded copy at
+        // once: 13.2 GB at 25 000 sessions per shard (run 44396952768),
+        // and past a 14 GiB node with Phase 2's longer unstored tails
+        // (run 45077134741), on all three nodes together.
+        let (dir, written) = (self.clone(), meta.clone());
+        tokio::task::spawn_blocking(move || {
+            let result = dir.write_current_from(&written, &state);
+            drop(state);
+            result
+        })
+        .await
+        .map_err(sm_err)?
+        .map_err(sm_err)?;
+        // Only the leader copies its snapshot to the object store; it reads
+        // the file back once the copy is gone.
+        if self.shared.leading.load(Ordering::Relaxed)
+            && let Some((_, data)) = self.read_current().map_err(sm_err)?
+        {
+            self.shared
+                .archive(&meta, bytes::Bytes::from(data), inc, clock_ms);
+        }
         self.shared
             .snapshot_ms
             .store(started.elapsed().as_millis() as u64, Ordering::Relaxed);
@@ -978,15 +1027,73 @@ impl RaftStateMachine<TypeConfig> for StateMachine {
     }
 }
 
+/// The snapshot interval of `node`: `every` for node 1, a tenth more for
+/// each later node, so replicas of one shard build their snapshots apart.
+pub(crate) fn staggered(every: u64, node: crate::types::NodeId) -> u64 {
+    every + every / 10 * node.saturating_sub(1).min(9)
+}
+
+/// Whether a node takes a snapshot now to purge its Raft log: `held` bytes
+/// of entries after the last snapshot passed a sixteenth of the memory
+/// `budget` (staggered by node), and it is ten times as long as the last
+/// snapshot took since it was taken (at least five seconds).
+///
+/// Decision: a sixteenth, not a quarter. The log costs about two and a half
+/// times its entries' bytes in resident memory (decoded copies, replication
+/// buffers), and the entry-count trigger alone left 300 to 500 seconds
+/// between snapshots under load. In the 75 000-agent gate (EKS run
+/// 45179434646) five nodes ran out of memory holding 1.0 to 1.6 GB of log
+/// against a quarter-budget trigger of 2.25 GB that never fired; a snapshot
+/// there dropped the node's memory by 3.5 GB for 1.4 GB of log.
+pub(crate) fn log_wants_snapshot(
+    held: u64,
+    budget: u64,
+    node: crate::types::NodeId,
+    since_last: std::time::Duration,
+    last_took: std::time::Duration,
+) -> bool {
+    let wait = (last_took * 10).max(std::time::Duration::from_secs(5));
+    held > staggered(budget / 16, node) && since_last > wait
+}
+
 #[cfg(test)]
 mod tests {
-    use super::event_allowance;
+    use super::{event_allowance, log_wants_snapshot, staggered};
+    use std::time::Duration;
+
+    #[test]
+    fn a_log_past_a_sixteenth_of_the_budget_takes_a_snapshot() {
+        let budget = 9 * GB;
+        let s = Duration::from_secs;
+        // The gate's dying nodes held 1.0 to 1.6 GB of log.
+        assert!(log_wants_snapshot(GB, budget, 1, s(60), s(3)));
+        // Below a sixteenth (576 MiB on 9 GiB) the entry count decides.
+        assert!(!log_wants_snapshot(500 << 20, budget, 1, s(60), s(3)));
+        // Later replicas wait a tenth more each, so a shard's nodes do not
+        // all build at once.
+        assert!(log_wants_snapshot(600 << 20, budget, 1, s(60), s(3)));
+        assert!(!log_wants_snapshot(600 << 20, budget, 2, s(60), s(3)));
+        // Not sooner than ten times the last snapshot took, at least 5 s.
+        assert!(!log_wants_snapshot(GB, budget, 1, s(20), s(3)));
+        assert!(!log_wants_snapshot(GB, budget, 1, s(4), Duration::ZERO));
+        assert!(log_wants_snapshot(GB, budget, 1, s(6), Duration::ZERO));
+    }
 
     const GB: u64 = 1 << 30;
+
+    #[test]
+    fn replicas_of_one_shard_snapshot_apart() {
+        assert_eq!(staggered(20_000, 1), 20_000);
+        assert_eq!(staggered(20_000, 2), 22_000);
+        assert_eq!(staggered(20_000, 3), 24_000);
+        // Large ids stay within twice the interval.
+        assert_eq!(staggered(20_000, 1_000), 38_000);
+    }
 
     /// Before a snapshot install: everything the store holds goes, an
     /// unstored tail stays (no other copy exists), and a busy session keeps
     /// what its next turn reads.
+
     #[test]
     fn shedding_drops_only_stored_events() {
         use crate::state::{SessionState, ShardState};

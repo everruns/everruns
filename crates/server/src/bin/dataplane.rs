@@ -10,7 +10,7 @@ use std::sync::Arc;
 use anyhow::{Context, Result};
 use everruns_contracts::dataplane::OrgState;
 use everruns_server::domains::data_plane::{self, ControlPlane, Link};
-use everruns_server::storage::{Database, EncryptionService, StorageBackend};
+use everruns_server::storage::{Database, EncryptionService, ReturnToV1, StorageBackend};
 
 const HELP: &str = r#"
 everruns-dataplane - operate data planes (v2)
@@ -25,8 +25,11 @@ USAGE:
     everruns-dataplane warehouse <org_public_id> on|off
     everruns-dataplane diff <org_public_id>
     everruns-dataplane bump-epoch
+    everruns-dataplane rejoin <data_plane_id>
     everruns-dataplane reconcile <org_public_id> [--keep | --drop]
     everruns-dataplane move <org_public_id> [<session_id> | --archived]
+    everruns-dataplane move-orgs <data_plane_id> <org_public_id>... [--archived]
+    everruns-dataplane to-v1 <data_plane_id> [<org_public_id>...]
 
 `enable` switches an org to a data plane: its new sessions run there. After a
 database restore, run `diff` for every v2 org, resolve what it lists, then
@@ -34,12 +37,30 @@ database restore, run `diff` for every v2 org, resolve what it lists, then
 lacked the data plane sets aside: `reconcile` lists it, `--keep` sends it
 again as config, `--drop` forgets it. Running turns finish either way.
 
+`to-v1` sends orgs on a data plane back to the platform's own workers (v1):
+the named ones, or every org on it. Only an org that never ran a session
+there goes back; one that did is listed with its session count and left
+alone, since nothing moves a session from v2 back to v1. `enable` puts an org
+back on a data plane later.
+
+`rejoin` is for a data plane started over empty (new disks, new store
+prefix): every org on it is enabled again and sent a full snapshot, since
+the control plane cannot tell that the data plane lost what it had. A data
+plane restored from its store keeps its orgs and needs no rejoin.
+
 `move` moves a running v1 session onto the org's data plane (the org must be
 enabled), keeping its id: its conversation, values, secrets and files go to a
 shard and it runs there from then on. Without a session it moves every v1
 session of the org (`--archived` includes archived ones), one at a time. A
 session running a turn is skipped; run `move` again later. What a move left
 behind is in its report.
+
+`move-orgs` moves a batch of orgs, one after another: each v1 org is enabled
+on the data plane, then every v1 session of it moves as with `move`. Name the
+orgs, or `-` to read them from stdin, one per line (a batch from a list kept
+elsewhere). An org on another data plane, or one that fails, does not stop the
+batch; it prints one line per org and exits non-zero if any org or session
+did not move. Running it again picks up what was skipped or failed.
 
 `warehouse on` exports every event of the org's sessions as hourly gzipped
 NDJSON files under `warehouse/<org>/date=.../hour=.../` in the control
@@ -184,6 +205,15 @@ async fn main() -> Result<()> {
             let epoch = db.dp_bump_epoch().await?;
             println!("control plane epoch {epoch}: every v2 org gets a full snapshot");
         }
+        "rejoin" => {
+            let plane = args.get(1).context("a data plane id is required")?;
+            anyhow::ensure!(
+                db.dp_data_plane(plane).await?.is_some(),
+                "data plane {plane} is not registered"
+            );
+            let orgs = db.dp_rejoin(plane).await?;
+            println!("{plane}: {orgs} orgs enabled again, each gets a full snapshot");
+        }
         "move" => {
             let org_id = org(&db, args.get(1)).await?;
             let drain = std::time::Duration::from_secs(120);
@@ -218,6 +248,101 @@ async fn main() -> Result<()> {
             }
             if failed > 0 {
                 anyhow::bail!("{failed} sessions did not move; run move again");
+            }
+        }
+        "move-orgs" => {
+            let plane = args.get(1).context("a data plane id is required")?;
+            anyhow::ensure!(
+                db.dp_data_plane(plane).await?.is_some(),
+                "data plane {plane} is not registered"
+            );
+            let archived = args.iter().any(|a| a == "--archived");
+            let mut names: Vec<String> = args[2..]
+                .iter()
+                .filter(|a| a.as_str() != "--archived")
+                .cloned()
+                .collect();
+            if names == ["-"] {
+                let mut text = String::new();
+                std::io::stdin().read_to_string(&mut text)?;
+                names = text
+                    .lines()
+                    .map(str::trim)
+                    .filter(|l| !l.is_empty() && !l.starts_with('#'))
+                    .map(str::to_owned)
+                    .collect();
+            }
+            anyhow::ensure!(!names.is_empty(), "name the orgs to move, or - for stdin");
+            let mut orgs = Vec::with_capacity(names.len());
+            for name in &names {
+                orgs.push(org(&db, Some(name)).await?);
+            }
+            let drain = std::time::Duration::from_secs(120);
+            let reports = data_plane::moves::move_orgs(&cp, plane, &orgs, archived, drain).await;
+            let mut incomplete = 0;
+            for report in &reports {
+                let org = data_plane::org_public(report.org_id);
+                match &report.error {
+                    Some(error) => {
+                        incomplete += 1;
+                        eprintln!("{org} not moved: {error}");
+                    }
+                    None => {
+                        if report.skipped + report.failed > 0 {
+                            incomplete += 1;
+                        }
+                        println!(
+                            "{org}{}: {} moved, {} skipped (in a turn), {} failed",
+                            if report.enabled { " enabled" } else { "" },
+                            report.moved,
+                            report.skipped,
+                            report.failed
+                        );
+                    }
+                }
+            }
+            if incomplete > 0 {
+                anyhow::bail!(
+                    "{incomplete} of {} orgs are not fully moved; run move-orgs again",
+                    reports.len()
+                );
+            }
+        }
+        "to-v1" => {
+            let plane = args.get(1).context("a data plane id is required")?;
+            let orgs = if args.len() > 2 {
+                let mut orgs = Vec::new();
+                for name in &args[2..] {
+                    orgs.push(org(&db, Some(name)).await?);
+                }
+                orgs
+            } else {
+                db.dp_plane_orgs(plane).await?
+            };
+            let mut kept = 0;
+            for org_id in orgs {
+                let name = data_plane::org_public(org_id);
+                match db.dp_return_org_to_v1(org_id).await? {
+                    ReturnToV1::Returned(on) => {
+                        db.dp_insert_org_event(
+                            org_id,
+                            "returned_to_v1",
+                            &format!("left {on}"),
+                            "operator",
+                            chrono::Utc::now(),
+                        )
+                        .await?;
+                        println!("{name} back on v1 (was on {on})");
+                    }
+                    ReturnToV1::HasSessions(n) => {
+                        kept += 1;
+                        println!("{name} kept on {plane}: {n} sessions run there");
+                    }
+                    ReturnToV1::NotOnDataPlane => println!("{name} already on v1"),
+                }
+            }
+            if kept > 0 {
+                anyhow::bail!("{kept} orgs have sessions on {plane} and stay there");
             }
         }
         other => {

@@ -209,9 +209,12 @@ impl Executor {
             &found.data_key.data_key_id,
             &found.data_key.wrapped,
         )?;
+        let plain = found.open(org, &dp_key)?;
+        // A pushed secret may name where its value comes from instead.
+        let plain = crate::secret_sources::open(plain, org, secret_id).await?;
         Ok(Some(crate::mcp::OpenedSecret {
             revision: found.secret.revision,
-            plain: found.open(org, &dp_key)?,
+            plain,
             data_key,
             data_key_id: found.data_key.data_key_id,
         }))
@@ -652,16 +655,44 @@ impl crate::providers::OrgMaterial for Executor {
             .and_then(|s| s.tenant.clone())
     }
 
+    fn scopes(&self, session: SessionId) -> Vec<String> {
+        let mut scopes = vec![crate::install::session_scope(&session.to_string())];
+        if let Some(agent) = self
+            .remote
+            .shared
+            .state
+            .read()
+            .sessions
+            .get(&session)
+            .and_then(|s| s.labels.get(crate::install::AGENT_LABEL).cloned())
+        {
+            scopes.push(crate::install::agent_scope(&agent));
+        }
+        scopes
+    }
+
     async fn connection(
         &self,
         org: &str,
         id: &str,
     ) -> anyhow::Result<Option<everruns_contracts::dataplane::Connection>> {
-        Executor::connection(self, org, id).await
+        // A group's own connection first, then its install's (`install.rs`).
+        for org in crate::install::lookup_orgs(org) {
+            if let Some(found) = Executor::connection(self, &org, id).await? {
+                return Ok(Some(found));
+            }
+        }
+        Ok(None)
     }
 
     async fn secret(&self, org: &str, secret_id: &str) -> anyhow::Result<Vec<u8>> {
-        Executor::secret(self, org, secret_id).await
+        let orgs = crate::install::lookup_orgs(org);
+        for org in &orgs {
+            if let Some(opened) = Executor::open_secret(self, org, secret_id).await? {
+                return Ok(opened.plain);
+            }
+        }
+        anyhow::bail!("org {org} has no secret {secret_id}")
     }
 
     async fn open_secret(

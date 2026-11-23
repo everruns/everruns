@@ -1,0 +1,81 @@
+# agentd serve in one pod: a one-node shard, the executor that runs its turns
+# and the push API and stream on one port (7700). The pod's volume holds the
+# shard's log and snapshots and, unless `store` names an object store, the
+# history, restore points and stream as well.
+
+image:
+  repository: ghcr.io/everruns/agentd
+  # Empty: the chart's appVersion.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+# API keys, `id:secret` per line (the secret at least 24 characters). Give an
+# existing Secret with an `api-keys` entry, or the keys here (kept in a
+# Secret the chart makes). An install refuses to start with neither and no
+# JWKS URL.
+apiKeys:
+  existingSecret: ""
+  keys: []
+# Accept tokens signed by these keys instead of (or as well as) API keys.
+jwksUrl: ""
+
+# The data plane key that seals every pushed secret. Empty: made once in the
+# volume (`dp.key`). An existing Secret with a `dp-key` entry (base64 of 32
+# bytes) keeps it out of the volume, so a lost disk loses no secrets it can
+# still read from the store.
+dpKey:
+  existingSecret: ""
+
+# The object store for history, restore points and the stream, e.g.
+# s3://bucket/agentd. Empty: the pod's volume. With S3 the pod reads the
+# usual AWS_* variables; add them with `env` or a service account.
+store: ""
+
+# The label whose value groups sessions for limits, spend and keys (e.g.
+# `org`). Empty: one group, the install.
+groupLabel: ""
+
+# Turns that run at once, and the memory sessions may use before idle ones
+# are unloaded. Keep the memory limit about 1.5 times the budget.
+slots: 64
+memoryBudgetMb: 1024
+
+# Push the provider keys found in `env`/`envFrom` (OPENAI_API_KEY and the
+# like) as install secrets bound to their providers, and let pushed secrets
+# name environment variables.
+envSecrets: false
+
+# TLS on the API port: a kubernetes.io/tls Secret. With clientCaSecret (a
+# Secret with `ca.crt`), a client certificate signed by that CA is the
+# credential.
+tls:
+  secretName: ""
+  clientCaSecret: ""
+
+env: []
+envFrom: []
+
+persistence:
+  size: 10Gi
+  storageClass: ""
+
+service:
+  type: ClusterIP
+  port: 7700
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 1Gi
+  limits:
+    memory: 2Gi
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

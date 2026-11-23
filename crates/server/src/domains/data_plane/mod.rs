@@ -3,9 +3,9 @@
 //! control plane of the orgs it puts on a data plane.
 //!
 //! Decisions:
-//! - An org is on a data plane (v2) when it has a `dp_orgs` row; every other
-//!   org runs on the platform's own workers (v1) and nothing here touches
-//!   it. [`for_org`] answers which, and the v1 answer is a no-op.
+//! - An org is on a data plane (v2) when it has a `dp_orgs` row that did
+//!   not go back to v1 (`returned_at`); every other org runs on the
+//!   platform's own workers (v1) and nothing here touches it. [`for_org`] answers which, and the v1 answer is a no-op.
 //! - The outbox is state, not a log: `dp_config_items` holds each v2 org's
 //!   config, each item stamped with the org version that last changed it.
 //!   A delivery sends everything changed since the version the data plane

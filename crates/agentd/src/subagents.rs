@@ -558,6 +558,7 @@ impl PlatformStore for ShardPlatformStore {
                     importing: false,
                     subagent,
                     owner: parent.owner.clone(),
+                    ..Default::default()
                 },
             )
             .await

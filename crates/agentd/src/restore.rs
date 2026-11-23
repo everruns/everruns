@@ -7,14 +7,20 @@
 //!             --node 1=/var/shard/c0n1 [--at 2026-11-12T09:00:00Z] [--dry-run]
 //! app restore --topology cluster.json --shard 0 --store s3://... \
 //!             --node 2=/var/shard/c0n2 --incarnation 2
+//! app restore --topology cluster.json --shard 0 --store s3://... \
+//!             --node 1=/var/shard/new-c0n1 --survivor /var/shard/c0n3
 //! ```
 //!
 //! [`state_at`] reads the shard's state as of a time (or its newest) from
-//! the object store alone; [`rebuild`] writes it as the starting point of
-//! new nodes, which then start as usual. Nodes on other machines are seeded
-//! from the rebuilt incarnation's archived snapshot with [`seed`].
+//! the object store alone; [`with_survivor`] adds what a stopped surviving
+//! replica still holds on disk; [`rebuild`] writes it as the starting point
+//! of new nodes, which then start as usual. Nodes on other machines are
+//! seeded from the rebuilt incarnation's archived snapshot with [`seed`].
 //!
 //! Decisions:
+//! - Segments the restored state refers to are taken out of retirement
+//!   (`Store::unretire`): a state from before a compaction refers to pieces
+//!   the compaction retired, which the collector would otherwise delete.
 //! - A rebuilt shard is a new incarnation, claimed in the store so two
 //!   rebuilds never share one. Its segments, shipped log and feed carry the
 //!   number, so nothing the lost incarnation wrote is read as its own.
@@ -34,6 +40,15 @@
 //!   the restored log's term, so their first election is above every log
 //!   entry they hold. A data directory that already holds a node is
 //!   refused: a rebuild never overwrites a node that might still be alive.
+//! - A surviving replica (one zone of three left) adds its own snapshot and
+//!   log on top of the object store's. The writes answered only once every
+//!   voter held them (`ship::ships_first`) are on it, and so is most of
+//!   what the shipping interval had not reached yet. Its log past the
+//!   shard's last commit is taken too: that is what Raft would commit had
+//!   the survivor been elected, and none of it was answered. It is joined
+//!   only where it provably continues the shipped log (the same entry at
+//!   the join, or its own snapshot of the same incarnation past it); a
+//!   newest-state rebuild only, never with a point in time.
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -61,6 +76,8 @@ pub struct Restored {
     pub last: u64,
     /// Shipped entries applied after the snapshot.
     pub replayed: usize,
+    /// Entries a surviving replica's log added ([`with_survivor`]).
+    pub from_survivor: usize,
 }
 
 /// `shard`'s state as of `at_ms` (its newest without one), from the object
@@ -138,7 +155,102 @@ pub async fn state_at(
         state,
         from: base,
         replayed,
+        from_survivor: 0,
     })
+}
+
+/// `shard`'s newest state from the object store ([`state_at`]), extended
+/// with what the stopped replica whose data directory is `dir` holds: its
+/// snapshot when that is newer, then its log after. Refused when the
+/// replica's log does not continue the object store's (another
+/// incarnation, or a gap).
+pub async fn with_survivor(
+    store: &Store,
+    shard: ShardId,
+    dir: &std::path::Path,
+) -> anyhow::Result<Restored> {
+    let mut restored = state_at(store, shard, None).await?;
+    extend(&mut restored, dir).await?;
+    Ok(restored)
+}
+
+/// Add a surviving replica's snapshot and log to `restored`.
+async fn extend(restored: &mut Restored, dir: &std::path::Path) -> anyhow::Result<()> {
+    use openraft::RaftLogReader;
+    if !dir.join("wal").exists() && !dir.join("snapshots").join("current.snap").exists() {
+        anyhow::bail!("{} holds no node", dir.display());
+    }
+    let mut wal = crate::wal::Wal::open(dir.join("wal"))?;
+    let log = wal
+        .get_log_state()
+        .await
+        .map_err(|error| anyhow::anyhow!("read the survivor's log: {error}"))?;
+    let mut last = restored.last;
+    // The survivor's own id for the entry at `last`, where it still has one.
+    let held_at = |index: u64, wal: &mut crate::wal::Wal| {
+        let mut wal = wal.clone();
+        async move {
+            if log.last_purged_log_id.is_some_and(|p| p.index == index) {
+                return Ok(log.last_purged_log_id);
+            }
+            let entries = wal
+                .try_get_log_entries(index..=index)
+                .await
+                .map_err(|error| anyhow::anyhow!("read the survivor's log: {error}"))?;
+            anyhow::Ok(entries.first().map(|e| e.log_id))
+        }
+    };
+    let mut joined = last == 0;
+    if let Some((meta, data)) = crate::sm::read_snapshot_file(&dir.join("snapshots"))?
+        && meta.last_log_id.is_some_and(|id| id.index > last)
+    {
+        let mut state: ShardState = serde_json::from_slice(&data)?;
+        state.resolve_definitions();
+        if state.incarnation != restored.state.incarnation {
+            anyhow::bail!(
+                "the survivor is incarnation {}, the object store's newest {}",
+                state.incarnation,
+                restored.state.incarnation
+            );
+        }
+        restored.state = state;
+        last = restored.state.last_applied.map_or(0, |id| id.index);
+        joined = true;
+    }
+    if !joined {
+        match held_at(last, &mut wal).await? {
+            Some(id) if Some(id) == restored.state.last_applied => {}
+            Some(id) => anyhow::bail!(
+                "the survivor's entry {last} is {id}, the shipped log's {:?}: it is not this shard's log",
+                restored.state.last_applied
+            ),
+            None if log.last_log_id.is_none_or(|id| id.index < last) => {
+                // Behind the object store: it adds nothing.
+                return Ok(());
+            }
+            None => anyhow::bail!(
+                "the survivor no longer holds entry {last}, where the shipped log ends"
+            ),
+        }
+    }
+    let Some(end) = log.last_log_id.map(|id| id.index).filter(|end| *end > last) else {
+        restored.last = last;
+        return Ok(());
+    };
+    let entries = wal
+        .try_get_log_entries(last + 1..=end)
+        .await
+        .map_err(|error| anyhow::anyhow!("read the survivor's log: {error}"))?;
+    if entries.first().is_some_and(|e| e.log_id.index != last + 1) {
+        anyhow::bail!("the survivor's log has a hole after entry {last}");
+    }
+    let mut changes = Vec::new();
+    for entry in entries {
+        replay(&mut restored.state, entry, &mut changes);
+        restored.from_survivor += 1;
+    }
+    restored.last = restored.state.last_applied.map_or(0, |id| id.index);
+    Ok(())
 }
 
 /// Apply one shipped entry to `state`, as a replica would.
@@ -175,20 +287,27 @@ pub struct Rebuilt {
     pub clock_ms: i64,
     pub sessions: usize,
     pub replayed: usize,
+    /// Entries a surviving replica's log added.
+    pub from_survivor: usize,
 }
 
 /// Rebuild `shard` as of `at_ms` (its newest without one) as a new
 /// incarnation whose voters are `members` (id to address), writing the
 /// starting point of the nodes in `local` (id to an empty data directory).
-/// Seed the others with [`seed`] on their machines, then start every node
-/// as usual.
+/// With `survivor`, the data directory of a stopped replica, its snapshot
+/// and log are added ([`with_survivor`]). Seed the others with [`seed`] on
+/// their machines, then start every node as usual.
 pub async fn rebuild(
     store: &Store,
     shard: ShardId,
     members: &BTreeMap<NodeId, String>,
     local: &BTreeMap<NodeId, PathBuf>,
     at_ms: Option<i64>,
+    survivor: Option<&std::path::Path>,
 ) -> anyhow::Result<Rebuilt> {
+    if survivor.is_some() && at_ms.is_some() {
+        anyhow::bail!("a survivor's log only extends the newest state, not a point in time");
+    }
     if members.is_empty() {
         anyhow::bail!("a rebuilt shard needs at least one member");
     }
@@ -198,7 +317,10 @@ pub async fn rebuild(
         }
         refuse_used(*node, dir)?;
     }
-    let restored = state_at(store, shard, at_ms).await?;
+    let restored = match survivor {
+        Some(dir) => with_survivor(store, shard, dir).await?,
+        None => state_at(store, shard, at_ms).await?,
+    };
     let Some(last_log_id) = restored.state.last_applied else {
         anyhow::bail!("nothing to restore for shard {shard}: no snapshot and no shipped log");
     };
@@ -209,6 +331,7 @@ pub async fn rebuild(
         .claim_incarnation(shard, (state.incarnation + 1).max(2))
         .await?;
     renew(&mut state, incarnation);
+    store.unretire(&referenced(state.sessions.iter())).await?;
     let voters: std::collections::BTreeSet<NodeId> = members.keys().copied().collect();
     let nodes: BTreeMap<NodeId, BasicNode> = members
         .iter()
@@ -245,6 +368,7 @@ pub async fn rebuild(
         clock_ms,
         sessions,
         replayed: restored.replayed,
+        from_survivor: restored.from_survivor,
     })
 }
 
@@ -319,6 +443,7 @@ pub async fn restore_org(
         at_ms,
         ..Default::default()
     };
+    store.unretire(&referenced(images.iter())).await?;
     let branch = crate::state::new_branch(crate::node::now_ms());
     for (session, image) in images {
         let command = Command::Revert {
@@ -368,6 +493,15 @@ pub async fn restore_org(
         }
     }
     Ok(report)
+}
+
+/// The segments `sessions` refer to.
+fn referenced<'a>(
+    sessions: impl Iterator<Item = (&'a SessionId, &'a SessionState)>,
+) -> std::collections::HashSet<(SessionId, crate::store::SegRef)> {
+    sessions
+        .flat_map(|(id, s)| s.segments.iter().map(move |seg| (*id, *seg)))
+        .collect()
 }
 
 /// Refuse a data directory that already holds a node.
@@ -531,10 +665,85 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let members = BTreeMap::from([(1, "127.0.0.1:1".to_owned())]);
         let local = BTreeMap::from([(1, dir.path().join("n1"))]);
-        let error = rebuild(&store, 7, &members, &local, None)
+        let error = rebuild(&store, 7, &members, &local, None, None)
             .await
             .unwrap_err();
         assert!(error.to_string().contains("nothing to restore"), "{error}");
+    }
+
+    /// A survivor data directory whose log holds entries 1..=`last`.
+    async fn survivor(term: u64, last: u64) -> tempfile::TempDir {
+        use crate::wal::tests::{append_durable, entry};
+        let dir = tempfile::tempdir().unwrap();
+        let wal = crate::wal::Wal::open(dir.path().join("wal")).unwrap();
+        append_durable(&wal, (1..=last).map(|i| entry(term, i)).collect()).await;
+        dir
+    }
+
+    async fn shipped(store: &Store, term: u64, last: u64) {
+        let log: Vec<Entry> = (1..=last)
+            .map(|i| crate::wal::tests::entry(term, i))
+            .collect();
+        store
+            .put_log(7, 0, 1, last, serde_json::to_vec(&log).unwrap())
+            .await
+            .unwrap();
+    }
+
+    /// Two zones lost while the shipped log lagged: the third replica's log
+    /// brings back what the object store had not received yet, including
+    /// writes answered only once every voter held them.
+    #[tokio::test]
+    async fn a_survivors_log_extends_the_shipped_log() {
+        let store = Store::open("memory:///").unwrap();
+        shipped(&store, 1, 4).await;
+        let dir = survivor(1, 9).await;
+        let r = with_survivor(&store, 7, dir.path()).await.unwrap();
+        assert_eq!((r.last, r.replayed, r.from_survivor), (9, 4, 5));
+        // Nothing shipped at all: the survivor alone restores the shard.
+        let empty = Store::open("memory:///").unwrap();
+        let r = with_survivor(&empty, 7, dir.path()).await.unwrap();
+        assert_eq!((r.last, r.from_survivor), (9, 9));
+    }
+
+    #[tokio::test]
+    async fn a_survivor_behind_the_shipped_log_adds_nothing() {
+        let store = Store::open("memory:///").unwrap();
+        shipped(&store, 1, 6).await;
+        let dir = survivor(1, 3).await;
+        let r = with_survivor(&store, 7, dir.path()).await.unwrap();
+        assert_eq!((r.last, r.from_survivor), (6, 0));
+    }
+
+    /// Another shard's (or a lost incarnation's) log never joins this one.
+    #[tokio::test]
+    async fn a_survivor_whose_log_differs_at_the_join_is_refused() {
+        let store = Store::open("memory:///").unwrap();
+        shipped(&store, 2, 4).await;
+        let dir = survivor(1, 9).await;
+        let error = with_survivor(&store, 7, dir.path()).await.unwrap_err();
+        assert!(
+            error.to_string().contains("not this shard's log"),
+            "{error}"
+        );
+        let error = with_survivor(&store, 7, tempfile::tempdir().unwrap().path())
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("holds no node"), "{error}");
+    }
+
+    #[tokio::test]
+    async fn a_survivor_never_joins_a_point_in_time_restore() {
+        let store = Store::open("memory:///").unwrap();
+        shipped(&store, 1, 4).await;
+        let dir = survivor(1, 9).await;
+        let target = tempfile::tempdir().unwrap();
+        let members = BTreeMap::from([(1, "127.0.0.1:1".to_owned())]);
+        let local = BTreeMap::from([(1, target.path().join("n1"))]);
+        let error = rebuild(&store, 7, &members, &local, Some(1), Some(dir.path()))
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("point in time"), "{error}");
     }
 
     #[test]

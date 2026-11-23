@@ -65,6 +65,10 @@ pub struct ShardReport {
     pub resident_mb: u64,
     #[serde(default)]
     pub log_mb: u64,
+    /// Object store writes this node's process made since it started, by
+    /// kind (`store::PUT_KINDS`): what a run costs in requests.
+    #[serde(default)]
+    pub store_puts: std::collections::BTreeMap<String, u64>,
     pub moves_total: usize,
     pub moves: Vec<MoveView>,
 }
@@ -166,6 +170,10 @@ pub(crate) async fn shard(State(node): State<Arc<Node>>) -> Json<ShardReport> {
         queued_inputs: state.sessions.values().map(|s| s.queued()).sum(),
         feed_pending: state.feed.records.len(),
         rss_mb: crate::api::rss_mb(),
+        store_puts: crate::store::puts()
+            .into_iter()
+            .map(|(kind, n)| (kind.to_owned(), n))
+            .collect(),
         resident_mb,
         log_mb,
         moves_total,

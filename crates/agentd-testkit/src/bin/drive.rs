@@ -10,7 +10,7 @@
 //! with the org member's API key in `EVERRUNS_API_KEY`
 //! (`everruns_agentd_testkit::org_token`).
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -567,7 +567,7 @@ fn follow(client: &Client, id: &str, progress: Arc<Progress>) -> tokio::task::Jo
                         request = request.header(everruns_agentd::org_token::HEADER, &*token)
                     }
                     Err(_) => {
-                        progress.stream_errors.fetch_add(1, Ordering::Relaxed);
+                        progress.stream_error("token");
                         tokio::time::sleep(Duration::from_millis(500)).await;
                         continue;
                     }
@@ -580,8 +580,18 @@ fn follow(client: &Client, id: &str, progress: Arc<Progress>) -> tokio::task::Jo
                         progress.streamed.fetch_add(events, Ordering::Relaxed);
                     }
                 }
-                _ => {
-                    progress.stream_errors.fetch_add(1, Ordering::Relaxed);
+                Ok(response) => {
+                    progress.stream_error(response.status().as_str());
+                    tokio::time::sleep(Duration::from_millis(500)).await;
+                }
+                Err(e) => {
+                    progress.stream_error(if e.is_connect() {
+                        "connect"
+                    } else if e.is_timeout() {
+                        "timeout"
+                    } else {
+                        "request"
+                    });
                     tokio::time::sleep(Duration::from_millis(500)).await;
                 }
             }
@@ -670,8 +680,22 @@ struct Progress {
     /// SSE events read by sessions holding their stream (`--stream`).
     streamed: AtomicUsize,
     stream_errors: AtomicUsize,
+    /// Failed stream requests by HTTP status or error kind, to tell a
+    /// shard's refusal from a dropped connection.
+    stream_error_kinds: parking_lot::Mutex<BTreeMap<String, usize>>,
     /// Turns sent and not yet finished: session -> (turn, sent at).
     waiting: parking_lot::Mutex<HashMap<String, (u64, Instant)>>,
+}
+
+impl Progress {
+    fn stream_error(&self, kind: &str) {
+        self.stream_errors.fetch_add(1, Ordering::Relaxed);
+        *self
+            .stream_error_kinds
+            .lock()
+            .entry(kind.to_string())
+            .or_default() += 1;
+    }
 }
 
 /// A turn waiting longer than this is named in the progress output.
@@ -714,13 +738,14 @@ fn report_progress(
             tick.tick().await;
             let turns = progress.turns.load(Ordering::Relaxed);
             eprintln!(
-                "{:>6.0}s  sessions {:>6}  turns running {:>5}  turns done {:>7}  ({:.1}/s)  shed {}",
+                "{:>6.0}s  sessions {:>6}  turns running {:>5}  turns done {:>7}  ({:.1}/s)  shed {}  stream errors {}",
                 started.elapsed().as_secs_f64(),
                 progress.sessions.load(Ordering::Relaxed),
                 progress.running.load(Ordering::Relaxed),
                 turns,
                 (turns - last) as f64 / 10.0,
                 client.shed.load(Ordering::Relaxed),
+                progress.stream_errors.load(Ordering::Relaxed),
             );
             for (id, turn, secs) in stalled(&progress).into_iter().take(5) {
                 eprintln!("stalled {id} turn {turn} waiting {secs}s");
@@ -881,6 +906,7 @@ async fn load(
         "streaming_sessions": (0..ids.len()).filter(|i| streams(*i, stream_share)).count(),
         "streamed_events": progress.streamed.load(Ordering::Relaxed),
         "stream_errors": progress.stream_errors.load(Ordering::Relaxed),
+        "stream_error_kinds": *progress.stream_error_kinds.lock(),
         "stalled": stalled(&progress)
             .into_iter()
             .map(|(id, turn, secs)| json!({ "session": id, "turn": turn, "waiting_secs": secs }))

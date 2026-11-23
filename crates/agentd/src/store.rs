@@ -48,7 +48,7 @@ pub fn is_context(event_type: &str) -> bool {
 /// session's history branch (`SessionState::branch`). A name then always
 /// holds the same events, whoever reads it (caches included), and a
 /// restore point of the earlier branch still reads the history it saw.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, Default)]
 pub struct SegRef {
     pub from: i32,
     pub to: i32,
@@ -494,7 +494,26 @@ impl Store {
 
     pub(crate) async fn put(&self, key: Path, bytes: Vec<u8>) -> anyhow::Result<()> {
         let payload = PutPayload::from(bytes);
-        retry(|| async { self.inner.put(&key, payload.clone()).await.map(|_| ()) }).await
+        retry(|| async {
+            count_put(&key);
+            self.inner.put(&key, payload.clone()).await.map(|_| ())
+        })
+        .await
+    }
+
+    /// Delete every object under `rest` (the whole store with ""). For
+    /// scratch prefixes only (`store_check.rs`).
+    pub(crate) async fn delete_prefix(&self, rest: &str) -> anyhow::Result<usize> {
+        let root = if rest.is_empty() {
+            self.prefix.clone()
+        } else {
+            self.key(rest)
+        };
+        let listed: Vec<_> = self.inner.list(Some(&root)).try_collect().await?;
+        for meta in &listed {
+            self.inner.delete(&meta.location).await?;
+        }
+        Ok(listed.len())
     }
 
     pub(crate) async fn get(&self, key: Path) -> anyhow::Result<bytes::Bytes> {
@@ -566,6 +585,61 @@ fn cover(mut stored: Vec<SegRef>, chain: &[SegRef], from: i32, to: i32) -> Vec<S
     out
 }
 
+/// What an object write was for, by where it goes: the request counts
+/// `agentd_store_puts_total` reports, for knowing what a run costs.
+pub const PUT_KINDS: [&str; 8] = [
+    "log",
+    "snapshot",
+    "segment",
+    "feed",
+    "blob",
+    "retired",
+    "incarnation",
+    "other",
+];
+
+/// Object writes this process made, by [`PUT_KINDS`], retries included
+/// (each is a billed request).
+static PUTS: [std::sync::atomic::AtomicU64; PUT_KINDS.len()] =
+    [const { std::sync::atomic::AtomicU64::new(0) }; PUT_KINDS.len()];
+
+/// The kind of an object write to `key`, an index into [`PUT_KINDS`].
+fn put_kind(key: &Path) -> usize {
+    let parts: Vec<String> = key.parts().map(|p| p.as_ref().to_owned()).collect();
+    // The store's prefix comes first; the first known root names the kind.
+    for (i, part) in parts.iter().enumerate() {
+        let kind = match part.as_str() {
+            "shards" => match parts.get(i + 2).map(String::as_str) {
+                Some("log") => "log",
+                Some("snapshots") => "snapshot",
+                Some("incarnations") => "incarnation",
+                _ => continue,
+            },
+            "sessions" => "segment",
+            "feed" => "feed",
+            "blobs" => "blob",
+            "retired" => "retired",
+            _ => continue,
+        };
+        return PUT_KINDS.iter().position(|k| *k == kind).unwrap_or(7);
+    }
+    PUT_KINDS.len() - 1
+}
+
+/// Count one object write to `key`.
+pub(crate) fn count_put(key: &Path) {
+    PUTS[put_kind(key)].fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// Object writes so far, by kind.
+pub fn puts() -> Vec<(&'static str, u64)> {
+    PUT_KINDS
+        .iter()
+        .zip(&PUTS)
+        .map(|(kind, n)| (*kind, n.load(std::sync::atomic::Ordering::Relaxed)))
+        .collect()
+}
+
 /// Retry transient store failures a few times; a missing object is final.
 pub(crate) async fn retry<T, F, Fut>(op: F) -> anyhow::Result<T>
 where
@@ -591,6 +665,19 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn object_writes_count_by_kind() {
+        let kind = |key: &str| PUT_KINDS[put_kind(&Path::from(key))];
+        assert_eq!(kind("live/shards/3/log/i2/1-9.json"), "log");
+        assert_eq!(kind("shards/3/snapshots/i2-n9-t1-x.snap"), "snapshot");
+        assert_eq!(kind("runs/r1/shards/0/incarnations/2"), "incarnation");
+        assert_eq!(kind("live/sessions/s1/1-9.messages.json"), "segment");
+        assert_eq!(kind("feed/0/1/a.json"), "feed");
+        assert_eq!(kind("blobs/abc"), "blob");
+        assert_eq!(kind("retired/0000000001/s1/1-9.json"), "retired");
+        assert_eq!(kind("exports/org.json"), "other");
+    }
 
     fn seg(from: i32, to: i32) -> SegRef {
         SegRef {

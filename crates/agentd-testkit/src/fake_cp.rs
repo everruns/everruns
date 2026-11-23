@@ -187,6 +187,12 @@ impl FakeCp {
     }
 
     /// Feed records that arrived again (a replay shows here).
+    /// Every feed record it stored, by `(source, incarnation, index,
+    /// ordinal)`.
+    pub fn feed_ids(&self) -> std::collections::BTreeSet<(String, u64, u64, u32)> {
+        self.ledger.lock().seen.iter().cloned().collect()
+    }
+
     pub fn duplicates(&self) -> usize {
         self.ledger.lock().duplicates
     }

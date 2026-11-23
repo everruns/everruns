@@ -154,6 +154,53 @@ async fn agents_come_from_config_and_turns_bill_the_org() {
         assert_eq!(sessions[session.as_str()].status, "idle");
     }
     assert!(cp.config_applied().contains(&(ORG.to_string(), 2)));
+    // The stream contract: what an install streams (`GET /v1/stream`, the
+    // archive) is exactly what the control plane stored from the feed, so
+    // a server can later read its feed from the stream instead.
+    // Decision: compare until they agree. A shard archives a batch right
+    // after the control plane acknowledges it, and late records (a
+    // session's summary) can still be in flight.
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        let stored = cp.feed_ids();
+        let sources: Vec<String> = stored
+            .iter()
+            .map(|(source, ..)| source.clone())
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .collect();
+        let (streamed, _) = everruns_agentd::install_stream::read(
+            &fleet.store(),
+            &sources,
+            &Default::default(),
+            &Default::default(),
+            usize::MAX,
+        )
+        .await
+        .unwrap();
+        let streamed: std::collections::BTreeSet<_> = streamed
+            .iter()
+            .map(|r| {
+                (
+                    r.shard.clone(),
+                    r.incarnation,
+                    r.record.index,
+                    r.record.ordinal,
+                )
+            })
+            .collect();
+        assert!(!stored.is_empty());
+        if streamed == stored {
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "the stream is the stored feed: only streamed {:?}, only stored {:?}",
+            streamed.difference(&stored).collect::<Vec<_>>(),
+            stored.difference(&streamed).collect::<Vec<_>>()
+        );
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
     // Money only moved into grants: nothing was lost or made up.
     assert_eq!(cp.balance(ORG) + cp.outstanding(ORG), 10_000_000);
 

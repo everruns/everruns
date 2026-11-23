@@ -195,4 +195,18 @@ helm package "$CHART" --version 1.2.3 --app-version 1.2.3 -d "$tmp" >/dev/null
 helm template check "$tmp/everruns-1.2.3.tgz" --set postgresql.enabled=true --set auth.adminEmail=admin@example.com \
   | grep -q "ghcr.io/everruns/everruns-server:v1.2.3" || fail "packaged chart does not use v1.2.3 images"
 
+echo "==> charts/agentd: lint, render, refuse no credentials, packaged image tag"
+AGENTD="$ROOT/charts/agentd"
+key=(--set 'apiKeys.keys[0]=app:0123456789abcdef0123456789')
+helm lint "$AGENTD" --strict "${key[@]}"
+out="$(helm template check "$AGENTD" "${key[@]}" --set store=s3://bucket/agentd --set groupLabel=org \
+  --set tls.secretName=tls --set tls.clientCaSecret=ca --set dpKey.existingSecret=dp)"
+grep -q 'args: \["serve"' <<<"$out" || fail "agentd chart does not run serve"
+grep -q 'value: /etc/agentd/client-ca/ca.crt' <<<"$out" || fail "agentd chart drops the client CA"
+helm template check "$AGENTD" --set apiKeys.existingSecret=keys >/dev/null
+if helm template check "$AGENTD" >/dev/null 2>&1; then fail "agentd chart renders with no credentials"; fi
+helm package "$AGENTD" --version 1.2.3 --app-version 1.2.3 -d "$tmp" >/dev/null
+helm template check "$tmp/agentd-1.2.3.tgz" "${key[@]}" | grep -q "ghcr.io/everruns/agentd:v1.2.3" \
+  || fail "packaged agentd chart does not use the v1.2.3 image"
+
 echo "helm chart checks passed"

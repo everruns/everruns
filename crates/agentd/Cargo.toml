@@ -59,6 +59,13 @@ jsonwebtoken.workspace = true
 regex.workspace = true
 mime_guess = "2"
 tower.workspace = true
+# TLS and client certificates on an install's public port (`install_tls.rs`).
+rustls = { workspace = true, features = ["std"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["aws_lc_rs"] }
+hyper.workspace = true
+hyper-util.workspace = true
+# Agent files `agentd push` reads (`push.rs`).
+serde_yaml.workspace = true
 # The same drivers as the worker, so an org's provider runs the same way on
 # an executor (and the workspace builds them once).
 everruns-drivers = { workspace = true, features = [
@@ -80,6 +87,8 @@ everruns-drivers = { workspace = true, features = [
 everruns-llmsim.workspace = true
 # The `agentd` binary's allocator (see `main.rs`).
 tikv-jemallocator.workspace = true
+# Allocator figures for `/shard/stats` (`heap.rs`).
+tikv-jemalloc-ctl.workspace = true
 
 [[bin]]
 name = "agentd"

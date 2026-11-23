@@ -35,6 +35,7 @@ fn transition(index: u64, transition: &str, targets: Vec<PushTarget>) -> FeedRec
         ordinal: 0,
         org_id: org_public(ORG),
         at_unix_ms: chrono::Utc::now().timestamp_millis(),
+        labels: Default::default(),
         record: Record::TaskTransition {
             session_id: SESSION.into(),
             transition: transition.into(),

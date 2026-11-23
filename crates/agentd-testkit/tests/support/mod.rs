@@ -8,6 +8,7 @@ pub mod org;
 
 use std::collections::BTreeMap;
 use std::net::SocketAddr;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -107,6 +108,9 @@ pub struct Fleet {
     raft_ports: Vec<TcpSocket>,
     /// Why nodes stopped serving on their own; any entry fails the test.
     failed: Arc<Mutex<Vec<String>>>,
+    /// Set before the test stops a node, so the error its serve returns
+    /// as the runtime winds down (a cancelled task) is not a failure.
+    stopping: BTreeMap<(u32, u64), Arc<AtomicBool>>,
 }
 
 impl Drop for Fleet {
@@ -183,6 +187,7 @@ impl Fleet {
             ports,
             raft_ports,
             failed: Arc::default(),
+            stopping: BTreeMap::new(),
             dir,
         };
         for (shard, members) in &topology.shards {
@@ -231,10 +236,14 @@ impl Fleet {
         let host = Arc::new(everruns_agentd_testkit::host());
         let topology = self.topology.clone();
         let failed = self.failed.clone();
+        let stopping = Arc::new(AtomicBool::new(false));
+        self.stopping.insert((shard, node), stopping.clone());
         rt.spawn(async move {
             let served =
                 everruns_agentd::cli::serve_node_on(cfg, host, topology, listener, false).await;
-            if let Err(error) = served {
+            if let Err(error) = served
+                && !stopping.load(Ordering::SeqCst)
+            {
                 failed
                     .lock()
                     .unwrap()
@@ -385,6 +394,9 @@ impl Fleet {
     }
 
     pub fn kill_node(&mut self, shard: u32, node: u64) {
+        if let Some(stopping) = self.stopping.get(&(shard, node)) {
+            stopping.store(true, Ordering::SeqCst);
+        }
         if let Some(rt) = self
             .nodes
             .get_mut(&(shard, node))
@@ -402,6 +414,26 @@ impl Fleet {
         shard: u32,
         at_ms: Option<i64>,
     ) -> everruns_agentd::restore::Rebuilt {
+        self.rebuild_from(shard, at_ms, None).await
+    }
+
+    /// Lose two zones of `shard`: every node stops, and only `survivor`'s
+    /// disk is left. Rebuild from the object store plus that disk on new
+    /// nodes at the same addresses, and wait for a leader.
+    pub async fn rebuild_with_survivor(
+        &mut self,
+        shard: u32,
+        survivor: u64,
+    ) -> everruns_agentd::restore::Rebuilt {
+        self.rebuild_from(shard, None, Some(survivor)).await
+    }
+
+    async fn rebuild_from(
+        &mut self,
+        shard: u32,
+        at_ms: Option<i64>,
+        survivor: Option<u64>,
+    ) -> everruns_agentd::restore::Rebuilt {
         let nodes: Vec<u64> = self
             .configs
             .keys()
@@ -413,19 +445,34 @@ impl Fleet {
         }
         tokio::time::sleep(Duration::from_millis(300)).await;
         let (mut members, mut local) = (BTreeMap::new(), BTreeMap::new());
+        let mut kept = None;
         for node in &nodes {
             let dir = self.configs[&(shard, *node)].data_dir.clone();
             if dir.exists() {
-                let lost = dir.with_extension(format!("lost-{}", now_ms()));
-                std::fs::rename(&dir, lost).unwrap();
+                let suffix = if survivor == Some(*node) {
+                    "survivor"
+                } else {
+                    "lost"
+                };
+                let aside = dir.with_extension(format!("{suffix}-{}", now_ms()));
+                std::fs::rename(&dir, &aside).unwrap();
+                if survivor == Some(*node) {
+                    kept = Some(aside);
+                }
             }
             members.insert(*node, self.nodes[&(shard, *node)].0.clone());
             local.insert(*node, dir);
         }
-        let rebuilt =
-            everruns_agentd::restore::rebuild(&self.store(), shard, &members, &local, at_ms)
-                .await
-                .unwrap();
+        let rebuilt = everruns_agentd::restore::rebuild(
+            &self.store(),
+            shard,
+            &members,
+            &local,
+            at_ms,
+            kept.as_deref(),
+        )
+        .await
+        .unwrap();
         for node in &nodes {
             self.start_node(shard, *node);
         }

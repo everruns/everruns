@@ -1,5 +1,6 @@
-# Publish charts/everruns as an OCI chart for a release:
+# Publish charts/everruns and charts/agentd as OCI charts for a release:
 #   helm install everruns oci://ghcr.io/everruns/charts/everruns --version X.Y.Z
+#   helm install agentd oci://ghcr.io/everruns/charts/agentd --version X.Y.Z
 # The chart's version and appVersion are set to the release, so it runs that
 # release's images. Dispatched by Release after it pushes the tag.
 name: Publish Helm Chart
@@ -62,3 +63,5 @@ jobs:
           helm package charts/everruns --version "$version" --app-version "$version" -d dist
           echo "$REGISTRY_TOKEN" | helm registry login ghcr.io --username "$REGISTRY_USER" --password-stdin
           helm push "dist/everruns-$version.tgz" oci://ghcr.io/everruns/charts
+          helm package charts/agentd --version "$version" --app-version "$version" -d dist
+          helm push "dist/agentd-$version.tgz" oci://ghcr.io/everruns/charts

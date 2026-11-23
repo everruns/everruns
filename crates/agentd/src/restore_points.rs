@@ -94,7 +94,11 @@ impl Store {
             "shards/{shard}/snapshots/i{inc}-n{index}-t{clock_ms}-{id}.snap"
         ));
         let payload: PutPayload = parts.into_iter().collect();
-        retry(|| async { self.inner.put(&key, payload.clone()).await.map(|_| ()) }).await?;
+        retry(|| async {
+            crate::store::count_put(&key);
+            self.inner.put(&key, payload.clone()).await.map(|_| ())
+        })
+        .await?;
         let now = now_ms();
         let copies = self.snapshot_copies(shard).await?;
         for gone in thin(&copies, restore_window(), now) {
@@ -215,6 +219,7 @@ impl Store {
             .map_or(at_least, |n| (n + 1).max(at_least));
         loop {
             let key = self.key(&format!("shards/{shard}/incarnations/{next}"));
+            crate::store::count_put(&key);
             let created = self
                 .inner
                 .put_opts(
@@ -252,6 +257,45 @@ impl Store {
             .await?;
         }
         Ok(())
+    }
+
+    /// Take back the retirement of every segment in `referenced`: a restored
+    /// state refers to them again. Returns how many marks went.
+    ///
+    /// Decision: a rebuild or an org restore can bring back a state from
+    /// before a compaction, whose pieces were retired since. Their marks
+    /// would otherwise expire a window later and the collector would
+    /// delete history the restored sessions read. Restores are rare, so
+    /// listing every mark is affordable there and costs nothing on the
+    /// write path.
+    pub async fn unretire(
+        &self,
+        referenced: &std::collections::HashSet<(SessionId, SegRef)>,
+    ) -> anyhow::Result<usize> {
+        if referenced.is_empty() {
+            return Ok(0);
+        }
+        let marks: Vec<_> = self
+            .inner
+            .list(Some(&self.key("retired")))
+            .try_collect()
+            .await?;
+        let mut taken = 0;
+        for mark in marks {
+            let parts: Vec<_> = mark.location.parts().collect();
+            let n = parts.len();
+            if n >= 2
+                && let (Ok(session), Some(seg)) = (
+                    SessionId::parse(parts[n - 2].as_ref()),
+                    parse_segment(parts[n - 1].as_ref()),
+                )
+                && referenced.contains(&(session, seg))
+            {
+                self.inner.delete(&mark.location).await?;
+                taken += 1;
+            }
+        }
+        Ok(taken)
     }
 
     /// Delete what no restore point inside `window` can refer to: thinned
@@ -317,9 +361,25 @@ impl Store {
                         parse_segment(parts[n - 1].as_ref()),
                     )
                 {
-                    let _ = self.inner.delete(&self.segment_key(session, seg)).await;
-                    let _ = self.inner.delete(&self.messages_key(session, seg)).await;
-                    deleted += 1;
+                    // Decision: only the copy the mark retired goes. A
+                    // segment written again after its mark (the same
+                    // range re-flushed by a later leader) is a new object
+                    // and stays. The object store has no "delete if
+                    // unchanged", so this is a read then a delete; a write
+                    // landing between the two is the remaining window,
+                    // the width of two requests at most an hour after the
+                    // mark expired.
+                    let key = self.segment_key(session, seg);
+                    let rewritten = match self.inner.head(&key).await {
+                        Ok(meta) => meta.last_modified > mark.last_modified,
+                        Err(object_store::Error::NotFound { .. }) => false,
+                        Err(error) => return Err(error.into()),
+                    };
+                    if !rewritten {
+                        let _ = self.inner.delete(&key).await;
+                        let _ = self.inner.delete(&self.messages_key(session, seg)).await;
+                        deleted += 1;
+                    }
                 }
                 self.inner.delete(&mark.location).await?;
             }
@@ -440,5 +500,69 @@ mod tests {
             .unwrap();
         assert_eq!(late.segments, 1);
         assert!(store.get(store.segment_key(session, seg)).await.is_err());
+    }
+
+    /// One process, no race: write, retire, write the same segment again.
+    /// The retirement was of the first write; the collector must not take
+    /// the second with it (the bug class a test double hides when its
+    /// "delete if unchanged" is atomic and the real store's is not).
+    #[tokio::test]
+    async fn a_segment_written_again_after_retiring_outlives_the_mark() {
+        let store = Store::open("memory:///").unwrap();
+        let session = SessionId::new();
+        let seg = SegRef {
+            from: 1,
+            to: 5,
+            branch: 1,
+        };
+        let key = store.segment_key(session, seg);
+        store.put(key.clone(), b"[]".to_vec()).await.unwrap();
+        store.retire_segments(session, &[seg]).await.unwrap();
+        // Object times have millisecond resolution or worse.
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        store.put(key.clone(), b"[]".to_vec()).await.unwrap();
+        let window = Duration::from_secs(3600);
+        let late = store
+            .collect(0, true, window, now_ms() + 3 * HOUR_MS)
+            .await
+            .unwrap();
+        assert_eq!(late.segments, 0);
+        assert!(store.get(key).await.is_ok(), "the second write was deleted");
+    }
+
+    /// A restore back to before a compaction refers to its retired pieces
+    /// again; they must outlive their marks.
+    #[tokio::test]
+    async fn a_restored_reference_takes_back_the_retirement() {
+        let store = Store::open("memory:///").unwrap();
+        let session = SessionId::new();
+        let (kept, gone) = (
+            SegRef {
+                from: 1,
+                to: 5,
+                branch: 1,
+            },
+            SegRef {
+                from: 6,
+                to: 9,
+                branch: 1,
+            },
+        );
+        for seg in [kept, gone] {
+            store
+                .put(store.segment_key(session, seg), b"[]".to_vec())
+                .await
+                .unwrap();
+        }
+        store.retire_segments(session, &[kept, gone]).await.unwrap();
+        let referenced = std::collections::HashSet::from([(session, kept)]);
+        assert_eq!(store.unretire(&referenced).await.unwrap(), 1);
+        let late = store
+            .collect(0, true, Duration::from_secs(3600), now_ms() + 3 * HOUR_MS)
+            .await
+            .unwrap();
+        assert_eq!(late.segments, 1);
+        assert!(store.get(store.segment_key(session, kept)).await.is_ok());
+        assert!(store.get(store.segment_key(session, gone)).await.is_err());
     }
 }

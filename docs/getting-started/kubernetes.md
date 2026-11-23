@@ -153,7 +153,8 @@ helm upgrade everruns oci://ghcr.io/everruns/charts/everruns --reuse-values \
 
 `everruns k8s up --data-plane v1` does the first. Going back to v1 after an
 install ran v2 also needs `dataPlane.keepRunning=true` (the CLI sets it), since
-the v2 organizations' sessions live in the shard.
+the v2 organizations' sessions live in the shard. What the data plane
+promises per failure, and how to restore it: [Data plane (agentd)](/sre/agentd/).
 
 ## Expose it
 

@@ -97,6 +97,8 @@ pub struct Gateway {
     dp_key: Mutex<Option<everruns_contracts::dataplane_seal::Key>>,
     /// Each shard's stream view, for finding a session's stream node.
     pub(crate) views: crate::stream::Deliver,
+    /// The install this gateway serves the push API for (`install.rs`).
+    install: std::sync::OnceLock<Arc<crate::install::Install>>,
 }
 
 impl Gateway {
@@ -126,6 +128,7 @@ impl Gateway {
             link_token: Mutex::new(crate::node_control::link_token().map(Arc::from)),
             dp_key: Mutex::new(crate::executor::data_plane_key().ok().flatten()),
             views: Default::default(),
+            install: std::sync::OnceLock::new(),
         });
         if let Some(tokens) = crate::org_token::OrgTokens::from_env() {
             gateway.require_org_tokens(tokens);
@@ -435,6 +438,15 @@ impl Gateway {
         Ok(proposed.response)
     }
 
+    /// Serve `install`'s push API (set before [`router`] is built).
+    pub fn set_install(&self, install: Arc<crate::install::Install>) {
+        let _ = self.install.set(install);
+    }
+
+    pub fn install(&self) -> Option<Arc<crate::install::Install>> {
+        self.install.get().cloned()
+    }
+
     pub fn directory_shard(&self) -> Result<ShardId, ApiError> {
         Ok(self.topology()?.directory_shard)
     }
@@ -599,6 +611,7 @@ impl Gateway {
             importing,
             subagent,
             owner,
+            labels,
         } = joining;
         // Reject a malformed definition here, not at its first turn. Whether
         // a node has the tools and provider it names shows at the turn.
@@ -656,6 +669,7 @@ impl Gateway {
             "importing": importing,
             "subagent": subagent,
             "owner": owner,
+            "labels": labels,
         });
         let deadline = Instant::now() + Duration::from_secs(30);
         loop {
@@ -841,8 +855,23 @@ impl Gateway {
 }
 
 pub fn router(gateway: Arc<Gateway>) -> Router {
+    // Decision: the push API and the cross-shard session list exist only
+    // where an install runs; the hosted edge lists sessions on the control
+    // plane, per org.
+    let sessions = match gateway.install() {
+        Some(_) => post(create).get(crate::install::list_sessions),
+        None => post(create),
+    };
+    let install = match gateway.install() {
+        Some(install) => match install.store.clone() {
+            Some(store) => crate::install::routes().merge(crate::install_stream::routes(store)),
+            None => crate::install::routes(),
+        },
+        None => Router::new(),
+    };
     Router::new()
-        .route("/v1/sessions", post(create))
+        .route("/v1/sessions", sessions)
+        .merge(install)
         .route("/v1/sessions/{session}", get(session))
         .route("/v1/sessions/{session}/agent", get(agent))
         .route("/v1/sessions/{session}/move", post(move_session))
@@ -959,6 +988,8 @@ pub struct Joining {
     pub subagent: Option<everruns_contracts::dataplane::SubagentOrigin>,
     /// The person who owns it ([`crate::platform::Platform::owner`]).
     pub owner: Option<String>,
+    /// Its labels (`install.rs`), immutable.
+    pub labels: std::collections::BTreeMap<String, String>,
 }
 
 pub(crate) fn max_request_bytes() -> usize {
@@ -1022,9 +1053,19 @@ struct CreateBody {
 async fn create(
     State(gateway): State<Arc<Gateway>>,
     claims: Option<axum::Extension<crate::org_token::OrgTokenClaims>>,
-    Json(mut body): Json<CreateBody>,
+    Json(body): Json<Value>,
 ) -> Result<(StatusCode, Json<Value>), ApiError> {
     use crate::org_token::{ADMIN, OrgTokenClaimsExt};
+    if let Some(install) = gateway.install() {
+        let body =
+            serde_json::from_value(body).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+        return Ok((
+            StatusCode::CREATED,
+            Json(install.create(&gateway, body).await?),
+        ));
+    }
+    let mut body: CreateBody =
+        serde_json::from_value(body).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
     // A token's org is the session's tenant, unless the caller is admin.
     if let Some(axum::Extension(claims)) = &claims
         && !claims.has(ADMIN)

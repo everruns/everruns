@@ -371,6 +371,33 @@ async fn an_org_is_enabled_then_gets_its_config_once_and_in_order() {
     assert_eq!((last.epoch, last.base_version), (next as u64, 0));
 }
 
+/// A data plane started over empty has none of its orgs' keys or config,
+/// and nothing would send them again: `rejoin` enables each org once more,
+/// with the same data key, then sends it a full snapshot.
+#[tokio::test]
+async fn a_data_plane_started_over_gets_its_orgs_again() {
+    let (cp, seen, _) = control_plane().await;
+    outbox::deliver_due(&cp).await.unwrap();
+    put_secret(&cp, ORG, "github", b"ghp_1").await.unwrap();
+    outbox::deliver_due(&cp).await.unwrap();
+    assert_eq!(outbox::deliver_due(&cp).await.unwrap(), 0);
+    let before = seen.lock().enabled[0].clone();
+
+    // The fleet is rebuilt empty.
+    *seen.lock() = Seen::default();
+    assert!(cp.db.dp_rejoin("dp-2").await.unwrap() == 0, "another plane");
+    assert_eq!(cp.db.dp_rejoin("dp-1").await.unwrap(), 1);
+    assert_eq!(outbox::deliver_due(&cp).await.unwrap(), 1);
+
+    let seen = seen.lock();
+    assert_eq!(seen.enabled.len(), 1);
+    assert_eq!(seen.enabled[0].data_key_id, before.data_key_id);
+    assert_eq!(seen.enabled[0].command_id, before.command_id);
+    let (_, update) = seen.updates.last().unwrap();
+    assert_eq!(update.base_version, 0, "a full snapshot");
+    assert!(kinds(update).contains(&"Secret".to_owned()));
+}
+
 /// The gate's propagation number: an edit reaches the data plane through
 /// NOTIFY, well under a second.
 #[tokio::test]
@@ -413,6 +440,7 @@ fn record(index: u64, record: Record) -> FeedRecord {
         ordinal: 0,
         org_id: org_public(ORG),
         at_unix_ms: chrono::Utc::now().timestamp_millis(),
+        labels: Default::default(),
         record,
     }
 }
