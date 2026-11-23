@@ -26,7 +26,7 @@ pub use profiles::{
 pub use types::{
     CLEAR_AT_PARAMETER, CostTier, DecisionModelProfile, GifLimits, INLINE_TOOL_ADDITIONS_PARAMETER,
     INLINE_TOOL_CHANGES_PARAMETER, ImageModelProfile, MID_CONVERSATION_SYSTEM_PARAMETER, Modality,
-    ModelCost, ModelLimits, ModelModalities, ModelProfile, ModelVendor, ReasoningEffort,
-    ReasoningEffortConfig, ReasoningEffortValue, ServiceKind, Speed, SpeedConfig, SpeedValue,
-    Verbosity, VerbosityConfig, VerbosityValue,
+    ModelCost, ModelDeprecation, ModelLimits, ModelModalities, ModelProfile, ModelVendor,
+    ReasoningEffort, ReasoningEffortConfig, ReasoningEffortValue, ServiceKind, Speed, SpeedConfig,
+    SpeedValue, Verbosity, VerbosityConfig, VerbosityValue,
 };

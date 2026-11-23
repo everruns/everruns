@@ -167,6 +167,7 @@ pub(super) fn meta_profile_data(model_id: &str) -> Option<ModelProfile> {
         model_card_url: None,
         decisions: None,
         images: None,
+        deprecation: None,
     })
 }
 
@@ -273,5 +274,6 @@ fn muse_open_weight_profile(model_id: &str) -> Option<ModelProfile> {
         model_card_url: None,
         decisions: None,
         images: None,
+        deprecation: None,
     })
 }

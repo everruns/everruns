@@ -1,0 +1,11 @@
+#!/usr/bin/env python3
+"""The 1M agents validator: `validate --help`, and README.md next to this file."""
+import os
+import sys
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+os.environ["VALIDATOR_ROOT"] = HERE
+sys.path.insert(0, os.path.join(os.path.dirname(HERE), "lib"))
+from engine.cli import main  # noqa: E402
+
+sys.exit(main())

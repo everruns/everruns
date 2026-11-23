@@ -110,7 +110,7 @@ fn provider_ids_and_states_are_validated() {
 
 #[test]
 fn shared_batch_encoder_does_not_enable_message_threads() {
-    let mut config = LlmCallConfig::new("claude-sonnet-4-5");
+    let mut config = LlmCallConfig::new("claude-sonnet-5-5");
     config
         .driver_options
         .insert("anthropic/message_threads".into(), json!(true));

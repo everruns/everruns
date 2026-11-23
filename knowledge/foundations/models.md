@@ -304,6 +304,14 @@ See `crates/contracts/src/model.rs` for `ModelProfile`, `ModelCost`, `ModelLimit
 
 Profiles match provider type and wire model ID with version normalization. Gateway-qualified IDs reuse a canonical profile only through explicit registered aliases; unknown names do not inherit guessed prices. The [registry](../../crates/contracts/src/model_profile_data/profiles.rs) owns those identities.
 
+Retirement has two stages. Once a vendor announces a model's retirement, its profile keeps
+working with `deprecation` set (retirement date, and the vendor's recommended replacement when
+it names one), so existing agents keep running and people can see the date coming. A curated
+profile sets it from the vendor's notice; a discovered profile takes it from the provider
+catalog (OpenRouter `expiration_date`; Mistral's deprecated models are left out of discovery
+instead). Once the vendor stops serving the model, the profile is dropped from the registry and
+its seed id is retired, never reused.
+
 ### Model Discovery
 
 Automatic discovery of available models from provider APIs (OpenAI, OpenRouter via the OpenAI-compatible driver, Anthropic).

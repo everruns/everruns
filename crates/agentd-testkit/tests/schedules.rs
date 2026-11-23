@@ -151,6 +151,79 @@ async fn a_session_schedules_its_own_next_run() {
     assert_eq!(status, 404);
 }
 
+/// A replica that has not applied a committed delete must not answer for it:
+/// after the 204 a read on any node shows the schedule gone or answers 503,
+/// never the deleted schedule.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_lagging_replica_never_reads_a_deleted_schedule() {
+    let mut fleet = Fleet::start().await;
+    let session = fleet.create_in("files", 0).await;
+    let id = SessionId::parse(&session).unwrap();
+    let schedule = everruns_agentd::platform_store::build(
+        id,
+        "tick".into(),
+        None,
+        DateTime::from_timestamp_millis(now_ms() + 3_600_000),
+        "UTC".into(),
+        Utc::now(),
+    )
+    .unwrap();
+    let schedule_id = schedule.id.to_string();
+    let command = Command::Platform {
+        session: id,
+        action: Op::CreateSchedule {
+            schedule: Box::new(schedule),
+        },
+        now_ms: now_ms(),
+        seed: EventId::new(),
+    };
+    let created = fleet
+        .propose(0, serde_json::to_value(command).unwrap())
+        .await;
+    assert_eq!(created["result"], "value", "{created}");
+
+    // A follower misses the delete: down while it commits, then back with
+    // its state from before it.
+    let leader = fleet.leader(0).await;
+    let follower = (1..=3).find(|n| *n != leader).unwrap();
+    let (_, addr) = fleet
+        .addrs(0)
+        .into_iter()
+        .find(|(node, _)| *node == follower)
+        .unwrap();
+    fleet.kill_node(0, follower);
+    let path = format!("/v1/sessions/{session}/schedules/{schedule_id}");
+    let (status, _) = call(&fleet, reqwest::Method::DELETE, &path, Value::Null).await;
+    assert_eq!(status, 204);
+    fleet.start_node(0, follower);
+
+    // Every answer the follower gives is fresh: 503 while it cannot sync,
+    // then the list without the schedule. Only non-answers are waited out:
+    // no connection yet, or 421 while it knows it is catching up
+    // (`catchup.rs` `guard`).
+    let url = format!("http://{addr}/shard/sessions/{session}/schedules");
+    let deadline = Instant::now() + Duration::from_secs(30);
+    let listed = loop {
+        assert!(Instant::now() < deadline, "the follower never answered");
+        let Ok(response) = fleet.http.post(&url).json(&json!({})).send().await else {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+            continue;
+        };
+        match response.status().as_u16() {
+            421 | 503 => tokio::time::sleep(Duration::from_millis(20)).await,
+            200 => break response.json::<Value>().await.unwrap(),
+            other => panic!("the follower answered {other}"),
+        }
+    };
+    assert_eq!(listed["reply"], "ok", "{listed}");
+    let live = listed["value"].as_array().unwrap();
+    assert!(
+        live.iter().all(|s| s["id"] != schedule_id.as_str()),
+        "a deleted schedule read back from a lagging replica: {listed}"
+    );
+    fleet.check();
+}
+
 /// Sessions in the bench, five schedules each.
 const SESSIONS: usize = 2_000;
 

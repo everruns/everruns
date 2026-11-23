@@ -1,0 +1,34 @@
+# The fleet layout the 1M goal is projected onto. Unlike goal.toml this is a
+# lever: a climbing agent may change it (bigger machines, smaller pods, a
+# lower idle limit) when the cluster simulation and cost points agree.
+# Defaults are the 75k gate's (saas dataplane-load.yml, run 45197793040).
+
+zones = 3
+machine = "m6a.12xlarge"
+
+node_memory_limit_mb = 14336     # shard node pod (the 75k gate ran 14 GiB cells)
+node_cpu_cores = 4               # CPU per shard node pod (request); the 75k cells peaked at 1.9 cores each
+nodes_per_shard = 3
+
+executor_memory_limit_mb = 6144  # dataplane-load.yml default
+executor_cpu_cores = 4
+executor_turns_max = 3000        # running turns one executor holds (the 75k gate peaked at 2,625)
+
+idle_unload_s = 600              # idle sessions leave memory after 10 minutes (memory design)
+
+[machines."m6a.12xlarge"]
+vcpus = 48
+memory_mb = 196608
+usd_per_hour = 2.0736
+[machines."m6a.4xlarge"]
+vcpus = 16
+memory_mb = 65536
+usd_per_hour = 0.6912
+[machines."m6a.24xlarge"]
+vcpus = 96
+memory_mb = 393216
+usd_per_hour = 4.1472
+
+[store]
+usd_per_1k_puts = 0.005          # S3 standard PUT
+prefix_puts_per_s = 3500         # S3 per-prefix PUT limit; every shard writes under its own prefix

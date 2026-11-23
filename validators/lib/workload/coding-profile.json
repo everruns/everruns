@@ -1,0 +1,105 @@
+{
+ "shapes": {
+  "compactions_per_session": {
+   "max": 1,
+   "mean": 1.0,
+   "median": 1.0,
+   "n": 1,
+   "p90": 1.0,
+   "p99": 1.0
+  },
+  "context_tokens_per_call": {
+   "max": 432241,
+   "mean": 258932.677,
+   "median": 246321.0,
+   "n": 133,
+   "p90": 353855.2,
+   "p99": 427058.24
+  },
+  "gap_minutes": {
+   "max": 34.781,
+   "mean": 4.352,
+   "median": 1.124,
+   "n": 13,
+   "p90": 8.849,
+   "p99": 31.837
+  },
+  "model_calls_per_turn": {
+   "max": 44,
+   "mean": 9.6,
+   "median": 5.0,
+   "n": 15,
+   "p90": 21.6,
+   "p99": 41.48
+  },
+  "output_tokens_per_turn": {
+   "max": 56917,
+   "mean": 8830.267,
+   "median": 3245.0,
+   "n": 15,
+   "p90": 21565.4,
+   "p99": 52903.2
+  },
+  "session_hours": {
+   "max": 0.78,
+   "mean": 0.677,
+   "median": 0.677,
+   "n": 2,
+   "p90": 0.76,
+   "p99": 0.778
+  },
+  "subagents_per_session": {
+   "max": 0,
+   "mean": 0.0,
+   "median": 0.0,
+   "n": 1,
+   "p90": 0.0,
+   "p99": 0.0
+  },
+  "tool_calls_per_turn": {
+   "max": 44,
+   "mean": 13.273,
+   "median": 8.0,
+   "n": 11,
+   "p90": 33.0,
+   "p99": 42.9
+  },
+  "tool_output_kb": {
+   "max": 45.629,
+   "mean": 2.984,
+   "median": 1.08,
+   "n": 145,
+   "p90": 7.402,
+   "p99": 34.609
+  },
+  "turn_seconds": {
+   "max": 572.408,
+   "mean": 98.474,
+   "median": 41.94,
+   "n": 15,
+   "p90": 246.197,
+   "p99": 534.486
+  },
+  "turns_per_session": {
+   "max": 11,
+   "mean": 7.5,
+   "median": 7.5,
+   "n": 2,
+   "p90": 10.3,
+   "p99": 10.93
+  }
+ },
+ "source": {
+  "captured": "2026-11-23",
+  "note": "numbers only: counts, sizes, durations and gaps; no content",
+  "sessions": 2,
+  "turns": 15
+ },
+ "tool_kinds": {
+  "edit": 0.007,
+  "mcp": 0.486,
+  "other": 0.014,
+  "search": 0.062,
+  "shell": 0.432
+ }
+}

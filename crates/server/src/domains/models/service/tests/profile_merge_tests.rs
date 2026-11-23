@@ -41,6 +41,7 @@ fn base_profile() -> ModelProfile {
         model_card_url: None,
         decisions: None,
         images: None,
+        deprecation: None,
     }
 }
 
@@ -144,6 +145,36 @@ fn merge_preserves_hardcoded_verbosity() {
     let merged = ModelService::merge_profiles(hardcoded, base_profile());
 
     assert_eq!(merged.verbosity.unwrap().default, Verbosity::Medium);
+}
+
+#[test]
+fn merge_keeps_curated_deprecation_and_fills_it_from_discovery() {
+    use everruns_contracts::model::ModelDeprecation;
+
+    let curated = ModelDeprecation::retiring_on("2026-11-30")
+        .unwrap()
+        .with_replacement("claude-sonnet-5-5");
+    let discovered = ModelProfile {
+        deprecation: ModelDeprecation::retiring_on("2026-12-11"),
+        ..base_profile()
+    };
+
+    let merged = ModelService::merge_profiles(
+        ModelProfile {
+            deprecation: Some(curated.clone()),
+            ..base_profile()
+        },
+        discovered.clone(),
+    );
+    assert_eq!(merged.deprecation, Some(curated));
+
+    let merged = ModelService::merge_profiles(base_profile(), discovered);
+    assert_eq!(
+        merged.deprecation.unwrap().retires_on.as_deref(),
+        Some("2026-12-11")
+    );
+
+    assert!(!ModelService::merge_profiles(base_profile(), base_profile()).is_deprecated());
 }
 
 #[test]

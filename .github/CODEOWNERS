@@ -1,0 +1,4 @@
+# A validator's goal file defines what its score means; only the project owner
+# changes it (validators/README.md).
+/validators/agents-1m/goal.toml @chaliy
+/validators/agents-75k/goal.toml @chaliy

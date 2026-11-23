@@ -25,9 +25,9 @@ pub use speed::estimate_cost_usd_for_speed;
 use speed::{speed_flex_only, speed_flex_priority, speed_priority_only};
 
 use crate::model_profile_data::types::{
-    CostTier, Modality, ModelCost, ModelLimits, ModelModalities, ModelProfile, ModelVendor,
-    ReasoningEffort, ReasoningEffortConfig, ReasoningEffortValue, ServiceKind, Verbosity,
-    VerbosityConfig, VerbosityValue,
+    CostTier, Modality, ModelCost, ModelDeprecation, ModelLimits, ModelModalities, ModelProfile,
+    ModelVendor, ReasoningEffort, ReasoningEffortConfig, ReasoningEffortValue, ServiceKind,
+    Verbosity, VerbosityConfig, VerbosityValue,
 };
 
 // Helper functions for creating reasoning effort configurations
@@ -1078,6 +1078,7 @@ fn llmsim_profile_data(model_id: &str) -> Option<ModelProfile> {
             model_card_url: None,
             decisions: None,
             images: None,
+            deprecation: None,
         }),
         _ => None,
     }
@@ -1150,6 +1151,7 @@ fn jev_profile(name: &str) -> ModelProfile {
             request_tokens: Some(64_000),
         }),
         images: None,
+        deprecation: None,
     }
 }
 

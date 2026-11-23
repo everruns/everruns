@@ -24,7 +24,7 @@ async fn registered_capability_continues_and_replays_without_losing_session_hist
                 return ResponseTemplate::new(404).insert_header("connection","close")
                     .set_body_json(json!({"error":{"type":"not_found_error","details":{"error_code":"thread_not_found"}}}));
             }
-            let message = json!({"id":format!("msg_{index}"),"type":"message","role":"assistant","model":"claude-sonnet-4-5","content":[{"type":"text","text":"47"}],"stop_reason":"end_turn","usage":{"input_tokens":10,"output_tokens":1}});
+            let message = json!({"id":format!("msg_{index}"),"type":"message","role":"assistant","model":"claude-sonnet-5-5","content":[{"type":"text","text":"47"}],"stop_reason":"end_turn","usage":{"input_tokens":10,"output_tokens":1}});
             let request: Value = request.body_json().unwrap();
             let response = ResponseTemplate::new(200).insert_header("connection","close");
             if request["stream"] == false { return response.set_body_json(message); }
@@ -40,7 +40,7 @@ async fn registered_capability_continues_and_replays_without_losing_session_hist
     let agent = Agent::builder()
         .instructions("Remember numbers.")
         .provider(Anthropic::new("fixture-key").base_url(format!("{}/v1", server.uri())))
-        .model("claude-sonnet-4-5")
+        .model("claude-sonnet-5-5")
         .capability("claude_message_threads")
         .build()
         .unwrap();

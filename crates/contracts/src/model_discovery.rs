@@ -355,6 +355,7 @@ fn openai_compatible_profile(
         model_card_url: None,
         decisions: None,
         images: None,
+        deprecation: None,
     });
 
     (display_name, profile)

@@ -54,6 +54,7 @@ pub(super) fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfil
             model_card_url: None,
             decisions: None,
             images: None,
+            deprecation: None,
         }),
 
         // Claude Mythos 5.2: the same model, specs and price as Fable 5.2, served
@@ -120,6 +121,7 @@ pub(super) fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfil
             model_card_url: None,
             decisions: None,
             images: None,
+            deprecation: None,
         }),
 
         // Claude Fable 5 (previous Fable release; still served, below Fable 5.1)
@@ -172,6 +174,7 @@ pub(super) fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfil
             model_card_url: None,
             decisions: None,
             images: None,
+            deprecation: None,
         }),
 
         // Claude Opus 5.5 (current Opus; successor to Opus 5 at a lower price)
@@ -223,6 +226,7 @@ pub(super) fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfil
             model_card_url: None,
             decisions: None,
             images: None,
+            deprecation: None,
         }),
 
         // Claude Opus 5 (previous Opus; below Opus 5.5, above Opus 4.8)
@@ -274,6 +278,7 @@ pub(super) fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfil
             model_card_url: None,
             decisions: None,
             images: None,
+            deprecation: None,
         }),
 
         // Claude 4.8 series
@@ -323,6 +328,7 @@ pub(super) fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfil
             model_card_url: None,
             decisions: None,
             images: None,
+            deprecation: None,
         }),
 
         // Claude 4.7 series
@@ -370,6 +376,7 @@ pub(super) fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfil
             model_card_url: None,
             decisions: None,
             images: None,
+            deprecation: None,
         }),
 
         // Claude 4.6 series
@@ -414,6 +421,7 @@ pub(super) fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfil
             model_card_url: None,
             decisions: None,
             images: None,
+            deprecation: None,
         }),
 
         // 1M-context twins of the base profiles above. Same pricing and
@@ -501,6 +509,7 @@ pub(super) fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfil
             model_card_url: None,
             decisions: None,
             images: None,
+            deprecation: None,
         }),
 
         // Claude Sonnet 5
@@ -552,6 +561,7 @@ pub(super) fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfil
             model_card_url: None,
             decisions: None,
             images: None,
+            deprecation: None,
         }),
 
         "claude-sonnet-4-6" => Some(ModelProfile {
@@ -594,9 +604,13 @@ pub(super) fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfil
             model_card_url: None,
             decisions: None,
             images: None,
+            deprecation: None,
         }),
 
         // Claude 4.5 series
+        // Opus 4.5: deprecated 2026-11-23, retires on the Claude API 2027-01-22
+        // (`claude-opus-4-5-20251101` and the dateless id); Anthropic names Opus 5.5
+        // as the replacement. Source: platform.claude.com model-deprecations page.
         "claude-opus-4-5" => Some(ModelProfile {
             name: "Claude Opus 4.5".into(),
             family: "claude-opus-4-5".into(),
@@ -637,6 +651,10 @@ pub(super) fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfil
             model_card_url: None,
             decisions: None,
             images: None,
+            deprecation: Some(ModelDeprecation {
+                retires_on: Some("2027-01-22".into()),
+                replacement: Some("claude-opus-5-5".into()),
+            }),
         }),
 
         // Claude Haiku 5.5 (current Haiku; successor to Haiku 4.5)
@@ -698,6 +716,7 @@ pub(super) fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfil
             model_card_url: None,
             decisions: None,
             images: None,
+            deprecation: None,
         }),
 
         "claude-haiku-4-5" => Some(ModelProfile {
@@ -740,6 +759,7 @@ pub(super) fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfil
             model_card_url: None,
             decisions: None,
             images: None,
+            deprecation: None,
         }),
 
         _ => None,
