@@ -68,7 +68,7 @@ def exclusion(cfg, run, point, entry, agents):
     if point.scales == "per_shard" and lvl >= 2 and (density is None or density < 0.95 * want):
         return f"below goal density ({density or 0:,.0f} < {want:,} sessions per shard)"
     size = entry.get("agents", run.get("agents")) or 0
-    if point.scales == "shared" and lvl >= 3 and size < agents:
+    if point.scales == "shared" and lvl >= 3 and size < cfg.full_size(agents):
         return f"shared part from a run of {size:,} agents, below {agents:,}"
     return None
 
@@ -207,6 +207,8 @@ def milestones(cfg, runs, fresh):
     gates = [p.id for p in cfg.points if p.gate]
     out = {}
     for li, level in enumerate(C.LEVELS):
+        if level not in cfg.levels:
+            continue
         reached = None
         for n in cfg.goal["milestones"]["agents"]:
             sts = states(cfg, runs, fresh, agents=n)

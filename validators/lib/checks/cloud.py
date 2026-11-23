@@ -187,7 +187,7 @@ CHECKS = [
     Check("cloud-slice", "L3", ["A1", "A4", "C1", "C2", "C3", "C4", "C5", "C6", "E1", "F3"],
           minutes=90, cost_usd=20, needs=("gh",),
           command='validate --level cloud-slice --spend "<reason>", then validate --import-run <run id>'),
-    Check("full", "L4", ["A1", "A4", "C1", "C2", "C3", "C4", "C5", "C6", "E1", "F3"],
+    Check("full", "L4", ["A1", "A4", "C1", "C2", "C3", "C4", "C5", "C6", "E1", "F3", "R10"],
           minutes=150, cost_usd=200, needs=("gh",),
           command='validate --level full --spend "<reason>" (owner approval in goal.toml)'),
 ]

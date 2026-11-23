@@ -1,4 +1,4 @@
-"""validate: the single entry point of the 1M agents validator.
+"""validate: the single entry point of a validator (validators/<name>/validate).
 
   validate                         model + simulation levels, then the report (free)
   validate --quick                 the same without the cargo fleet tests (seconds)
@@ -15,7 +15,7 @@
   validate --compact               fold runs older than 90 days
 
 Add --record to append the run to results.jsonl (commit it with the change
-it measured). Reports go to target/validators/agents-1m/<time>/.
+it measured). Reports go to target/validators/<name>/<time>/.
 """
 
 import argparse
@@ -53,12 +53,34 @@ def load_profile():
     return model.load_profile()
 
 
+def gate_streak(cfg, runs, entries):
+    """Imported runs in a row, newest first and this one included, whose
+    gate results all pass (R10: the gate passes repeatedly, not once)."""
+    gates = [p for p in cfg.points if p.gate]
+
+    def clean(es):
+        mine = [e for e in es if any(e["point"] == g.id for g in gates)]
+        return bool(mine) and all(S.passes(cfg.point(e["point"]), e, cfg.target(cfg.point(e["point"]))) for e in mine)
+
+    if not clean(entries):
+        return 0
+    streak = 1
+    for r in sorted((r for r in runs if r.get("imported") and r.get("fingerprint") == cfg.fingerprint),
+                    key=lambda r: r["at"], reverse=True):
+        if not clean(r["entries"]):
+            break
+        streak += 1
+    return streak
+
+
 def make_run(cfg, outputs, levels, source, started, commit=None, extra=None):
     entries, metrics, notes = [], {}, []
     coding = False
     agents = None
     for out in outputs:
         for e in out.entries:
+            if not cfg.has(e["point"]):  # a shared check can cover points this validator lacks
+                continue
             if out.density is not None:
                 e.setdefault("density", out.density)
             if out.agents is not None:
@@ -167,7 +189,7 @@ def compare(cp, rep, cfg):
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(prog="validate", description="1M agents validator",
+    ap = argparse.ArgumentParser(prog="validate", description=f"{C.NAME} validator",
                                  formatter_class=argparse.RawDescriptionHelpFormatter, epilog=__doc__)
     ap.add_argument("--level", choices=list(LEVEL_NAMES))
     ap.add_argument("--points", help="comma-separated point ids")
@@ -190,13 +212,13 @@ def main(argv=None):
     ap.add_argument("--after", type=float)
     ap.add_argument("--why")
     ap.add_argument("--compact", action="store_true")
-    ap.add_argument("--out", help="evidence directory (default target/validators/agents-1m/<time>)")
+    ap.add_argument("--out", help="evidence directory (default target/validators/<name>/<time>)")
     a = ap.parse_args(argv)
 
     cfg = C.load()
     runs = T.read_jsonl(T.RESULTS)
     from checks import registry
-    checks = registry()
+    checks = registry(cfg)
     started = time.time()
     evidence = a.out or os.path.join(T.EVIDENCE, now_iso().replace(":", ""))
     points = [p.strip() for p in a.points.split(",")] if a.points else None
@@ -230,8 +252,11 @@ def main(argv=None):
         run_id = os.path.basename(os.path.normpath(a.import_run))
         data = cloud.read_run(path)
         agents = (data["summary"] or {}).get("sessions") or 0
-        lvl = LEVEL_NAMES.get(a.level) or ("L4" if agents >= cfg.goal["agents"]["total"] else "L3")
+        lvl = LEVEL_NAMES.get(a.level) or ("L4" if agents >= cfg.full_size() or "L3" not in cfg.levels else "L3")
         out = cloud.import_run(data, run_id, lvl, cfg.goal["agents"]["total"])
+        if cfg.has("R10"):
+            streak = gate_streak(cfg, runs, out.entries)
+            out.add("R10", lvl, streak, note=f"{streak} imported runs in a row pass every gate, this one included")
         extra = {"imported": run_id}
         if data.get("finished"):  # the run's own time, so "newest result wins" holds
             extra["at"] = dt.datetime.fromtimestamp(data["finished"], dt.timezone.utc).isoformat().replace("+00:00", "Z")

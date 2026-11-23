@@ -19,6 +19,9 @@ nothing cheaper can raise the score. The first one is
 [`validators/agents-1m`](../../validators/agents-1m/README.md): can Everruns
 run 1,000,000 agents at once. Research behind it, the coding-session
 analysis and the first baseline: [agents-1m analysis](agents-1m-analysis.md).
+The second is [`validators/agents-75k`](../../validators/agents-75k/README.md):
+the 75k gate plus the reliability, durability and recoverability it must
+prove (see [Reliability at 75k](#reliability-at-75k)).
 
 ## Shape
 
@@ -28,10 +31,15 @@ analysis and the first baseline: [agents-1m analysis](agents-1m-analysis.md).
   the link: carrying on while the controller is down, streaming records out,
   issuing allowances.
 
-- **One folder per goal, no shared engine.** Everything a validator needs
-  lives in `validators/<goal>/`, plain Python from the standard library, so
-  it runs anywhere the repository is checked out. The common parts get
-  pulled out when a second validator exists, not before (owner, 2026-11-23).
+- **One folder per goal, one shared engine.** A validator's folder holds
+  what its goal means (goal, layout, points, levels), its results journal
+  and its own tests; the engine, checks and coding workload live in
+  `validators/lib/`, plain Python from the standard library, so it runs
+  anywhere the repository is checked out. The owner asked for no shared
+  engine until a second validator existed (2026-11-23); the 75k validator
+  is that second one, so the common parts moved to `lib/` then. A check
+  covers the points of whichever validator defines them, and a validator
+  never runs a check for points it lacks.
 - **A locked goal.** `goal.toml` pins every number that changes the answer
   (pace per agent, peak, ramp, failures during the run, the share of coding
   agents, error and cost bars), so the score cannot rise by quietly
@@ -101,10 +109,36 @@ peak and zone loss), fed by per-agent costs measured at the higher levels.
 It names the first line crossed on the way to the goal and what the fleet
 needs in machines and money.
 
+## Reliability at 75k
+
+A gate run proves the fleet held its load with the failures the workflow
+injects. It cannot show that agentd stays correct under the other things
+that go wrong, that its restores do what they promise, or that a pass was
+not luck. The 75k validator keeps every 1M point that applies at 75k and
+adds two groups (owner, 2026-11-23):
+
+- **Reliability (R).** The existing fault proofs, run on a local fleet: a
+  leader killed mid model call, a follower left behind and healed by a
+  snapshot, a follower rejoining under load, random kill -9 with live
+  moves, executors killed repeatedly, rebalancing mid-turn, a shard drained
+  and retired, topology changes under load, and an hour of load with a
+  kill every five minutes. R10 asks the gate to pass three imported runs in
+  a row, so one lucky pass does not settle it.
+- **Durability and recoverability (U).** The TLA+ protocol models (bug
+  configurations must still fail), the protocol simulation, the snapshot
+  memory bound, the restore tests (two zones lost, point in time, one org),
+  and the disaster drill's numbers: rebuild time, time to a leader, the
+  ship-first p99 of must-survive writes and the share of messages caught
+  in the loss window. Store outage, disk full and the controlled memory
+  restart have no proof yet; the climb list offers building them.
+
+The full 75k gate is the only cloud level (no slice), and a run holding 95%
+of the sessions counts as full, since the gate holds about 72,500.
+
 ## How the validator is tested
 
 A validator is useful only if it fails when the system is broken. Its tests
-(`validators/agents-1m/tests`, run by `.github/workflows/validators.yml`)
+(`validators/<name>/tests`, run by `.github/workflows/validators.yml`)
 cover the scoring rules on fixed inputs, each adapter against a harness
 output, a backtest that replays seven saved 75k runs and must reproduce
 their real verdicts, the cluster simulation, the coding profile's privacy

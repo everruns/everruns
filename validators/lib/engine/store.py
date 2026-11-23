@@ -5,7 +5,7 @@ attempts.jsonl one line per climbing attempt: idea, points, before, after, kept,
 checkpoints/   frozen per-point state under a name, for --against
 
 Raw evidence (driver reports, samples, heap profiles) never goes here: it
-stays in target/validators/agents-1m/<time>/ or the workflow's artifact.
+stays in target/validators/<name>/<time>/ or the workflow's artifact.
 """
 
 import datetime as dt
@@ -19,7 +19,7 @@ from . import config as C
 RESULTS = os.path.join(C.ROOT, "results.jsonl")
 ATTEMPTS = os.path.join(C.ROOT, "attempts.jsonl")
 CHECKPOINTS = os.path.join(C.ROOT, "checkpoints")
-EVIDENCE = os.path.join(C.REPO, "target", "validators", "agents-1m")
+EVIDENCE = os.path.join(C.REPO, "target", "validators", C.NAME)
 COMPACT_AFTER_DAYS = 90
 
 

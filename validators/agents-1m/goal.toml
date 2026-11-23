@@ -14,6 +14,9 @@
 # Defaults scale up the 75k gate (EKS run 45197793040, 2026-11-23: 72,537
 # agents, 725,370 turns, 218.7 turns/s, 0 errors, 0 out-of-memory kills).
 
+[meta]                       # not fingerprinted
+title = "1M agents validator"
+
 [agents]
 total = 1_000_000
 coding_share = 0.25          # long-running coding agents, shaped by workload/coding-profile.json (D7)

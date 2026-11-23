@@ -151,13 +151,13 @@ def markdown(rep, cfg):
     L = []
     w = L.append
     cap = f" (capped from {rep['uncapped']} by failed gates {', '.join(rep['failed_gates'])})" if rep["failed_gates"] else ""
-    w("# 1M agents validator\n")
-    w(f"**Score {rep['score']} / 100**{cap}. Proven agents {fmt(rep['proven_agents'])}; "
-      f"projected agents {fmt(rep['projected_agents']) if rep['projected_agents'] else 'unknown until D1 (scale.py) runs'}.")
+    w(f"# {cfg.title}\n")
+    w(f"**Score {rep['score']} / 100**{cap}. Proven agents {fmt(rep['proven_agents'])}"
+      + (f"; projected agents {fmt(rep['projected_agents']) if rep['projected_agents'] else 'unknown until D1 (scale.py) runs'}." if cfg.has("D1") else "."))
     w(f"Goal fingerprint `{rep['fingerprint']}`, commit `{(rep['commit'] or '-')[:10]}`"
       + (f", {rep['since_last_recorded']:+} since the last recorded run." if rep["since_last_recorded"] is not None else "."))
     w("\n## Next limit\n")
-    w(rep["next_limit"] or "None crossed in the cluster simulation; shared parts (D2-D4) are not measured yet.")
+    w(rep["next_limit"] or "None crossed in the cluster simulation, or it has not run yet.")
     w("\n## Milestones\n")
     w("| Level | Highest milestone that passes |\n|---|---|")
     for lvl, n in rep["milestones"].items():
