@@ -61,9 +61,10 @@ ENV RUST_LOG=info
 CMD ["/app/everruns-worker"]
 
 # ============================================================================
-# Data plane v2 runtime (distroless): one binary, three roles chosen by the
-# first argument: `node` (a shard's Raft node, gateway on 7000), `executor`
-# (runs turns, 7001) and `edge` (routes session calls, 7100).
+# Data plane v2 runtime (distroless): one binary, roles chosen by the first
+# argument: `node` (a shard's Raft node, gateway on 7000), `executor` (runs
+# turns, 7001), `edge` (routes session calls, 7100) and `serve` (a whole
+# install on its own, 7700: infra/agentd, charts/agentd).
 # ============================================================================
 FROM gcr.io/distroless/cc-debian12:nonroot@sha256:9dac0a79194e45a7da0158a9c6da57b217585af0786db3845d1f0ec1a0dd182f AS shard
 
@@ -76,6 +77,7 @@ COPY --chmod=0755 bin/${TARGETARCH}/agentd /app/agentd
 EXPOSE 7000
 EXPOSE 7001
 EXPOSE 7100
+EXPOSE 7700
 
 ENV RUST_LOG=info,openraft=warn
 

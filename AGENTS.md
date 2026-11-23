@@ -108,6 +108,9 @@ snapshots. Stop the foreground stack with Ctrl+C, or from another shell with
 `PORT_PREFIX=271 just stop-all`; that command also stops the prefix's infrastructure processes.
 Delete persistent data only with the explicit, prefix-scoped `PORT_PREFIX=271 just reset` command.
 
+agentd alone (no server, UI or database), for work on its push API and stream:
+`cargo run -p everruns-agentd -- serve --dev` (localhost:7700, no auth).
+
 Verify the selected stack and auth contract with the actual `/health` endpoint:
 
 ```bash

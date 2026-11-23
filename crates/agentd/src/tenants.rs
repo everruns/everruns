@@ -38,6 +38,8 @@ pub struct TenantView {
 #[derive(Default)]
 struct Inner {
     stopped: BTreeMap<String, String>,
+    /// Groups' caps on running turns (`group.rs`).
+    limits: BTreeMap<String, u32>,
     heard: Option<Instant>,
 }
 
@@ -72,6 +74,16 @@ impl TenantView {
         inner.stopped = stopped;
         inner.heard = Some(Instant::now());
         resumed
+    }
+
+    /// The directory's turn caps, as last heard.
+    pub fn heard_limits(&self, limits: BTreeMap<String, u32>) {
+        self.inner.lock().limits = limits;
+    }
+
+    /// `tenant`'s cap on running turns per shard, if it has one.
+    pub fn turn_limit(&self, tenant: Option<&str>) -> Option<u32> {
+        self.inner.lock().limits.get(tenant?).copied()
     }
 
     pub fn is_fresh(&self) -> bool {
@@ -109,6 +121,9 @@ pub struct Tenants {
     /// Org id → the event types its policy taps (`tap.rs`).
     #[serde(default)]
     pub taps: BTreeMap<String, Vec<String>>,
+    /// Org id → its cap on running turns per shard (`group.rs`).
+    #[serde(default)]
+    pub limits: BTreeMap<String, u32>,
 }
 
 impl Node {
@@ -124,6 +139,7 @@ impl Node {
             match self.read_tenants().await {
                 Ok(tenants) => {
                     self.tenants.heard(tenants.stopped);
+                    self.tenants.heard_limits(tenants.limits);
                     self.sync_taps(tenants.taps).await;
                 }
                 Err(error) => tracing::debug!(shard = self.cfg.shard, %error, "tenants not read"),
@@ -144,6 +160,7 @@ impl Node {
             return Ok(Tenants {
                 stopped: state.orgs.stopped(),
                 taps: state.orgs.policy_taps(),
+                limits: state.orgs.turn_limits(),
             });
         }
         gateway

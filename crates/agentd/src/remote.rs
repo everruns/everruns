@@ -132,6 +132,7 @@ pub fn view(s: &SessionState, since: Option<i32>) -> SessionState {
         platform: s.platform.clone(),
         sqldb: s.sqldb.clone(),
         branch: s.branch,
+        labels: s.labels.clone(),
     }
 }
 

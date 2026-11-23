@@ -74,6 +74,9 @@ pub struct OrgConfig {
     /// Secrets an executor is refreshing now (`secrets.rs`).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub refreshing: BTreeMap<String, crate::secrets::Lease>,
+    /// What agentd keeps for the org as a group (`group.rs`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group: Option<crate::group::Group>,
 }
 
 /// An org's data key as `OrgEnable` delivered it.
@@ -428,6 +431,14 @@ impl Orgs {
             .collect()
     }
 
+    /// Groups that cap their running turns (`group.rs`).
+    pub fn turn_limits(&self) -> BTreeMap<String, u32> {
+        self.orgs
+            .iter()
+            .filter_map(|(org, c)| Some((org.clone(), c.group.as_ref()?.max_turns?)))
+            .collect()
+    }
+
     pub fn stopped(&self) -> BTreeMap<String, String> {
         self.orgs
             .iter()
@@ -542,6 +553,7 @@ impl Feed {
             ordinal,
             org_id: org.to_owned(),
             at_unix_ms,
+            labels: Default::default(),
             record,
         });
     }

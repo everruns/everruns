@@ -16,6 +16,7 @@ repository: these Cargo packages depend on local workspace crates.
 | [Code Mode MCP](code-mode-mcp-agent/) | Call a 1,000-tool MCP server from Bashkit scripts, with none of its schemas in the prompt | `cargo run -p everruns-code-mode-mcp-agent` |
 | [Poppy Personal Agent](poppy-personal-agent/) | Ask a company's agent for the person over the Personal Agent Protocol | `cargo run -p everruns-poppy-personal-agent -- <company-domain>` |
 | [Attached CLI](attached-cli/) | Drive a running session from a second terminal: list, attach, send, cancel | `cargo run -p everruns-attached-cli -- host` |
+| [agentd on its own](agentd-standalone/) | Use agentd as your app's backend: push agents and keys, group sessions per customer, read the stream | `python3 examples/agentd-standalone/controller.py` |
 | [Foreman](foreman-agent/) | Supervise a coding agent — a session, Codex, or yolop — with a decision service | `cargo run -p everruns-foreman-agent --bin foreman -- demo` |
 
 Each README lists credentials, contrasting scenarios, expected outcomes, and

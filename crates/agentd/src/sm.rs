@@ -766,6 +766,7 @@ fn stub(s: &SessionState) -> SessionState {
         platform: s.platform.clone(),
         sqldb: s.sqldb.clone(),
         branch: s.branch,
+        labels: s.labels.clone(),
     }
 }
 

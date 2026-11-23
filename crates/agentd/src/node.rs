@@ -1255,6 +1255,16 @@ impl Node {
             if !self.allowance_ready(&state, s, now) {
                 return; // the control loop is asking for its tenant's money
             }
+            if let Some(limit) = self.tenants.turn_limit(s.tenant.as_deref()) {
+                let running = state
+                    .sessions
+                    .values()
+                    .filter(|o| o.tenant == s.tenant && o.authority.executing(now))
+                    .count();
+                if running >= limit as usize {
+                    return; // the group's cap; the next tick looks again
+                }
+            }
             if self.holds_turns(&state) {
                 if matches!(self.cfg.executors, ExecutorMode::Pull { .. }) {
                     self.dispatch.queue(session);

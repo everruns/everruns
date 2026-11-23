@@ -1,0 +1,80 @@
+# agentd on its own: a whole install (a one-node shard, its executor and the
+# API) in one container, for running agents from your own app.
+#
+#   mkdir -p keys && printf 'app:%s\n' "$(openssl rand -hex 24)" > keys/api-keys
+#   docker compose -f infra/agentd/compose.yaml up -d
+#   curl -H "Authorization: Bearer <secret>" http://localhost:7700/v1/agents
+#
+# State lives in the `agentd_data` volume: the shard's log and snapshots, the
+# data plane key that seals every pushed secret (`dp.key`; set AGENTD_DP_KEY
+# to keep it elsewhere), and, unless AGENTD_STORE says otherwise, the object
+# store with history, restore points and the stream. One disk is fine for
+# development and small teams; give AGENTD_STORE an S3 bucket for anything
+# you cannot lose with the disk, or start the `minio` profile to try that
+# shape locally:
+#
+#   AGENTD_STORE=s3://agentd/install docker compose -f infra/agentd/compose.yaml --profile minio up -d
+#
+# Model keys: push them as secrets (`PUT /v1/secrets/{name}`), or set
+# AGENTD_ENV_SECRETS=true and the provider keys below are pushed at start,
+# each bound to its provider.
+
+services:
+  agentd:
+    image: ghcr.io/everruns/agentd:${AGENTD_TAG:-latest}
+    command: ["serve", "--data", "/data", "--listen", "0.0.0.0:7700"]
+    ports:
+      - "${AGENTD_PORT:-7700}:7700"
+    environment:
+      AGENTD_API_KEYS_FILE: /etc/agentd/api-keys
+      AGENTD_STORE: ${AGENTD_STORE:-}
+      AGENTD_GROUP_LABEL: ${AGENTD_GROUP_LABEL:-}
+      AGENTD_DP_KEY: ${AGENTD_DP_KEY:-}
+      AGENTD_SLOTS: ${AGENTD_SLOTS:-64}
+      AGENTD_MEMORY_BUDGET_MB: ${AGENTD_MEMORY_BUDGET_MB:-1024}
+      AGENTD_ENV_SECRETS: ${AGENTD_ENV_SECRETS:-false}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
+      # Only read when AGENTD_STORE is an s3:// URL.
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      AWS_ENDPOINT_URL: ${AWS_ENDPOINT_URL:-}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_ALLOW_HTTP: ${AWS_ALLOW_HTTP:-}
+    volumes:
+      - agentd_data:/data
+      - ${AGENTD_KEYS_DIR:-./keys}:/etc/agentd:ro
+    restart: unless-stopped
+
+  # A local S3 for the object store (profile `minio`). Point agentd at it with
+  # AGENTD_STORE=s3://agentd/install; the bucket is made at start.
+  minio:
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    profiles: [minio]
+    command: ["server", "/data"]
+    environment:
+      MINIO_ROOT_USER: ${AWS_ACCESS_KEY_ID:-agentd}
+      MINIO_ROOT_PASSWORD: ${AWS_SECRET_ACCESS_KEY:-agentd-local-only}
+    volumes:
+      - minio_data:/data
+    restart: unless-stopped
+
+  minio-bucket:
+    image: minio/mc:RELEASE.2025-08-13T08-35-41Z
+    profiles: [minio]
+    depends_on: [minio]
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        until mc alias set local http://minio:9000 "$$MINIO_USER" "$$MINIO_PASSWORD"; do sleep 1; done;
+        mc mb --ignore-existing local/agentd
+    environment:
+      MINIO_USER: ${AWS_ACCESS_KEY_ID:-agentd}
+      MINIO_PASSWORD: ${AWS_SECRET_ACCESS_KEY:-agentd-local-only}
+
+volumes:
+  agentd_data:
+  minio_data:

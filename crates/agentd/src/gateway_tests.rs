@@ -80,6 +80,7 @@ async fn tenant_lookup_does_not_cache_before_assignment() {
         Command::Assign {
             session,
             tenant: "org-a".into(),
+            labels: Default::default(),
         },
         &mut Vec::new(),
     );

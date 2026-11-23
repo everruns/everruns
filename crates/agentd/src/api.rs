@@ -1154,6 +1154,9 @@ pub struct CreateBody {
     /// The person who owns it ([`crate::platform::Platform::owner`]).
     #[serde(default)]
     pub owner: Option<String>,
+    /// Its labels (agentd's public API), set with the tenant.
+    #[serde(default)]
+    pub labels: std::collections::BTreeMap<String, String>,
 }
 
 /// Create the session through Engine: its binding pins the definition's key
@@ -1198,6 +1201,7 @@ async fn create_session(
             .propose(Command::Assign {
                 session: id,
                 tenant,
+                labels: body.labels,
             })
             .await
             .map_err(|error| (StatusCode::SERVICE_UNAVAILABLE, error.to_string()))?;

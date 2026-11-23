@@ -224,7 +224,100 @@ enum Mode {
         topology: PathBuf,
         #[arg(long)]
         listen: SocketAddr,
+        /// Serve an install's push API and stream, and be its shards'
+        /// control plane (`install.rs`; the nodes' `AGENTD_CONTROL_PLANE`).
+        #[arg(long, env = "AGENTD_INSTALL")]
+        install: bool,
+        #[command(flatten)]
+        options: InstallOptions,
     },
+    /// Run a whole install in one process: a one-node shard, its executor
+    /// and the API on one port (`serve.rs`).
+    Serve {
+        /// Where the install keeps its state.
+        #[arg(long, env = "AGENTD_DATA", default_value = ".agentd")]
+        data: PathBuf,
+        #[arg(long, env = "AGENTD_LISTEN", default_value = "127.0.0.1:7700")]
+        listen: SocketAddr,
+        /// Localhost only, no auth: for development.
+        #[arg(long)]
+        dev: bool,
+        /// Turns run at once.
+        #[arg(long, env = "AGENTD_SLOTS", default_value = "64")]
+        slots: usize,
+        #[arg(long, env = "AGENTD_MEMORY_BUDGET_MB", default_value = "1024")]
+        memory_budget_mb: u64,
+        /// PEM certificate chain and key: serve TLS.
+        #[arg(long, env = "AGENTD_TLS_CERT", requires = "tls_key")]
+        tls_cert: Option<PathBuf>,
+        #[arg(long, env = "AGENTD_TLS_KEY", requires = "tls_cert")]
+        tls_key: Option<PathBuf>,
+        /// PEM CA: require client certificates it signed (mTLS).
+        #[arg(long, env = "AGENTD_CLIENT_CA", requires = "tls_cert")]
+        client_ca: Option<PathBuf>,
+        #[command(flatten)]
+        options: InstallOptions,
+    },
+    /// Push every agent file in a folder to an install (`push.rs`).
+    Push {
+        /// A folder of agent definitions, one `.json` or `.yaml` per agent.
+        dir: PathBuf,
+        #[arg(long, env = "AGENTD_URL", default_value = "http://127.0.0.1:7700")]
+        url: String,
+        #[arg(long, env = "AGENTD_API_KEY")]
+        api_key: Option<String>,
+        /// Delete the install's agents that have no file.
+        #[arg(long)]
+        prune: bool,
+    },
+}
+
+/// What an install is configured with, wherever it runs.
+#[derive(clap::Args, Clone)]
+struct InstallOptions {
+    /// The object store for history, restore points and the stream
+    /// (`serve`: `<data>/store` when unset).
+    #[arg(long = "install-store", env = "AGENTD_STORE")]
+    store: Option<String>,
+    /// The label whose value groups sessions for limits, spend and keys.
+    #[arg(long, env = "AGENTD_GROUP_LABEL")]
+    group_label: Option<String>,
+    /// Let pushed secrets come from the executor's environment, and push
+    /// the provider keys found there.
+    #[arg(long, env = "AGENTD_ENV_SECRETS")]
+    env_secrets: bool,
+    /// A file of API keys, `id:secret` per line (also `AGENTD_API_KEYS`).
+    #[arg(long, env = "AGENTD_API_KEYS_FILE")]
+    api_keys_file: Option<PathBuf>,
+}
+
+impl InstallOptions {
+    /// An empty variable (Compose's `${X:-}`) means unset.
+    fn normalized(mut self) -> Self {
+        self.store = self.store.filter(|s| !s.is_empty());
+        self.group_label = self.group_label.filter(|s| !s.is_empty());
+        self.api_keys_file = self.api_keys_file.filter(|p| !p.as_os_str().is_empty());
+        self
+    }
+
+    fn auth(&self, dev: bool) -> anyhow::Result<crate::install_auth::Auth> {
+        if dev {
+            return Ok(crate::install_auth::Auth::open());
+        }
+        let mut auth = crate::install_auth::Auth::default();
+        if let Ok(keys) = std::env::var("AGENTD_API_KEYS") {
+            auth = auth.with_keys(&keys)?;
+        }
+        if let Some(file) = &self.api_keys_file {
+            auth = auth.with_keys(&std::fs::read_to_string(file)?)?;
+        }
+        if let Ok(url) = std::env::var("AGENTD_JWKS_URL")
+            && !url.is_empty()
+        {
+            auth = auth.with_jwks(url);
+        }
+        Ok(auth)
+    }
 }
 
 #[derive(Subcommand)]
@@ -273,6 +366,18 @@ pub async fn run(host: impl Host) -> anyhow::Result<()> {
         && !control_plane.is_empty()
     {
         everruns_core::mcp::trust_controller_origin(&control_plane);
+    }
+    // Any mode may be part of an install: executors then look up a group's
+    // secrets in the install's too, and read environment-sourced ones when
+    // the install allows them.
+    let truthy = |name: &str| {
+        std::env::var(name).is_ok_and(|v| matches!(v.as_str(), "1" | "true" | "yes" | "on"))
+    };
+    if truthy("AGENTD_INSTALL") {
+        crate::install::set_current(crate::install::INSTALL);
+    }
+    if truthy("AGENTD_ENV_SECRETS") {
+        crate::secret_sources::allow_env(true);
     }
     match Cli::parse().command {
         Mode::Node {
@@ -440,14 +545,123 @@ pub async fn run(host: impl Host) -> anyhow::Result<()> {
             }
             Ok(())
         }
-        Mode::Gateway { topology, listen } => {
+        Mode::Gateway {
+            topology,
+            listen,
+            install,
+            options,
+        } => {
             let gateway = Gateway::new(TopologySource { path: topology });
+            let mut app = crate::gateway::router(gateway.clone());
+            if install {
+                app = install_gateway(&gateway, &options)?;
+            }
             let listener = tokio::net::TcpListener::bind(listen).await?;
-            tracing::info!(%listen, "gateway listening");
-            axum::serve(listener, crate::gateway::router(gateway)).await?;
+            tracing::info!(%listen, install, "gateway listening");
+            axum::serve(listener, app).await?;
+            Ok(())
+        }
+        Mode::Serve {
+            data,
+            listen,
+            dev,
+            slots,
+            memory_budget_mb,
+            tls_cert,
+            tls_key,
+            client_ca,
+            options,
+        } => {
+            let options = options.normalized();
+            let tls = match (tls_cert, tls_key) {
+                (Some(cert), Some(key)) => Some(crate::install_tls::TlsFiles {
+                    cert,
+                    key,
+                    client_ca,
+                }),
+                _ => None,
+            };
+            let cfg = crate::serve::ServeConfig {
+                data,
+                listen,
+                store: options.store.clone(),
+                group_label: options.group_label.clone(),
+                dev,
+                env_secrets: options.env_secrets,
+                auth: options.auth(dev)?,
+                slots,
+                memory_budget_mb,
+                tls,
+            };
+            let served = crate::serve::start(cfg, host).await?;
+            println!("agentd serving on http://{}", served.addr);
+            // SIGTERM too: in a container agentd is PID 1, which ignores a
+            // signal it has no handler for, so `docker stop` would wait out
+            // its grace period.
+            let mut term =
+                tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
+            tokio::select! {
+                result = served.wait() => result,
+                _ = tokio::signal::ctrl_c() => Ok(()),
+                _ = term.recv() => Ok(()),
+            }
+        }
+        Mode::Push {
+            dir,
+            url,
+            api_key,
+            prune,
+        } => {
+            let pushed = crate::push::push(&url, api_key.as_deref(), &dir, prune).await?;
+            for p in &pushed {
+                println!("{:<10} {} (revision {})", p.outcome, p.id, p.revision);
+            }
             Ok(())
         }
     }
+}
+
+/// A gateway that serves an install (`gateway --install`): the push API
+/// and the stream behind the install's auth, and the shards' control plane
+/// behind the link's token (`AGENTD_DP_TOKEN`, which the nodes send).
+fn install_gateway(
+    gateway: &Arc<Gateway>,
+    options: &InstallOptions,
+) -> anyhow::Result<axum::Router> {
+    let options = &options.clone().normalized();
+    let dp_key = crate::executor::data_plane_key()?
+        .ok_or_else(|| anyhow::anyhow!("an install's gateway needs AGENTD_DP_KEY"))?;
+    let auth = options.auth(false)?;
+    anyhow::ensure!(
+        auth.has_credentials(),
+        "an install needs credentials: AGENTD_API_KEYS, --api-keys-file or AGENTD_JWKS_URL"
+    );
+    let store = options
+        .store
+        .as_deref()
+        .map(crate::store::Store::open)
+        .transpose()?;
+    crate::secret_sources::allow_env(options.env_secrets);
+    let install = crate::install::Install::new(
+        crate::install::INSTALL,
+        options.group_label.clone(),
+        dp_key,
+        store.clone(),
+        auth.clone(),
+    );
+    gateway.set_install(install);
+    if let Some(store) = store {
+        tokio::spawn(crate::install_stream::trim_loop(gateway.clone(), store));
+    }
+    let token = crate::node_control::link_token().map(Arc::from);
+    Ok(crate::gateway::router(gateway.clone())
+        .layer(axum::middleware::from_fn_with_state(
+            auth,
+            crate::install_auth::check,
+        ))
+        .merge(crate::install_stream::control_plane(gateway.clone()).layer(
+            axum::middleware::from_fn_with_state(token, crate::node_control::require_link_token),
+        )))
 }
 
 /// What the `restore` command restores from.
@@ -548,6 +762,19 @@ pub async fn serve_node_on(
     listener: tokio::net::TcpListener,
     join: bool,
 ) -> anyhow::Result<()> {
+    serve_node_with(cfg, host, topology, listener, join, |_| axum::Router::new()).await
+}
+
+/// [`serve_node_on`] with `extra` routes beside the node's, built from its
+/// gateway (`serve.rs` adds the install's own control plane).
+pub async fn serve_node_with(
+    cfg: NodeConfig,
+    host: Arc<dyn Host>,
+    topology: TopologySource,
+    listener: tokio::net::TcpListener,
+    join: bool,
+    extra: impl FnOnce(Arc<Gateway>) -> axum::Router,
+) -> anyhow::Result<()> {
     let shard = cfg.shard;
     let id = cfg.node_id;
     let listen = listener.local_addr()?;
@@ -587,7 +814,8 @@ pub async fn serve_node_on(
         .merge(crate::api_files::router(node.clone()))
         .merge(crate::sqldb::router(node.clone()))
         .merge(crate::gateway_dp::shard_router(node.clone()))
-        .merge(crate::gateway::router(gateway))
+        .merge(crate::gateway::router(gateway.clone()))
+        .merge(extra(gateway))
         .layer(axum::middleware::from_fn_with_state(
             node.clone(),
             crate::catchup::guard,

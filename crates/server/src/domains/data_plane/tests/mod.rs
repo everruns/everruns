@@ -440,6 +440,7 @@ fn record(index: u64, record: Record) -> FeedRecord {
         ordinal: 0,
         org_id: org_public(ORG),
         at_unix_ms: chrono::Utc::now().timestamp_millis(),
+        labels: Default::default(),
         record,
     }
 }

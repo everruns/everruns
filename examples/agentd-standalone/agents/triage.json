@@ -1,0 +1,5 @@
+{
+  "name": "triage",
+  "instructions": "Classify the customer's message as one of: repair, sales, opening-hours, other. Answer with the category only.",
+  "model": { "provider": "openai", "model": "gpt-6-luna" }
+}

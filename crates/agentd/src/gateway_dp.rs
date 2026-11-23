@@ -107,6 +107,10 @@ pub fn shard_router(node: Arc<Node>) -> Router {
             get(shard_connection).post(shard_connection),
         )
         .route("/shard/orgs/{org}/sessions", get(shard_org_sessions))
+        .route(
+            "/shard/sessions/labelled",
+            post(crate::install::shard_labelled),
+        )
         .route("/shard/tenants", get(shard_tenants).post(shard_tenants))
         .with_state(node.clone())
         .merge(admin_router(node))
@@ -270,6 +274,7 @@ async fn org_session(
                 importing: body.importing,
                 subagent: None,
                 owner: body.owner,
+                ..Default::default()
             },
         )
         .await?;
@@ -897,5 +902,6 @@ async fn shard_tenants(
     Ok(Json(crate::tenants::Tenants {
         stopped: state.orgs.stopped(),
         taps: state.orgs.policy_taps(),
+        limits: state.orgs.turn_limits(),
     }))
 }

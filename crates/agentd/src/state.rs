@@ -10,7 +10,7 @@
 //! The Raft log in front of it is the write-ahead log; snapshots of this value
 //! let the WAL be truncated.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use everruns_contracts::typed_id::{EventId, SessionId};
 use everruns_core::events::{Event, EventData, EventRequest};
@@ -51,7 +51,14 @@ pub enum Command {
     },
     /// Bill `session`'s spend to `tenant`. Set once, right after create,
     /// before the session takes input; a different tenant is refused.
-    Assign { session: SessionId, tenant: String },
+    Assign {
+        session: SessionId,
+        tenant: String,
+        /// The labels the session was created with (agentd's public API):
+        /// set with the tenant, never changed after.
+        #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+        labels: BTreeMap<String, String>,
+    },
     /// Read the authorization tenant through the log, after committed Assign.
     Tenant { session: SessionId },
     /// Hold `session` closed to messages while the control plane imports a
@@ -88,6 +95,13 @@ pub enum Command {
     Admin {
         org: String,
         command: crate::control::AdminCommand,
+        now_ms: i64,
+    },
+    /// A change to `org`'s group: its limits, its spend ledger, the
+    /// install's controller (directory shard, `group.rs`).
+    Group {
+        org: String,
+        change: crate::group::GroupOp,
         now_ms: i64,
     },
     /// An executor leasing or refreshing `org`'s secret (directory shard,
@@ -340,6 +354,7 @@ impl Command {
             Command::Host { now_ms, .. }
             | Command::Config { now_ms, .. }
             | Command::Admin { now_ms, .. }
+            | Command::Group { now_ms, .. }
             | Command::Secret { now_ms, .. }
             | Command::Reserve { now_ms, .. }
             | Command::Claim { now_ms, .. }
@@ -535,6 +550,10 @@ pub struct SessionState {
     /// (`new_branch`). The segments it writes carry it (`store::SegRef`).
     #[serde(default, skip_serializing_if = "is_zero")]
     pub branch: u64,
+    /// The labels it was created with ([`Command::Assign`]); copied onto
+    /// every feed record about it, so agentd's stream filters on them.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub labels: BTreeMap<String, String>,
 }
 
 fn is_zero(n: &u64) -> bool {
@@ -910,7 +929,11 @@ impl ShardState {
                 }
                 Response::Ok
             }
-            Command::Assign { session, tenant } => {
+            Command::Assign {
+                session,
+                tenant,
+                labels,
+            } => {
                 let Some(state) = self.session_mut(session) else {
                     return self.missing(session);
                 };
@@ -921,6 +944,7 @@ impl ShardState {
                     },
                     None => {
                         state.tenant = Some(tenant);
+                        state.labels = labels;
                         changes.push(Change::Session(session));
                         Response::Ok
                     }
@@ -967,6 +991,11 @@ impl ShardState {
                 let index = self.last_applied.map_or(0, |l| l.index);
                 crate::control::admin(&mut self.orgs, &mut self.feed, index, &org, command, now_ms)
             }
+            Command::Group {
+                org,
+                change,
+                now_ms,
+            } => crate::group::apply(&mut self.orgs, &org, change, now_ms),
             Command::Secret {
                 org,
                 request,

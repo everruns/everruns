@@ -1,0 +1,11 @@
+agentd is serving on {{ include "agentd.fullname" . }}:{{ .Values.service.port }}{{ if .Values.tls.secretName }} (TLS){{ end }}.
+
+  kubectl port-forward svc/{{ include "agentd.fullname" . }} {{ .Values.service.port }}
+  curl -H "Authorization: Bearer <secret>" http://localhost:{{ .Values.service.port }}/v1/agents
+
+Push agents with `agentd push ./agents --url http://localhost:{{ .Values.service.port }} --api-key <secret>`.
+{{- if not .Values.dpKey.existingSecret }}
+
+The key that seals pushed secrets lives in the pod's volume (dp.key). Back it
+up, or set dpKey.existingSecret: losing it loses every pushed secret.
+{{- end }}

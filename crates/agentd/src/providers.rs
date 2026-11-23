@@ -70,6 +70,11 @@ impl SettingsExt for Settings {
 pub trait OrgMaterial: Send + Sync {
     /// The org a session belongs to.
     fn tenant(&self, session: SessionId) -> Option<String>;
+    /// The scopes narrower than its org that a session's model keys may
+    /// be bound in, narrowest first (`install::scoped`).
+    fn scopes(&self, _session: SessionId) -> Vec<String> {
+        Vec::new()
+    }
     /// `org`'s connection `id`.
     async fn connection(&self, org: &str, id: &str) -> anyhow::Result<Option<Connection>>;
     /// `org`'s secret, opened.
@@ -187,9 +192,20 @@ impl OrgProviders {
         self.material.get().and_then(Weak::upgrade)
     }
 
-    /// `org`'s provider `key`, opened.
-    async fn of(&self, org: &str, key: &ProviderKey) -> Result<Option<ProviderConfig>> {
-        let slot = (org.to_owned(), key.as_str().to_owned());
+    /// `org`'s provider `key`, opened: its binding in `scope`, or the
+    /// org's own when `None`.
+    async fn of(
+        &self,
+        org: &str,
+        key: &ProviderKey,
+        scope: Option<&str>,
+    ) -> Result<Option<ProviderConfig>> {
+        let base = connection_id(key.as_str());
+        let id = scope.map_or_else(
+            || base.clone(),
+            |scope| crate::install::scoped(&base, scope),
+        );
+        let slot = (org.to_owned(), id.clone());
         if let Some((at, config)) = self.opened.lock().get(&slot)
             && at.elapsed() < KEEP
         {
@@ -198,11 +214,7 @@ impl OrgProviders {
         let Some(material) = self.material() else {
             return Ok(None);
         };
-        let config = match material
-            .connection(org, &connection_id(key.as_str()))
-            .await
-            .map_err(unavailable)?
-        {
+        let config = match material.connection(org, &id).await.map_err(unavailable)? {
             Some(connection) if connection.kind == KIND => {
                 let settings: Settings =
                     serde_json::from_value(connection.settings).map_err(unavailable)?;
@@ -244,10 +256,19 @@ impl ProviderStore for OrgProviders {
         if provider.as_str().is_empty() {
             return Err(AgentLoopError::config(MODEL_NOT_CONFIGURED));
         }
-        let Some(org) = self.material().and_then(|m| m.tenant(session)) else {
+        let Some(material) = self.material() else {
             return Ok(None);
         };
-        self.of(&org, provider).await
+        let Some(org) = material.tenant(session) else {
+            return Ok(None);
+        };
+        // A session's own key, then its agent's, then its org's.
+        for scope in material.scopes(session) {
+            if let Some(config) = self.of(&org, provider, Some(&scope)).await? {
+                return Ok(Some(config));
+            }
+        }
+        self.of(&org, provider, None).await
     }
 
     async fn get_provider_config(&self, provider: &ProviderKey) -> Result<Option<ProviderConfig>> {

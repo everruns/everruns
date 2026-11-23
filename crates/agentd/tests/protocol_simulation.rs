@@ -251,6 +251,7 @@ impl World {
                 Command::Assign {
                     session,
                     tenant: TENANT.into(),
+                    labels: Default::default(),
                 },
             );
             assert!(matches!(assigned, Response::Ok), "{assigned:?}");
