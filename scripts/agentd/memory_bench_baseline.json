@@ -1,0 +1,43 @@
+{
+  "profile": "debug",
+  "sessions": 2000,
+  "turns": 8000,
+  "errors": 0,
+  "load_secs": 839,
+  "turn_p99_ms": 87771.25,
+  "resident_mb": 374,
+  "resident_events": 80224,
+  "wal_held_mb": 102,
+  "rss_mb": {
+    "idle": {
+      "1": 112,
+      "2": 111,
+      "3": 111
+    },
+    "loaded": {
+      "1": 936,
+      "2": 840,
+      "3": 791
+    },
+    "leader": 2
+  },
+  "gated": {
+    "node_rss_mb_per_1k_sessions": 412.0,
+    "follower_snapshot_mb": 70.6,
+    "leader_snapshot_mb": 85.5,
+    "puts_per_turn": 1.082
+  },
+  "puts_per_turn_by_kind": {
+    "log": 0.014,
+    "segment": 1.068,
+    "snapshot": 0.0
+  },
+  "turns_per_session": 4,
+  "recorded": "2026-11-23",
+  "rss_mb_per_1k_sessions": {
+    "leader": 364.4,
+    "followers": [
+      412.1
+    ]
+  }
+}
