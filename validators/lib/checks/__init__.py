@@ -6,6 +6,7 @@ goal's numbers and reads their output. When a harness changes its output, its
 adapter changes in the same PR; tests/ feeds every adapter a recorded output.
 """
 
+import dataclasses
 import shutil
 from dataclasses import dataclass, field
 
@@ -45,12 +46,22 @@ class Check:
         return True, ""
 
 
-def registry():
-    from . import cloud, cluster, fleettests, local, model, realism
+def registry(cfg=None):
+    """Every check, or with cfg the ones that cover at least one of its points
+    at a level it defines; their point lists narrowed to its points."""
+    from . import cloud, cluster, fleettests, formal, local, model, realism, reliability
     checks = []
-    for mod in (model, cluster, realism, fleettests, local, cloud):
+    for mod in (model, cluster, realism, fleettests, formal, local, reliability, cloud):
         checks.extend(mod.CHECKS)
-    return checks
+    if cfg is None:
+        return checks
+    out = []
+    for ch in checks:
+        pts = [p for p in ch.points if cfg.has(p)]
+        if pts and ch.level in cfg.levels:
+            est = cfg.levels[ch.level].get("usd_estimate")
+            out.append(dataclasses.replace(ch, points=pts, cost_usd=est[1] if est and ch.cost_usd else ch.cost_usd))
+    return out
 
 
 # Points no check covers yet, with what would cover them. The climb list
@@ -59,8 +70,8 @@ NOT_BUILT = {
     "B2": ("L2", "agentd-drive peak profile: 3x rate for 10 minutes, shed share and retries"),
     "B3": ("L2", "agentd-drive open loop at the ramp rate (sessions created a second)"),
     "B4": ("L2", "drive reports with model time split out of turn time"),
-    "D2": ("L2", "stream consumer reading 1M agents' records from /v1/stream"),
-    "D3": ("L2", "synthetic spend-grant requests at the 1M rate"),
+    "D2": ("L2", "stream consumer reading the goal's agents' records from /v1/stream"),
+    "D3": ("L2", "synthetic spend-grant requests at the goal's rate"),
     "D4": ("L1", "in-process directory and edge router holding 1M sessions"),
     "D6": ("L1", "KWOK cluster with hundreds of shards and ~700 pods"),
     "E3": ("L2", "zone loss for 5 minutes with Chaos Mesh on the local cluster"),
@@ -71,4 +82,7 @@ NOT_BUILT = {
     "G3": ("L1", "idle unload and reload test (memory design)"),
     "G4": ("L1", "blob reference test for payloads over 256 KB (memory design)"),
     "G5": ("L2", "llmsim compaction scenario at shard scale"),
+    "U11": ("L2", "object store outage for 10 minutes: no acknowledged write lost, shipping catches up"),
+    "U12": ("L2", "disk full on a shard node: the node fences itself, the shard carries on, no corruption"),
+    "U13": ("L2", "memory at 98%: controlled restart hands leadership over, no turn lost"),
 }

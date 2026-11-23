@@ -4,8 +4,9 @@ Decisions:
 - Targets are expressions over goal.*, layout.* and g.* so a goal change, a
   layout change or a milestone (fewer agents) moves every target with it.
   They are evaluated by a tiny arithmetic evaluator, never eval().
-- The fingerprint covers the parsed goal minus its [approval] table, so the
-  owner can record an approval without invalidating results.
+- The fingerprint covers the parsed goal minus its [approval] and [meta]
+  tables, so the owner can record an approval or retitle the validator
+  without invalidating results.
 """
 
 import ast
@@ -17,8 +18,12 @@ import os
 import tomllib
 from dataclasses import dataclass, field
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-REPO = os.path.dirname(os.path.dirname(ROOT))
+LIB = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+REPO = os.path.dirname(os.path.dirname(LIB))
+# The validator folder (goal.toml, points.toml, results.jsonl): its `validate`
+# script sets VALIDATOR_ROOT before importing the engine.
+ROOT = os.path.abspath(os.environ.get("VALIDATOR_ROOT") or os.path.join(REPO, "validators", "agents-1m"))
+NAME = os.path.basename(ROOT)
 LEVELS = ["L0", "L1", "L2", "L3", "L4"]
 
 
@@ -115,6 +120,19 @@ class Config:
     def total_weight(self):
         return sum(p.weight for p in self.points)
 
+    @property
+    def title(self):
+        return self.goal.get("meta", {}).get("title") or f"{NAME} validator"
+
+    def full_size(self, agents=None):
+        """Agents a run needs for shared points: the goal's (or milestone's)
+        count times [agents] full_run_min_share (1.0 unless the goal says)."""
+        n = agents or self.agents or self.goal["agents"]["total"]
+        return n * self.goal["agents"].get("full_run_min_share", 1.0)
+
+    def has(self, pid):
+        return any(p.id == pid for p in self.points)
+
     def certainty(self, level):
         return self.levels[level]["certainty"]
 
@@ -145,7 +163,7 @@ class Config:
 
 
 def fingerprint(goal):
-    body = {k: v for k, v in goal.items() if k != "approval"}
+    body = {k: v for k, v in goal.items() if k not in ("approval", "meta")}
     return hashlib.sha256(json.dumps(body, sort_keys=True).encode()).hexdigest()[:16]
 
 

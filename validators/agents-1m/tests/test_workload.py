@@ -50,7 +50,7 @@ class Capture(unittest.TestCase):
 
     def test_list_events_dump(self):
         here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        turns, _ = capture.event_turns(os.path.join(here, "workload", "sources", "bashkit-issue.events.json"))
+        turns, _ = capture.event_turns(os.path.join(os.path.dirname(here), "lib", "workload", "sources", "bashkit-issue.events.json"))
         self.assertEqual([t["model_calls"] for t in turns], [5, 2, 6, 2])
         self.assertAlmostEqual(turns[0]["gap_minutes"], (35 * 60 - 3 - 10.146) / 60, places=1)
 

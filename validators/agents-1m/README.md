@@ -20,7 +20,7 @@ agents) and is printed. `just validate agents-1m <args>` is the same.
    Paid actions are listed apart.
 2. Take the top free item. "run X" runs a check at a higher level;
    "close the gap" fixes a measured shortfall in the code; "build the check"
-   adds a check for a point nothing measures yet (see `checks/__init__.py`
+   adds a check for a point nothing measures yet (see `../lib/checks/__init__.py`
    `NOT_BUILT`, then move it into a module with an adapter test).
 3. Re-run only what you touched: `validate --level local --points C1`.
 4. Keep the change only if the score rose by more than the noise and no
@@ -65,21 +65,19 @@ only at goal density; shared points only from a run of the goal's size.
 
 | Path | What |
 |---|---|
-| `validate` | the entry point (`engine/cli.py`) |
+| `validate` | the entry point (`../lib/engine/cli.py`, shared with every validator) |
 | `goal.toml` | what 1M means (owner only) |
 | `layout.toml` | the fleet the goal is projected onto (a lever) |
 | `points.toml`, `levels.toml` | the 38 points and their targets; level certainties |
-| `engine/` | scoring, freshness, report and climb list, the store |
-| `checks/` | model, cluster simulation, realism, fleet tests, local harness adapters, 75k import and cloud dispatch |
-| `workload/` | `capture.py` (coding sessions to numbers), `coding-profile.json`, `generate.py` (llmsim scenarios) |
+| `../lib/` | the shared engine, checks and coding workload (see `validators/README.md`) |
 | `results.jsonl`, `attempts.jsonl`, `checkpoints/` | the committed climbing record |
 | `tests/` | `python3 -m unittest discover -s tests -t .` (CI: `.github/workflows/validators.yml`) |
 
 ## Refreshing the coding profile
 
 ```bash
-workload/capture.py ~/.claude/projects --out workload/coding-profile.json
-workload/generate.py      # rewrites crates/drivers/llmsim/scenarios/coding-profile.json
+../lib/workload/capture.py ~/.claude/projects --out ../lib/workload/coding-profile.json
+../lib/workload/generate.py      # rewrites crates/drivers/llmsim/scenarios/coding-profile.json
 ```
 
 Review the diff like a goal change. The profile today comes from very few

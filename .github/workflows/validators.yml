@@ -1,9 +1,10 @@
 name: Validators
 
-# The 1M agents validator (validators/agents-1m): its own tests (scoring,
-# adapters against harness outputs, the backtest on saved 75k runs, the
-# cluster simulation, the coding profile) and the entry point end to end at
-# the free levels without the cargo fleet tests. Seconds, no build.
+# The validators (validators/agents-1m, validators/agents-75k, sharing
+# validators/lib): their own tests (scoring, adapters against harness
+# outputs, the backtest on saved 75k runs, the cluster simulation, the coding
+# profile) and each entry point end to end at the free levels without the
+# cargo fleet tests. Seconds, no build.
 
 on:
   pull_request:
@@ -12,6 +13,9 @@ on:
       - 'scripts/agentd/**'
       - 'crates/drivers/llmsim/scenarios/**'
       - 'crates/agentd-testkit/tests/**'
+      - 'crates/agentd/tests/**'
+      - 'tests/models/**'
+      - 'scripts/check-tla-models.sh'
       - '.github/workflows/validators.yml'
   push:
     branches: [main]
@@ -30,17 +34,21 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  agents-1m:
+  validators:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        validator: [agents-1m, agents-75k]
     defaults:
       run:
-        working-directory: validators/agents-1m
+        working-directory: validators/${{ matrix.validator }}
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0  # freshness compares evidence commits with the tree
       - run: python3 -m unittest discover -s tests -t . -v
-      - run: workload/generate.py --check
+      - run: ../lib/workload/generate.py --check
       - name: End to end (free levels, quick)
-        run: ./validate --quick --out "$RUNNER_TEMP/agents-1m" && ./validate --plan
+        run: ./validate --quick --out "$RUNNER_TEMP/${{ matrix.validator }}" && ./validate --plan

@@ -118,12 +118,23 @@ def drill(res):
             note=f"rebuild {res['rebuild_s']} s, leader back {res['kill_to_leader_s']} s, {res['second_messages_lost']} second messages resent")
     if res.get("ship_lag_s", {}).get("p99") is not None:
         out.add("F3", "L2", res["ship_lag_s"]["p99"])
+    # The 75k validator's durability points read the same drill in detail.
+    if res.get("rebuilt"):
+        out.add("U7", "L2", res["rebuild_s"], note=f"shard of about {res['sessions'] // res['shards']:,} sessions rebuilt from the store")
+    out.add("U8", "L2", res["kill_to_leader_s"], note="whole shard killed to a leader again, rebuild included")
+    if (res.get("ship_first_s") or {}).get("p99") is not None:
+        out.add("U9", "L2", res["ship_first_s"]["p99"])
+    if res.get("inflight"):
+        out.add("U10", "L2", round(res["second_messages_lost"] / res["inflight"], 4),
+                note=f"{res['second_messages_lost']} of {res['inflight']} in-flight second messages resent after the rebuild")
     return out
 
 
 def rejoin(result):
     out = Output()
-    out.add("E1", "L2", bool(result.get("ok")), note=f"{result.get('errors')} errors, caught up in {result.get('caught_up_secs')} s")
+    note = f"{result.get('errors')} errors, caught up in {result.get('caught_up_secs')} s"
+    out.add("E1", "L2", bool(result.get("ok")), note=note)
+    out.add("R3", "L2", bool(result.get("ok")), note=note)
     return out
 
 
@@ -208,9 +219,9 @@ CHECKS = [
           command="scripts/agentd/bench.py --sessions 200 --turns 10 --agent chat --no-baseline"),
     Check("scale", "L2", ["D1"], minutes=40, needs=CARGO, run=run_scale,
           command="scripts/agentd/scale.py --shards 1,2,4,8 --sessions 20000 --turns 2"),
-    Check("drill", "L2", ["E2", "F3"], minutes=30, needs=CARGO, run=run_drill,
+    Check("drill", "L2", ["E2", "F3", "U7", "U8", "U9", "U10"], minutes=30, needs=CARGO, run=run_drill,
           command="scripts/agentd/drill.py --sessions 50000 --shards 2 --inflight 3000"),
-    Check("rejoin", "L2", ["E1"], minutes=5, needs=CARGO, run=run_rejoin,
+    Check("rejoin", "L2", ["E1", "R3"], minutes=5, needs=CARGO, run=run_rejoin,
           command="scripts/agentd/prove_rejoin_under_load.py"),
     Check("many-sessions", "L2", ["A1"], minutes=40, needs=CARGO, run=run_many_sessions,
           command="scripts/agentd/many_sessions.py --sessions 50000 --shards 2 --turns 2"),

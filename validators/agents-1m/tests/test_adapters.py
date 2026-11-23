@@ -97,9 +97,9 @@ class Adapters(unittest.TestCase):
                 "     Running tests/durability.rs (x)\n"
                 "test result: ok. 2 passed; 0 failed\n"))
         with mock.patch.object(fleettests.subprocess, "run", run):
-            got, code, _ = fleettests.cargo("p", ["durability"], None)
+            text, code, _ = fleettests.cargo("p", ["durability"], None)
         self.assertEqual(seen.get("stderr"), subprocess.STDOUT)
-        self.assertEqual(got, {"durability": (2, 0)})
+        self.assertEqual(fleettests.parse(text, ["durability"]), {"durability": (2, 0)})
 
 
 class Drift(unittest.TestCase):
