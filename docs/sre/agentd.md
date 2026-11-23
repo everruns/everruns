@@ -78,7 +78,14 @@ What else holds:
   turns use the allowance they hold, then wait.
 - **Overload is refused, not crashed into.** Near its memory limit a shard
   takes no new sessions, then answers new messages with 429 and a
-  `Retry-After`; turns already running finish.
+  `Retry-After`, then (at 95%) starts no new turns; turns already running
+  finish. A node that still reaches 98% restarts itself before the kernel
+  would kill it (exit code 75), and only while the rest of its shard is up.
+  An executor takes turns by its free memory and hands its newest turns to
+  another executor at 95%.
+- **Large payloads stay out of memory.** A message, input or event value
+  over 256 KB is kept in the object store and read back whole by the
+  readers that need it.
 
 What agentd does not promise:
 
@@ -160,7 +167,10 @@ ones to alert on:
 | `agentd_shard_slo_ship_lag_p99_seconds` | How long the oldest write waited to reach the object store | Above 15 s; at 30 s the shard stops taking new work |
 | `agentd_shard_slo_admit_p99_seconds` | How long taking a message took | Above 100 ms |
 | `agentd_shard_slo_ship_first_p99_seconds` | How long the writes that must survive any disk loss waited | Above 100 ms |
-| `agentd_shard_overload_level` | 0 normal, 1 full (no new sessions), 2 shedding (new messages refused) | Stays at 2: add memory or a shard |
+| `agentd_shard_overload_level` | 0 normal, 1 full (no new sessions), 2 shedding (new messages refused), 3 emergency (no new turns) | Stays at 2 or above: add memory or a shard |
+| `agentd_memory_actions_total{action="restart"}` | Restarts a shard node did at its memory limit (an executor exits with code 75 instead) | Any: memory is too tight for the load |
+| `agentd_memory_oom_kills_total` | Restarts after the kernel killed the process at its limit | Any |
+| `agentd_memory_bytes{source}` | The node's memory: `events` and `raft_log` (counted, capped by `agentd_memory_cap_bytes`), `unaccounted` live heap, allocator `fragmentation` | `unaccounted` above 15% of the limit |
 | `agentd_shard_commit_stalled` | 1 while writes are not committing | Lasts minutes: nodes are down or partitioned, or the disk stalls |
 | `agentd_shard_catching_up` | 1 while a node replays the log after a restart | Lasts long: that node is not a full copy, so the shard survives one fewer failure |
 
