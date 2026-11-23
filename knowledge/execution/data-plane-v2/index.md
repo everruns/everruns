@@ -8,3 +8,4 @@
 * [What data plane v2 guarantees](guarantees.md) - Writes, reads, side effects, spend and restores per failure, and what is not promised.
 * [How data plane v2 is tested](testing.md) - The layers that check each guarantee today, the rules tests follow, and the open gaps.
 * [Data plane v2 protocol models](models.md) - TLA+ models of moves, spend grants and the feed, each with a bug configuration that must keep failing.
+* [Retiring data plane v1](v1-retirement.md) - What must hold before the worker data plane is removed, the order it goes in, and what stays.
