@@ -94,7 +94,12 @@ def scaled(a):
         "sessions": max(30, int(GATE["sessions_per_shard"] * s)),
         "budget_mb": int(GATE["budget_mb"] * s),
         "limit_mb": int(GATE["limit_mb"] * s),
-        "snapshot_every": max(100, int(GATE["snapshot_every"] * s)),
+        # Not scaled: Raft entries come from batching cadence, not from the
+        # session count (EKS shard 0 applied 47-70 entries/s with 25k
+        # sessions, each entry tens of KB). A scaled count snapshots eight
+        # times as often, so the log never grows and the soak misses the
+        # log-growth OOM the 2026-11-23 gate hit.
+        "snapshot_every": a.snapshot_every or GATE["snapshot_every"],
         "pressure_turns": max(16, int(GATE["pressure_turns"] * s)),
     }
 
@@ -119,6 +124,8 @@ def main():
     p.add_argument("--think", type=float, default=GATE["think"])
     p.add_argument("--stream", type=float, default=GATE["stream"])
     p.add_argument("--agent", default="mix")
+    p.add_argument("--snapshot-every", type=int, default=None,
+                   help=f"entries between snapshots (default: the gate's {GATE['snapshot_every']})")
     p.add_argument("--kill-at", type=int, default=None, help="seconds in (default: end of ramp)")
     p.add_argument("--down-for", type=int, default=15, help="seconds a killed node stays down")
     p.add_argument("--no-chaos", action="store_true")
