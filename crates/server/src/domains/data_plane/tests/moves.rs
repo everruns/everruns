@@ -280,6 +280,65 @@ async fn a_session_in_a_turn_is_not_moved_and_an_org_moves_the_rest() {
 }
 
 #[tokio::test]
+async fn a_batch_enables_v1_orgs_moves_their_sessions_and_leaves_other_planes_alone() {
+    let (cp, _, _) = control_plane().await;
+    let idle = v1_session(&cp).await;
+    // ORG is on dp-1 already; ORG + 1 is still v1; ORG + 2 is on dp-2.
+    let v1_org = ORG + 1;
+    let stub = cp.db.dp_data_plane("dp-1").await.unwrap().unwrap().url;
+    cp.db
+        .dp_upsert_data_plane("dp-2", &stub, &stub)
+        .await
+        .unwrap();
+    enable_org(&cp, ORG + 2, "dp-2").await.unwrap();
+
+    let reports = moves::move_orgs(
+        &cp,
+        "dp-1",
+        &[ORG, v1_org, ORG + 2],
+        false,
+        Duration::from_secs(5),
+    )
+    .await;
+    assert_eq!(reports.len(), 3);
+    assert_eq!(
+        (reports[0].moved, reports[0].enabled),
+        (1, false),
+        "{reports:?}"
+    );
+    assert!(reports[0].error.is_none(), "{reports:?}");
+    assert!(
+        sessions::runs_on_data_plane(&cp, ORG, idle.id)
+            .await
+            .unwrap()
+    );
+    // The v1 org is enabled on the plane (it had no sessions to move).
+    assert!(reports[1].enabled, "{reports:?}");
+    assert_eq!(
+        cp.db.dp_org(v1_org).await.unwrap().unwrap().data_plane_id,
+        "dp-1"
+    );
+    // The org on another plane is reported and not touched.
+    assert!(
+        reports[2].error.as_deref().unwrap().contains("dp-2"),
+        "{reports:?}"
+    );
+    assert_eq!(
+        cp.db.dp_org(ORG + 2).await.unwrap().unwrap().data_plane_id,
+        "dp-2"
+    );
+
+    // Again: nothing left to move, nothing enabled twice.
+    let again = moves::move_orgs(&cp, "dp-1", &[ORG, v1_org], false, Duration::from_secs(5)).await;
+    assert!(
+        again
+            .iter()
+            .all(|r| r.moved == 0 && !r.enabled && r.error.is_none()),
+        "{again:?}"
+    );
+}
+
+#[tokio::test]
 async fn a_moving_session_refuses_messages_until_its_import_is_done() {
     let (cp, _, _) = control_plane().await;
     let session = v1_session(&cp).await;

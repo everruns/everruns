@@ -593,3 +593,75 @@ pub async fn move_org(
         }
     }
 }
+
+/// What a batch move did to one org ([`move_orgs`]).
+#[derive(Debug, Default, serde::Serialize)]
+pub struct OrgMoved {
+    pub org_id: i64,
+    /// Whether the batch put the org on the data plane first.
+    pub enabled: bool,
+    pub moved: usize,
+    /// Sessions in a turn, left on v1 for a later run.
+    pub skipped: usize,
+    pub failed: usize,
+    /// Why the org itself was not moved (it is on another data plane, or
+    /// enabling it failed); its sessions were not touched.
+    pub error: Option<String>,
+}
+
+/// Move each org in `orgs` onto data plane `plane`, one after another:
+/// enable it there when it is still v1, then move every v1 session of it
+/// ([`move_org`]). An org already on another data plane is reported and
+/// left alone. A failure in one org never stops the batch; run it again to
+/// pick up what was skipped or failed, since moved sessions and enabled
+/// orgs are skipped the second time.
+pub async fn move_orgs(
+    cp: &ControlPlane,
+    plane: &str,
+    orgs: &[i64],
+    archived: bool,
+    drain: Duration,
+) -> Vec<OrgMoved> {
+    let mut out = Vec::with_capacity(orgs.len());
+    for &org_id in orgs {
+        let mut report = OrgMoved {
+            org_id,
+            ..OrgMoved::default()
+        };
+        match cp.db.dp_org(org_id).await {
+            Ok(Some(row)) if row.data_plane_id != plane => {
+                report.error = Some(format!("on data plane {}, not {plane}", row.data_plane_id));
+                out.push(report);
+                continue;
+            }
+            Ok(Some(_)) => {}
+            Ok(None) => match super::enable_org(cp, org_id, plane).await {
+                Ok(_) => report.enabled = true,
+                Err(error) => {
+                    report.error = Some(format!("enable: {error:#}"));
+                    out.push(report);
+                    continue;
+                }
+            },
+            Err(error) => {
+                report.error = Some(format!("{error:#}"));
+                out.push(report);
+                continue;
+            }
+        }
+        match move_org(cp, org_id, archived, drain).await {
+            Ok(outcomes) => {
+                for (_, outcome) in outcomes {
+                    match outcome {
+                        Ok(Moved::Done(_)) => report.moved += 1,
+                        Ok(Moved::Skipped(_)) => report.skipped += 1,
+                        Err(_) => report.failed += 1,
+                    }
+                }
+            }
+            Err(error) => report.error = Some(format!("{error:#}")),
+        }
+        out.push(report);
+    }
+    out
+}

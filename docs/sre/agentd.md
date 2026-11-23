@@ -16,6 +16,9 @@ One image, `ghcr.io/everruns/agentd`, runs three roles:
 | Executor | Runs turns: calls the model and the tools, and writes each step back to the shard. | None; a turn it was running continues on another executor if it stops |
 | Edge | The one address the proxy sends session calls to: sends a session's calls to its shard and everything else to the API. | None |
 
+agentd also runs on its own, without the API, as the backend for your own
+app's agents: see [Run agents with agentd](/getting-started/agentd/).
+
 This page is about what agentd promises and how to keep those promises in
 your install. Setting it up is in the [Docker Compose](/getting-started/docker-compose/#data-plane)
 and [Kubernetes](/getting-started/kubernetes/#choose-the-data-plane) guides,
@@ -110,6 +113,36 @@ What agentd does not promise:
   does. Some S3-compatible stores differ from S3 in exactly these
   operations.
 
+## Move organizations from v1
+
+Upgrading an install that ran before data plane v2 leaves each organization
+with sessions on the workers (v1); only new organizations start on agentd.
+To move existing ones, run `dataplane move-orgs` from the admin image,
+against the install's database, with the server's keys. Each organization is
+switched to agentd, then its sessions move one at a time with their
+conversation, values, secrets and files; a session in the middle of a turn
+is skipped. Moved sessions keep their ids, so nothing outside notices.
+
+```bash
+# Docker Compose: on the stack's network, with its .env
+docker run --rm --network everruns_default --env-file .env \
+  -e DATABASE_URL=postgres://everruns:everruns@postgres:5432/everruns \
+  ghcr.io/everruns/everruns-admin:$EVERRUNS_TAG \
+  dataplane move-orgs local <org id> <org id> ...
+```
+
+On Kubernetes, run the same image as a Job with the release's database URL
+and `everruns` Secret (`SECRETS_ENCRYPTION_KEY`, `EVERRUNS_DP_TOKEN`,
+`EVERRUNS_DP_KEY`); the data plane's id is `local` there too. Pass `-` instead
+of ids to read them from standard input, one per line. The command prints a
+line per organization and fails if any session did not move; run it again to
+pick those up. `dataplane move <org id>` moves one organization, and
+`dataplane status <org id>` shows where one runs.
+
+Start with a test organization, then a few small ones, then the rest. The
+`everruns_default` network is the Compose guide's (a project in a folder named
+`everruns`); use your project's name if it differs.
+
 ## Watch it
 
 Each shard node and executor serves Prometheus metrics at `/metrics`. The
@@ -121,12 +154,14 @@ ones to alert on:
 | `agentd_shard_slo_admit_p99_seconds` | How long taking a message took | Above 100 ms |
 | `agentd_shard_slo_ship_first_p99_seconds` | How long the writes that must survive any disk loss waited | Above 100 ms |
 | `agentd_shard_overload_level` | 0 normal, 1 full (no new sessions), 2 shedding (new messages refused) | Stays at 2: add memory or a shard |
+| `agentd_shard_commit_stalled` | 1 while writes are not committing | Lasts minutes: nodes are down or partitioned, or the disk stalls |
+| `agentd_shard_catching_up` | 1 while a node replays the log after a restart | Lasts long: that node is not a full copy, so the shard survives one fewer failure |
 
 To see where a session is and how each shard keeps up (read only):
 
 ```bash
-docker compose exec agentd /app/agentd-testnode inspect shards
-docker compose exec agentd /app/agentd-testnode inspect session <session id>
+docker compose exec agentd /app/agentd inspect shards
+docker compose exec agentd /app/agentd inspect session <session id>
 ```
 
 ## Restore
