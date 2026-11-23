@@ -22,6 +22,14 @@
 //!   hands its newest turns back, which resume on another executor from the
 //!   session's log; at 98% it drains and exits for a clean restart, before
 //!   the kernel would kill it.
+//! - Capability memory classes (memory design, "Capabilities"): only
+//!   capabilities with a hard memory cap run inside the executor process
+//!   (the virtual shell's `max_memory`, 10 MB, in `integrations::bashkit`;
+//!   Lua's `set_memory_limit`). Browsers, desktops and user code with real
+//!   processes run in sandboxes outside it (`sandbox_*` capabilities), so no
+//!   one turn's tool can take the executor's memory. A large payload a turn
+//!   reads comes back from the blob store (`payload.rs`) and is counted in
+//!   the executor's own reading like any other.
 //! - Freshness (`tenants.rs`): an executor that hasn't heard from the
 //!   directory shard within the bound pulls nothing, and one offered a
 //!   session of a suspended or deleted tenant gives it back unrun.
