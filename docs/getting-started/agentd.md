@@ -1,6 +1,6 @@
 ---
 title: Run agents with agentd
-description: Run agentd on its own as the backend for your app's agents, with one binary, Docker or Kubernetes. Push agents and model keys, create sessions with labels, and read one stream of everything that happened.
+description: "Run agentd on its own as the backend for your app's agents: push agents and model keys, run labeled sessions, read one stream."
 sidebar:
   label: "agentd on its own"
 ---
