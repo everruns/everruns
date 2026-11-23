@@ -2,9 +2,4 @@
 # https://github.com/rustsec/rustsec/blob/main/cargo-audit/audit.toml.example
 
 [advisories]
-# RUSTSEC-2023-0071: rsa crate Marvin Attack timing sidechannel
-# This appears in Cargo.lock due to sqlx-macros-core unconditionally depending
-# on sqlx-mysql, but cargo tree confirms it's NOT compiled into the binary.
-# See: https://github.com/launchbadge/sqlx/issues/3538
-#
-ignore = ["RUSTSEC-2023-0071"]
+ignore = []
