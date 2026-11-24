@@ -466,9 +466,7 @@ impl ReasonAtom {
             );
         context_messages = truncation_gate::insert_notes(context_messages);
 
-        // 9c. Dynamic facts after each answered input, rendered as of that input.
-        // Capable Anthropic models use turn-scoped system messages; others keep
-        // the user-message fallback (see `facts`).
+        // 9c. Dynamic facts after each answered input, then the turn-limit notice (see `facts`).
         let render_facts = |at| {
             crate::engine::capabilities::render_facts_block(
                 &crate::engine::capabilities::collect_dynamic_facts(
@@ -479,9 +477,11 @@ impl ReasonAtom {
                 ),
             )
         };
-        let (context_messages, volatile_suffix_len) =
-            facts::interleave_facts(context_messages, render_facts, supports_clear_at);
-        let mut context_messages = context_messages;
+        let (mut context_messages, volatile_suffix_len) = facts::turn_limit::with_notice(
+            facts::interleave_facts(context_messages, render_facts, supports_clear_at),
+            iteration,
+            turn_agent.max_iterations,
+        );
 
         // 9d. Replay reference-data changes at their recorded positions.
         let context_updates =
