@@ -551,6 +551,52 @@ mod lifecycle_tests {
         );
     }
 
+    struct LargeWindow(std::sync::Mutex<Vec<Option<u32>>>);
+    #[async_trait::async_trait]
+    impl ChatDriver for LargeWindow {
+        fn effective_context_window(&self, _: &str) -> Option<usize> {
+            Some(1_000_000)
+        }
+        async fn chat_completion_stream(
+            &self,
+            _: &crate::engine::ProviderEndpoint,
+            _: Vec<Message>,
+            config: &LlmCallConfig,
+        ) -> Result<LlmResponseStream> {
+            self.0.lock().unwrap().push(config.max_tokens);
+            let mut metadata = LlmCompletionMetadata::default();
+            metadata.finish_reason = Some("stop".into());
+            metadata.prompt_tokens = Some(100);
+            metadata.completion_tokens = Some(20);
+            Ok(LlmResponse {
+                text: "User task: continue work.".into(),
+                tool_calls: None,
+                reasoning: Vec::new(),
+                metadata,
+            }
+            .into_stream())
+        }
+    }
+
+    #[tokio::test]
+    async fn large_windows_give_the_first_summary_room_for_reasoning() {
+        let store: Arc<dyn CompactionCheckpointStore> =
+            Arc::new(InMemoryCompactionCheckpointStore::default());
+        let driver = LargeWindow(Default::default());
+        let emitter = TestEventEmitter::new();
+        run(
+            &store,
+            &history(100),
+            &driver,
+            &emitter,
+            SessionId::new(),
+            100,
+        )
+        .await
+        .unwrap();
+        assert_eq!(*driver.0.lock().unwrap(), vec![Some(16_384)]);
+    }
+
     #[test]
     fn no_retry_without_more_room_or_for_a_normal_stop() {
         let config = {
