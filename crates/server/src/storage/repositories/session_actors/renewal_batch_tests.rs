@@ -231,6 +231,8 @@ async fn a_renewal_batch_and_an_append_fence_check_do_not_deadlock() {
 /// On the liveness pool they no longer wait for the request pool at all.
 #[tokio::test]
 async fn renewals_do_not_wait_for_a_saturated_request_pool() {
+    use sqlx::ConnectOptions;
+
     let fixture = StorageBackend::test_database();
     let url = fixture.pool().connect_options().to_url_lossy().to_string();
     let tight = |liveness: u32| crate::storage::repositories::DatabasePoolConfig {
