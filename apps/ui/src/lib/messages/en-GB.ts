@@ -2,6 +2,12 @@ import { messages as qualityMonitoring } from "./en-GB/quality-monitoring";
 import { messages as extractions } from "./en-GB/extractions";
 // British English overrides; identifiers and authored values stay unchanged.
 export const messages: Readonly<Record<string, string>> = {
+  Recoverable: "Recoverable",
+  "Instance unavailable": "Instance unavailable",
+  "The provider instance is unavailable. Check diagnostics for recovery options.":
+    "The provider instance is unavailable. Check diagnostics for recovery options.",
+  "The provider instance is gone. A saved workspace checkpoint is available; the next sandbox tool call attempts recovery.":
+    "The provider instance is gone. A saved workspace checkpoint is available; the next sandbox tool call attempts recovery.",
   ...qualityMonitoring,
   Context: "Context",
   "Effective compaction policy": "Effective compaction policy",

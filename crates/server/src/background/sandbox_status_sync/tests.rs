@@ -296,3 +296,247 @@ async fn automatic_status_sync_yields_to_new_runtime_and_shard_activity() {
         .unwrap();
     assert_eq!(fleet_state().await, "running");
 }
+
+#[tokio::test]
+async fn recoverable_idle_instances_are_not_live_or_attention_but_active_losses_are() {
+    let (db, _, session, _) = fixture().await;
+    let candidate = candidates(db.pool(), 20).await.unwrap().remove(0);
+    let mut status = observation(SessionSandboxStatus::Lost);
+    status.metadata = json!({"recoverable": true});
+    record_observation(db.pool(), &candidate, Some(status))
+        .await
+        .unwrap();
+    let filter = crate::storage::backend::sandbox_fleet::SandboxFleetFilter {
+        ids: Some(vec![candidate.id]),
+        ..Default::default()
+    };
+    let row = db
+        .get_sandbox_fleet_row(everruns_core::DEFAULT_ORG_ID, candidate.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(row.fleet_state, "recoverable");
+    assert!(row.attention.is_empty());
+    let stats = db
+        .sandbox_fleet_aggregates(everruns_core::DEFAULT_ORG_ID, &filter)
+        .await
+        .unwrap();
+    assert_eq!(stats.needs_attention, 0);
+    assert!(stats.live_by_provider.is_empty());
+    assert_eq!(stats.by_state, vec![("recoverable".into(), 1)]);
+    let (rows, count) = db
+        .list_sandbox_fleet(
+            everruns_core::DEFAULT_ORG_ID,
+            &crate::storage::backend::sandbox_fleet::SandboxFleetFilter {
+                states: Some(vec!["recoverable".into()]),
+                ..filter
+            },
+            10,
+            0,
+        )
+        .await
+        .unwrap();
+    assert_eq!(count, 1);
+    assert_eq!(rows[0].id, candidate.id);
+
+    // Recovery does not excuse losing compute while the session is working.
+    sqlx::query("UPDATE sessions SET status = 'active' WHERE id = $1")
+        .bind(session)
+        .execute(db.pool())
+        .await
+        .unwrap();
+    let row = db
+        .get_sandbox_fleet_row(everruns_core::DEFAULT_ORG_ID, candidate.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(row.fleet_state, "lost");
+    assert!(row.attention.contains(&"lost".into()));
+
+    // The shard's active state wins over the idle control-plane copy too.
+    sqlx::query("UPDATE sessions SET status = 'idle' WHERE id = $1")
+        .bind(session)
+        .execute(db.pool())
+        .await
+        .unwrap();
+    let at = Utc::now() - chrono::Duration::seconds(1);
+    db.dp_upsert_session_summary(crate::storage::DpSessionSummary {
+        session_id: &session.to_string(),
+        org_id: everruns_core::DEFAULT_ORG_ID,
+        data_plane_id: "test-shard",
+        agent_id: "test-agent",
+        session_version: 1,
+        title: "",
+        status: "active",
+        turns: 1,
+        cost_micros: 0,
+        created_at: at,
+        last_activity_at: at,
+    })
+    .await
+    .unwrap();
+    let row = db
+        .get_sandbox_fleet_row(everruns_core::DEFAULT_ORG_ID, candidate.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(row.fleet_state, "lost");
+    assert!(row.attention.contains(&"lost".into()));
+}
+
+#[tokio::test]
+async fn daytona_missing_instance_requires_a_committed_checkpoint_for_recovery() {
+    let (db, service, session, provider) = fixture().await;
+    let store = PgSandboxCheckpointStore::new(db.pool().clone());
+    let initial = store.load_current_state(session).await.unwrap().unwrap();
+    let mut state = initial.clone();
+    state.instance.provider_state = json!({"recovery": {
+        "volume_id": "recovery-volume", "volume_name": "test-recovery",
+        "mount_path": "/mnt/recovery", "subpath": format!("sessions/{session}"),
+        "retained_revisions": 10, "head_revision": null
+    }});
+    store
+        .save_state(session, &state, initial.sandbox.as_ref())
+        .await
+        .unwrap();
+    Mock::given(method("GET"))
+        .and(path("/sandbox/current-sandbox"))
+        .and(header("authorization", "Bearer test-pinned-token"))
+        .respond_with(ResponseTemplate::new(404))
+        .expect(2)
+        .mount(&provider)
+        .await;
+    sync(db.pool(), &service).await.unwrap();
+    let id = db.get_primary_sandbox(session).await.unwrap().unwrap().id;
+    let row = db
+        .get_sandbox_fleet_row(everruns_core::DEFAULT_ORG_ID, id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        row.fleet_state, "lost",
+        "an empty volume cannot restore workspace data"
+    );
+    assert!(row.attention.contains(&"lost".into()));
+
+    let previous = store.load_current_state(session).await.unwrap().unwrap();
+    Mock::given(method("GET"))
+        .and(path("/volumes/recovery-volume"))
+        .and(header("authorization", "Bearer test-pinned-token"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "id": "recovery-volume", "name": "test-recovery", "state": "ready"
+        })))
+        .expect(1)
+        .mount(&provider)
+        .await;
+    let mut checkpointed = previous.clone();
+    checkpointed.instance.provider_state["recovery"]["head_revision"] = json!("rev-1");
+    store
+        .save_state(session, &checkpointed, previous.sandbox.as_ref())
+        .await
+        .unwrap();
+    sqlx::query("UPDATE sandboxes SET provider_status_checked_at = now() - interval '6 minutes' WHERE id = $1")
+        .bind(id).execute(db.pool()).await.unwrap();
+    sync(db.pool(), &service).await.unwrap();
+    let row = db
+        .get_sandbox_fleet_row(everruns_core::DEFAULT_ORG_ID, id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(row.fleet_state, "recoverable");
+    assert!(row.attention.is_empty());
+    assert_eq!(
+        store.load_current_state(session).await.unwrap(),
+        Some(checkpointed)
+    );
+
+    // A successful observation with unknown recovery must clear earlier evidence.
+    let candidate = StatusCandidate {
+        id,
+        session_id: session,
+        org_id: everruns_core::DEFAULT_ORG_ID,
+        generation: row.generation,
+        updated_at: row.updated_at,
+    };
+    record_observation(db.pool(), &candidate, None)
+        .await
+        .unwrap();
+    assert_eq!(
+        db.get_sandbox_fleet_row(everruns_core::DEFAULT_ORG_ID, id)
+            .await
+            .unwrap()
+            .unwrap()
+            .fleet_state,
+        "recoverable"
+    );
+    record_observation(
+        db.pool(),
+        &candidate,
+        Some(observation(SessionSandboxStatus::Lost)),
+    )
+    .await
+    .unwrap();
+    let row = db
+        .get_sandbox_fleet_row(everruns_core::DEFAULT_ORG_ID, id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(row.fleet_state, "lost");
+}
+
+#[tokio::test]
+async fn missing_unreadable_or_invalid_recovery_remains_actionable() {
+    for (code, body, valid_binding) in [
+        (404, json!({}), true),
+        (403, json!({}), true),
+        (
+            200,
+            json!({"id": "recovery-volume", "name": "test", "state": "error"}),
+            true,
+        ),
+        (
+            200,
+            json!({"id": "recovery-volume", "name": "test", "state": "ready"}),
+            false,
+        ),
+    ] {
+        let (db, service, session, provider) = fixture().await;
+        let store = PgSandboxCheckpointStore::new(db.pool().clone());
+        let previous = store.load_current_state(session).await.unwrap().unwrap();
+        let mut checkpointed = previous.clone();
+        checkpointed.instance.provider_state = json!({"recovery": {
+            "volume_id": "recovery-volume", "volume_name": "test",
+            "mount_path": "/mnt/recovery", "subpath": format!("sessions/{session}"),
+            "retained_revisions": 10, "head_revision": "rev-1"
+        }});
+        if !valid_binding {
+            checkpointed.instance.provider_state["recovery"]["mount_path"] =
+                json!("/mnt/../invalid");
+        }
+        store
+            .save_state(session, &checkpointed, previous.sandbox.as_ref())
+            .await
+            .unwrap();
+        Mock::given(method("GET"))
+            .and(path("/sandbox/current-sandbox"))
+            .respond_with(ResponseTemplate::new(404))
+            .expect(1)
+            .mount(&provider)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/volumes/recovery-volume"))
+            .respond_with(ResponseTemplate::new(code).set_body_json(body))
+            .expect(if valid_binding { 1 } else { 0 })
+            .mount(&provider)
+            .await;
+        sync(db.pool(), &service).await.unwrap();
+        let id = db.get_primary_sandbox(session).await.unwrap().unwrap().id;
+        let row = db
+            .get_sandbox_fleet_row(everruns_core::DEFAULT_ORG_ID, id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(row.fleet_state, "lost", "volume HTTP {code}");
+        assert!(row.attention.contains(&"lost".into()));
+    }
+}

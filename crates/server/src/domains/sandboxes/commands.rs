@@ -27,6 +27,7 @@ const MAX_TIMELINE_DAYS: i64 = 31;
 const FLEET_STATES: &[&str] = &[
     "running",
     "paused",
+    "recoverable",
     "lost",
     "starting",
     "failed",
@@ -41,8 +42,9 @@ macro_rules! fleet_filter_command {
         #[derive(Debug, Default, Deserialize, Serialize, ToSchema, IntoParams)]
         #[into_params(parameter_in = Query)]
         pub struct $name {
-            /// Comma-separated states: `running`, `paused`, `lost`, `starting`,
-            /// `failed`, `not_started`, `deleted`, or `live` for the first five.
+            /// Comma-separated states: `running`, `paused`, `recoverable`, `lost`,
+            /// `starting`, `failed`, `not_started`, `deleted`, or `live` for
+            /// running, paused and starting instances.
             pub state: Option<String>,
             /// Comma-separated provider ids, such as `daytona,modal`.
             pub provider: Option<String>,
@@ -479,7 +481,9 @@ mod tests {
             .expect("valid states");
         let states = filter.states.expect("states");
         assert!(states.contains(&"running".to_string()));
-        assert!(states.contains(&"failed".to_string()));
+        assert!(!states.contains(&"failed".to_string()));
+        assert!(!states.contains(&"lost".to_string()));
+        assert!(!states.contains(&"recoverable".to_string()));
         assert!(states.contains(&"deleted".to_string()));
         assert!(!states.contains(&"not_started".to_string()));
 

@@ -27907,7 +27907,7 @@
           {
             "name": "state",
             "in": "query",
-            "description": "Comma-separated states: `running`, `paused`, `lost`, `starting`,\n`failed`, `not_started`, `deleted`, or `live` for the first five.",
+            "description": "Comma-separated states: `running`, `paused`, `recoverable`, `lost`,\n`starting`, `failed`, `not_started`, `deleted`, or `live` for\nrunning, paused and starting instances.",
             "required": false,
             "schema": {
               "type": "string"
@@ -28020,7 +28020,7 @@
           {
             "name": "state",
             "in": "query",
-            "description": "Comma-separated states: `running`, `paused`, `lost`, `starting`,\n`failed`, `not_started`, `deleted`, or `live` for the first five.",
+            "description": "Comma-separated states: `running`, `paused`, `recoverable`, `lost`,\n`starting`, `failed`, `not_started`, `deleted`, or `live` for\nrunning, paused and starting instances.",
             "required": false,
             "schema": {
               "type": "string"
@@ -28113,7 +28113,7 @@
           {
             "name": "state",
             "in": "query",
-            "description": "Comma-separated states: `running`, `paused`, `lost`, `starting`,\n`failed`, `not_started`, `deleted`, or `live` for the first five.",
+            "description": "Comma-separated states: `running`, `paused`, `recoverable`, `lost`,\n`starting`, `failed`, `not_started`, `deleted`, or `live` for\nrunning, paused and starting instances.",
             "required": false,
             "schema": {
               "type": "string"
@@ -73329,7 +73329,7 @@
           },
           "state": {
             "type": "string",
-            "description": "`running`, `paused`, `lost`, `starting`, `failed`, `not_started` or `deleted`.",
+            "description": "`running`, `paused`, `recoverable`, `lost`, `starting`, `failed`, `not_started` or `deleted`.\n`recoverable` means an idle session's provider instance is gone but a saved\nworkspace checkpoint is available. The next sandbox tool call attempts recovery.",
             "example": "running"
           },
           "target_kind": {

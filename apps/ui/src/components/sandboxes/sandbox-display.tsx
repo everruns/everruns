@@ -8,6 +8,7 @@ import { useUiTranslations } from "@/providers/locale-provider";
 export const SANDBOX_STATE_LABELS: Record<SandboxFleetState, string> = {
   running: "Running",
   paused: "Paused",
+  recoverable: "Recoverable",
   lost: "Lost",
   starting: "Starting",
   failed: "Failed",
@@ -19,14 +20,15 @@ export const SANDBOX_STATE_LABELS: Record<SandboxFleetState, string> = {
 export const SANDBOX_STATE_ORDER: SandboxFleetState[] = [
   "running",
   "paused",
-  "lost",
   "starting",
+  "recoverable",
+  "lost",
   "failed",
   "not_started",
   "deleted",
 ];
 
-export const LIVE_STATES: SandboxFleetState[] = ["running", "paused", "lost", "starting", "failed"];
+export const LIVE_STATES: SandboxFleetState[] = ["running", "paused", "starting"];
 
 /** Background class of a state's dot or timeline bar. */
 export function sandboxStateTone(state: string): string {
@@ -75,8 +77,8 @@ export function SandboxStateBadge({
 
 export const SANDBOX_ATTENTION_COPY: Record<SandboxAttention, { title: string; hint: string }> = {
   lost: {
-    title: "Lost, not rebuilt yet",
-    hint: "The provider resource is gone. The next tool call rebuilds it from the last checkpoint.",
+    title: "Instance unavailable",
+    hint: "The provider instance is unavailable. Check diagnostics for recovery options.",
   },
   failed: {
     title: "Failed to start",

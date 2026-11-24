@@ -1,11 +1,12 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { SandboxFleetTab } from "@/app/(main)/sandboxes/(tabs)/fleet-tab";
 import type { SandboxFleetStats } from "@/lib/api/sandboxes";
 
 let mockStats: Partial<SandboxFleetStats> = {};
+const mockReplace = jest.fn();
 
 jest.mock("next/navigation", () => ({
-  useRouter: () => ({ replace: jest.fn(), push: jest.fn() }),
+  useRouter: () => ({ replace: mockReplace, push: jest.fn() }),
   useSearchParams: () => new URLSearchParams(),
 }));
 
@@ -44,6 +45,9 @@ function baseStats(): SandboxFleetStats {
 }
 
 describe("SandboxFleetTab", () => {
+  beforeEach(() => {
+    mockReplace.mockClear();
+  });
   it("teaches instead of showing zero tiles when the org has no Sandboxes", () => {
     mockStats = {};
     render(<SandboxFleetTab />);
@@ -63,5 +67,15 @@ describe("SandboxFleetTab", () => {
 
     expect(screen.getByText("Live now")).toBeInTheDocument();
     expect(screen.getByText("No Sandboxes match these filters")).toBeInTheDocument();
+  });
+
+  it("sets attention and state in one navigation without clearing the attention filter", () => {
+    mockStats = { by_state: [{ key: "lost", count: 2 }], needs_attention: 2 };
+    render(<SandboxFleetTab />);
+    fireEvent.click(screen.getByRole("button", { name: /Needs attention 2/ }));
+    expect(mockReplace).toHaveBeenCalledTimes(1);
+    const url = new URL(mockReplace.mock.calls[0][0], "http://localhost");
+    expect(url.searchParams.get("attention")).toBe("1");
+    expect(url.searchParams.get("state")).toBe("all");
   });
 });

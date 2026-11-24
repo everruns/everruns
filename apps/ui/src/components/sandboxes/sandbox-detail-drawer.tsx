@@ -276,6 +276,13 @@ export function SandboxDetailDrawer({
             <p className="text-sm text-destructive">{ui("This Sandbox could not be loaded.")}</p>
           ) : (
             <>
+              {detail.state === "recoverable" ? (
+                <p className="border bg-muted/50 p-3 text-sm text-muted-foreground">
+                  {ui(
+                    "The provider instance is gone. A saved workspace checkpoint is available; the next sandbox tool call attempts recovery.",
+                  )}
+                </p>
+              ) : null}
               {detail.attention.length > 0 ? (
                 <div className="flex flex-col gap-2 border border-destructive/30 bg-destructive/5 p-3">
                   {detail.attention.map((reason) => {

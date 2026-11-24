@@ -1,5 +1,11 @@
 // Product-owned copy. Preserve interpolation tokens and stable identifiers.
 export const messages: Readonly<Record<string, string>> = {
+  Recoverable: "可恢复",
+  "Instance unavailable": "实例不可用",
+  "The provider instance is unavailable. Check diagnostics for recovery options.":
+    "提供商实例不可用。请查看诊断以了解恢复选项。",
+  "The provider instance is gone. A saved workspace checkpoint is available; the next sandbox tool call attempts recovery.":
+    "提供商实例已不存在。已有保存的工作区检查点；下次调用沙箱工具时将尝试恢复。",
   "Local user": "本地用户",
   Locale: "区域设置",
   Localization: "本地化",

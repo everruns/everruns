@@ -140,6 +140,30 @@ describe("SandboxFleetSummary", () => {
     fireEvent.click(screen.getByRole("button", { name: /Deleted 198/ }));
     expect(onState).toHaveBeenCalledWith("deleted");
   });
+
+  it("keeps unavailable and recoverable instances out of Live now", () => {
+    const onState = jest.fn();
+    render(
+      <SandboxFleetSummary
+        stats={{
+          ...stats,
+          by_state: [
+            { key: "running", count: 1 },
+            { key: "recoverable", count: 77 },
+            { key: "lost", count: 2 },
+            { key: "failed", count: 3 },
+          ],
+        }}
+        state="all"
+        needsAttention={false}
+        onState={onState}
+        onNeedsAttention={jest.fn()}
+      />,
+    );
+    expect(screen.getByRole("button", { name: /Live now 1 / })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Recoverable 77" }));
+    expect(onState).toHaveBeenCalledWith("recoverable");
+  });
 });
 
 describe("SandboxFleetTable", () => {
@@ -168,7 +192,7 @@ describe("SandboxFleetTable", () => {
     );
     expect(screen.getByText("Deleted session")).toBeInTheDocument();
     expect(screen.getByText("3")).toHaveClass("text-warning");
-    expect(screen.getByLabelText("Lost, not rebuilt yet")).toBeInTheDocument();
+    expect(screen.getByLabelText("Instance unavailable")).toBeInTheDocument();
     fireEvent.click(screen.getAllByText("Fix flaky CI")[0]);
     expect(onSelect).toHaveBeenCalledWith("sandbox_a");
   });
@@ -233,6 +257,17 @@ describe("SandboxDetailDrawer", () => {
   function detail(overrides: Partial<SandboxFleetDetail> = {}): SandboxFleetDetail {
     return { ...item(), incarnations: [], history: [], ...overrides };
   }
+
+  it("explains automatic recovery without presenting it as an error", async () => {
+    mockedGet.mockResolvedValue({ data: detail({ state: "recoverable", attention: [] }) });
+    render(withClient(<SandboxDetailDrawer sandboxId="sandbox_1" onClose={jest.fn()} />));
+    expect(
+      await screen.findByText(/A saved workspace checkpoint is available/),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Recoverable")).toBeInTheDocument();
+    expect(screen.queryByText("Instance unavailable")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Resume" })).not.toBeInTheDocument();
+  });
 
   it("labels idle state as recorded and checks the provider only on request", async () => {
     mockedGet.mockImplementation(async (path) => ({

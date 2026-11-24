@@ -29,7 +29,9 @@ pub struct SandboxFleetItem {
     /// Durable logical Sandbox id. Stays the same when the provider resource is replaced.
     #[schema(example = "sandbox_01933b5a00007000800000000000001")]
     pub id: String,
-    /// `running`, `paused`, `lost`, `starting`, `failed`, `not_started` or `deleted`.
+    /// `running`, `paused`, `recoverable`, `lost`, `starting`, `failed`, `not_started` or `deleted`.
+    /// `recoverable` means an idle session's provider instance is gone but a saved
+    /// workspace checkpoint is available. The next sandbox tool call attempts recovery.
     #[schema(example = "running")]
     pub state: String,
     /// Lifecycle intent the control plane is moving the Sandbox toward: `ready`, `paused` or `deleted`.

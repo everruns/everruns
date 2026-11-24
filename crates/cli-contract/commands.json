@@ -13763,7 +13763,7 @@
         "long": "state",
         "kind": "string",
         "required": false,
-        "help": "Comma-separated states: `running`, `paused`, `lost`, `starting`, `failed`, `not_started`, `de..."
+        "help": "Comma-separated states: `running`, `paused`, `recoverable`, `lost`, `starting`, `failed`, `no..."
       }
     ],
     "examples": [
@@ -13858,7 +13858,7 @@
         "long": "state",
         "kind": "string",
         "required": false,
-        "help": "Comma-separated states: `running`, `paused`, `lost`, `starting`, `failed`, `not_started`, `de..."
+        "help": "Comma-separated states: `running`, `paused`, `recoverable`, `lost`, `starting`, `failed`, `no..."
       }
     ],
     "examples": [
@@ -13940,7 +13940,7 @@
         "long": "state",
         "kind": "string",
         "required": false,
-        "help": "Comma-separated states: `running`, `paused`, `lost`, `starting`, `failed`, `not_started`, `de..."
+        "help": "Comma-separated states: `running`, `paused`, `recoverable`, `lost`, `starting`, `failed`, `no..."
       },
       {
         "field": "to",

@@ -1,5 +1,11 @@
 // Product-owned copy. Preserve interpolation tokens and stable identifiers.
 export const messages: Readonly<Record<string, string>> = {
+  Recoverable: "Récupérable",
+  "Instance unavailable": "Instance indisponible",
+  "The provider instance is unavailable. Check diagnostics for recovery options.":
+    "L’instance du fournisseur est indisponible. Consultez le diagnostic pour les options de récupération.",
+  "The provider instance is gone. A saved workspace checkpoint is available; the next sandbox tool call attempts recovery.":
+    "L’instance du fournisseur n’existe plus. Un point de contrôle de l’espace de travail est disponible ; le prochain appel à un outil du sandbox tentera la récupération.",
   "Local user": "Utilisateur local",
   Locale: "Paramètres régionaux",
   Localization: "Localisation",

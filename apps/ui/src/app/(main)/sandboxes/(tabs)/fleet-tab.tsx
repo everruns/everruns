@@ -192,7 +192,9 @@ export function SandboxFleetTab() {
           state={state}
           needsAttention={needsAttention}
           onState={(next) => update({ state: next === "live" ? null : next, attention: null })}
-          onNeedsAttention={(value) => update({ attention: value ? "1" : null })}
+          // State and attention must travel in one navigation; consecutive
+          // replacements can overwrite the filter using stale search params.
+          onNeedsAttention={(value) => update({ state: "all", attention: value ? "1" : null })}
         />
       </PageControlStrip>
 
