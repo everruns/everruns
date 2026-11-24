@@ -19,7 +19,7 @@ questions at a glance: what the agent is doing now, how it is reached, and how t
 hours went. A second view on the same page lists every channel in the organization and
 replaced the Exposures page. Definitions (prompt, model, harness) stay on the
 [Agent Page](agent-page.md). Source: `apps/ui/src/components/agents/home/`, the pure rules in
-`apps/ui/src/lib/agents-home.ts`, and `GET /v1/agents/activity`
+`apps/ui/src/lib/agents-home.ts`, and `GET /v1/platform/agents/activity`
 (`crates/server/src/api/agent_activity.rs`).
 
 ## Decisions
@@ -46,7 +46,7 @@ replaced the Exposures page. Definitions (prompt, model, harness) stay on the
   activity count rather than the asynchronous trace index. Each card shows its latest matching
   error and links by event sequence into Trace. Cancellations and recovered tool errors do not
   count as failed turns. See [Session Source and List Facets](../runtime-resources/session-source-and-facets.md).
-- **One read for the activity.** `GET /v1/agents/activity` returns every agent's load, 24 hourly
+- **One read for the activity.** `GET /v1/platform/agents/activity` returns every agent's load, 24 hourly
   buckets, active triggers, and every channel's 7 daily session buckets, so the busiest orgs do not
   get an N+1 page. Channel configuration still comes from each agent's channel list: Apps are
   archival and no longer hold an agent's channels, so the old Exposures list read nothing. It reads the window through sessions touched in it and their turn events, so
@@ -76,7 +76,7 @@ replaced the Exposures page. Definitions (prompt, model, harness) stay on the
   attention item linking back to the setup page. Agents adopted before the tag existed are not
   flagged.
 - **Describe first, and every path makes a normal agent.** The New agent page opens on the agent
-  builder (`POST /v1/agents/draft`), which edits a draft and never creates anything; the
+  builder (`POST /v1/platform/agents/draft`), which edits a draft and never creates anything; the
   browser creates the agent with the ordinary calls on confirm. Examples, a Blank form sharing the
   same draft, and package import are the other tabs. Ways in become draft channels and the
   schedule a schedule trigger, so nothing takes traffic until published. Slack needs a workspace

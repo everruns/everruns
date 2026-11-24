@@ -179,10 +179,10 @@ export async function prefetchAuthBootstrap(
   context: ServerRequestContext,
 ): Promise<{ config?: AuthConfigResponse; user?: UserInfoResponse; currentOrgId: string | null }> {
   const config = await seedQueryData(queryClient, authQueryKeys.config(), () =>
-    serverGet<AuthConfigResponse>(context, "/v1/auth/config"),
+    serverGet<AuthConfigResponse>(context, "/v1/platform/auth/config"),
   );
   const user = await seedQueryData(queryClient, authQueryKeys.user(), () =>
-    serverGet<UserInfoResponse>(context, "/v1/auth/me"),
+    serverGet<UserInfoResponse>(context, "/v1/platform/auth/me"),
   );
 
   return {

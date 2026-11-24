@@ -30,7 +30,7 @@ Verify that an agent can be created with required fields (name, system_prompt) p
 
 1. Create agent with both name and display_name:
    ```bash
-   curl -s -X POST "http://localhost:9300/api/v1/agents" \
+   curl -s -X POST "http://localhost:9300/api/v1/platform/agents" \
      -H "Content-Type: application/json" \
      -d '{
        "name": "test-agent",
@@ -42,17 +42,17 @@ Verify that an agent can be created with required fields (name, system_prompt) p
 
 2. Fetch agent by ID:
    ```bash
-   curl -s "http://localhost:9300/api/v1/agents/{id}"
+   curl -s "http://localhost:9300/api/v1/platform/agents/{id}"
    ```
 
 3. Fetch agent by name:
    ```bash
-   curl -s "http://localhost:9300/api/v1/agents/test-agent"
+   curl -s "http://localhost:9300/api/v1/platform/agents/test-agent"
    ```
 
 4. Create agent without display_name (should fall back to name):
    ```bash
-   curl -s -X POST "http://localhost:9300/api/v1/agents" \
+   curl -s -X POST "http://localhost:9300/api/v1/platform/agents" \
      -H "Content-Type: application/json" \
      -d '{
        "name": "no-display-name",

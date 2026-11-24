@@ -146,7 +146,7 @@ state, not message content: read the session with `session_get_status`.
 
 People can also add MCP servers for themselves; agents with the User MCP Servers capability use them while that person chats. See [User MCP Servers](/features/user-mcp-servers/).
 
-A server the agent adds for one conversation only ([`"scope": "chat"`](/capabilities/user-mcp-servers/#this-conversation-only)) shows under the **MCP** button in that conversation's header, where you can see whether you have signed in and remove it; its tools leave from the next message. Over the API: `GET /v1/sessions/{session_id}/mcp-servers` and `DELETE /v1/sessions/{session_id}/mcp-servers/{name}`.
+A server the agent adds for one conversation only ([`"scope": "chat"`](/capabilities/user-mcp-servers/#this-conversation-only)) shows under the **MCP** button in that conversation's header, where you can see whether you have signed in and remove it; its tools leave from the next message. Over the API: `GET /v1/platform/sessions/{session_id}/mcp-servers` and `DELETE /v1/platform/sessions/{session_id}/mcp-servers/{name}`.
 
 Register a remote MCP server and its tools appear as a **virtual capability**: auto-discovered, namespaced, and executed alongside built-in capabilities. No code changes are needed to give an agent new tools.
 
@@ -341,7 +341,7 @@ in `mcp_server`, the event name from the server's `events/list` in `mcp_event`,
 and any subscription arguments in `mcp_event_arguments`:
 
 ```bash
-curl -X POST "$EVERRUNS_API/v1/agents/$AGENT_ID/triggers" \
+curl -X POST "$EVERRUNS_API/v1/platform/agents/$AGENT_ID/triggers" \
   -H "Content-Type: application/json" \
   -d '{
     "trigger_type": "mcp_event",
@@ -390,8 +390,8 @@ the button reports an error rather than using the deployment's.
 List a server's tools with their labels, then set or clear one:
 
 ```bash
-curl "$EVERRUNS_API/v1/mcp-servers/mcp_01h9/tools"
-curl -X PUT "$EVERRUNS_API/v1/mcp-servers/mcp_01h9/tools/search_docs/label" \
+curl "$EVERRUNS_API/v1/platform/mcp-servers/mcp_01h9/tools"
+curl -X PUT "$EVERRUNS_API/v1/platform/mcp-servers/mcp_01h9/tools/search_docs/label" \
   -H "Content-Type: application/json" -d '{"label": "read_only"}'
 ```
 
@@ -401,7 +401,7 @@ removes the tool's suggestion. To get suggestions, which come back with the
 tool list:
 
 ```bash
-curl -X POST "$EVERRUNS_API/v1/mcp-servers/mcp_01h9/tools/suggest-labels"
+curl -X POST "$EVERRUNS_API/v1/platform/mcp-servers/mcp_01h9/tools/suggest-labels"
 ```
 
 Labels work on the other places an MCP server can live too:

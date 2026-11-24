@@ -30,7 +30,7 @@ Verify the two-stage agent deletion: soft delete (archive) via DELETE, then hard
 
 1. Create agent:
    ```bash
-   curl -s -X POST "http://localhost:9300/api/v1/agents" \
+   curl -s -X POST "http://localhost:9300/api/v1/platform/agents" \
      -H "Content-Type: application/json" \
      -d '{"name": "doomed-agent", "display_name": "Doomed Agent", "system_prompt": "Temporary."}'
    ```
@@ -38,22 +38,22 @@ Verify the two-stage agent deletion: soft delete (archive) via DELETE, then hard
 
 2. Archive agent (soft delete):
    ```bash
-   curl -s -X DELETE "http://localhost:9300/api/v1/agents/{id}"
+   curl -s -X DELETE "http://localhost:9300/api/v1/platform/agents/{id}"
    ```
 
 3. Verify archived agent is still accessible:
    ```bash
-   curl -s "http://localhost:9300/api/v1/agents/{id}"
+   curl -s "http://localhost:9300/api/v1/platform/agents/{id}"
    ```
 
 4. Hard delete:
    ```bash
-   curl -s -X POST "http://localhost:9300/api/v1/agents/{id}/delete"
+   curl -s -X POST "http://localhost:9300/api/v1/platform/agents/{id}/delete"
    ```
 
 5. Verify agent is gone:
    ```bash
-   curl -s -o /dev/null -w "%{http_code}" "http://localhost:9300/api/v1/agents/{id}"
+   curl -s -o /dev/null -w "%{http_code}" "http://localhost:9300/api/v1/platform/agents/{id}"
    ```
 
 ## Expected Result

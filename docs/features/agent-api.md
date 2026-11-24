@@ -33,12 +33,12 @@ Every route on this page is relative to the agent base URL. The channel's page i
 
 ```bash
 # Create the channel. Every setting in channel_config is optional.
-curl -X POST "$EVERRUNS_API/v1/agents/$AGENT_ID/channels" \
+curl -X POST "$EVERRUNS_API/v1/platform/agents/$AGENT_ID/channels" \
   -H "Authorization: Bearer $EVERRUNS_API_KEY" -H "Content-Type: application/json" \
   -d '{"channel_type": "api", "channel_config": {"visibility": "activity"}}'
 
 # Publish it (needs the dangerous Agent permission, Owner by default).
-curl -X POST "$EVERRUNS_API/v1/agents/$AGENT_ID/channels/$CHANNEL_ID/publish" \
+curl -X POST "$EVERRUNS_API/v1/platform/agents/$AGENT_ID/channels/$CHANNEL_ID/publish" \
   -H "Authorization: Bearer $EVERRUNS_API_KEY"
 ```
 
@@ -50,7 +50,7 @@ everruns agents channels publish --agent-id "$AGENT_ID" --channel-id "$CHANNEL_I
 everruns agents channels keys create --agent-id "$AGENT_ID" --channel-id "$CHANNEL_ID" --name "Support backend"
 ```
 
-Change settings later with `PATCH /v1/agents/{agent_id}/channels/{channel_id}` and a new `channel_config`. Changing a live channel's configuration needs the same dangerous Agent permission as publishing.
+Change settings later with `PATCH /v1/platform/agents/{agent_id}/channels/{channel_id}` and a new `channel_config`. Changing a live channel's configuration needs the same dangerous Agent permission as publishing.
 
 ## Agent keys
 
@@ -58,15 +58,15 @@ An agent key is the credential of one application. Keys belong to the organizati
 
 | Method | Path (management API) | What it does |
 |---|---|---|
-| GET | `/v1/agents/{agent_id}/channels/{channel_id}/keys` | List the channel's keys, newest first, without secrets |
-| POST | `/v1/agents/{agent_id}/channels/{channel_id}/keys` | Create a key |
-| POST | `/v1/agents/{agent_id}/channels/{channel_id}/keys/{key_id}/rotate` | Replace the secret, keeping the key's ID |
-| POST | `/v1/agents/{agent_id}/channels/{channel_id}/keys/{key_id}/revoke` | Stop the key for good |
+| GET | `/v1/platform/agents/{agent_id}/channels/{channel_id}/keys` | List the channel's keys, newest first, without secrets |
+| POST | `/v1/platform/agents/{agent_id}/channels/{channel_id}/keys` | Create a key |
+| POST | `/v1/platform/agents/{agent_id}/channels/{channel_id}/keys/{key_id}/rotate` | Replace the secret, keeping the key's ID |
+| POST | `/v1/platform/agents/{agent_id}/channels/{channel_id}/keys/{key_id}/revoke` | Stop the key for good |
 
 ### Create
 
 ```bash
-curl -X POST "$EVERRUNS_API/v1/agents/$AGENT_ID/channels/$CHANNEL_ID/keys" \
+curl -X POST "$EVERRUNS_API/v1/platform/agents/$AGENT_ID/channels/$CHANNEL_ID/keys" \
   -H "Authorization: Bearer $EVERRUNS_API_KEY" -H "Content-Type: application/json" \
   -d '{"name": "Support backend", "permissions": ["end_user"]}'
 ```

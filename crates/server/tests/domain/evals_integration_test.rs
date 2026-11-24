@@ -27,7 +27,7 @@ async fn test_update_eval_result_scores_recomputes_run_summary() {
     let response = server
         .patch(
             &format!(
-                "/v1/evals/{}/runs/{}/results/{}/scores",
+                "/v1/platform/evals/{}/runs/{}/results/{}/scores",
                 seeded.eval_id, seeded.run_id, seeded.result_ids[0]
             ),
             json!({
@@ -48,7 +48,7 @@ async fn test_update_eval_result_scores_recomputes_run_summary() {
 
     let run = server
         .get(&format!(
-            "/v1/evals/{}/runs/{}",
+            "/v1/platform/evals/{}/runs/{}",
             seeded.eval_id, seeded.run_id
         ))
         .await
@@ -73,7 +73,10 @@ async fn test_bulk_update_eval_run_scores_applies_shared_metadata() {
 
     let response = server
         .patch(
-            &format!("/v1/evals/{}/runs/{}/scores", seeded.eval_id, seeded.run_id),
+            &format!(
+                "/v1/platform/evals/{}/runs/{}/scores",
+                seeded.eval_id, seeded.run_id
+            ),
             json!({
                 "results": [
                     {
@@ -103,7 +106,7 @@ async fn test_bulk_update_eval_run_scores_applies_shared_metadata() {
 
     let run = server
         .get(&format!(
-            "/v1/evals/{}/runs/{}",
+            "/v1/platform/evals/{}/runs/{}",
             seeded.eval_id, seeded.run_id
         ))
         .await
@@ -140,7 +143,7 @@ async fn test_update_eval_result_scores_rejects_non_completed_run() {
     let response = server
         .patch(
             &format!(
-                "/v1/evals/{}/runs/{}/results/{}/scores",
+                "/v1/platform/evals/{}/runs/{}/results/{}/scores",
                 seeded.eval_id, seeded.run_id, seeded.result_ids[0]
             ),
             json!({
@@ -165,7 +168,7 @@ async fn test_update_eval_result_scores_rejects_non_object_metadata() {
     let response = server
         .patch(
             &format!(
-                "/v1/evals/{}/runs/{}/results/{}/scores",
+                "/v1/platform/evals/{}/runs/{}/results/{}/scores",
                 seeded.eval_id, seeded.run_id, seeded.result_ids[0]
             ),
             json!({
@@ -187,7 +190,7 @@ async fn test_update_eval_result_scores_rejects_out_of_range_values() {
     let response = server
         .patch(
             &format!(
-                "/v1/evals/{}/runs/{}/results/{}/scores",
+                "/v1/platform/evals/{}/runs/{}/results/{}/scores",
                 seeded.eval_id, seeded.run_id, seeded.result_ids[0]
             ),
             json!({
@@ -212,7 +215,7 @@ async fn test_update_eval_result_scores_rejects_score_count_mismatch() {
     let response = server
         .patch(
             &format!(
-                "/v1/evals/{}/runs/{}/results/{}/scores",
+                "/v1/platform/evals/{}/runs/{}/results/{}/scores",
                 seeded.eval_id, seeded.run_id, seeded.result_ids[0]
             ),
             json!({
@@ -239,7 +242,10 @@ async fn test_bulk_update_run_scores_rejects_duplicate_result_ids() {
 
     let response = server
         .patch(
-            &format!("/v1/evals/{}/runs/{}/scores", seeded.eval_id, seeded.run_id),
+            &format!(
+                "/v1/platform/evals/{}/runs/{}/scores",
+                seeded.eval_id, seeded.run_id
+            ),
             json!({
                 "results": [
                     {
@@ -268,7 +274,7 @@ async fn test_create_run_without_any_target_does_not_create_orphaned_run() {
     let server = TestServer::in_memory().await;
     let eval: Eval = server
         .post(
-            "/v1/evals",
+            "/v1/platform/evals",
             json!({
                 "name": "targetless eval",
                 "description": "integration test"
@@ -280,7 +286,7 @@ async fn test_create_run_without_any_target_does_not_create_orphaned_run() {
 
     let _case: EvalCase = server
         .post(
-            &format!("/v1/evals/{}/cases", eval.public_id),
+            &format!("/v1/platform/evals/{}/cases", eval.public_id),
             json!({
                 "name": "targetless case",
                 "conversation": [{"content": "hello"}],
@@ -292,7 +298,10 @@ async fn test_create_run_without_any_target_does_not_create_orphaned_run() {
         .json();
 
     let response = server
-        .post(&format!("/v1/evals/{}/runs", eval.public_id), json!({}))
+        .post(
+            &format!("/v1/platform/evals/{}/runs", eval.public_id),
+            json!({}),
+        )
         .await;
 
     assert_ne!(response.status(), StatusCode::CREATED);
@@ -331,7 +340,7 @@ fn test_run_row(public_id: &str, eval_id: uuid::Uuid) -> CreateEvalRunRow {
 async fn seed_completed_run(server: &TestServer) -> SeededRun {
     let eval: Eval = server
         .post(
-            "/v1/evals",
+            "/v1/platform/evals",
             json!({
                 "name": "deferred scoring eval",
                 "description": "integration test"
@@ -343,7 +352,7 @@ async fn seed_completed_run(server: &TestServer) -> SeededRun {
 
     let case_one: EvalCase = server
         .post(
-            &format!("/v1/evals/{}/cases", eval.public_id),
+            &format!("/v1/platform/evals/{}/cases", eval.public_id),
             json!({
                 "name": "case-one",
                 "conversation": [{"content": "hello"}],
@@ -355,7 +364,7 @@ async fn seed_completed_run(server: &TestServer) -> SeededRun {
         .json();
     let case_two: EvalCase = server
         .post(
-            &format!("/v1/evals/{}/cases", eval.public_id),
+            &format!("/v1/platform/evals/{}/cases", eval.public_id),
             json!({
                 "name": "case-two",
                 "conversation": [{"content": "hello"}],
@@ -519,7 +528,7 @@ async fn seed_run_with_session_events(server: &TestServer) -> (String, String) {
 
     let eval: Eval = server
         .post(
-            "/v1/evals",
+            "/v1/platform/evals",
             json!({ "name": "dataset export eval", "description": "e2e" }),
         )
         .await
@@ -528,7 +537,7 @@ async fn seed_run_with_session_events(server: &TestServer) -> (String, String) {
 
     let case: EvalCase = server
         .post(
-            &format!("/v1/evals/{}/cases", eval.public_id),
+            &format!("/v1/platform/evals/{}/cases", eval.public_id),
             json!({
                 "name": "case-one",
                 "conversation": [{"content": "hello"}],
@@ -919,13 +928,13 @@ async fn seed_run_with_tool_iterations(
     use uuid::Uuid;
 
     let eval: Eval = server
-        .post("/v1/evals", json!({ "name": "modelview eval" }))
+        .post("/v1/platform/evals", json!({ "name": "modelview eval" }))
         .await
         .assert_status(StatusCode::CREATED)
         .json();
     let case: EvalCase = server
         .post(
-            &format!("/v1/evals/{}/cases", eval.public_id),
+            &format!("/v1/platform/evals/{}/cases", eval.public_id),
             json!({
                 "name": "case-mv",
                 "conversation": [{"content": "start"}],
@@ -1121,7 +1130,10 @@ async fn test_dataset_export_atif_uses_model_view_not_raw_log() {
     // Contrast: the raw session ATIF export (event-log fold) still carries every
     // result — it is a debug/backup surface, not training data.
     let raw = server
-        .get(&format!("/v1/sessions/{}/export?format=atif", session_id))
+        .get(&format!(
+            "/v1/platform/sessions/{}/export?format=atif",
+            session_id
+        ))
         .await
         .assert_status(StatusCode::OK);
     let raw_body = raw.text();
@@ -1137,7 +1149,7 @@ async fn test_dataset_export_atif_uses_model_view_not_raw_log() {
 async fn test_atif_import_creates_and_updates_cases_idempotently() {
     let server = TestServer::in_memory().await;
     let eval: Eval = server
-        .post("/v1/evals", json!({ "name": "atif import eval" }))
+        .post("/v1/platform/evals", json!({ "name": "atif import eval" }))
         .await
         .assert_status(StatusCode::CREATED)
         .json();
@@ -1158,7 +1170,7 @@ async fn test_atif_import_creates_and_updates_cases_idempotently() {
     let response = server
         .request_raw(
             axum::http::Method::POST,
-            &format!("/v1/evals/{}/atif_import", eval.public_id),
+            &format!("/v1/platform/evals/{}/atif_import", eval.public_id),
             vec![("content-type", "application/x-ndjson")],
             ndjson.clone().into_bytes(),
         )
@@ -1172,7 +1184,7 @@ async fn test_atif_import_creates_and_updates_cases_idempotently() {
     let response = server
         .request_raw(
             axum::http::Method::POST,
-            &format!("/v1/evals/{}/atif_import", eval.public_id),
+            &format!("/v1/platform/evals/{}/atif_import", eval.public_id),
             vec![("content-type", "application/x-ndjson")],
             ndjson.into_bytes(),
         )
@@ -1183,7 +1195,7 @@ async fn test_atif_import_creates_and_updates_cases_idempotently() {
     assert_eq!(report["updated"], json!(1));
 
     let cases = server
-        .get(&format!("/v1/evals/{}/cases", eval.public_id))
+        .get(&format!("/v1/platform/evals/{}/cases", eval.public_id))
         .await
         .assert_status(StatusCode::OK)
         .json_value();
@@ -1201,7 +1213,7 @@ async fn test_atif_import_creates_and_updates_cases_idempotently() {
     server
         .request_raw(
             axum::http::Method::POST,
-            &format!("/v1/evals/{}/atif_import", eval.public_id),
+            &format!("/v1/platform/evals/{}/atif_import", eval.public_id),
             vec![("content-type", "application/json")],
             b"{\"schema_version\": \"OTHER-v1\", \"steps\": []}".to_vec(),
         )
@@ -1225,7 +1237,10 @@ async fn test_session_export_atif_format() {
     let session_id = run.results[0].session_id.expect("case session");
 
     let response = server
-        .get(&format!("/v1/sessions/{}/export?format=atif", session_id))
+        .get(&format!(
+            "/v1/platform/sessions/{}/export?format=atif",
+            session_id
+        ))
         .await
         .assert_status(StatusCode::OK);
     assert_eq!(
@@ -1254,7 +1269,7 @@ async fn test_session_export_atif_format() {
 
     // Default format is unchanged: JSONL with one message per line.
     let response = server
-        .get(&format!("/v1/sessions/{}/export", session_id))
+        .get(&format!("/v1/platform/sessions/{}/export", session_id))
         .await
         .assert_status(StatusCode::OK);
     assert_eq!(
@@ -1346,7 +1361,10 @@ async fn test_session_export_atif_image_content_multimodal() {
     .await;
 
     let response = server
-        .get(&format!("/v1/sessions/{}/export?format=atif", session_id))
+        .get(&format!(
+            "/v1/platform/sessions/{}/export?format=atif",
+            session_id
+        ))
         .await
         .assert_status(StatusCode::OK);
     // Both images are materialized (URL + file reference), so nothing is
@@ -1367,13 +1385,13 @@ async fn test_session_export_atif_image_content_multimodal() {
     );
     assert_eq!(
         parts[2],
-        json!({"type": "image", "source": {"path": format!("/v1/images/{image_id}")}})
+        json!({"type": "image", "source": {"path": format!("/v1/platform/images/{image_id}")}})
     );
     assert!(step["extra"].get("omitted_images").is_none());
 
     // The default JSONL export never carries the ATIF lossiness header.
     let response = server
-        .get(&format!("/v1/sessions/{}/export", session_id))
+        .get(&format!("/v1/platform/sessions/{}/export", session_id))
         .await
         .assert_status(StatusCode::OK);
     assert!(response.headers().get("x-atif-images-omitted").is_none());
@@ -1403,7 +1421,10 @@ async fn test_session_export_atif_unmaterializable_image_sets_header() {
     .await;
 
     let response = server
-        .get(&format!("/v1/sessions/{}/export?format=atif", session_id))
+        .get(&format!(
+            "/v1/platform/sessions/{}/export?format=atif",
+            session_id
+        ))
         .await
         .assert_status(StatusCode::OK);
     assert_eq!(
@@ -1441,7 +1462,10 @@ async fn test_session_export_atif_over_cap_returns_413() {
     .await;
 
     let response = server
-        .get(&format!("/v1/sessions/{}/export?format=atif", session_id))
+        .get(&format!(
+            "/v1/platform/sessions/{}/export?format=atif",
+            session_id
+        ))
         .await
         .assert_status(StatusCode::PAYLOAD_TOO_LARGE);
     let body = response.json_value();
@@ -1464,7 +1488,7 @@ async fn test_session_export_atif_over_cap_returns_413() {
 
     // The cap guards only the single-document ATIF path; JSONL is untouched.
     server
-        .get(&format!("/v1/sessions/{}/export", session_id))
+        .get(&format!("/v1/platform/sessions/{}/export", session_id))
         .await
         .assert_status(StatusCode::OK);
 }
@@ -1520,14 +1544,17 @@ async fn test_session_export_atif_subagent_trajectory_ref() {
     .await;
 
     let response = server
-        .get(&format!("/v1/sessions/{}/export?format=atif", session_id))
+        .get(&format!(
+            "/v1/platform/sessions/{}/export?format=atif",
+            session_id
+        ))
         .await
         .assert_status(StatusCode::OK);
     let trajectory = response.json_value();
     let refs = &trajectory["steps"][1]["observation"]["results"][0]["subagent_trajectory_ref"];
     assert_eq!(
         refs[0]["trajectory_path"],
-        json!(format!("/v1/sessions/{child}/export?format=atif"))
+        json!(format!("/v1/platform/sessions/{child}/export?format=atif"))
     );
     assert_eq!(refs[0]["session_id"], json!(child.to_string()));
 }
@@ -1552,101 +1579,4 @@ async fn seed_session_with_n_messages(server: &TestServer, n: usize) -> SessionI
     seed_session_with_raw_events(server, events).await
 }
 
-#[tokio::test]
-async fn test_session_export_atif_segmented_walk_reconstructs_session() {
-    // Tiny cap forces one step per segment; walk the whole chain and confirm
-    // the stitched steps reproduce the seeded session in order.
-    let server = TestServer::in_memory_with_atif_export_cap(64).await;
-    let session_id = seed_session_with_n_messages(&server, 5).await;
-
-    let mut path = format!(
-        "/v1/sessions/{}/export?format=atif&segmented=true",
-        session_id
-    );
-    let mut collected: Vec<serde_json::Value> = Vec::new();
-    let mut segment_count = 0;
-    loop {
-        let response = server.get(&path).await.assert_status(StatusCode::OK);
-        assert_eq!(
-            response.headers().get("content-type").unwrap(),
-            "application/json"
-        );
-        let seg_index_header = response
-            .headers()
-            .get("x-atif-segment-index")
-            .expect("segment index header")
-            .to_str()
-            .unwrap()
-            .to_string();
-        let doc = response.json_value();
-        assert_eq!(doc["schema_version"], json!("ATIF-v1.7"));
-        assert_eq!(doc["session_id"], json!(session_id.to_string()));
-        assert_eq!(
-            doc["extra"]["segment_index"].as_u64().unwrap().to_string(),
-            seg_index_header,
-            "extra.segment_index must match the header"
-        );
-        for step in doc["steps"].as_array().unwrap() {
-            collected.push(step.clone());
-        }
-        segment_count += 1;
-        assert!(segment_count < 100, "segmented walk did not terminate");
-
-        match doc.get("continued_trajectory_ref") {
-            Some(reference) => {
-                let reference = reference.as_str().expect("ref is a string");
-                assert!(reference.contains("segmented=true"));
-                assert!(reference.contains("cursor="));
-                path = reference.to_string();
-            }
-            None => break,
-        }
-    }
-
-    assert!(segment_count >= 2, "tiny cap must yield multiple segments");
-    // All five user steps reconstructed, in order, with absolute step ids.
-    assert_eq!(collected.len(), 5);
-    for (i, step) in collected.iter().enumerate() {
-        assert_eq!(step["step_id"], json!(i + 1));
-        assert_eq!(step["source"], json!("user"));
-        assert_eq!(step["message"], json!(format!("segmented message {i}")));
-    }
-}
-
-#[tokio::test]
-async fn test_session_export_atif_segmented_bad_cursor_returns_400() {
-    let server = TestServer::in_memory_with_atif_export_cap(64).await;
-    let session_id = seed_session_with_n_messages(&server, 3).await;
-
-    // Garbage cursor is rejected without panicking.
-    let response = server
-        .get(&format!(
-            "/v1/sessions/{}/export?format=atif&segmented=true&cursor=not-a-real-cursor",
-            session_id
-        ))
-        .await
-        .assert_status(StatusCode::BAD_REQUEST);
-    let body = response.json_value();
-    assert_eq!(body["code"], json!("atif_cursor_invalid"));
-}
-
-#[tokio::test]
-async fn test_session_export_atif_segmented_single_segment_when_small() {
-    // Default (large) cap: a small session is one self-contained segment with
-    // no continuation, even though segmented=true was requested.
-    let server = TestServer::in_memory().await;
-    let session_id = seed_session_with_n_messages(&server, 2).await;
-
-    let response = server
-        .get(&format!(
-            "/v1/sessions/{}/export?format=atif&segmented=true",
-            session_id
-        ))
-        .await
-        .assert_status(StatusCode::OK);
-    assert!(response.headers().get("x-atif-next-cursor").is_none());
-    let doc = response.json_value();
-    assert!(doc.get("continued_trajectory_ref").is_none());
-    assert_eq!(doc["steps"].as_array().unwrap().len(), 2);
-    assert_eq!(doc["extra"]["segment_index"], json!(0));
-}
+mod namespace;

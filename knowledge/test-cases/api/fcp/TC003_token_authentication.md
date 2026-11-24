@@ -34,7 +34,7 @@ echoed back in any response body and must use constant-time comparison.
 
 1. Create the app with a token configured:
    ```bash
-   curl -s -X POST "http://localhost:9300/api/v1/apps" \
+   curl -s -X POST "http://localhost:9300/api/v1/platform/apps" \
      -H "Content-Type: application/json" \
      -d '{
        "name":"Token Protected FCP",
@@ -78,7 +78,7 @@ echoed back in any response body and must use constant-time comparison.
 
 6. Read the app and confirm the token field is redacted:
    ```bash
-   curl -s "http://localhost:9300/api/v1/apps/$APP_ID" | jq '.channels[] | select(.channel_type=="fcp") | .channel_config'
+   curl -s "http://localhost:9300/api/v1/platform/apps/$APP_ID" | jq '.channels[] | select(.channel_type=="fcp") | .channel_config'
    ```
 
 ## Expected Result
@@ -114,7 +114,7 @@ status=$(curl -s -o /dev/null -w '%{http_code}' \
 echo "$status" | grep -E '^(200|504)$'
 
 # Step 6: redaction
-curl -s "http://localhost:9300/api/v1/apps/$APP_ID" \
+curl -s "http://localhost:9300/api/v1/platform/apps/$APP_ID" \
   | jq -e '.channels[] | select(.channel_type=="fcp") | .channel_config |
            (has("token") | not) and (.token_configured == true)'
 ```

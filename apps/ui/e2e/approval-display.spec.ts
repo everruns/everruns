@@ -24,7 +24,7 @@ for (const theme of ["light", "dark"]) {
     await section.screenshot({ path: `/tmp/approval-controls-${theme}@2x.png` });
 
     await page.route(
-      "**/api/v1/sessions/approval-display-preview/tool-approvals",
+      "**/api/v1/platform/sessions/approval-display-preview/tool-approvals",
       async (route) => {
         expect(route.request().postDataJSON()).toEqual({
           decisions: [{ tool_call_id: "tool_approval_display_preview", decision: "allow" }],
@@ -46,7 +46,7 @@ for (const theme of ["light", "dark"]) {
     await section.getByRole("button", { name: "Allow once", exact: true }).click();
     await expect(section.getByText("Allowed once: Delete file")).toBeVisible();
 
-    await page.route("**/api/v1/sessions/approval-display-preview/tool-results", async (route) => {
+    await page.route("**/api/v1/platform/sessions/approval-display-preview/tool-results", async (route) => {
       expect(route.request().postDataJSON()).toEqual({
         tool_results: [
           { tool_call_id: "mcp_approval_display_preview", result: { approve: false } },

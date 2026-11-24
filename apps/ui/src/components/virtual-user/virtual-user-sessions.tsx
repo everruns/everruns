@@ -17,7 +17,8 @@ export function VirtualUserSessions({ identityId }: { identityId: string }) {
     queryKey: ["virtual-user-sessions", identityId, currentOrg?.public_id],
     enabled: !!currentOrg,
     queryFn: async () =>
-      (await api.get<{ data: Session[] }>(`/v1/virtual-users/${identityId}/sessions`)).data.data,
+      (await api.get<{ data: Session[] }>(`/v1/platform/virtual-users/${identityId}/sessions`)).data
+        .data,
   });
   if (query.isLoading) return <p>{ui("Loading sessions…")}</p>;
   if (query.error) return <p className="text-destructive">{ui("Sessions could not be loaded.")}</p>;

@@ -166,13 +166,13 @@ fn authorize_effective_harness_view(
         .map_err(|error| ErrorResponse::new(error.message).into_response(StatusCode::FORBIDDEN))
 }
 
-/// GET /v1/agents/check-name
+/// GET /v1/platform/agents/check-name
 ///
 /// Returns whether an agent name is available for use. Optionally excludes
 /// a specific agent ID (for edit forms where the agent's own name is valid).
 #[utoipa::path(
     get,
-    path = "/v1/agents/check-name",
+    path = "/v1/platform/agents/check-name",
     params(CheckAgentNameQuery),
     responses(
         (status = 200, description = "Name availability result", body = CheckAgentNameResponse),
@@ -197,10 +197,10 @@ pub async fn check_agent_name(
     }))
 }
 
-/// GET /v1/agents/config
+/// GET /v1/platform/agents/config
 #[utoipa::path(
     get,
-    path = "/v1/agents/config",
+    path = "/v1/platform/agents/config",
     responses(
         (status = 200, description = "Resource config for agents", body = ResourceConfigResponse),
     ),
@@ -222,39 +222,39 @@ pub async fn agent_config(
 /// Create agent routes
 pub fn routes(state: AppState) -> Router {
     Router::new()
-        .route("/v1/agents", post(create_agent).get(list_agents))
-        .route("/v1/agents/check-name", get(check_agent_name))
-        .route("/v1/agents/config", get(agent_config))
+        .route("/v1/platform/agents", post(create_agent).get(list_agents))
+        .route("/v1/platform/agents/check-name", get(check_agent_name))
+        .route("/v1/platform/agents/config", get(agent_config))
         .route(
-            "/v1/agents/import",
+            "/v1/platform/agents/import",
             post(import_agent).layer(DefaultBodyLimit::max(
                 everruns_core::agent_package::MAX_PACKAGE_BYTES,
             )),
         )
         .route(
-            "/v1/agents/validate",
+            "/v1/platform/agents/validate",
             post(validate_agent_package).layer(DefaultBodyLimit::max(
                 everruns_core::agent_package::MAX_PACKAGE_BYTES,
             )),
         )
         .route(
-            "/v1/agents/diff",
+            "/v1/platform/agents/diff",
             post(diff_agent_package).layer(DefaultBodyLimit::max(
                 everruns_core::agent_package::MAX_PACKAGE_BYTES,
             )),
         )
-        .route("/v1/agents/preview", post(preview_agent))
-        .route("/v1/agents/analyze", post(analyze_agent))
+        .route("/v1/platform/agents/preview", post(preview_agent))
+        .route("/v1/platform/agents/analyze", post(analyze_agent))
         .route(
-            "/v1/agents/{agent_id}/health-checks",
+            "/v1/platform/agents/{agent_id}/health-checks",
             post(trigger_health_check).get(list_health_checks),
         )
         .route(
-            "/v1/agents/{agent_id}/health-checks/latest",
+            "/v1/platform/agents/{agent_id}/health-checks/latest",
             get(get_latest_health_check),
         )
         .route(
-            "/v1/agents/{agent_id}/health-checks/{run_id}",
+            "/v1/platform/agents/{agent_id}/health-checks/{run_id}",
             get(get_health_check),
         )
         .merge(super::agent_activity::routes())
@@ -264,36 +264,36 @@ pub fn routes(state: AppState) -> Router {
         .command::<crate::domains::agents::views::ReplaceAgentView>()
         .merge(super::agent_avatars::routes())
         .route(
-            "/v1/agents/{agent_id}",
+            "/v1/platform/agents/{agent_id}",
             get(get_agent)
                 .put(upsert_agent)
                 .patch(update_agent)
                 .delete(delete_agent),
         )
-        .route("/v1/agents/{agent_id}/stats", get(get_agent_stats))
+        .route("/v1/platform/agents/{agent_id}/stats", get(get_agent_stats))
         .command::<crate::domains::agents::DestroyAgent>()
         .command::<crate::domains::agents::DraftAgent>()
         .command::<crate::domains::agents::cost_plan::PlanAgentCosts>()
-        .route("/v1/agents/{agent_id}/export", get(export_agent))
-        .route("/v1/agents/{agent_id}/copy", post(copy_agent))
-        .route("/v1/agents/{agent_id}/pause", post(pause_agent))
-        .route("/v1/agents/{agent_id}/resume", post(resume_agent))
+        .route("/v1/platform/agents/{agent_id}/export", get(export_agent))
+        .route("/v1/platform/agents/{agent_id}/copy", post(copy_agent))
+        .route("/v1/platform/agents/{agent_id}/pause", post(pause_agent))
+        .route("/v1/platform/agents/{agent_id}/resume", post(resume_agent))
         // Deprecated aliases from when pausing was "suspend exposures".
         .route(
-            "/v1/agents/{agent_id}/exposures/suspend",
+            "/v1/platform/agents/{agent_id}/exposures/suspend",
             post(suspend_agent_exposures),
         )
         .route(
-            "/v1/agents/{agent_id}/exposures/resume",
+            "/v1/platform/agents/{agent_id}/exposures/resume",
             post(resume_agent_exposures),
         )
         .with_state(state)
 }
 
-/// POST /v1/agents - Create a new agent
+/// POST /v1/platform/agents - Create a new agent
 #[utoipa::path(
     post,
-    path = "/v1/agents",
+    path = "/v1/platform/agents",
     request_body = CreateAgentRequest,
     responses(
         (status = 201, description = "Agent created successfully", body = WithUrls<Agent>),
@@ -313,10 +313,10 @@ pub async fn create_agent(
         .await
 }
 
-/// GET /v1/agents - List all active agents
+/// GET /v1/platform/agents - List all active agents
 #[utoipa::path(
     get,
-    path = "/v1/agents",
+    path = "/v1/platform/agents",
     params(ListAgentsQuery),
     responses(
         (status = 200, description = "Paginated list of agents", body = PaginatedResponse<WithUrls<AgentWithCounts>>),
@@ -352,13 +352,13 @@ pub async fn list_agents(
     ))
 }
 
-/// GET /v1/agents/{agent_id} - Get agent by ID or name
+/// GET /v1/platform/agents/{agent_id} - Get agent by ID or name
 ///
 /// Accepts either an agent ID (e.g. `agent_01933b5a...`) or a
 /// name (e.g. `customer-support`). Names are resolved within the caller's org.
 #[utoipa::path(
     get,
-    path = "/v1/agents/{agent_id}",
+    path = "/v1/platform/agents/{agent_id}",
     params(
         ("agent_id" = String, Path, description = "Agent ID (prefixed) or name")
     ),
@@ -394,10 +394,10 @@ pub async fn get_agent(
     Ok(Json(builder.wrap(agent)))
 }
 
-/// GET /v1/agents/{agent_id}/stats - Get aggregate usage stats for an agent
+/// GET /v1/platform/agents/{agent_id}/stats - Get aggregate usage stats for an agent
 #[utoipa::path(
     get,
-    path = "/v1/agents/{agent_id}/stats",
+    path = "/v1/platform/agents/{agent_id}/stats",
     params(
         ("agent_id" = String, Path, description = "Agent ID (prefixed) or name")
     ),
@@ -431,10 +431,10 @@ pub async fn get_agent_stats(
     Ok(Json(stats.into()))
 }
 
-/// PATCH /v1/agents/{agent_id} - Update agent
+/// PATCH /v1/platform/agents/{agent_id} - Update agent
 #[utoipa::path(
     patch,
-    path = "/v1/agents/{agent_id}",
+    path = "/v1/platform/agents/{agent_id}",
     params(
         ("agent_id" = String, Path, description = "Agent ID (prefixed, e.g., agt_...)")
     ),
@@ -459,10 +459,10 @@ pub async fn update_agent(
         .await
 }
 
-/// DELETE /v1/agents/{agent_id} - Archive agent
+/// DELETE /v1/platform/agents/{agent_id} - Archive agent
 #[utoipa::path(
     delete,
-    path = "/v1/agents/{agent_id}",
+    path = "/v1/platform/agents/{agent_id}",
     params(
         ("agent_id" = String, Path, description = "Agent ID (prefixed, e.g., agt_...)")
     ),
@@ -485,13 +485,13 @@ pub async fn delete_agent(
         .await
 }
 
-/// POST /v1/agents/{agent_id}/copy - Copy an agent
+/// POST /v1/platform/agents/{agent_id}/copy - Copy an agent
 ///
 /// Creates a new agent with the same configuration as the source agent.
 /// The new agent's name will be "{original name} (copy)".
 #[utoipa::path(
     post,
-    path = "/v1/agents/{agent_id}/copy",
+    path = "/v1/platform/agents/{agent_id}/copy",
     params(
         ("agent_id" = String, Path, description = "Source agent ID to copy")
     ),
@@ -514,13 +514,13 @@ pub async fn copy_agent(
         .await
 }
 
-/// POST /v1/agents/{agent_id}/pause - Pause an agent
+/// POST /v1/platform/agents/{agent_id}/pause - Pause an agent
 ///
 /// Its channels stop accepting messages and its triggers and schedules do not
 /// run until it is resumed. Each channel keeps its own published state.
 #[utoipa::path(
     post,
-    path = "/v1/agents/{agent_id}/pause",
+    path = "/v1/platform/agents/{agent_id}/pause",
     params(
         ("agent_id" = String, Path, description = "Agent ID (prefixed) or name")
     ),
@@ -541,10 +541,10 @@ pub async fn pause_agent(
         .await
 }
 
-/// POST /v1/agents/{agent_id}/resume - Resume a paused agent
+/// POST /v1/platform/agents/{agent_id}/resume - Resume a paused agent
 #[utoipa::path(
     post,
-    path = "/v1/agents/{agent_id}/resume",
+    path = "/v1/platform/agents/{agent_id}/resume",
     params(
         ("agent_id" = String, Path, description = "Agent ID (prefixed) or name")
     ),
@@ -565,10 +565,10 @@ pub async fn resume_agent(
         .await
 }
 
-/// POST /v1/agents/{agent_id}/exposures/suspend - Deprecated alias of pause
+/// POST /v1/platform/agents/{agent_id}/exposures/suspend - Deprecated alias of pause
 #[utoipa::path(
     post,
-    path = "/v1/agents/{agent_id}/exposures/suspend",
+    path = "/v1/platform/agents/{agent_id}/exposures/suspend",
     params(
         ("agent_id" = String, Path, description = "Agent ID (prefixed) or name")
     ),
@@ -586,10 +586,10 @@ pub async fn suspend_agent_exposures(
     pause_agent(org, state, path).await
 }
 
-/// POST /v1/agents/{agent_id}/exposures/resume - Deprecated alias of resume
+/// POST /v1/platform/agents/{agent_id}/exposures/resume - Deprecated alias of resume
 #[utoipa::path(
     post,
-    path = "/v1/agents/{agent_id}/exposures/resume",
+    path = "/v1/platform/agents/{agent_id}/exposures/resume",
     params(
         ("agent_id" = String, Path, description = "Agent ID (prefixed) or name")
     ),
@@ -607,14 +607,14 @@ pub async fn resume_agent_exposures(
     resume_agent(org, state, path).await
 }
 
-/// PUT /v1/agents/{agent_id} - Create or update agent (upsert)
+/// PUT /v1/platform/agents/{agent_id} - Create or update agent (upsert)
 ///
 /// Accepts either an agent ID (e.g. `agent_01933b5a...`) or a
 /// name (e.g. `customer-support`). If the agent exists, update it; if not,
 /// create it. Returns 201 on create, 200 on update.
 #[utoipa::path(
     put,
-    path = "/v1/agents/{agent_id}",
+    path = "/v1/platform/agents/{agent_id}",
     params(
         ("agent_id" = String, Path, description = "Agent ID (prefixed) or name")
     ),
@@ -734,10 +734,10 @@ pub struct ExportAgentQuery {
     pub format: Option<String>,
 }
 
-/// GET /v1/agents/{agent_id}/export - Export agent in Markdown format with YAML front matter
+/// GET /v1/platform/agents/{agent_id}/export - Export agent in Markdown format with YAML front matter
 #[utoipa::path(
     get,
-    path = "/v1/agents/{agent_id}/export",
+    path = "/v1/platform/agents/{agent_id}/export",
     params(
         ("agent_id" = String, Path, description = "Agent name or ID"),
         ExportAgentQuery
@@ -797,10 +797,10 @@ pub async fn export_agent(
         .expect("valid export response"))
 }
 
-/// POST /v1/agents/import - Import agent from file or built-in example
+/// POST /v1/platform/agents/import - Import agent from file or built-in example
 ///
 /// Two modes:
-/// 1. **From example** — `POST /v1/agents/import?from-example={name}` (body ignored)
+/// 1. **From example** — `POST /v1/platform/agents/import?from-example={name}` (body ignored)
 /// 2. **From package** — text (Markdown/TOML/YAML/JSON), ZIP, or a PackageInput envelope.
 ///
 /// Package mode accepts:
@@ -814,7 +814,7 @@ pub async fn export_agent(
 /// the agent is updated (upsert). Returns 201 on create, 200 on update.
 #[utoipa::path(
     post,
-    path = "/v1/agents/import",
+    path = "/v1/platform/agents/import",
     params(ImportAgentQuery),
     request_body(content = String, content_type = "text/plain"),
     responses(
@@ -875,7 +875,7 @@ async fn import_from_example(
 /// Validate an agent package and its dependencies
 ///
 /// Validate an agent package and its destination dependencies without mutation.
-#[utoipa::path(post, path = "/v1/agents/validate", params(ImportAgentQuery), request_body = crate::domains::agents::packages::PackageInput, responses((status = 200, description = "Validation diagnostics", body = serde_json::Value)), tag = "agents")]
+#[utoipa::path(post, path = "/v1/platform/agents/validate", params(ImportAgentQuery), request_body = crate::domains::agents::packages::PackageInput, responses((status = 200, description = "Validation diagnostics", body = serde_json::Value)), tag = "agents")]
 pub async fn validate_agent_package(
     org: ResolvedOrg,
     State(state): State<AppState>,
@@ -900,7 +900,7 @@ pub async fn validate_agent_package(
 /// Diff an agent package against an existing agent
 ///
 /// Generate a semantic diff against an existing agent without mutation.
-#[utoipa::path(post, path = "/v1/agents/diff", params(ImportAgentQuery), request_body = crate::domains::agents::packages::PackageInput, responses((status = 200, description = "Semantic changes", body = serde_json::Value)), tag = "agents")]
+#[utoipa::path(post, path = "/v1/platform/agents/diff", params(ImportAgentQuery), request_body = crate::domains::agents::packages::PackageInput, responses((status = 200, description = "Semantic changes", body = serde_json::Value)), tag = "agents")]
 pub async fn diff_agent_package(
     org: ResolvedOrg,
     State(state): State<AppState>,
@@ -951,14 +951,14 @@ fn package_body(
     })
 }
 
-/// POST /v1/agents/analyze - Run advisory checks against an agent shape
+/// POST /v1/platform/agents/analyze - Run advisory checks against an agent shape
 ///
 /// Runs built-in rules plus on-demand LLM analysis
 /// and returns merged advisory findings. Requires the system utility LLM
 /// service to be configured.
 #[utoipa::path(
     post,
-    path = "/v1/agents/analyze",
+    path = "/v1/platform/agents/analyze",
     request_body = PreviewAgentRequest,
     responses(
         (status = 200, description = "Agent analysis completed", body = AgentAnalysisResponse),
@@ -990,10 +990,10 @@ pub async fn analyze_agent(
     }))
 }
 
-/// POST /v1/agents/{agent_id}/health-checks - Trigger a behavioral health check
+/// POST /v1/platform/agents/{agent_id}/health-checks - Trigger a behavioral health check
 #[utoipa::path(
     post,
-    path = "/v1/agents/{agent_id}/health-checks",
+    path = "/v1/platform/agents/{agent_id}/health-checks",
     params(("agent_id" = String, Path, description = "Agent ID")),
     responses(
         (status = 200, description = "Health check run started", body = crate::domains::agents::health_check::types::HealthCheckRun),
@@ -1043,10 +1043,10 @@ pub async fn trigger_health_check(
     Ok(Json(run))
 }
 
-/// GET /v1/agents/{agent_id}/health-checks - List recent health check runs
+/// GET /v1/platform/agents/{agent_id}/health-checks - List recent health check runs
 #[utoipa::path(
     get,
-    path = "/v1/agents/{agent_id}/health-checks",
+    path = "/v1/platform/agents/{agent_id}/health-checks",
     params(("agent_id" = String, Path, description = "Agent ID")),
     responses(
         (status = 200, description = "Health check runs", body = Vec<crate::domains::agents::health_check::types::HealthCheckRun>),
@@ -1066,10 +1066,10 @@ pub async fn list_health_checks(
     Ok(Json(runs))
 }
 
-/// GET /v1/agents/{agent_id}/health-checks/{run_id} - Get a health check run
+/// GET /v1/platform/agents/{agent_id}/health-checks/{run_id} - Get a health check run
 #[utoipa::path(
     get,
-    path = "/v1/agents/{agent_id}/health-checks/{run_id}",
+    path = "/v1/platform/agents/{agent_id}/health-checks/{run_id}",
     params(
         ("agent_id" = String, Path, description = "Agent ID"),
         ("run_id" = String, Path, description = "Health check run ID")
@@ -1092,10 +1092,10 @@ pub async fn get_health_check(
     Ok(Json(run))
 }
 
-/// GET /v1/agents/{agent_id}/health-checks/latest - Latest run + stale flag
+/// GET /v1/platform/agents/{agent_id}/health-checks/latest - Latest run + stale flag
 #[utoipa::path(
     get,
-    path = "/v1/agents/{agent_id}/health-checks/latest",
+    path = "/v1/platform/agents/{agent_id}/health-checks/latest",
     params(("agent_id" = String, Path, description = "Agent ID")),
     responses(
         (status = 200, description = "Latest health check run with stale-config flag", body = crate::domains::agents::health_check::types::LatestHealthCheckRun),

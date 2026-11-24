@@ -29,7 +29,7 @@ pub struct EnsurePlatformChat {}
     description = "Open the current user's permanent platform conversation",
     method = "POST",
     cli = CliRoute::new(&["sessions", "platform-chat"], "ensure").with_examples(&[CliExample::new("Open your permanent platform conversation, creating it on first use", "everruns sessions platform-chat ensure --reason 'Open the platform chat'")]),
-    path = "/v1/sessions/platform-chat",
+    path = "/v1/platform/sessions/platform-chat",
     policy = super::SESSION_MANAGE,
 )]
 impl Command for EnsurePlatformChat {

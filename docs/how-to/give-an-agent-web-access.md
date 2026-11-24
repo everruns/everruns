@@ -9,7 +9,7 @@ appliesTo: [platform, cloud]
 ## Enable the capability
 
 ```bash
-curl -X PATCH http://localhost:9300/api/v1/agents/$AGENT_ID \
+curl -X PATCH http://localhost:9300/api/v1/platform/agents/$AGENT_ID \
   -H "Content-Type: application/json" \
   -d '{
     "capabilities": [
@@ -31,7 +31,7 @@ capabilities:
 Pass `network_access` when creating or updating the agent. Patterns can be exact domains, wildcard domains, or URL prefixes:
 
 ```bash
-curl -X POST http://localhost:9300/api/v1/agents \
+curl -X POST http://localhost:9300/api/v1/platform/agents \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Research Agent",
@@ -66,7 +66,7 @@ So a session can tighten what its agent allows but cannot punch a hole through t
 When you don't trust a particular session's input, restrict more:
 
 ```bash
-curl -X POST http://localhost:9300/api/v1/sessions \
+curl -X POST http://localhost:9300/api/v1/platform/sessions \
   -H "Content-Type: application/json" \
   -d '{
     "agent_id": "agent_...",

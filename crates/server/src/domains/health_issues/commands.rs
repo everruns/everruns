@@ -183,7 +183,7 @@ pub struct ListHealthIssues {
     description = "List pending operational health issues.",
     method = "GET",
     cli = CliRoute::new(&["health-issues"], "list").with_examples(&[CliExample::new("See what operational problems need attention", "everruns health-issues list --limit 10")]),
-    path = "/v1/health-issues",
+    path = "/v1/platform/health-issues",
     policy = AGENT_VIEW,
 )]
 impl Command for ListHealthIssues {
@@ -225,7 +225,7 @@ pub struct GetHealthIssue {
     description = "Get an operational health issue.",
     method = "GET",
     cli = CliRoute::new(&["health-issues"], "get").with_examples(&[CliExample::new("Read an issue's evidence and recovery steps", "everruns health-issues get --issue-id 550e8400-e29b-41d4-a716-446655440000")]),
-    path = "/v1/health-issues/{issue_id}",
+    path = "/v1/platform/health-issues/{issue_id}",
     policy = AGENT_VIEW,
 )]
 impl Command for GetHealthIssue {
@@ -247,7 +247,7 @@ pub struct CheckHealthIssue {
     description = "Verify an installation's current health without modifying provider data.",
     method = "POST",
     cli = CliRoute::new(&["health-issues"], "check").with_examples(&[CliExample::new("Recheck whether an issue is resolved after fixing it", "everruns health-issues check --issue-id 550e8400-e29b-41d4-a716-446655440000")]),
-    path = "/v1/health-issues/{issue_id}/check",
+    path = "/v1/platform/health-issues/{issue_id}/check",
     policy = AGENT_MANAGE,
 )]
 impl Command for CheckHealthIssue {
@@ -311,7 +311,7 @@ pub struct SnoozeHealthIssue {
     description = "Snooze health reminders for the current user for one day.",
     method = "POST",
     cli = CliRoute::new(&["health-issues"], "snooze").with_examples(&[CliExample::new("Silence your reminders for an issue for a day", "everruns health-issues snooze --issue-id 550e8400-e29b-41d4-a716-446655440000 --reason 'Fix scheduled for tomorrow'")]),
-    path = "/v1/health-issues/{issue_id}/snooze",
+    path = "/v1/platform/health-issues/{issue_id}/snooze",
     policy = AGENT_VIEW,
 )]
 impl Command for SnoozeHealthIssue {
@@ -362,7 +362,7 @@ pub struct DismissHealthIssue {
     description = "Dismiss a detector finding with a reason.",
     method = "POST",
     cli = CliRoute::new(&["health-issues"], "dismiss").with_examples(&[CliExample::new("Close a false alarm and say why", "everruns health-issues dismiss --issue-id 550e8400-e29b-41d4-a716-446655440000 --note 'Expected: nightly load test'")]),
-    path = "/v1/health-issues/{issue_id}/dismiss",
+    path = "/v1/platform/health-issues/{issue_id}/dismiss",
     policy = AGENT_MANAGE,
 )]
 impl Command for DismissHealthIssue {

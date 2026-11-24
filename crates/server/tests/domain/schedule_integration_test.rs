@@ -21,7 +21,7 @@ async fn test_create_schedule() {
 
     let body: Value = server
         .post(
-            "/v1/durable/schedules",
+            "/v1/platform/durable/schedules",
             json!({
                 "name": "test-create",
                 "cron_expression": "0 * * * * * *",
@@ -51,7 +51,7 @@ async fn test_schedule_accepts_five_field_cron_on_create_and_update() {
 
     let created: Value = server
         .post(
-            "/v1/durable/schedules",
+            "/v1/platform/durable/schedules",
             json!({
                 "name": "five-field-cron",
                 "cron_expression": "*/15 * * * *",
@@ -70,7 +70,7 @@ async fn test_schedule_accepts_five_field_cron_on_create_and_update() {
     let id = created["id"].as_str().unwrap();
     let updated: Value = server
         .patch(
-            &format!("/v1/durable/schedules/{}", id),
+            &format!("/v1/platform/durable/schedules/{}", id),
             json!({
                 "cron_expression": "5 6 * * *"
             }),
@@ -88,7 +88,7 @@ async fn test_create_schedule_invalid_cron() {
 
     server
         .post(
-            "/v1/durable/schedules",
+            "/v1/platform/durable/schedules",
             json!({
                 "name": "bad-cron",
                 "cron_expression": "not-valid",
@@ -108,7 +108,7 @@ async fn test_create_schedule_invalid_target_type() {
 
     server
         .post(
-            "/v1/durable/schedules",
+            "/v1/platform/durable/schedules",
             json!({
                 "name": "bad-target",
                 "cron_expression": "0 * * * * * *",
@@ -127,7 +127,7 @@ async fn test_get_schedule_not_found() {
     let server = TestServer::new().await;
 
     server
-        .get("/v1/durable/schedules/00000000-0000-0000-0000-000000000000")
+        .get("/v1/platform/durable/schedules/00000000-0000-0000-0000-000000000000")
         .await
         .assert_status(StatusCode::NOT_FOUND);
 }
@@ -138,7 +138,7 @@ async fn test_update_schedule() {
 
     let created: Value = server
         .post(
-            "/v1/durable/schedules",
+            "/v1/platform/durable/schedules",
             json!({
                 "name": "update-test",
                 "cron_expression": "0 * * * * * *",
@@ -153,7 +153,7 @@ async fn test_update_schedule() {
 
     let updated: Value = server
         .patch(
-            &format!("/v1/durable/schedules/{}", id),
+            &format!("/v1/platform/durable/schedules/{}", id),
             json!({
                 "description": "Updated description",
                 "max_concurrent": 3
@@ -173,7 +173,7 @@ async fn test_delete_schedule() {
 
     let created: Value = server
         .post(
-            "/v1/durable/schedules",
+            "/v1/platform/durable/schedules",
             json!({
                 "name": "delete-test",
                 "cron_expression": "0 * * * * * *",
@@ -187,13 +187,13 @@ async fn test_delete_schedule() {
     let id = created["id"].as_str().unwrap();
 
     server
-        .delete(&format!("/v1/durable/schedules/{}", id))
+        .delete(&format!("/v1/platform/durable/schedules/{}", id))
         .await
         .assert_status(StatusCode::NO_CONTENT);
 
     // Verify it's gone
     server
-        .get(&format!("/v1/durable/schedules/{}", id))
+        .get(&format!("/v1/platform/durable/schedules/{}", id))
         .await
         .assert_status(StatusCode::NOT_FOUND);
 }
@@ -208,7 +208,7 @@ async fn test_pause_and_resume_schedule() {
 
     let created: Value = server
         .post(
-            "/v1/durable/schedules",
+            "/v1/platform/durable/schedules",
             json!({
                 "name": "pause-resume-test",
                 "cron_expression": "0 * * * * * *",
@@ -224,7 +224,10 @@ async fn test_pause_and_resume_schedule() {
 
     // Pause
     let paused: Value = server
-        .post(&format!("/v1/durable/schedules/{}/pause", id), json!({}))
+        .post(
+            &format!("/v1/platform/durable/schedules/{}/pause", id),
+            json!({}),
+        )
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -232,7 +235,10 @@ async fn test_pause_and_resume_schedule() {
 
     // Resume
     let resumed: Value = server
-        .post(&format!("/v1/durable/schedules/{}/resume", id), json!({}))
+        .post(
+            &format!("/v1/platform/durable/schedules/{}/resume", id),
+            json!({}),
+        )
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -249,7 +255,7 @@ async fn test_manual_trigger() {
 
     let created: Value = server
         .post(
-            "/v1/durable/schedules",
+            "/v1/platform/durable/schedules",
             json!({
                 "name": "trigger-test",
                 "cron_expression": "0 * * * * * *",
@@ -264,7 +270,10 @@ async fn test_manual_trigger() {
 
     // Manual trigger
     let triggered: Value = server
-        .post(&format!("/v1/durable/schedules/{}/trigger", id), json!({}))
+        .post(
+            &format!("/v1/platform/durable/schedules/{}/trigger", id),
+            json!({}),
+        )
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -274,7 +283,7 @@ async fn test_manual_trigger() {
     // Check execution exists
     let exec_id = triggered["execution_id"].as_str().unwrap();
     let exec: Value = server
-        .get(&format!("/v1/durable/executions/{}", exec_id))
+        .get(&format!("/v1/platform/durable/executions/{}", exec_id))
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -292,7 +301,7 @@ async fn test_execution_history() {
 
     let created: Value = server
         .post(
-            "/v1/durable/schedules",
+            "/v1/platform/durable/schedules",
             json!({
                 "name": "history-test",
                 "cron_expression": "0 * * * * * *",
@@ -307,17 +316,23 @@ async fn test_execution_history() {
 
     // Trigger twice
     server
-        .post(&format!("/v1/durable/schedules/{}/trigger", id), json!({}))
+        .post(
+            &format!("/v1/platform/durable/schedules/{}/trigger", id),
+            json!({}),
+        )
         .await
         .assert_status(StatusCode::OK);
     server
-        .post(&format!("/v1/durable/schedules/{}/trigger", id), json!({}))
+        .post(
+            &format!("/v1/platform/durable/schedules/{}/trigger", id),
+            json!({}),
+        )
         .await
         .assert_status(StatusCode::OK);
 
     // Check execution list
     let execs: Value = server
-        .get(&format!("/v1/durable/schedules/{}/executions", id))
+        .get(&format!("/v1/platform/durable/schedules/{}/executions", id))
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -336,7 +351,7 @@ async fn test_schedule_stats() {
 
     let created: Value = server
         .post(
-            "/v1/durable/schedules",
+            "/v1/platform/durable/schedules",
             json!({
                 "name": "stats-test",
                 "cron_expression": "0 * * * * * *",
@@ -351,7 +366,7 @@ async fn test_schedule_stats() {
 
     // Stats before any executions
     let stats: Value = server
-        .get(&format!("/v1/durable/schedules/{}/stats", id))
+        .get(&format!("/v1/platform/durable/schedules/{}/stats", id))
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -360,12 +375,15 @@ async fn test_schedule_stats() {
 
     // Trigger and check stats
     server
-        .post(&format!("/v1/durable/schedules/{}/trigger", id), json!({}))
+        .post(
+            &format!("/v1/platform/durable/schedules/{}/trigger", id),
+            json!({}),
+        )
         .await
         .assert_status(StatusCode::OK);
 
     let stats: Value = server
-        .get(&format!("/v1/durable/schedules/{}/stats", id))
+        .get(&format!("/v1/platform/durable/schedules/{}/stats", id))
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -383,7 +401,7 @@ async fn test_create_activity_schedule() {
 
     let body: Value = server
         .post(
-            "/v1/durable/schedules",
+            "/v1/platform/durable/schedules",
             json!({
                 "name": "activity-test",
                 "cron_expression": "0 * * * * * *",
@@ -416,7 +434,7 @@ async fn test_create_disabled_schedule() {
 
     let body: Value = server
         .post(
-            "/v1/durable/schedules",
+            "/v1/platform/durable/schedules",
             json!({
                 "name": "disabled-test",
                 "cron_expression": "0 * * * * * *",
@@ -443,7 +461,7 @@ async fn test_list_schedules_filter_by_target_type() {
 
     server
         .post(
-            "/v1/durable/schedules",
+            "/v1/platform/durable/schedules",
             json!({
                 "name": "wf-filter",
                 "cron_expression": "0 * * * * * *",
@@ -455,7 +473,7 @@ async fn test_list_schedules_filter_by_target_type() {
 
     server
         .post(
-            "/v1/durable/schedules",
+            "/v1/platform/durable/schedules",
             json!({
                 "name": "act-filter",
                 "cron_expression": "0 * * * * * *",
@@ -466,7 +484,7 @@ async fn test_list_schedules_filter_by_target_type() {
         .assert_status(StatusCode::CREATED);
 
     let wf_only: Value = server
-        .get("/v1/durable/schedules?target_type=workflow")
+        .get("/v1/platform/durable/schedules?target_type=workflow")
         .await
         .assert_status(StatusCode::OK)
         .json();

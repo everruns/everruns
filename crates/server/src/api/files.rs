@@ -84,7 +84,7 @@ pub struct ListFilesQuery {
 
 #[utoipa::path(
     post,
-    path = "/v1/files",
+    path = "/v1/platform/files",
     params(UploadFileQuery),
     request_body(content = String, content_type = "multipart/form-data"),
     responses(
@@ -223,7 +223,7 @@ pub async fn upload_file(
 
 #[utoipa::path(
     get,
-    path = "/v1/files",
+    path = "/v1/platform/files",
     params(ListFilesQuery),
     responses((status = 200, description = "List files", body = Vec<FileInfo>)),
     tag = "Files"
@@ -258,7 +258,7 @@ pub async fn list_files(
 
 #[utoipa::path(
     get,
-    path = "/v1/files/{file_id}",
+    path = "/v1/platform/files/{file_id}",
     responses((status = 200, description = "File bytes")),
     tag = "Files"
 )]
@@ -322,7 +322,7 @@ pub async fn get_file(
 
 #[utoipa::path(
     delete,
-    path = "/v1/files/{file_id}",
+    path = "/v1/platform/files/{file_id}",
     responses((status = 200, description = "File deleted")),
     tag = "Files"
 )]
@@ -358,8 +358,11 @@ fn parse_file_id(raw: &str) -> Result<FileId, Response> {
 /// Create files router.
 pub fn routes(state: ApiState) -> Router {
     Router::new()
-        .route("/v1/files", post(upload_file).get(list_files))
-        .route("/v1/files/{file_id}", get(get_file).delete(delete_file))
+        .route("/v1/platform/files", post(upload_file).get(list_files))
+        .route(
+            "/v1/platform/files/{file_id}",
+            get(get_file).delete(delete_file),
+        )
         .layer(DefaultBodyLimit::max(MAX_FILE_SIZE_BYTES + 1024 * 1024))
         .with_state(state)
 }
@@ -436,7 +439,7 @@ mod tests {
             assert_eq!(row.data, bytes);
 
             let request = axum::http::Request::builder()
-                .uri(format!("/v1/files/{}", file.file_id))
+                .uri(format!("/v1/platform/files/{}", file.file_id))
                 .body(Body::empty())
                 .unwrap();
             let response = routes(state.clone()).oneshot(request).await.unwrap();
@@ -484,7 +487,7 @@ mod tests {
         );
         let state = ApiState::for_test(db, None, auth);
         let request = axum::http::Request::builder()
-            .uri(format!("/v1/files/{}", FileId::new()))
+            .uri(format!("/v1/platform/files/{}", FileId::new()))
             .body(Body::empty())
             .unwrap();
         let response = routes(state).oneshot(request).await.unwrap();

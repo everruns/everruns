@@ -149,7 +149,7 @@ see [Chat Recovery and Live Transport](chat-recovery.md).
 
 All additive; no migration.
 
-1. **`client_message_id` on `POST /v1/sessions/{id}/messages`.** Optional UUID. The server
+1. **`client_message_id` on `POST /v1/platform/sessions/{id}/messages`.** Optional UUID. The server
    stores it in reserved message metadata (`everruns_client_message_id`, stripped from client
    metadata like other reserved keys) so the `input.message` event echoes it, and treats it as
    a sequential retry hint: a repeat among the newest 200 input messages returns the stored
@@ -177,7 +177,7 @@ All additive; no migration.
    clears it. The endpoint is an idempotent `PUT`, not the `POST` first sketched, because
    rating again replaces the row. Only the caller's own ratings are listed; Session Trace
    reads all of them later.
-6. **Branch from a message.** `POST /v1/sessions/{id}/fork` takes an optional
+6. **Branch from a message.** `POST /v1/platform/sessions/{id}/fork` takes an optional
    `up_to_message_id` (a user or agent message); the fork copies history up to and including
    the end of that message's turn. Workspace files and session storage are copied as they are
    now, since they keep no history to cut. Branch is disabled while a turn runs, because a

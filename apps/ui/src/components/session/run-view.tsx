@@ -5,7 +5,7 @@
 // page is for debugging, and a request to the person is answered where the
 // person talks (knowledge/runtime-resources/agents-using-agents.md).
 //
-// Every number comes from GET /v1/sessions/{id}/run.
+// Every number comes from GET /v1/platform/sessions/{id}/run.
 
 import Link from "next/link";
 import { useMemo } from "react";

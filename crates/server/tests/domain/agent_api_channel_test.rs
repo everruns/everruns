@@ -15,7 +15,7 @@ pub(crate) struct ApiChannel {
 pub(crate) async fn api_channel(server: &TestServer, config: Value, publish: bool) -> ApiChannel {
     let agent: Value = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": format!("api-agent-{}", uuid::Uuid::new_v4().simple()),
                 "display_name": "Support agent",
@@ -28,7 +28,7 @@ pub(crate) async fn api_channel(server: &TestServer, config: Value, publish: boo
     let agent_id = agent["id"].as_str().unwrap().to_string();
     let channel: Value = server
         .post(
-            &format!("/v1/agents/{agent_id}/channels"),
+            &format!("/v1/platform/agents/{agent_id}/channels"),
             json!({ "channel_type": "api", "channel_config": config }),
         )
         .await
@@ -38,7 +38,7 @@ pub(crate) async fn api_channel(server: &TestServer, config: Value, publish: boo
     if publish {
         server
             .post(
-                &format!("/v1/agents/{agent_id}/channels/{channel_id}/publish"),
+                &format!("/v1/platform/agents/{agent_id}/channels/{channel_id}/publish"),
                 json!({}),
             )
             .await
@@ -54,7 +54,7 @@ pub(crate) async fn create_key(server: &TestServer, channel: &ApiChannel, name: 
     server
         .post(
             &format!(
-                "/v1/agents/{}/channels/{}/keys",
+                "/v1/platform/agents/{}/channels/{}/keys",
                 channel.agent_id, channel.channel_id
             ),
             json!({ "name": name }),
@@ -210,7 +210,7 @@ async fn agent_key_runs_a_session_end_to_end() {
     // The key's use is recorded.
     let keys: Value = server
         .get(&format!(
-            "/v1/agents/{}/channels/{}/keys",
+            "/v1/platform/agents/{}/channels/{}/keys",
             channel.agent_id, channel.channel_id
         ))
         .await
@@ -222,7 +222,7 @@ async fn agent_key_runs_a_session_end_to_end() {
 
 async fn channel_agent_name(server: &TestServer, channel: &ApiChannel) -> Value {
     let agent: Value = server
-        .get(&format!("/v1/agents/{}", channel.agent_id))
+        .get(&format!("/v1/platform/agents/{}", channel.agent_id))
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -314,7 +314,7 @@ async fn rotation_keeps_the_old_secret_for_the_overlap_and_revoke_ends_both() {
     let key_id = key["id"].as_str().unwrap();
     let old = key["secret"].as_str().unwrap();
     let keys_path = format!(
-        "/v1/agents/{}/channels/{}/keys",
+        "/v1/platform/agents/{}/channels/{}/keys",
         channel.agent_id, channel.channel_id
     );
     let base = format!("/v1/channels/{}", channel.channel_id);
@@ -377,7 +377,7 @@ async fn unpublished_channels_and_other_channel_types_are_closed() {
     // Keys belong to api channels only.
     let ag_ui: Value = server
         .post(
-            &format!("/v1/agents/{}/channels", draft.agent_id),
+            &format!("/v1/platform/agents/{}/channels", draft.agent_id),
             json!({ "channel_type": "ag_ui", "channel_config": {} }),
         )
         .await
@@ -386,7 +386,10 @@ async fn unpublished_channels_and_other_channel_types_are_closed() {
     let ag_ui_id = ag_ui["id"].as_str().unwrap();
     server
         .post(
-            &format!("/v1/agents/{}/channels/{ag_ui_id}/keys", draft.agent_id),
+            &format!(
+                "/v1/platform/agents/{}/channels/{ag_ui_id}/keys",
+                draft.agent_id
+            ),
             json!({ "name": "nope" }),
         )
         .await
@@ -408,7 +411,7 @@ async fn unpublished_channels_and_other_channel_types_are_closed() {
     ] {
         server
             .post(
-                &format!("/v1/agents/{}/channels", draft.agent_id),
+                &format!("/v1/platform/agents/{}/channels", draft.agent_id),
                 json!({ "channel_type": "api", "channel_config": config }),
             )
             .await
@@ -510,7 +513,7 @@ async fn files_arrive_as_attachments() {
     // The caller's event stream shows text only; the stored message holds
     // the file.
     let stored: Value = server
-        .get(&format!("/v1/sessions/{session_id}/messages"))
+        .get(&format!("/v1/platform/sessions/{session_id}/messages"))
         .await
         .assert_status(StatusCode::OK)
         .json();

@@ -25,14 +25,14 @@ async function mockAppApi(page: Page, layout: Layout) {
     const pathname = new URL(route.request().url()).pathname;
     let json: unknown;
 
-    if (pathname === "/api/v1/auth/config") {
+    if (pathname === "/api/v1/platform/auth/config") {
       json = {
         mode: "none",
         password_auth_enabled: false,
         oauth_providers: [],
         signup_enabled: false,
       };
-    } else if (pathname === "/api/v1/auth/me") {
+    } else if (pathname === "/api/v1/platform/auth/me") {
       json = {
         id: "user-1",
         email: "dev@example.com",
@@ -50,7 +50,7 @@ async function mockAppApi(page: Page, layout: Layout) {
       };
     } else if (pathname.endsWith("/switch-org")) {
       json = { success: true, org_id: DEFAULT_ORG_ID };
-    } else if (pathname === "/api/v1/user/preferences/ui.layout") {
+    } else if (pathname === "/api/v1/platform/user/preferences/ui.layout") {
       json = { key: "ui.layout", value: layout, updated_at: "2026-11-11T00:00:00Z" };
     } else if (pathname.endsWith("/config")) {
       json = { policies: {} };
@@ -69,7 +69,7 @@ async function mockAppApi(page: Page, layout: Layout) {
       };
     } else if (pathname.endsWith("/quality-monitoring/scores")) {
       json = [];
-    } else if (pathname === "/api/v1/sessions/facets") {
+    } else if (pathname === "/api/v1/platform/sessions/facets") {
       json = {
         active_now: 0,
         by_activity: [],
@@ -100,42 +100,42 @@ function isRscRequest(request: Request) {
 // APIs the landing surface legitimately calls on startup. The point of the
 // tests below is that nothing *else* is fetched — not that this set is minimal.
 const STARTUP_API_ALLOWLIST = new Set([
-  "/api/v1/auth/config",
-  "/api/v1/auth/me",
-  "/api/v1/agents",
+  "/api/v1/platform/auth/config",
+  "/api/v1/platform/auth/me",
+  "/api/v1/platform/agents",
   // Chats needs the harness list to start a thread (EVE-855: Chats is the
   // landing surface, so this is now a startup call rather than a navigation).
-  "/api/v1/harnesses",
-  "/api/v1/capabilities",
-  "/api/v1/models",
-  "/api/v1/providers",
+  "/api/v1/platform/harnesses",
+  "/api/v1/platform/capabilities",
+  "/api/v1/platform/models",
+  "/api/v1/platform/providers",
   // Chats reads the provider policy map to decide whether the "no intelligence
   // available" notice may link to Settings. Only fetched when the org actually
   // has no usable chat model — which is this suite's mocked state, since the
   // API mock answers every list with `{ data: [] }`.
-  "/api/v1/providers/config",
-  "/api/v1/sessions",
-  "/api/v1/sessions/platform-chat",
-  "/api/v1/agents/platform-chat",
-  "/api/v1/sessions/stats",
-  "/api/v1/feature-flags",
-  "/api/v1/users/me/switch-org",
-  "/api/v1/user/preferences/ui.early_access_banner.dismissed",
+  "/api/v1/platform/providers/config",
+  "/api/v1/platform/sessions",
+  "/api/v1/platform/sessions/platform-chat",
+  "/api/v1/platform/agents/platform-chat",
+  "/api/v1/platform/sessions/stats",
+  "/api/v1/platform/feature-flags",
+  "/api/v1/platform/users/me/switch-org",
+  "/api/v1/platform/user/preferences/ui.early_access_banner.dismissed",
   // The personal layout preference (Chat first or Classic) shapes the shell.
-  "/api/v1/user/preferences/ui.layout",
+  "/api/v1/platform/user/preferences/ui.layout",
   // How Chat opens in Classic (full screen, floating or docked) shapes it too.
-  "/api/v1/user/preferences/ui.classic_chat",
-  "/api/v1/durable/config",
+  "/api/v1/platform/user/preferences/ui.classic_chat",
+  "/api/v1/platform/durable/config",
   // The sidebar's Overview entry counts the items waiting on Overview, so it
   // reads the same sources as that page on every route.
-  "/api/v1/agents/activity",
-  "/api/v1/agent-examples",
-  "/api/v1/health-issues",
-  "/api/v1/sandboxes/stats",
-  "/api/v1/mcp-servers/config",
+  "/api/v1/platform/agents/activity",
+  "/api/v1/platform/agent-examples",
+  "/api/v1/platform/health-issues",
+  "/api/v1/platform/sandboxes/stats",
+  "/api/v1/platform/mcp-servers/config",
   // Shared navigation gates the Extractions destination on model management.
   // The small policy map is required by the shell; extraction data is never prefetched.
-  "/api/v1/models/config",
+  "/api/v1/platform/models/config",
 ]);
 
 function isStartupApi(pathname: string) {
@@ -197,7 +197,7 @@ for (const layout of ["chat_first", "classic"] as const)
         await page.route("**/feature-flags", (route) =>
           route.fulfill({ json: { extractions: adopted } }),
         );
-        await page.route("**/api/v1/models/config", (route) =>
+        await page.route("**/api/v1/platform/models/config", (route) =>
           route.fulfill({ json: { policies: { "model.manage": canManageModels } } }),
         );
         await page.goto("/chats");

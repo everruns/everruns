@@ -91,11 +91,11 @@ Chrome, the sign-in response offers registration, the browser creates a key
 in its secure hardware, and the server stores the public key with the
 session's refresh token. The browser then drops the 30-day `refresh_token`
 cookie and renews the short-lived `access_token` cookie itself, through
-`POST /v1/auth/dbsc/refresh`, with a proof signed by that key.
+`POST /v1/platform/auth/dbsc/refresh`, with a proof signed by that key.
 
 A refresh token copied from such a browser is refused, and a copied access
 token works only until it expires (`AUTH_JWT_ACCESS_TOKEN_LIFETIME`). Browsers
-without DBSC keep the refresh cookie and `POST /v1/auth/refresh` as before.
+without DBSC keep the refresh cookie and `POST /v1/platform/auth/refresh` as before.
 
 Requirements: HTTPS, and a reverse proxy that forwards
 `Secure-Session-Registration`, `Secure-Session-Challenge`,
@@ -145,13 +145,13 @@ python3 -c "import secrets; print(secrets.token_hex(32))"
 
 ```bash
 # Check auth config endpoint
-curl http://localhost:9300/api/v1/auth/config
+curl http://localhost:9300/api/v1/platform/auth/config
 
 # Should return:
 # {"mode":"none","password_auth_enabled":false,"oauth_providers":[],"signup_enabled":false}
 
 # For admin mode:
-curl -X POST http://localhost:9300/api/v1/auth/login \
+curl -X POST http://localhost:9300/api/v1/platform/auth/login \
   -H "Content-Type: application/json" \
   -d '{"email":"admin@example.com","password":"your-password"}'
 ```
@@ -160,18 +160,18 @@ curl -X POST http://localhost:9300/api/v1/auth/login \
 
 ```bash
 # Login first to get access token
-TOKEN=$(curl -s -X POST http://localhost:9300/api/v1/auth/login \
+TOKEN=$(curl -s -X POST http://localhost:9300/api/v1/platform/auth/login \
   -H "Content-Type: application/json" \
   -d '{"email":"user@example.com","password":"password"}' | jq -r '.access_token')
 
 # Create personal access token
-curl -X POST http://localhost:9300/api/v1/auth/personal-access-tokens \
+curl -X POST http://localhost:9300/api/v1/platform/auth/personal-access-tokens \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"name":"my-token"}'
 
 # Read-only token: add "scopes": ["read"]
-curl -X POST http://localhost:9300/api/v1/auth/personal-access-tokens \
+curl -X POST http://localhost:9300/api/v1/platform/auth/personal-access-tokens \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"name":"ci-reader","scopes":["read"]}'
@@ -186,7 +186,7 @@ gets `403 insufficient_scope` on anything outside read access. See
 ### Revoke Personal Access Token
 
 ```bash
-curl -X DELETE http://localhost:9300/api/v1/auth/personal-access-tokens/{token_id} \
+curl -X DELETE http://localhost:9300/api/v1/platform/auth/personal-access-tokens/{token_id} \
   -H "Authorization: Bearer $TOKEN"
 ```
 

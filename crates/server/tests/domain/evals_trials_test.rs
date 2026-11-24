@@ -19,14 +19,14 @@ const TEST_ORG_ID: i64 = 1;
 
 async fn seed_eval(server: &TestServer, cases: usize, timeout_seconds: u32) -> Eval {
     let harness: Value = server
-        .post("/v1/harnesses", json!({"name": "trials-harness"}))
+        .post("/v1/platform/harnesses", json!({"name": "trials-harness"}))
         .await
         .assert_success()
         .json();
     let harness_id = harness["id"].as_str().expect("harness id");
     let eval: Eval = server
         .post(
-            "/v1/evals",
+            "/v1/platform/evals",
             json!({
                 "name": "trials eval",
                 "target": {"type": "session", "harness_id": harness_id},
@@ -38,7 +38,7 @@ async fn seed_eval(server: &TestServer, cases: usize, timeout_seconds: u32) -> E
     for index in 0..cases {
         let _case: EvalCase = server
             .post(
-                &format!("/v1/evals/{}/cases", eval.public_id),
+                &format!("/v1/platform/evals/{}/cases", eval.public_id),
                 json!({
                     "name": format!("case-{index}"),
                     "conversation": [{"content": "hello"}],
@@ -55,7 +55,10 @@ async fn seed_eval(server: &TestServer, cases: usize, timeout_seconds: u32) -> E
 
 async fn get_run(server: &TestServer, eval: &Eval, run_id: &str) -> Value {
     server
-        .get(&format!("/v1/evals/{}/runs/{run_id}", eval.public_id))
+        .get(&format!(
+            "/v1/platform/evals/{}/runs/{run_id}",
+            eval.public_id
+        ))
         .await
         .assert_status(StatusCode::OK)
         .json()
@@ -80,7 +83,7 @@ async fn trials_outside_bounds_are_rejected() {
     for trials in [0, 21] {
         let response = server
             .post(
-                &format!("/v1/evals/{}/runs", eval.public_id),
+                &format!("/v1/platform/evals/{}/runs", eval.public_id),
                 json!({"trials": trials}),
             )
             .await;
@@ -100,7 +103,7 @@ async fn each_trial_is_a_result_and_the_last_one_completes_the_run() {
 
     let run: Value = server
         .post(
-            &format!("/v1/evals/{}/runs", eval.public_id),
+            &format!("/v1/platform/evals/{}/runs", eval.public_id),
             json!({"trials": 3}),
         )
         .await
@@ -140,7 +143,7 @@ async fn cancelling_skips_unfinished_cases_and_keeps_the_run_cancelled() {
     let eval = seed_eval(&server, 2, 60).await;
     let run: Value = server
         .post(
-            &format!("/v1/evals/{}/runs", eval.public_id),
+            &format!("/v1/platform/evals/{}/runs", eval.public_id),
             json!({"trials": 2}),
         )
         .await
@@ -151,7 +154,7 @@ async fn cancelling_skips_unfinished_cases_and_keeps_the_run_cancelled() {
 
     server
         .post(
-            &format!("/v1/evals/{}/runs/{run_id}/cancel", eval.public_id),
+            &format!("/v1/platform/evals/{}/runs/{run_id}/cancel", eval.public_id),
             json!({}),
         )
         .await
@@ -184,7 +187,10 @@ async fn cases_run_as_the_person_who_started_the_run() {
     let server = TestServer::in_memory().await;
     let eval = seed_eval(&server, 1, 1).await;
     let run: Value = server
-        .post(&format!("/v1/evals/{}/runs", eval.public_id), json!({}))
+        .post(
+            &format!("/v1/platform/evals/{}/runs", eval.public_id),
+            json!({}),
+        )
         .await
         .assert_status(StatusCode::CREATED)
         .json();
@@ -223,7 +229,7 @@ async fn run_spending_caps_outside_bounds_are_rejected() {
     for cap in [json!(0), json!(-1.5), json!(1_000_000_000.0)] {
         let response = server
             .post(
-                &format!("/v1/evals/{}/runs", eval.public_id),
+                &format!("/v1/platform/evals/{}/runs", eval.public_id),
                 json!({"max_cost_usd": cap}),
             )
             .await;
@@ -239,7 +245,7 @@ async fn a_capped_run_binds_its_case_sessions_to_one_budget() {
     let eval = seed_eval(&server, 1, 60).await;
     let run: Value = server
         .post(
-            &format!("/v1/evals/{}/runs", eval.public_id),
+            &format!("/v1/platform/evals/{}/runs", eval.public_id),
             json!({"max_cost_usd": 5.0}),
         )
         .await
@@ -276,7 +282,7 @@ async fn a_capped_run_binds_its_case_sessions_to_one_budget() {
 
     server
         .post(
-            &format!("/v1/evals/{}/runs/{run_id}/cancel", eval.public_id),
+            &format!("/v1/platform/evals/{}/runs/{run_id}/cancel", eval.public_id),
             json!({}),
         )
         .await
@@ -311,7 +317,10 @@ async fn a_spent_budget_skips_cases_instead_of_failing_them() {
         .unwrap();
 
     let run: Value = server
-        .post(&format!("/v1/evals/{}/runs", eval.public_id), json!({}))
+        .post(
+            &format!("/v1/platform/evals/{}/runs", eval.public_id),
+            json!({}),
+        )
         .await
         .assert_status(StatusCode::CREATED)
         .json();

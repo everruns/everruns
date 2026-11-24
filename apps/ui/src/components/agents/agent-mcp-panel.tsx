@@ -101,7 +101,7 @@ function connectionHref(agentId: string, attachment: AgentMcpAttachment): string
     mode: forAgent ? "identity" : "user",
   });
   if (forAgent) params.set("agent_id", agentId);
-  return `/api/v1/user/connections/${encodeURIComponent(attachment.connection_provider)}/authorize?${params}`;
+  return `/api/v1/platform/user/connections/${encodeURIComponent(attachment.connection_provider)}/authorize?${params}`;
 }
 
 function McpAttachmentRow({

@@ -138,22 +138,28 @@ pub fn routes(state: ApiState) -> Router {
         .command::<destination_history::GetTracingDestinationMetadata>()
         .command::<destination_history::UpdateTracingDestinationMetadata>()
         .route(
-            "/v1/tracing/destinations",
+            "/v1/platform/tracing/destinations",
             get(list_destinations).post(create_destination),
         )
         .route(
-            "/v1/tracing/destinations/{id}",
+            "/v1/platform/tracing/destinations/{id}",
             axum::routing::put(update_destination).delete(delete_destination),
         )
-        .route("/v1/tracing/destinations/{id}/test", post(test_destination))
-        .route("/v1/tracing/defaults", get(get_defaults).put(save_defaults))
         .route(
-            "/v1/agents/{agent_id}/tracing",
+            "/v1/platform/tracing/destinations/{id}/test",
+            post(test_destination),
+        )
+        .route(
+            "/v1/platform/tracing/defaults",
+            get(get_defaults).put(save_defaults),
+        )
+        .route(
+            "/v1/platform/agents/{agent_id}/tracing",
             get(get_agent_routing).put(save_agent_routing),
         )
         .with_state(state)
 }
-#[utoipa::path(get,path="/v1/tracing/destinations",responses((status=200,body=Vec<DestinationView>)),tag="tracing")]
+#[utoipa::path(get,path="/v1/platform/tracing/destinations",responses((status=200,body=Vec<DestinationView>)),tag="tracing")]
 pub async fn list_destinations(
     org: ResolvedOrg,
     State(state): State<ApiState>,
@@ -181,7 +187,7 @@ fn validate(body: &SaveDestinationRequest) -> Result<()> {
     }
     Ok(())
 }
-#[utoipa::path(post,path="/v1/tracing/destinations",request_body=SaveDestinationRequest,responses((status=201,body=DestinationView)),tag="tracing")]
+#[utoipa::path(post,path="/v1/platform/tracing/destinations",request_body=SaveDestinationRequest,responses((status=201,body=DestinationView)),tag="tracing")]
 pub async fn create_destination(
     org: ResolvedOrg,
     State(state): State<ApiState>,
@@ -237,7 +243,7 @@ pub async fn create_destination(
         Json(DestinationView::try_from(row).map_err(internal)?),
     ))
 }
-#[utoipa::path(put,path="/v1/tracing/destinations/{id}",params(("id"=Uuid,Path,description="Destination ID")),request_body=SaveDestinationRequest,responses((status=200,body=DestinationView)),tag="tracing")]
+#[utoipa::path(put,path="/v1/platform/tracing/destinations/{id}",params(("id"=Uuid,Path,description="Destination ID")),request_body=SaveDestinationRequest,responses((status=200,body=DestinationView)),tag="tracing")]
 pub async fn update_destination(
     org: ResolvedOrg,
     State(state): State<ApiState>,
@@ -322,7 +328,7 @@ pub async fn update_destination(
         .ok_or_else(|| error(StatusCode::NOT_FOUND, "Destination not found"))?;
     Ok(Json(DestinationView::try_from(row).map_err(internal)?))
 }
-#[utoipa::path(delete,path="/v1/tracing/destinations/{id}",params(DestinationRevision,("id"=Uuid,Path,description="Destination ID")),responses((status=204)),tag="tracing")]
+#[utoipa::path(delete,path="/v1/platform/tracing/destinations/{id}",params(DestinationRevision,("id"=Uuid,Path,description="Destination ID")),responses((status=204)),tag="tracing")]
 pub async fn delete_destination(
     org: ResolvedOrg,
     State(state): State<ApiState>,
@@ -413,7 +419,7 @@ async fn save_policy(
             .map_err(internal)?,
     ))
 }
-#[utoipa::path(get,path="/v1/tracing/defaults",responses((status=200,body=TracingPolicyView)),tag="tracing")]
+#[utoipa::path(get,path="/v1/platform/tracing/defaults",responses((status=200,body=TracingPolicyView)),tag="tracing")]
 pub async fn get_defaults(
     org: ResolvedOrg,
     State(s): State<ApiState>,
@@ -424,7 +430,7 @@ pub async fn get_defaults(
             .map_err(internal)?,
     ))
 }
-#[utoipa::path(put,path="/v1/tracing/defaults",request_body=SaveRoutingRequest,responses((status=200,body=TracingPolicyView)),tag="tracing")]
+#[utoipa::path(put,path="/v1/platform/tracing/defaults",request_body=SaveRoutingRequest,responses((status=200,body=TracingPolicyView)),tag="tracing")]
 pub async fn save_defaults(
     org: ResolvedOrg,
     State(s): State<ApiState>,
@@ -432,7 +438,7 @@ pub async fn save_defaults(
 ) -> Result<Json<TracingPolicyView>> {
     save_policy(&s, &org, None, b).await
 }
-#[utoipa::path(get,path="/v1/agents/{agent_id}/tracing",params(("agent_id"=String,Path,description="Agent ID")),responses((status=200,body=TracingPolicyView)),tag="tracing")]
+#[utoipa::path(get,path="/v1/platform/agents/{agent_id}/tracing",params(("agent_id"=String,Path,description="Agent ID")),responses((status=200,body=TracingPolicyView)),tag="tracing")]
 pub async fn get_agent_routing(
     org: ResolvedOrg,
     State(s): State<ApiState>,
@@ -445,7 +451,7 @@ pub async fn get_agent_routing(
             .map_err(internal)?,
     ))
 }
-#[utoipa::path(put,path="/v1/agents/{agent_id}/tracing",params(("agent_id"=String,Path,description="Agent ID")),request_body=SaveRoutingRequest,responses((status=200,body=TracingPolicyView)),tag="tracing")]
+#[utoipa::path(put,path="/v1/platform/agents/{agent_id}/tracing",params(("agent_id"=String,Path,description="Agent ID")),request_body=SaveRoutingRequest,responses((status=200,body=TracingPolicyView)),tag="tracing")]
 pub async fn save_agent_routing(
     org: ResolvedOrg,
     State(s): State<ApiState>,
@@ -456,7 +462,7 @@ pub async fn save_agent_routing(
     checked_agent(&s, &org, a).await?;
     save_policy(&s, &org, Some(a.uuid()), b).await
 }
-#[utoipa::path(post,path="/v1/tracing/destinations/{id}/test",params(("id"=Uuid,Path,description="Destination ID")),responses((status=200,body=TestTraceResponse)),tag="tracing")]
+#[utoipa::path(post,path="/v1/platform/tracing/destinations/{id}/test",params(("id"=Uuid,Path,description="Destination ID")),responses((status=200,body=TestTraceResponse)),tag="tracing")]
 pub async fn test_destination(
     org: ResolvedOrg,
     State(state): State<ApiState>,

@@ -75,20 +75,20 @@ fn row_to_response(row: UserPreferenceRow) -> PreferenceResponse {
 
 pub fn routes(state: ApiState) -> Router {
     Router::new()
-        .route("/v1/user/preferences", get(list_preferences))
+        .route("/v1/platform/user/preferences", get(list_preferences))
         .route(
-            "/v1/user/preferences/{key}",
+            "/v1/platform/user/preferences/{key}",
             get(get_preference)
                 .put(set_preference)
                 .delete(delete_preference),
         )
         .with_state(state.clone())
-        // Other `/v1/user/*` routes ride along here: app_builder sits at the
+        // Other `/v1/platform/user/*` routes ride along here: app_builder sits at the
         // file-size ratchet and may not grow.
         .merge(super::connected_clients::routes(state))
 }
 
-/// GET /v1/user/preferences — list all of the user's preferences.
+/// GET /v1/platform/user/preferences — list all of the user's preferences.
 pub async fn list_preferences(
     State(state): State<ApiState>,
     auth: AuthUser,
@@ -105,7 +105,7 @@ pub async fn list_preferences(
     Ok(Json(rows.into_iter().map(row_to_response).collect()))
 }
 
-/// GET /v1/user/preferences/{key} — read a single preference by key.
+/// GET /v1/platform/user/preferences/{key} — read a single preference by key.
 pub async fn get_preference(
     State(state): State<ApiState>,
     auth: AuthUser,
@@ -124,7 +124,7 @@ pub async fn get_preference(
     Ok(Json(row_to_response(row)))
 }
 
-/// PUT /v1/user/preferences/{key} — create or update a preference value.
+/// PUT /v1/platform/user/preferences/{key} — create or update a preference value.
 pub async fn set_preference(
     State(state): State<ApiState>,
     auth: AuthUser,
@@ -153,7 +153,7 @@ pub async fn set_preference(
     Ok(Json(row_to_response(row)))
 }
 
-/// DELETE /v1/user/preferences/{key} — remove a preference.
+/// DELETE /v1/platform/user/preferences/{key} — remove a preference.
 pub async fn delete_preference(
     State(state): State<ApiState>,
     auth: AuthUser,

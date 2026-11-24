@@ -4,1498 +4,6 @@
  */
 
 export interface paths {
-  "/v1/agent-examples": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * List all available examples
-     * @description list all available examples
-     */
-    get: operations["list_agent_examples"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/agents": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** List all active agents */
-    get: operations["list_agents"];
-    put?: never;
-    /** Create a new agent */
-    post: operations["create_agent"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/agents/activity": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** Org-wide agent and channel activity */
-    get: operations["get_agent_activity"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/agents/analyze": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Run advisory checks against an agent shape
-     * @description Runs built-in rules plus on-demand LLM analysis
-     *     and returns merged advisory findings. Requires the system utility LLM
-     *     service to be configured.
-     */
-    post: operations["analyze_agent"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/agents/check-name": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * Check agent name
-     * @description Returns whether an agent name is available for use. Optionally excludes
-     *     a specific agent ID (for edit forms where the agent's own name is valid).
-     */
-    get: operations["check_agent_name"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/agents/config": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** Agent config */
-    get: operations["agent_config"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/agents/cost-plan": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Plan agent cost workloads
-     * @description Suggest editable typical task workloads for agent cost planning. Does not execute or save the agent.
-     */
-    post: operations["plan_agent_costs"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/agents/diff": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Diff an agent package against an existing agent
-     * @description Generate a semantic diff against an existing agent without mutation.
-     */
-    post: operations["diff_agent_package"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/agents/draft": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Revise an agent draft with the agent builder
-     * @description Revise an agent draft from a conversation with the agent builder. Returns the draft only; nothing is created.
-     */
-    post: operations["draft_agent"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/agents/import": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Import agent from file or built-in example
-     * @description Two modes:
-     *     1. **From example** — `POST /v1/agents/import?from-example={name}` (body ignored)
-     *     2. **From package** — text (Markdown/TOML/YAML/JSON), ZIP, or a PackageInput envelope.
-     *
-     *     Package mode accepts:
-     *     - Markdown with YAML front matter (if starts with ---)
-     *     - Pure YAML
-     *     - Pure JSON
-     *     - Plain text (treated as instructions; defaults to name agent)
-     *     - TOML and ZIP folders, with complete assets and skill directories
-     *
-     *     If the file contains an `id` field and an agent with that ID already exists,
-     *     the agent is updated (upsert). Returns 201 on create, 200 on update.
-     */
-    post: operations["import_agent"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/agents/preview": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Preview the final agent shape with capabilities applied
-     * @description Returns the merged system prompt and all tools that would be available to the agent.
-     *     This is useful for previewing what the agent will look like before saving.
-     */
-    post: operations["preview_agent"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/agents/validate": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Validate an agent package and its dependencies
-     * @description Validate an agent package and its destination dependencies without mutation.
-     */
-    post: operations["validate_agent_package"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/agents/{agent_id}": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * Get agent by ID or name
-     * @description Accepts either an agent ID (e.g. `agent_01933b5a...`) or a
-     *     name (e.g. `customer-support`). Names are resolved within the caller's org.
-     */
-    get: operations["get_agent"];
-    /**
-     * Create or update agent (upsert)
-     * @description Accepts either an agent ID (e.g. `agent_01933b5a...`) or a
-     *     name (e.g. `customer-support`). If the agent exists, update it; if not,
-     *     create it. Returns 201 on create, 200 on update.
-     */
-    put: operations["upsert_agent"];
-    post?: never;
-    /** Archive agent */
-    delete: operations["delete_agent"];
-    options?: never;
-    head?: never;
-    /** Update agent */
-    patch: operations["update_agent"];
-    trace?: never;
-  };
-  "/v1/agents/{agent_id}/avatar": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    /**
-     * Upload the agent's avatar
-     * @description Upload an avatar for an agent as multipart field `file` (PNG, JPEG, GIF or WebP, at least 64x64, at most 10 MB). The image is center-cropped to a square and pre-rendered as square and circular PNG presets. Replaces any previous avatar, whose URLs stop resolving. Also sets the icon of the agent's one-click Slack apps.
-     */
-    put: operations["upload_agent_avatar"];
-    post?: never;
-    /** Remove the agent's avatar */
-    delete: operations["delete_agent_avatar"];
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/agents/{agent_id}/avatar/generate": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Generate an agent's avatar with the org's image model
-     * @description Generate an agent's avatar with the organization's default image model and set it, in one step. Describe it in prompt, or omit prompt to draw one from the agent's name and description. Replaces the previous avatar and updates the icon of the agent's one-click Slack apps. Calls the image provider (billed like any image generation) and can take up to a minute.
-     */
-    post: operations["generate_agent_avatar"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/agents/{agent_id}/avatar/preset": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * Get the agent's current avatar preset
-     * @description Return the agent's current curated preset ID, or null for a custom upload or no avatar. Requires permission to manage the agent.
-     */
-    get: operations["get_avatar_preset_selection"];
-    /**
-     * Set an agent's avatar from a curated preset
-     * @description Replace an agent's avatar with a curated preset, storing fresh immutable image URLs and updating its Slack app icons.
-     */
-    put: operations["select_avatar_preset"];
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/agents/{agent_id}/avatar/set": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Set an agent's avatar from a preset or an image
-     * @description Set an agent's avatar from a curated preset (preset_id, see list_avatar_presets) or an image (image_base64: PNG, JPEG, GIF or WebP, at least 64x64, at most 1 MB). Replaces the previous avatar and updates the icon of the agent's one-click Slack apps.
-     */
-    post: operations["set_agent_avatar"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/agents/{agent_id}/channels": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * List agent channels
-     * @description List ingress channels owned by an Agent.
-     */
-    get: operations["list_agent_channels"];
-    put?: never;
-    /**
-     * Create agent channel
-     * @description Create an ingress channel owned by an Agent.
-     */
-    post: operations["create_agent_channel"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/agents/{agent_id}/channels/{channel_id}": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * Get agent channel
-     * @description Get one ingress channel owned by an Agent.
-     */
-    get: operations["get_agent_channel"];
-    put?: never;
-    post?: never;
-    /**
-     * Delete agent channel
-     * @description Delete an ingress channel owned by an Agent.
-     */
-    delete: operations["delete_agent_channel"];
-    options?: never;
-    head?: never;
-    /**
-     * Update agent channel
-     * @description Update an ingress channel owned by an Agent.
-     */
-    patch: operations["update_agent_channel"];
-    trace?: never;
-  };
-  "/v1/agents/{agent_id}/channels/{channel_id}/keys": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * List agent keys
-     * @description List the agent keys of an agent's API channel. Secrets are never returned.
-     */
-    get: operations["list_agent_keys"];
-    put?: never;
-    /**
-     * Create agent key
-     * @description Create an agent key for an agent's API channel. The secret is in this response only.
-     */
-    post: operations["create_agent_key"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/agents/{agent_id}/channels/{channel_id}/keys/{key_id}/revoke": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Revoke agent key
-     * @description Revoke an agent key. It never works again, including a secret still in its rotation overlap.
-     */
-    post: operations["revoke_agent_key"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/agents/{agent_id}/channels/{channel_id}/keys/{key_id}/rotate": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Rotate agent key
-     * @description Replace an agent key's secret, keeping its id. The new secret is in this response only; the old one keeps working for the overlap.
-     */
-    post: operations["rotate_agent_key"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/agents/{agent_id}/channels/{channel_id}/publish": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Publish agent channel
-     * @description Publish an Agent channel so it can accept ingress traffic.
-     */
-    post: operations["publish_agent_channel"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/agents/{agent_id}/channels/{channel_id}/trigger": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Trigger agent channel
-     * @description Run a published Agent schedule channel now.
-     */
-    post: operations["trigger_agent_channel"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/agents/{agent_id}/channels/{channel_id}/unpublish": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Unpublish agent channel
-     * @description Unpublish an Agent channel so it no longer accepts ingress traffic.
-     */
-    post: operations["unpublish_agent_channel"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/agents/{agent_id}/channels/{channel_id}/voice/calls": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Create channel call
-     * @description Call an agent's voice channel. Starts a new session for the call, or continues an existing session of the agent.
-     */
-    post: operations["create_channel_call"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/agents/{agent_id}/chat-features": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** Get eligible chat interfaces */
-    get: operations["get_agent_chat_features"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/agents/{agent_id}/copy": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Copy an agent
-     * @description Creates a new agent with the same configuration as the source agent.
-     *     The new agent's name will be "{original name} (copy)".
-     */
-    post: operations["copy_agent"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/agents/{agent_id}/costs": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** What one agent cost the organization this month */
-    get: operations["get_agent_cost"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/agents/{agent_id}/credentials": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * List credentials
-     * @description List write-only MCP credential bindings for an agent. Responses contain metadata and configuration status, never credential values.
-     */
-    get: operations["list_credentials"];
-    put?: never;
-    /**
-     * Create credential binding
-     * @description Declare a write-only credential binding for one MCP tool parameter. The secret value is provisioned separately.
-     */
-    post: operations["create_credential_binding"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/agents/{agent_id}/credentials/{binding_id}": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    /**
-     * Set credential value
-     * @description Encrypt and replace the write-only value for an agent credential binding.
-     */
-    put: operations["set_credential_value"];
-    post?: never;
-    /**
-     * Delete credential binding
-     * @description Revoke an agent credential binding and permanently remove its encrypted value.
-     */
-    delete: operations["delete_credential_binding"];
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/agents/{agent_id}/endpoints": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * List agent endpoints
-     * @deprecated
-     * @description List ingress channels owned by an Agent.
-     */
-    get: operations["list_agent_endpoints"];
-    put?: never;
-    /**
-     * Create agent endpoint
-     * @deprecated
-     * @description Create an ingress channel owned by an Agent.
-     */
-    post: operations["create_agent_endpoint"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/agents/{agent_id}/endpoints/{endpoint_id}": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * Get agent endpoint
-     * @deprecated
-     * @description Get one ingress channel owned by an Agent.
-     */
-    get: operations["get_agent_endpoint"];
-    put?: never;
-    post?: never;
-    /**
-     * Delete agent endpoint
-     * @deprecated
-     * @description Delete an ingress channel owned by an Agent.
-     */
-    delete: operations["delete_agent_endpoint"];
-    options?: never;
-    head?: never;
-    /**
-     * Update agent endpoint
-     * @deprecated
-     * @description Update an ingress channel owned by an Agent.
-     */
-    patch: operations["update_agent_endpoint"];
-    trace?: never;
-  };
-  "/v1/agents/{agent_id}/endpoints/{endpoint_id}/publish": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Publish agent endpoint
-     * @deprecated
-     * @description Publish an Agent channel so it can accept ingress traffic.
-     */
-    post: operations["publish_agent_endpoint"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/agents/{agent_id}/endpoints/{endpoint_id}/trigger": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Trigger agent endpoint
-     * @deprecated
-     * @description Run a published Agent schedule channel now.
-     */
-    post: operations["trigger_agent_endpoint"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/agents/{agent_id}/endpoints/{endpoint_id}/unpublish": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Unpublish agent endpoint
-     * @deprecated
-     * @description Unpublish an Agent channel so it no longer accepts ingress traffic.
-     */
-    post: operations["unpublish_agent_endpoint"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/agents/{agent_id}/endpoints/{endpoint_id}/voice/calls": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Create endpoint call
-     * @deprecated
-     * @description Call an agent's voice channel. Starts a new session for the call, or continues an existing session of the agent.
-     */
-    post: operations["create_endpoint_call"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/agents/{agent_id}/eval-proposals": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * List the Eval Builder's proposals for an agent
-     * @description List an agent's open eval case proposals, newest first, with the Eval Builder's latest run.
-     */
-    get: operations["list_eval_proposals"];
-    put?: never;
-    /**
-     * Ask the Eval Builder for cases
-     * @description Ask the Eval Builder to propose eval cases for an agent from its instructions, its recent sessions and the gaps in its datasets. Runs in the background on the organization's default model; nothing is added until a person accepts a proposal.
-     */
-    post: operations["propose_eval_cases"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/agents/{agent_id}/export": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** Export agent in Markdown format with YAML front matter */
-    get: operations["export_agent"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/agents/{agent_id}/exposures/resume": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Deprecated alias of resume
-     * @deprecated
-     */
-    post: operations["resume_agent_exposures"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/agents/{agent_id}/exposures/suspend": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Deprecated alias of pause
-     * @deprecated
-     */
-    post: operations["suspend_agent_exposures"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/agents/{agent_id}/external-worker": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** Read an Agent's external execution status */
-    get: operations["get_external_agent"];
-    put?: never;
-    /**
-     * Connect or rotate an external HTTPS worker
-     * @description Requires dangerous-settings permission and installation enablement. Stop
-     *     active turns first. The preinstalled secret is encrypted and never returned.
-     */
-    post: operations["register_external_agent"];
-    /**
-     * Disable external worker execution
-     * @description Revocation never falls back to the built-in runtime.
-     */
-    delete: operations["disable_external_agent"];
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/agents/{agent_id}/failures": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * List sessions with failed turns
-     * @description List sessions with failed turns. Filters by failure time and includes older, recovered, and archived sessions, matching agent activity. Returns the latest matching failure per session.
-     */
-    get: operations["list_agent_failures"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/agents/{agent_id}/github": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * Get an agent's GitHub App status
-     * @description Show an agent's own GitHub App: whether it exists, whether it is installed, on which account, and which permissions it lacks.
-     */
-    get: operations["get_agent_github"];
-    put?: never;
-    post?: never;
-    /**
-     * Disconnect an agent from GitHub
-     * @description Disconnect an agent from GitHub: uninstall its GitHub App and remove the connection, keeping the App for a later reconnect. When the App was never installed, forget it instead, so the next connect creates a new one (for example in a GitHub organization).
-     */
-    delete: operations["disconnect_agent_github"];
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/agents/{agent_id}/github/connect": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Connect an agent to GitHub through its own App
-     * @description Start connecting an agent to GitHub through its own GitHub App. Returns `install` with a URL to open in a browser when the App exists, or `create_app` when GitHub must first create it, which needs the web UI (Agent > Integrations > Connect GitHub).
-     */
-    post: operations["connect_agent_github"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/agents/{agent_id}/github/everruns-app": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Make an agent act as the shared Everruns GitHub App
-     * @description Make an agent act on GitHub as the shared Everruns App, through one installation an org admin linked in Settings > Organization. Only for an agent without a GitHub App of its own; disconnect that first.
-     */
-    post: operations["use_agent_everruns_app"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/agents/{agent_id}/health-checks": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** List recent health check runs */
-    get: operations["list_health_checks"];
-    put?: never;
-    /** Trigger a behavioral health check */
-    post: operations["trigger_health_check"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/agents/{agent_id}/health-checks/latest": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** Latest run + stale flag */
-    get: operations["get_latest_health_check"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/agents/{agent_id}/health-checks/{run_id}": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** Get a health check run */
-    get: operations["get_health_check"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/agents/{agent_id}/mcp-attachments": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * List agent mcp attachments
-     * @description Lists the effective MCP attachments after capability, harness, and agent layers are merged. Connection state, the agent's sign-in state, and permitted actions are resolved for the current caller.
-     */
-    get: operations["list_agent_mcp_attachments"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/agents/{agent_id}/mcp-attachments/{name}/connection": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    post?: never;
-    /**
-     * Revoke agent mcp connection
-     * @description Revokes the current caller's user connection or the virtual user's shared service connection for an effective MCP attachment. The attachment configuration remains unchanged.
-     */
-    delete: operations["revoke_agent_mcp_connection"];
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/agents/{agent_id}/pause": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Pause an agent
-     * @description Its channels stop accepting messages and its triggers and schedules do not
-     *     run until it is resumed. Each channel keeps its own published state.
-     */
-    post: operations["pause_agent"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/agents/{agent_id}/resume": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** Resume a paused agent */
-    post: operations["resume_agent"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/agents/{agent_id}/scripts": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * List agent scripts
-     * @description List an agent's saved scripts with their bodies. Set include_archived=true to also return archived scripts.
-     */
-    get: operations["list_agent_scripts"];
-    put?: never;
-    /**
-     * Create agent script
-     * @description Save a new script for an agent. The name must be unique among the agent's active scripts.
-     */
-    post: operations["create_agent_script"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/agents/{agent_id}/scripts/{script_id}": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * Get agent script
-     * @description Get one saved script, including its body and input schema.
-     */
-    get: operations["get_agent_script"];
-    put?: never;
-    post?: never;
-    /**
-     * Delete agent script
-     * @description Archive a saved script. It is hidden from the agent and its name becomes free again.
-     */
-    delete: operations["delete_agent_script"];
-    options?: never;
-    head?: never;
-    /**
-     * Update agent script
-     * @description Update a saved script's description, input schema or body. Omitted fields stay unchanged.
-     */
-    patch: operations["update_agent_script"];
-    trace?: never;
-  };
-  "/v1/agents/{agent_id}/source": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * Get Agent source status
-     * @description Show the Agent's continuous GitHub source binding and sync status.
-     */
-    get: operations["get_agent_source"];
-    /**
-     * Connect continuous GitHub source sync
-     * @description Apply a reviewed GitHub package and enable continuous sync. Pull mode is read-only; two_way also publishes local edits using conditional commits.
-     */
-    put: operations["connect_agent_source"];
-    post?: never;
-    /**
-     * Disconnect Agent source sync
-     * @description Disconnect GitHub source sync and restore local editing. Keeps the last applied Agent definition.
-     */
-    delete: operations["disconnect_agent_source"];
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/agents/{agent_id}/source/accounts": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * List GitHub accounts for Agent source sync
-     * @description Show the caller's own GitHub sign-in and the organization's linked GitHub accounts that source sync can read through, with their repositories. Never the Agent's runtime GitHub identity.
-     */
-    get: operations["list_agent_source_accounts"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/agents/{agent_id}/source/options": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Browse GitHub source locations
-     * @description Browse GitHub branches and Agent package paths.
-     */
-    post: operations["get_agent_source_options"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/agents/{agent_id}/source/preview": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Preview Agent source changes
-     * @description Validate and compare a GitHub Agent package without changing the Agent.
-     */
-    post: operations["preview_agent_source"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/agents/{agent_id}/source/sync": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Request an Agent source check
-     * @description Queue an immediate check of this Agent's GitHub source.
-     */
-    post: operations["sync_agent_source"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/agents/{agent_id}/stats": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** Get aggregate usage stats for an agent */
-    get: operations["get_agent_stats"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/agents/{agent_id}/tracing": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** Get agent routing */
-    get: operations["get_agent_routing"];
-    /** Save agent routing */
-    put: operations["save_agent_routing"];
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/agents/{agent_id}/triggers": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * List agent triggers
-     * @description List an agent's triggers. Set include_archived=true to also return archived triggers.
-     */
-    get: operations["list_agent_triggers"];
-    put?: never;
-    /** Create agent trigger */
-    post: operations["create_agent_trigger"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/agents/{agent_id}/triggers/{trigger_id}": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** Get agent trigger */
-    get: operations["get_agent_trigger"];
-    put?: never;
-    post?: never;
-    /** Delete agent trigger */
-    delete: operations["delete_agent_trigger"];
-    options?: never;
-    head?: never;
-    /** PATCH|PUT /v1/agents/{agent_id}/triggers/{trigger_id} */
-    patch: operations["update_agent_trigger"];
-    trace?: never;
-  };
-  "/v1/agents/{agent_id}/triggers/{trigger_id}/deliveries": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * List agent trigger deliveries
-     * @description List recent events delivered to an agent trigger, newest first, with what happened to each: dispatched, filtered, duplicate or failed.
-     */
-    get: operations["list_agent_trigger_deliveries"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/agents/{agent_id}/triggers/{trigger_id}/runs": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * List agent trigger runs
-     * @description List the ten most recent durable execution outcomes for an agent trigger.
-     */
-    get: operations["list_agent_trigger_runs"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/agents/{agent_id}/triggers/{trigger_id}/trigger": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** Trigger agent trigger */
-    post: operations["trigger_agent_trigger"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/agents/{agent_id}/view": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** Read the view definition and its revision for an Agent */
-    get: operations["get_agent_view_settings"];
-    /** Replace or remove an Agent view using its current revision */
-    put: operations["replace_agent_view"];
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/agents/{id}/delete": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** Permanently delete an archived agent */
-    post: operations["destroy_agent"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/apps": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * List apps
-     * @deprecated
-     * @description List archival App records. This endpoint is read-only and deprecated.
-     */
-    get: operations["list_apps"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/apps/{app_id}": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * Get app
-     * @deprecated
-     * @description Get an archival App record. This endpoint is read-only and deprecated.
-     */
-    get: operations["get_app"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
   "/v1/apps/{app_id}/a2a/{channel_id}": {
     parameters: {
       query?: never;
@@ -1628,242 +136,6 @@ export interface paths {
      * @description Public, immutable avatar image. `variant` is `square-{size}.png` or `circle-{size}.png` for a size in the avatar's `sizes`, or `source.png` for the uploaded square crop.
      */
     get: operations["get_avatar_variant"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/budgets": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * List budgets
-     * @description List budgets. Filter by subject_type and subject_id.
-     */
-    get: operations["list_budgets"];
-    put?: never;
-    /**
-     * Create a budget for a subject (session, agent, user, org)
-     * @description Create a budget for a subject (session, agent, user, org). Sets a spending cap in the given currency.
-     */
-    post: operations["create_budget"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/budgets/{budget_id}": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** Get a single budget by ID */
-    get: operations["get_budget"];
-    put?: never;
-    post?: never;
-    /** Delete a budget */
-    delete: operations["delete_budget"];
-    options?: never;
-    head?: never;
-    /** Update a budget limit, status, or metadata */
-    patch: operations["update_budget"];
-    trace?: never;
-  };
-  "/v1/budgets/{budget_id}/check": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** Check budget status for a session-scoped budget */
-    get: operations["check_budget"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/budgets/{budget_id}/ledger": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** List ledger entries for a budget */
-    get: operations["list_budget_ledger"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/budgets/{budget_id}/top-up": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Add credits to a budget
-     * @description Add credits to a budget. Reactivates exhausted or paused budgets if balance becomes positive.
-     */
-    post: operations["top_up_budget"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/capabilities": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** List available capabilities with pagination */
-    get: operations["list_capabilities"];
-    put?: never;
-    /** Create a persisted declarative capability */
-    post: operations["create_declarative_capability"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/capabilities/declarative": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** List persisted declarative resources */
-    get: operations["list_declarative_capabilities"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/capabilities/declarative/config": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** Declarative capabilities config */
-    get: operations["declarative_capabilities_config"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/capabilities/declarative/{capability_id}": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** Get a declarative resource */
-    get: operations["get_declarative_capability"];
-    put?: never;
-    post?: never;
-    /** Archive a declarative resource */
-    delete: operations["delete_declarative_capability"];
-    options?: never;
-    head?: never;
-    /** Update a declarative resource */
-    patch: operations["update_declarative_capability"];
-    trace?: never;
-  };
-  "/v1/capabilities/declarative/{capability_id}/delete": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** Permanently delete archived resource */
-    post: operations["destroy_declarative_capability"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/capabilities/guardrails/dry-run": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** Evaluate guardrail checks against sample text */
-    post: operations["dry_run_guardrails"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/capabilities/guardrails/examples": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** List adoptable guardrail presets */
-    get: operations["list_guardrail_examples"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/capabilities/{capability_id}": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** Get a specific capability */
-    get: operations["get_capability"];
     put?: never;
     post?: never;
     delete?: never;
@@ -2290,7 +562,7 @@ export interface paths {
     };
     /**
      * Stream events
-     * @description Follow a session's events live, as the channel's visibility allows. Same framing as `/v1/sessions/{id}/sse`: `connected`, `id:` on durable events (resume with `since_id`), a heartbeat, and `disconnecting` before the server cycles the connection.
+     * @description Follow a session's events live, as the channel's visibility allows. Same framing as `/v1/platform/sessions/{id}/sse`: `connected`, `id:` on durable events (resume with `since_id`), a heartbeat, and `disconnecting` before the server cycles the connection.
      */
     get: operations["agent_api_stream_events"];
     put?: never;
@@ -2361,40 +633,6 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/commands": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** List the command contract */
-    get: operations["list_commands"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/commands/{name}": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** Run one command */
-    post: operations["execute_command"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
   "/v1/connection-providers": {
     parameters: {
       query?: never;
@@ -2407,799 +645,6 @@ export interface paths {
      * @description List providers available to this runtime account and endpoint.
      */
     get: operations["list_runtime_connectors"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/context/{entity_ref}": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** Read an entity's manager context */
-    get: operations["get_manager_context"];
-    /** Replace an entity's manager context */
-    put: operations["set_manager_context"];
-    post?: never;
-    /** Empty an entity's manager context */
-    delete: operations["clear_manager_context"];
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/context/{entity_ref}/append": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** Add a paragraph to an entity's manager context */
-    post: operations["append_manager_context"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/cost-rates": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** List the organization's price list, history included */
-    get: operations["list_cost_rates"];
-    put?: never;
-    /**
-     * Add a rate to the organization's price list
-     * @description Add a rate to the organization's price list. A rate is a fixed price per unit or a multiple of the list price; rates are never edited, a change is a new rate from a later date.
-     */
-    post: operations["create_cost_rate"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/cost-rates/{rate_id}/retire": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * End a rate from a date
-     * @description End a rate from a date. Past costs keep the rate they used; usage after the date falls back to the provider's or catalog price.
-     */
-    post: operations["retire_cost_rate"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/costs/settings": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** Read the organization's cost settings */
-    get: operations["get_cost_settings"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    /**
-     * Set the timezone usage policy windows reset in
-     * @description Set the timezone usage policy windows reset in. Windows already running keep their start; the next boundary uses the new timezone.
-     */
-    patch: operations["update_cost_settings"];
-    trace?: never;
-  };
-  "/v1/costs/summary": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** Summarize what usage cost the organization */
-    get: operations["get_cost_summary"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/credential-bindings": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** List */
-    get: operations["list"];
-    put?: never;
-    /** Create */
-    post: operations["create"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/credential-bindings/{id}": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    /** Set value */
-    put: operations["set_value"];
-    post?: never;
-    /** Revoke */
-    delete: operations["revoke"];
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/durable/circuit-breakers": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** List circuit breakers */
-    get: operations["list_circuit_breakers"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/durable/circuit-breakers/{key}": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** Get a single circuit breaker */
-    get: operations["get_circuit_breaker"];
-    put?: never;
-    post?: never;
-    /** Delete/reset a circuit breaker */
-    delete: operations["delete_circuit_breaker"];
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/durable/circuit-breakers/{key}/close": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** Force close a circuit breaker */
-    post: operations["force_close_circuit_breaker"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/durable/circuit-breakers/{key}/open": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** Force open a circuit breaker */
-    post: operations["force_open_circuit_breaker"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/durable/config": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** Durable policy results for UI gating */
-    get: operations["durable_config"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/durable/dlq": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** List dead letter queue entries */
-    get: operations["list_dlq"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/durable/dlq/{dlq_id}/retry": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** Retry a DLQ entry */
-    post: operations["retry_dlq"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/durable/executions/{execution_id}": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** Get execution details */
-    get: operations["get_execution"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/durable/health": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** Get system health */
-    get: operations["get_health"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/durable/metrics/timeseries": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** Get metrics time series */
-    get: operations["get_metrics_timeseries"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/durable/monitoring": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * Get platform-wide execution monitoring
-     * @description Get platform-wide execution monitoring. Requires platform-user access.
-     */
-    get: operations["get_fleet_monitoring"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/durable/monitoring/actors": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** List a bounded platform-wide page of session actors */
-    get: operations["list_fleet_monitoring_actors"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/durable/monitoring/actors/{session_id}": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * Inspect a session actor across organizations
-     * @description Inspect a session actor across organizations. Requires platform-user access.
-     */
-    get: operations["get_fleet_monitoring_actor"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/durable/monitoring/shards": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * List shards with their newest report and history
-     * @description List shards with their newest report and history. Requires platform-user access.
-     */
-    get: operations["get_fleet_monitoring_shards"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/durable/monitoring/shards/{shard}/detail": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * Read one shard's per-node detail for the last hour
-     * @description Read one shard's per-node detail for the last hour. Requires platform-user access.
-     */
-    get: operations["get_fleet_monitoring_shard_detail"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/durable/monitoring/timeline": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * Get recorded execution history across all organizations
-     * @description Get recorded execution history across all organizations. Requires platform-user access.
-     */
-    get: operations["get_fleet_monitoring_timeline"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/durable/monitoring/timeline/window": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * Break down a selected window across organizations
-     * @description Break down a selected window across organizations. Requires platform-user access.
-     */
-    get: operations["get_fleet_monitoring_timeline_window"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/durable/schedules": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** List schedules */
-    get: operations["list_schedules"];
-    put?: never;
-    /** Create a new schedule */
-    post: operations["create_schedule"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/durable/schedules/{schedule_id}": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** Get schedule details */
-    get: operations["get_schedule"];
-    put?: never;
-    post?: never;
-    /** Delete schedule */
-    delete: operations["delete_schedule"];
-    options?: never;
-    head?: never;
-    /** Update schedule */
-    patch: operations["update_schedule"];
-    trace?: never;
-  };
-  "/v1/durable/schedules/{schedule_id}/executions": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** List schedule executions */
-    get: operations["list_schedule_executions"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/durable/schedules/{schedule_id}/pause": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** Pause schedule */
-    post: operations["pause_schedule"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/durable/schedules/{schedule_id}/resume": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** Resume schedule */
-    post: operations["resume_schedule"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/durable/schedules/{schedule_id}/stats": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** Get schedule statistics */
-    get: operations["get_schedule_stats"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/durable/schedules/{schedule_id}/trigger": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** Manually trigger schedule */
-    post: operations["trigger_schedule"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/durable/sse": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * Stream global durable state (SSE)
-     * @description Establishes a Server-Sent Events (SSE) connection for real-time durable system monitoring.
-     *
-     *     ## Connection Lifecycle Events
-     *
-     *     - **connected**: Sent immediately when the stream is established.
-     *     - **snapshot**: Sent when system state changes (health, workers, workflows, tasks, DLQ, circuit breakers).
-     *     - **disconnecting**: Sent before the server closes the connection for graceful cycling.
-     *       Data: `{"reason":"connection_cycle","retry_ms":1000}`
-     *
-     *     ## Connection Cycling
-     *
-     *     Connections are automatically cycled every 10 minutes. Before closing, the server sends
-     *     a `disconnecting` event so clients can reconnect.
-     *
-     *     ## Retry Hints
-     *
-     *     Each SSE event includes a `retry:` field (in milliseconds) that hints reconnection timing:
-     *     - During active updates: 1000ms
-     *     - During idle periods: increases with backoff up to 20000ms
-     *     - After `disconnecting` event: 1000ms
-     */
-    get: operations["stream_durable_sse"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/durable/tasks": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** List tasks */
-    get: operations["list_durable_tasks"];
-    put?: never;
-    /** Enqueue a standalone task (generic queue) */
-    post: operations["enqueue_task"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/durable/workers": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** List workers */
-    get: operations["list_workers"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/durable/workers/{worker_id}/drain": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** Drain a worker */
-    post: operations["drain_worker"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/durable/workers/{worker_id}/resume": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** Resume a draining worker */
-    post: operations["resume_worker"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/durable/workflows": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** List workflows */
-    get: operations["list_workflows"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/durable/workflows/{workflow_id}": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** Get workflow details */
-    get: operations["get_workflow"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/durable/workflows/{workflow_id}/cancel": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** Cancel a workflow */
-    post: operations["cancel_workflow"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/durable/workflows/{workflow_id}/events": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** Get workflow events */
-    get: operations["get_workflow_events"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/durable/workflows/{workflow_id}/sse": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * Stream workflow state (SSE)
-     * @description Establishes a Server-Sent Events (SSE) connection for real-time workflow monitoring.
-     *
-     *     ## Connection Lifecycle Events
-     *
-     *     - **connected**: Sent immediately when the stream is established.
-     *     - **snapshot**: Sent when workflow state or events change.
-     *     - **disconnecting**: Sent before the server closes the connection for graceful cycling.
-     *       Data: `{"reason":"connection_cycle","retry_ms":1000}`
-     *
-     *     ## Connection Cycling
-     *
-     *     Connections are automatically cycled every 10 minutes. Before closing, the server sends
-     *     a `disconnecting` event so clients can reconnect.
-     *
-     *     ## Retry Hints
-     *
-     *     Each SSE event includes a `retry:` field (in milliseconds) that hints reconnection timing.
-     */
-    get: operations["stream_workflow_sse"];
     put?: never;
     post?: never;
     delete?: never;
@@ -3549,7 +994,7 @@ export interface paths {
     /**
      * Stream events
      * @deprecated
-     * @description Follow a session's events live, as the channel's visibility allows. Same framing as `/v1/sessions/{id}/sse`: `connected`, `id:` on durable events (resume with `since_id`), a heartbeat, and `disconnecting` before the server cycles the connection.
+     * @description Follow a session's events live, as the channel's visibility allows. Same framing as `/v1/platform/sessions/{id}/sse`: `connected`, `id:` on durable events (resume with `since_id`), a heartbeat, and `disconnecting` before the server cycles the connection.
      */
     get: operations["agent_api_stream_events_legacy"];
     put?: never;
@@ -3643,7 +1088,2562 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/eval-proposals/{proposal_id}/accept": {
+  "/v1/platform/agent-examples": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List all available examples
+     * @description list all available examples
+     */
+    get: operations["list_agent_examples"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/agents": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List all active agents */
+    get: operations["list_agents"];
+    put?: never;
+    /** Create a new agent */
+    post: operations["create_agent"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/agents/activity": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Org-wide agent and channel activity */
+    get: operations["get_agent_activity"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/agents/analyze": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Run advisory checks against an agent shape
+     * @description Runs built-in rules plus on-demand LLM analysis
+     *     and returns merged advisory findings. Requires the system utility LLM
+     *     service to be configured.
+     */
+    post: operations["analyze_agent"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/agents/check-name": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Check agent name
+     * @description Returns whether an agent name is available for use. Optionally excludes
+     *     a specific agent ID (for edit forms where the agent's own name is valid).
+     */
+    get: operations["check_agent_name"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/agents/config": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Agent config */
+    get: operations["agent_config"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/agents/cost-plan": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Plan agent cost workloads
+     * @description Suggest editable typical task workloads for agent cost planning. Does not execute or save the agent.
+     */
+    post: operations["plan_agent_costs"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/agents/diff": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Diff an agent package against an existing agent
+     * @description Generate a semantic diff against an existing agent without mutation.
+     */
+    post: operations["diff_agent_package"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/agents/draft": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Revise an agent draft with the agent builder
+     * @description Revise an agent draft from a conversation with the agent builder. Returns the draft only; nothing is created.
+     */
+    post: operations["draft_agent"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/agents/import": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Import agent from file or built-in example
+     * @description Two modes:
+     *     1. **From example** — `POST /v1/platform/agents/import?from-example={name}` (body ignored)
+     *     2. **From package** — text (Markdown/TOML/YAML/JSON), ZIP, or a PackageInput envelope.
+     *
+     *     Package mode accepts:
+     *     - Markdown with YAML front matter (if starts with ---)
+     *     - Pure YAML
+     *     - Pure JSON
+     *     - Plain text (treated as instructions; defaults to name agent)
+     *     - TOML and ZIP folders, with complete assets and skill directories
+     *
+     *     If the file contains an `id` field and an agent with that ID already exists,
+     *     the agent is updated (upsert). Returns 201 on create, 200 on update.
+     */
+    post: operations["import_agent"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/agents/preview": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Preview the final agent shape with capabilities applied
+     * @description Returns the merged system prompt and all tools that would be available to the agent.
+     *     This is useful for previewing what the agent will look like before saving.
+     */
+    post: operations["preview_agent"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/agents/validate": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Validate an agent package and its dependencies
+     * @description Validate an agent package and its destination dependencies without mutation.
+     */
+    post: operations["validate_agent_package"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/agents/{agent_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get agent by ID or name
+     * @description Accepts either an agent ID (e.g. `agent_01933b5a...`) or a
+     *     name (e.g. `customer-support`). Names are resolved within the caller's org.
+     */
+    get: operations["get_agent"];
+    /**
+     * Create or update agent (upsert)
+     * @description Accepts either an agent ID (e.g. `agent_01933b5a...`) or a
+     *     name (e.g. `customer-support`). If the agent exists, update it; if not,
+     *     create it. Returns 201 on create, 200 on update.
+     */
+    put: operations["upsert_agent"];
+    post?: never;
+    /** Archive agent */
+    delete: operations["delete_agent"];
+    options?: never;
+    head?: never;
+    /** Update agent */
+    patch: operations["update_agent"];
+    trace?: never;
+  };
+  "/v1/platform/agents/{agent_id}/avatar": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /**
+     * Upload the agent's avatar
+     * @description Upload an avatar for an agent as multipart field `file` (PNG, JPEG, GIF or WebP, at least 64x64, at most 10 MB). The image is center-cropped to a square and pre-rendered as square and circular PNG presets. Replaces any previous avatar, whose URLs stop resolving. Also sets the icon of the agent's one-click Slack apps.
+     */
+    put: operations["upload_agent_avatar"];
+    post?: never;
+    /** Remove the agent's avatar */
+    delete: operations["delete_agent_avatar"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/agents/{agent_id}/avatar/generate": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Generate an agent's avatar with the org's image model
+     * @description Generate an agent's avatar with the organization's default image model and set it, in one step. Describe it in prompt, or omit prompt to draw one from the agent's name and description. Replaces the previous avatar and updates the icon of the agent's one-click Slack apps. Calls the image provider (billed like any image generation) and can take up to a minute.
+     */
+    post: operations["generate_agent_avatar"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/agents/{agent_id}/avatar/preset": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get the agent's current avatar preset
+     * @description Return the agent's current curated preset ID, or null for a custom upload or no avatar. Requires permission to manage the agent.
+     */
+    get: operations["get_avatar_preset_selection"];
+    /**
+     * Set an agent's avatar from a curated preset
+     * @description Replace an agent's avatar with a curated preset, storing fresh immutable image URLs and updating its Slack app icons.
+     */
+    put: operations["select_avatar_preset"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/agents/{agent_id}/avatar/set": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Set an agent's avatar from a preset or an image
+     * @description Set an agent's avatar from a curated preset (preset_id, see list_avatar_presets) or an image (image_base64: PNG, JPEG, GIF or WebP, at least 64x64, at most 1 MB). Replaces the previous avatar and updates the icon of the agent's one-click Slack apps.
+     */
+    post: operations["set_agent_avatar"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/agents/{agent_id}/channels": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List agent channels
+     * @description List ingress channels owned by an Agent.
+     */
+    get: operations["list_agent_channels"];
+    put?: never;
+    /**
+     * Create agent channel
+     * @description Create an ingress channel owned by an Agent.
+     */
+    post: operations["create_agent_channel"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/agents/{agent_id}/channels/{channel_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get agent channel
+     * @description Get one ingress channel owned by an Agent.
+     */
+    get: operations["get_agent_channel"];
+    put?: never;
+    post?: never;
+    /**
+     * Delete agent channel
+     * @description Delete an ingress channel owned by an Agent.
+     */
+    delete: operations["delete_agent_channel"];
+    options?: never;
+    head?: never;
+    /**
+     * Update agent channel
+     * @description Update an ingress channel owned by an Agent.
+     */
+    patch: operations["update_agent_channel"];
+    trace?: never;
+  };
+  "/v1/platform/agents/{agent_id}/channels/{channel_id}/keys": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List agent keys
+     * @description List the agent keys of an agent's API channel. Secrets are never returned.
+     */
+    get: operations["list_agent_keys"];
+    put?: never;
+    /**
+     * Create agent key
+     * @description Create an agent key for an agent's API channel. The secret is in this response only.
+     */
+    post: operations["create_agent_key"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/agents/{agent_id}/channels/{channel_id}/keys/{key_id}/revoke": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Revoke agent key
+     * @description Revoke an agent key. It never works again, including a secret still in its rotation overlap.
+     */
+    post: operations["revoke_agent_key"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/agents/{agent_id}/channels/{channel_id}/keys/{key_id}/rotate": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Rotate agent key
+     * @description Replace an agent key's secret, keeping its id. The new secret is in this response only; the old one keeps working for the overlap.
+     */
+    post: operations["rotate_agent_key"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/agents/{agent_id}/channels/{channel_id}/publish": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Publish agent channel
+     * @description Publish an Agent channel so it can accept ingress traffic.
+     */
+    post: operations["publish_agent_channel"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/agents/{agent_id}/channels/{channel_id}/trigger": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Trigger agent channel
+     * @description Run a published Agent schedule channel now.
+     */
+    post: operations["trigger_agent_channel"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/agents/{agent_id}/channels/{channel_id}/unpublish": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Unpublish agent channel
+     * @description Unpublish an Agent channel so it no longer accepts ingress traffic.
+     */
+    post: operations["unpublish_agent_channel"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/agents/{agent_id}/channels/{channel_id}/voice/calls": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Create channel call
+     * @description Call an agent's voice channel. Starts a new session for the call, or continues an existing session of the agent.
+     */
+    post: operations["create_channel_call"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/agents/{agent_id}/chat-features": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get eligible chat interfaces */
+    get: operations["get_agent_chat_features"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/agents/{agent_id}/copy": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Copy an agent
+     * @description Creates a new agent with the same configuration as the source agent.
+     *     The new agent's name will be "{original name} (copy)".
+     */
+    post: operations["copy_agent"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/agents/{agent_id}/costs": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** What one agent cost the organization this month */
+    get: operations["get_agent_cost"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/agents/{agent_id}/credentials": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List credentials
+     * @description List write-only MCP credential bindings for an agent. Responses contain metadata and configuration status, never credential values.
+     */
+    get: operations["list_credentials"];
+    put?: never;
+    /**
+     * Create credential binding
+     * @description Declare a write-only credential binding for one MCP tool parameter. The secret value is provisioned separately.
+     */
+    post: operations["create_credential_binding"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/agents/{agent_id}/credentials/{binding_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /**
+     * Set credential value
+     * @description Encrypt and replace the write-only value for an agent credential binding.
+     */
+    put: operations["set_credential_value"];
+    post?: never;
+    /**
+     * Delete credential binding
+     * @description Revoke an agent credential binding and permanently remove its encrypted value.
+     */
+    delete: operations["delete_credential_binding"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/agents/{agent_id}/endpoints": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List agent endpoints
+     * @deprecated
+     * @description List ingress channels owned by an Agent.
+     */
+    get: operations["list_agent_endpoints"];
+    put?: never;
+    /**
+     * Create agent endpoint
+     * @deprecated
+     * @description Create an ingress channel owned by an Agent.
+     */
+    post: operations["create_agent_endpoint"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/agents/{agent_id}/endpoints/{endpoint_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get agent endpoint
+     * @deprecated
+     * @description Get one ingress channel owned by an Agent.
+     */
+    get: operations["get_agent_endpoint"];
+    put?: never;
+    post?: never;
+    /**
+     * Delete agent endpoint
+     * @deprecated
+     * @description Delete an ingress channel owned by an Agent.
+     */
+    delete: operations["delete_agent_endpoint"];
+    options?: never;
+    head?: never;
+    /**
+     * Update agent endpoint
+     * @deprecated
+     * @description Update an ingress channel owned by an Agent.
+     */
+    patch: operations["update_agent_endpoint"];
+    trace?: never;
+  };
+  "/v1/platform/agents/{agent_id}/endpoints/{endpoint_id}/publish": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Publish agent endpoint
+     * @deprecated
+     * @description Publish an Agent channel so it can accept ingress traffic.
+     */
+    post: operations["publish_agent_endpoint"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/agents/{agent_id}/endpoints/{endpoint_id}/trigger": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Trigger agent endpoint
+     * @deprecated
+     * @description Run a published Agent schedule channel now.
+     */
+    post: operations["trigger_agent_endpoint"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/agents/{agent_id}/endpoints/{endpoint_id}/unpublish": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Unpublish agent endpoint
+     * @deprecated
+     * @description Unpublish an Agent channel so it no longer accepts ingress traffic.
+     */
+    post: operations["unpublish_agent_endpoint"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/agents/{agent_id}/endpoints/{endpoint_id}/voice/calls": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Create endpoint call
+     * @deprecated
+     * @description Call an agent's voice channel. Starts a new session for the call, or continues an existing session of the agent.
+     */
+    post: operations["create_endpoint_call"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/agents/{agent_id}/eval-proposals": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List the Eval Builder's proposals for an agent
+     * @description List an agent's open eval case proposals, newest first, with the Eval Builder's latest run.
+     */
+    get: operations["list_eval_proposals"];
+    put?: never;
+    /**
+     * Ask the Eval Builder for cases
+     * @description Ask the Eval Builder to propose eval cases for an agent from its instructions, its recent sessions and the gaps in its datasets. Runs in the background on the organization's default model; nothing is added until a person accepts a proposal.
+     */
+    post: operations["propose_eval_cases"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/agents/{agent_id}/export": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Export agent in Markdown format with YAML front matter */
+    get: operations["export_agent"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/agents/{agent_id}/exposures/resume": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Deprecated alias of resume
+     * @deprecated
+     */
+    post: operations["resume_agent_exposures"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/agents/{agent_id}/exposures/suspend": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Deprecated alias of pause
+     * @deprecated
+     */
+    post: operations["suspend_agent_exposures"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/agents/{agent_id}/external-worker": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Read an Agent's external execution status */
+    get: operations["get_external_agent"];
+    put?: never;
+    /**
+     * Connect or rotate an external HTTPS worker
+     * @description Requires dangerous-settings permission and installation enablement. Stop
+     *     active turns first. The preinstalled secret is encrypted and never returned.
+     */
+    post: operations["register_external_agent"];
+    /**
+     * Disable external worker execution
+     * @description Revocation never falls back to the built-in runtime.
+     */
+    delete: operations["disable_external_agent"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/agents/{agent_id}/failures": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List sessions with failed turns
+     * @description List sessions with failed turns. Filters by failure time and includes older, recovered, and archived sessions, matching agent activity. Returns the latest matching failure per session.
+     */
+    get: operations["list_agent_failures"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/agents/{agent_id}/github": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get an agent's GitHub App status
+     * @description Show an agent's own GitHub App: whether it exists, whether it is installed, on which account, and which permissions it lacks.
+     */
+    get: operations["get_agent_github"];
+    put?: never;
+    post?: never;
+    /**
+     * Disconnect an agent from GitHub
+     * @description Disconnect an agent from GitHub: uninstall its GitHub App and remove the connection, keeping the App for a later reconnect. When the App was never installed, forget it instead, so the next connect creates a new one (for example in a GitHub organization).
+     */
+    delete: operations["disconnect_agent_github"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/agents/{agent_id}/github/connect": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Connect an agent to GitHub through its own App
+     * @description Start connecting an agent to GitHub through its own GitHub App. Returns `install` with a URL to open in a browser when the App exists, or `create_app` when GitHub must first create it, which needs the web UI (Agent > Integrations > Connect GitHub).
+     */
+    post: operations["connect_agent_github"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/agents/{agent_id}/github/everruns-app": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Make an agent act as the shared Everruns GitHub App
+     * @description Make an agent act on GitHub as the shared Everruns App, through one installation an org admin linked in Settings > Organization. Only for an agent without a GitHub App of its own; disconnect that first.
+     */
+    post: operations["use_agent_everruns_app"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/agents/{agent_id}/health-checks": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List recent health check runs */
+    get: operations["list_health_checks"];
+    put?: never;
+    /** Trigger a behavioral health check */
+    post: operations["trigger_health_check"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/agents/{agent_id}/health-checks/latest": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Latest run + stale flag */
+    get: operations["get_latest_health_check"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/agents/{agent_id}/health-checks/{run_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get a health check run */
+    get: operations["get_health_check"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/agents/{agent_id}/mcp-attachments": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List agent mcp attachments
+     * @description Lists the effective MCP attachments after capability, harness, and agent layers are merged. Connection state, the agent's sign-in state, and permitted actions are resolved for the current caller.
+     */
+    get: operations["list_agent_mcp_attachments"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/agents/{agent_id}/mcp-attachments/{name}/connection": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /**
+     * Revoke agent mcp connection
+     * @description Revokes the current caller's user connection or the virtual user's shared service connection for an effective MCP attachment. The attachment configuration remains unchanged.
+     */
+    delete: operations["revoke_agent_mcp_connection"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/agents/{agent_id}/pause": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Pause an agent
+     * @description Its channels stop accepting messages and its triggers and schedules do not
+     *     run until it is resumed. Each channel keeps its own published state.
+     */
+    post: operations["pause_agent"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/agents/{agent_id}/resume": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Resume a paused agent */
+    post: operations["resume_agent"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/agents/{agent_id}/scripts": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List agent scripts
+     * @description List an agent's saved scripts with their bodies. Set include_archived=true to also return archived scripts.
+     */
+    get: operations["list_agent_scripts"];
+    put?: never;
+    /**
+     * Create agent script
+     * @description Save a new script for an agent. The name must be unique among the agent's active scripts.
+     */
+    post: operations["create_agent_script"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/agents/{agent_id}/scripts/{script_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get agent script
+     * @description Get one saved script, including its body and input schema.
+     */
+    get: operations["get_agent_script"];
+    put?: never;
+    post?: never;
+    /**
+     * Delete agent script
+     * @description Archive a saved script. It is hidden from the agent and its name becomes free again.
+     */
+    delete: operations["delete_agent_script"];
+    options?: never;
+    head?: never;
+    /**
+     * Update agent script
+     * @description Update a saved script's description, input schema or body. Omitted fields stay unchanged.
+     */
+    patch: operations["update_agent_script"];
+    trace?: never;
+  };
+  "/v1/platform/agents/{agent_id}/source": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get Agent source status
+     * @description Show the Agent's continuous GitHub source binding and sync status.
+     */
+    get: operations["get_agent_source"];
+    /**
+     * Connect continuous GitHub source sync
+     * @description Apply a reviewed GitHub package and enable continuous sync. Pull mode is read-only; two_way also publishes local edits using conditional commits.
+     */
+    put: operations["connect_agent_source"];
+    post?: never;
+    /**
+     * Disconnect Agent source sync
+     * @description Disconnect GitHub source sync and restore local editing. Keeps the last applied Agent definition.
+     */
+    delete: operations["disconnect_agent_source"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/agents/{agent_id}/source/accounts": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List GitHub accounts for Agent source sync
+     * @description Show the caller's own GitHub sign-in and the organization's linked GitHub accounts that source sync can read through, with their repositories. Never the Agent's runtime GitHub identity.
+     */
+    get: operations["list_agent_source_accounts"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/agents/{agent_id}/source/options": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Browse GitHub source locations
+     * @description Browse GitHub branches and Agent package paths.
+     */
+    post: operations["get_agent_source_options"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/agents/{agent_id}/source/preview": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Preview Agent source changes
+     * @description Validate and compare a GitHub Agent package without changing the Agent.
+     */
+    post: operations["preview_agent_source"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/agents/{agent_id}/source/sync": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Request an Agent source check
+     * @description Queue an immediate check of this Agent's GitHub source.
+     */
+    post: operations["sync_agent_source"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/agents/{agent_id}/stats": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get aggregate usage stats for an agent */
+    get: operations["get_agent_stats"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/agents/{agent_id}/tracing": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get agent routing */
+    get: operations["get_agent_routing"];
+    /** Save agent routing */
+    put: operations["save_agent_routing"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/agents/{agent_id}/triggers": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List agent triggers
+     * @description List an agent's triggers. Set include_archived=true to also return archived triggers.
+     */
+    get: operations["list_agent_triggers"];
+    put?: never;
+    /** Create agent trigger */
+    post: operations["create_agent_trigger"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/agents/{agent_id}/triggers/{trigger_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get agent trigger */
+    get: operations["get_agent_trigger"];
+    put?: never;
+    post?: never;
+    /** Delete agent trigger */
+    delete: operations["delete_agent_trigger"];
+    options?: never;
+    head?: never;
+    /** Update agent trigger */
+    patch: operations["update_agent_trigger"];
+    trace?: never;
+  };
+  "/v1/platform/agents/{agent_id}/triggers/{trigger_id}/deliveries": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List agent trigger deliveries
+     * @description List recent events delivered to an agent trigger, newest first, with what happened to each: dispatched, filtered, duplicate or failed.
+     */
+    get: operations["list_agent_trigger_deliveries"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/agents/{agent_id}/triggers/{trigger_id}/runs": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List agent trigger runs
+     * @description List the ten most recent durable execution outcomes for an agent trigger.
+     */
+    get: operations["list_agent_trigger_runs"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/agents/{agent_id}/triggers/{trigger_id}/trigger": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Trigger agent trigger */
+    post: operations["trigger_agent_trigger"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/agents/{agent_id}/view": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Read the view definition and its revision for an Agent */
+    get: operations["get_agent_view_settings"];
+    /** Replace or remove an Agent view using its current revision */
+    put: operations["replace_agent_view"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/agents/{id}/delete": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Permanently delete an archived agent */
+    post: operations["destroy_agent"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/apps": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List apps
+     * @deprecated
+     * @description List archival App records. This endpoint is read-only and deprecated.
+     */
+    get: operations["list_apps"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/apps/{app_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get app
+     * @deprecated
+     * @description Get an archival App record. This endpoint is read-only and deprecated.
+     */
+    get: operations["get_app"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/budgets": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List budgets
+     * @description List budgets. Filter by subject_type and subject_id.
+     */
+    get: operations["list_budgets"];
+    put?: never;
+    /**
+     * Create a budget for a subject (session, agent, user, org)
+     * @description Create a budget for a subject (session, agent, user, org). Sets a spending cap in the given currency.
+     */
+    post: operations["create_budget"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/budgets/{budget_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get a single budget by ID */
+    get: operations["get_budget"];
+    put?: never;
+    post?: never;
+    /** Delete a budget */
+    delete: operations["delete_budget"];
+    options?: never;
+    head?: never;
+    /** Update a budget limit, status, or metadata */
+    patch: operations["update_budget"];
+    trace?: never;
+  };
+  "/v1/platform/budgets/{budget_id}/check": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Check budget status for a session-scoped budget */
+    get: operations["check_budget"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/budgets/{budget_id}/ledger": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List ledger entries for a budget */
+    get: operations["list_budget_ledger"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/budgets/{budget_id}/top-up": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Add credits to a budget
+     * @description Add credits to a budget. Reactivates exhausted or paused budgets if balance becomes positive.
+     */
+    post: operations["top_up_budget"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/capabilities": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List available capabilities with pagination */
+    get: operations["list_capabilities"];
+    put?: never;
+    /** Create a persisted declarative capability */
+    post: operations["create_declarative_capability"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/capabilities/declarative": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List persisted declarative resources */
+    get: operations["list_declarative_capabilities"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/capabilities/declarative/config": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Declarative capabilities config */
+    get: operations["declarative_capabilities_config"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/capabilities/declarative/{capability_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get a declarative resource */
+    get: operations["get_declarative_capability"];
+    put?: never;
+    post?: never;
+    /** Archive a declarative resource */
+    delete: operations["delete_declarative_capability"];
+    options?: never;
+    head?: never;
+    /** Update a declarative resource */
+    patch: operations["update_declarative_capability"];
+    trace?: never;
+  };
+  "/v1/platform/capabilities/declarative/{capability_id}/delete": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Permanently delete archived resource */
+    post: operations["destroy_declarative_capability"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/capabilities/guardrails/dry-run": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Evaluate guardrail checks against sample text */
+    post: operations["dry_run_guardrails"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/capabilities/guardrails/examples": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List adoptable guardrail presets */
+    get: operations["list_guardrail_examples"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/capabilities/{capability_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get a specific capability */
+    get: operations["get_capability"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/commands": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List the command contract */
+    get: operations["list_commands"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/commands/{name}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Run one command */
+    post: operations["execute_command"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/context/{entity_ref}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Read an entity's manager context */
+    get: operations["get_manager_context"];
+    /** Replace an entity's manager context */
+    put: operations["set_manager_context"];
+    post?: never;
+    /** Empty an entity's manager context */
+    delete: operations["clear_manager_context"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/context/{entity_ref}/append": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Add a paragraph to an entity's manager context */
+    post: operations["append_manager_context"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/cost-rates": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List the organization's price list, history included */
+    get: operations["list_cost_rates"];
+    put?: never;
+    /**
+     * Add a rate to the organization's price list
+     * @description Add a rate to the organization's price list. A rate is a fixed price per unit or a multiple of the list price; rates are never edited, a change is a new rate from a later date.
+     */
+    post: operations["create_cost_rate"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/cost-rates/{rate_id}/retire": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * End a rate from a date
+     * @description End a rate from a date. Past costs keep the rate they used; usage after the date falls back to the provider's or catalog price.
+     */
+    post: operations["retire_cost_rate"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/costs/settings": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Read the organization's cost settings */
+    get: operations["get_cost_settings"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /**
+     * Set the timezone usage policy windows reset in
+     * @description Set the timezone usage policy windows reset in. Windows already running keep their start; the next boundary uses the new timezone.
+     */
+    patch: operations["update_cost_settings"];
+    trace?: never;
+  };
+  "/v1/platform/costs/summary": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Summarize what usage cost the organization */
+    get: operations["get_cost_summary"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/credential-bindings": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List */
+    get: operations["list"];
+    put?: never;
+    /** Create */
+    post: operations["create"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/credential-bindings/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Set value */
+    put: operations["set_value"];
+    post?: never;
+    /** Revoke */
+    delete: operations["revoke"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/durable/circuit-breakers": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List circuit breakers */
+    get: operations["list_circuit_breakers"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/durable/circuit-breakers/{key}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get a single circuit breaker */
+    get: operations["get_circuit_breaker"];
+    put?: never;
+    post?: never;
+    /** Delete/reset a circuit breaker */
+    delete: operations["delete_circuit_breaker"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/durable/circuit-breakers/{key}/close": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Force close a circuit breaker */
+    post: operations["force_close_circuit_breaker"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/durable/circuit-breakers/{key}/open": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Force open a circuit breaker */
+    post: operations["force_open_circuit_breaker"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/durable/config": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Durable policy results for UI gating */
+    get: operations["durable_config"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/durable/dlq": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List dead letter queue entries */
+    get: operations["list_dlq"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/durable/dlq/{dlq_id}/retry": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Retry a DLQ entry */
+    post: operations["retry_dlq"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/durable/executions/{execution_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get execution details */
+    get: operations["get_execution"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/durable/health": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get system health */
+    get: operations["get_health"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/durable/metrics/timeseries": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get metrics time series */
+    get: operations["get_metrics_timeseries"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/durable/monitoring": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get platform-wide execution monitoring
+     * @description Get platform-wide execution monitoring. Requires platform-user access.
+     */
+    get: operations["get_fleet_monitoring"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/durable/monitoring/actors": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List a bounded platform-wide page of session actors */
+    get: operations["list_fleet_monitoring_actors"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/durable/monitoring/actors/{session_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Inspect a session actor across organizations
+     * @description Inspect a session actor across organizations. Requires platform-user access.
+     */
+    get: operations["get_fleet_monitoring_actor"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/durable/monitoring/shards": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List shards with their newest report and history
+     * @description List shards with their newest report and history. Requires platform-user access.
+     */
+    get: operations["get_fleet_monitoring_shards"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/durable/monitoring/shards/{shard}/detail": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Read one shard's per-node detail for the last hour
+     * @description Read one shard's per-node detail for the last hour. Requires platform-user access.
+     */
+    get: operations["get_fleet_monitoring_shard_detail"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/durable/monitoring/timeline": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get recorded execution history across all organizations
+     * @description Get recorded execution history across all organizations. Requires platform-user access.
+     */
+    get: operations["get_fleet_monitoring_timeline"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/durable/monitoring/timeline/window": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Break down a selected window across organizations
+     * @description Break down a selected window across organizations. Requires platform-user access.
+     */
+    get: operations["get_fleet_monitoring_timeline_window"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/durable/schedules": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List schedules */
+    get: operations["list_schedules"];
+    put?: never;
+    /** Create a new schedule */
+    post: operations["create_schedule"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/durable/schedules/{schedule_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get schedule details */
+    get: operations["get_schedule"];
+    put?: never;
+    post?: never;
+    /** Delete schedule */
+    delete: operations["delete_schedule"];
+    options?: never;
+    head?: never;
+    /** Update schedule */
+    patch: operations["update_schedule"];
+    trace?: never;
+  };
+  "/v1/platform/durable/schedules/{schedule_id}/executions": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List schedule executions */
+    get: operations["list_schedule_executions"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/durable/schedules/{schedule_id}/pause": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Pause schedule */
+    post: operations["pause_schedule"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/durable/schedules/{schedule_id}/resume": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Resume schedule */
+    post: operations["resume_schedule"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/durable/schedules/{schedule_id}/stats": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get schedule statistics */
+    get: operations["get_schedule_stats"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/durable/schedules/{schedule_id}/trigger": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Manually trigger schedule */
+    post: operations["trigger_schedule"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/durable/sse": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Stream global durable state (SSE)
+     * @description Establishes a Server-Sent Events (SSE) connection for real-time durable system monitoring.
+     *
+     *     ## Connection Lifecycle Events
+     *
+     *     - **connected**: Sent immediately when the stream is established.
+     *     - **snapshot**: Sent when system state changes (health, workers, workflows, tasks, DLQ, circuit breakers).
+     *     - **disconnecting**: Sent before the server closes the connection for graceful cycling.
+     *       Data: `{"reason":"connection_cycle","retry_ms":1000}`
+     *
+     *     ## Connection Cycling
+     *
+     *     Connections are automatically cycled every 10 minutes. Before closing, the server sends
+     *     a `disconnecting` event so clients can reconnect.
+     *
+     *     ## Retry Hints
+     *
+     *     Each SSE event includes a `retry:` field (in milliseconds) that hints reconnection timing:
+     *     - During active updates: 1000ms
+     *     - During idle periods: increases with backoff up to 20000ms
+     *     - After `disconnecting` event: 1000ms
+     */
+    get: operations["stream_durable_sse"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/durable/tasks": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List tasks */
+    get: operations["list_durable_tasks"];
+    put?: never;
+    /** Enqueue a standalone task (generic queue) */
+    post: operations["enqueue_task"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/durable/workers": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List workers */
+    get: operations["list_workers"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/durable/workers/{worker_id}/drain": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Drain a worker */
+    post: operations["drain_worker"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/durable/workers/{worker_id}/resume": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Resume a draining worker */
+    post: operations["resume_worker"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/durable/workflows": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List workflows */
+    get: operations["list_workflows"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/durable/workflows/{workflow_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get workflow details */
+    get: operations["get_workflow"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/durable/workflows/{workflow_id}/cancel": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Cancel a workflow */
+    post: operations["cancel_workflow"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/durable/workflows/{workflow_id}/events": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get workflow events */
+    get: operations["get_workflow_events"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/durable/workflows/{workflow_id}/sse": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Stream workflow state (SSE)
+     * @description Establishes a Server-Sent Events (SSE) connection for real-time workflow monitoring.
+     *
+     *     ## Connection Lifecycle Events
+     *
+     *     - **connected**: Sent immediately when the stream is established.
+     *     - **snapshot**: Sent when workflow state or events change.
+     *     - **disconnecting**: Sent before the server closes the connection for graceful cycling.
+     *       Data: `{"reason":"connection_cycle","retry_ms":1000}`
+     *
+     *     ## Connection Cycling
+     *
+     *     Connections are automatically cycled every 10 minutes. Before closing, the server sends
+     *     a `disconnecting` event so clients can reconnect.
+     *
+     *     ## Retry Hints
+     *
+     *     Each SSE event includes a `retry:` field (in milliseconds) that hints reconnection timing.
+     */
+    get: operations["stream_workflow_sse"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/eval-proposals/{proposal_id}/accept": {
     parameters: {
       query?: never;
       header?: never;
@@ -3663,7 +3663,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/eval-proposals/{proposal_id}/dismiss": {
+  "/v1/platform/eval-proposals/{proposal_id}/dismiss": {
     parameters: {
       query?: never;
       header?: never;
@@ -3683,7 +3683,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/evals": {
+  "/v1/platform/evals": {
     parameters: {
       query?: never;
       header?: never;
@@ -3701,7 +3701,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/evals/experiments": {
+  "/v1/platform/evals/experiments": {
     parameters: {
       query?: never;
       header?: never;
@@ -3721,7 +3721,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/evals/fixes": {
+  "/v1/platform/evals/fixes": {
     parameters: {
       query?: never;
       header?: never;
@@ -3741,7 +3741,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/evals/fixes/{fix_id}": {
+  "/v1/platform/evals/fixes/{fix_id}": {
     parameters: {
       query?: never;
       header?: never;
@@ -3761,7 +3761,7 @@ export interface paths {
     patch: operations["update_finding_fix"];
     trace?: never;
   };
-  "/v1/evals/fixes/{fix_id}/apply": {
+  "/v1/platform/evals/fixes/{fix_id}/apply": {
     parameters: {
       query?: never;
       header?: never;
@@ -3781,7 +3781,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/evals/fixes/{fix_id}/check": {
+  "/v1/platform/evals/fixes/{fix_id}/check": {
     parameters: {
       query?: never;
       header?: never;
@@ -3801,7 +3801,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/evals/fixes/{fix_id}/reject": {
+  "/v1/platform/evals/fixes/{fix_id}/reject": {
     parameters: {
       query?: never;
       header?: never;
@@ -3821,7 +3821,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/evals/import": {
+  "/v1/platform/evals/import": {
     parameters: {
       query?: never;
       header?: never;
@@ -3838,7 +3838,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/evals/import/preflight": {
+  "/v1/platform/evals/import/preflight": {
     parameters: {
       query?: never;
       header?: never;
@@ -3855,7 +3855,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/evals/{eval_id}": {
+  "/v1/platform/evals/{eval_id}": {
     parameters: {
       query?: never;
       header?: never;
@@ -3874,7 +3874,7 @@ export interface paths {
     patch: operations["update_eval"];
     trace?: never;
   };
-  "/v1/evals/{eval_id}/atif_import": {
+  "/v1/platform/evals/{eval_id}/atif_import": {
     parameters: {
       query?: never;
       header?: never;
@@ -3891,7 +3891,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/evals/{eval_id}/cases": {
+  "/v1/platform/evals/{eval_id}/cases": {
     parameters: {
       query?: never;
       header?: never;
@@ -3909,7 +3909,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/evals/{eval_id}/cases/{case_id}": {
+  "/v1/platform/evals/{eval_id}/cases/{case_id}": {
     parameters: {
       query?: never;
       header?: never;
@@ -3928,7 +3928,7 @@ export interface paths {
     patch: operations["update_eval_case"];
     trace?: never;
   };
-  "/v1/evals/{eval_id}/experiments": {
+  "/v1/platform/evals/{eval_id}/experiments": {
     parameters: {
       query?: never;
       header?: never;
@@ -3949,7 +3949,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/evals/{eval_id}/experiments/{experiment_id}": {
+  "/v1/platform/evals/{eval_id}/experiments/{experiment_id}": {
     parameters: {
       query?: never;
       header?: never;
@@ -3969,7 +3969,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/evals/{eval_id}/experiments/{experiment_id}/gate": {
+  "/v1/platform/evals/{eval_id}/experiments/{experiment_id}/gate": {
     parameters: {
       query?: never;
       header?: never;
@@ -3989,7 +3989,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/evals/{eval_id}/runs": {
+  "/v1/platform/evals/{eval_id}/runs": {
     parameters: {
       query?: never;
       header?: never;
@@ -4007,7 +4007,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/evals/{eval_id}/runs/{run_id}": {
+  "/v1/platform/evals/{eval_id}/runs/{run_id}": {
     parameters: {
       query?: never;
       header?: never;
@@ -4024,7 +4024,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/evals/{eval_id}/runs/{run_id}/artifacts": {
+  "/v1/platform/evals/{eval_id}/runs/{run_id}/artifacts": {
     parameters: {
       query?: never;
       header?: never;
@@ -4041,7 +4041,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/evals/{eval_id}/runs/{run_id}/cancel": {
+  "/v1/platform/evals/{eval_id}/runs/{run_id}/cancel": {
     parameters: {
       query?: never;
       header?: never;
@@ -4058,7 +4058,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/evals/{eval_id}/runs/{run_id}/dataset": {
+  "/v1/platform/evals/{eval_id}/runs/{run_id}/dataset": {
     parameters: {
       query?: never;
       header?: never;
@@ -4079,7 +4079,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/evals/{eval_id}/runs/{run_id}/dataset/{dataset_id}": {
+  "/v1/platform/evals/{eval_id}/runs/{run_id}/dataset/{dataset_id}": {
     parameters: {
       query?: never;
       header?: never;
@@ -4099,7 +4099,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/evals/{eval_id}/runs/{run_id}/results/{result_id}/scores": {
+  "/v1/platform/evals/{eval_id}/runs/{run_id}/results/{result_id}/scores": {
     parameters: {
       query?: never;
       header?: never;
@@ -4116,7 +4116,7 @@ export interface paths {
     patch: operations["update_eval_result_scores"];
     trace?: never;
   };
-  "/v1/evals/{eval_id}/runs/{run_id}/scores": {
+  "/v1/platform/evals/{eval_id}/runs/{run_id}/scores": {
     parameters: {
       query?: never;
       header?: never;
@@ -4133,7 +4133,7 @@ export interface paths {
     patch: operations["bulk_update_eval_run_scores"];
     trace?: never;
   };
-  "/v1/evals/{eval_id}/runs/{run_id}/share": {
+  "/v1/platform/evals/{eval_id}/runs/{run_id}/share": {
     parameters: {
       query?: never;
       header?: never;
@@ -4152,7 +4152,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/evals/{eval_id}/samples": {
+  "/v1/platform/evals/{eval_id}/samples": {
     parameters: {
       query?: never;
       header?: never;
@@ -4176,7 +4176,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/extractions": {
+  "/v1/platform/extractions": {
     parameters: {
       query?: never;
       header?: never;
@@ -4193,7 +4193,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/files": {
+  "/v1/platform/files": {
     parameters: {
       query?: never;
       header?: never;
@@ -4211,7 +4211,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/files/{file_id}": {
+  "/v1/platform/files/{file_id}": {
     parameters: {
       query?: never;
       header?: never;
@@ -4229,7 +4229,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/harness-examples": {
+  "/v1/platform/harness-examples": {
     parameters: {
       query?: never;
       header?: never;
@@ -4249,7 +4249,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/harnesses": {
+  "/v1/platform/harnesses": {
     parameters: {
       query?: never;
       header?: never;
@@ -4267,7 +4267,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/harnesses/check-name": {
+  "/v1/platform/harnesses/check-name": {
     parameters: {
       query?: never;
       header?: never;
@@ -4288,7 +4288,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/harnesses/config": {
+  "/v1/platform/harnesses/config": {
     parameters: {
       query?: never;
       header?: never;
@@ -4309,7 +4309,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/harnesses/import": {
+  "/v1/platform/harnesses/import": {
     parameters: {
       query?: never;
       header?: never;
@@ -4324,7 +4324,7 @@ export interface paths {
      *     example. The new harness inherits from the example's parent harness
      *     (for example `sandbox-worker` for Coding), resolved by name in the org;
      *     no UUIDs are hardcoded. Capabilities and other config flow through
-     *     the same validation paths as `POST /v1/harnesses`.
+     *     the same validation paths as `POST /v1/platform/harnesses`.
      *
      *     Returns 201 on creation. If the example name collides with an existing
      *     harness in the org, a random alphanumeric suffix is appended (parity with
@@ -4337,7 +4337,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/harnesses/preview": {
+  "/v1/platform/harnesses/preview": {
     parameters: {
       query?: never;
       header?: never;
@@ -4354,7 +4354,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/harnesses/{harness_id}": {
+  "/v1/platform/harnesses/{harness_id}": {
     parameters: {
       query?: never;
       header?: never;
@@ -4378,7 +4378,7 @@ export interface paths {
     patch: operations["update_harness"];
     trace?: never;
   };
-  "/v1/harnesses/{harness_id}/copy": {
+  "/v1/platform/harnesses/{harness_id}/copy": {
     parameters: {
       query?: never;
       header?: never;
@@ -4399,7 +4399,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/harnesses/{harness_id}/stats": {
+  "/v1/platform/harnesses/{harness_id}/stats": {
     parameters: {
       query?: never;
       header?: never;
@@ -4416,7 +4416,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/harnesses/{id}/delete": {
+  "/v1/platform/harnesses/{id}/delete": {
     parameters: {
       query?: never;
       header?: never;
@@ -4433,7 +4433,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/health-issues": {
+  "/v1/platform/health-issues": {
     parameters: {
       query?: never;
       header?: never;
@@ -4453,7 +4453,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/health-issues/{issue_id}": {
+  "/v1/platform/health-issues/{issue_id}": {
     parameters: {
       query?: never;
       header?: never;
@@ -4473,7 +4473,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/health-issues/{issue_id}/actions": {
+  "/v1/platform/health-issues/{issue_id}/actions": {
     parameters: {
       query?: never;
       header?: never;
@@ -4497,7 +4497,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/health-issues/{issue_id}/actions/{action_id}/undo": {
+  "/v1/platform/health-issues/{issue_id}/actions/{action_id}/undo": {
     parameters: {
       query?: never;
       header?: never;
@@ -4517,7 +4517,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/health-issues/{issue_id}/check": {
+  "/v1/platform/health-issues/{issue_id}/check": {
     parameters: {
       query?: never;
       header?: never;
@@ -4537,7 +4537,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/health-issues/{issue_id}/dismiss": {
+  "/v1/platform/health-issues/{issue_id}/dismiss": {
     parameters: {
       query?: never;
       header?: never;
@@ -4557,7 +4557,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/health-issues/{issue_id}/fix": {
+  "/v1/platform/health-issues/{issue_id}/fix": {
     parameters: {
       query?: never;
       header?: never;
@@ -4577,7 +4577,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/health-issues/{issue_id}/snooze": {
+  "/v1/platform/health-issues/{issue_id}/snooze": {
     parameters: {
       query?: never;
       header?: never;
@@ -4597,7 +4597,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/history": {
+  "/v1/platform/history": {
     parameters: {
       query?: never;
       header?: never;
@@ -4614,7 +4614,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/history/{entity_ref}": {
+  "/v1/platform/history/{entity_ref}": {
     parameters: {
       query?: never;
       header?: never;
@@ -4631,7 +4631,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/history/{entity_ref}/diff": {
+  "/v1/platform/history/{entity_ref}/diff": {
     parameters: {
       query?: never;
       header?: never;
@@ -4648,7 +4648,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/history/{entity_ref}/restore": {
+  "/v1/platform/history/{entity_ref}/restore": {
     parameters: {
       query?: never;
       header?: never;
@@ -4665,7 +4665,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/history/{entity_ref}/revisions/{revision}": {
+  "/v1/platform/history/{entity_ref}/revisions/{revision}": {
     parameters: {
       query?: never;
       header?: never;
@@ -4682,7 +4682,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/images": {
+  "/v1/platform/images": {
     parameters: {
       query?: never;
       header?: never;
@@ -4700,7 +4700,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/images/{image_id}": {
+  "/v1/platform/images/{image_id}": {
     parameters: {
       query?: never;
       header?: never;
@@ -4718,7 +4718,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/images/{image_id}/thumbnail": {
+  "/v1/platform/images/{image_id}/thumbnail": {
     parameters: {
       query?: never;
       header?: never;
@@ -4735,7 +4735,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/knowledge": {
+  "/v1/platform/knowledge": {
     parameters: {
       query?: never;
       header?: never;
@@ -4753,7 +4753,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/knowledge-indexers": {
+  "/v1/platform/knowledge-indexers": {
     parameters: {
       query?: never;
       header?: never;
@@ -4771,7 +4771,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/knowledge/search": {
+  "/v1/platform/knowledge/search": {
     parameters: {
       query?: never;
       header?: never;
@@ -4788,7 +4788,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/knowledge/{collection_id}": {
+  "/v1/platform/knowledge/{collection_id}": {
     parameters: {
       query?: never;
       header?: never;
@@ -4807,7 +4807,7 @@ export interface paths {
     patch: operations["update_knowledge"];
     trace?: never;
   };
-  "/v1/knowledge/{collection_id}/files": {
+  "/v1/platform/knowledge/{collection_id}/files": {
     parameters: {
       query?: never;
       header?: never;
@@ -4827,7 +4827,7 @@ export interface paths {
     patch: operations["update_knowledge_file_metadata"];
     trace?: never;
   };
-  "/v1/knowledge/{collection_id}/files/content": {
+  "/v1/platform/knowledge/{collection_id}/files/content": {
     parameters: {
       query?: never;
       header?: never;
@@ -4844,7 +4844,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/knowledge/{collection_id}/okf": {
+  "/v1/platform/knowledge/{collection_id}/okf": {
     parameters: {
       query?: never;
       header?: never;
@@ -4861,7 +4861,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/knowledge/{collection_id}/sources": {
+  "/v1/platform/knowledge/{collection_id}/sources": {
     parameters: {
       query?: never;
       header?: never;
@@ -4878,7 +4878,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/knowledge/{collection_id}/sync": {
+  "/v1/platform/knowledge/{collection_id}/sync": {
     parameters: {
       query?: never;
       header?: never;
@@ -4895,7 +4895,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/knowledge/{collection_id}/upload": {
+  "/v1/platform/knowledge/{collection_id}/upload": {
     parameters: {
       query?: never;
       header?: never;
@@ -4912,7 +4912,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/mcp-servers": {
+  "/v1/platform/mcp-servers": {
     parameters: {
       query?: never;
       header?: never;
@@ -4930,7 +4930,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/mcp-servers/catalog": {
+  "/v1/platform/mcp-servers/catalog": {
     parameters: {
       query?: never;
       header?: never;
@@ -4950,7 +4950,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/mcp-servers/config": {
+  "/v1/platform/mcp-servers/config": {
     parameters: {
       query?: never;
       header?: never;
@@ -4970,7 +4970,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/mcp-servers/{id}/check-connection": {
+  "/v1/platform/mcp-servers/{id}/check-connection": {
     parameters: {
       query?: never;
       header?: never;
@@ -4990,7 +4990,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/mcp-servers/{id}/delete": {
+  "/v1/platform/mcp-servers/{id}/delete": {
     parameters: {
       query?: never;
       header?: never;
@@ -5007,7 +5007,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/mcp-servers/{id}/tools": {
+  "/v1/platform/mcp-servers/{id}/tools": {
     parameters: {
       query?: never;
       header?: never;
@@ -5027,7 +5027,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/mcp-servers/{id}/tools/suggest-labels": {
+  "/v1/platform/mcp-servers/{id}/tools/suggest-labels": {
     parameters: {
       query?: never;
       header?: never;
@@ -5047,7 +5047,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/mcp-servers/{id}/tools/{tool_name}/label": {
+  "/v1/platform/mcp-servers/{id}/tools/{tool_name}/label": {
     parameters: {
       query?: never;
       header?: never;
@@ -5067,7 +5067,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/mcp-servers/{server_id}": {
+  "/v1/platform/mcp-servers/{server_id}": {
     parameters: {
       query?: never;
       header?: never;
@@ -5086,7 +5086,7 @@ export interface paths {
     patch: operations["update_mcp_server"];
     trace?: never;
   };
-  "/v1/mcp-servers/{server_id}/usage": {
+  "/v1/platform/mcp-servers/{server_id}/usage": {
     parameters: {
       query?: never;
       header?: never;
@@ -5106,7 +5106,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/me/invitations": {
+  "/v1/platform/me/invitations": {
     parameters: {
       query?: never;
       header?: never;
@@ -5126,7 +5126,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/me/invitations/{public_id}/accept": {
+  "/v1/platform/me/invitations/{public_id}/accept": {
     parameters: {
       query?: never;
       header?: never;
@@ -5146,7 +5146,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/memories": {
+  "/v1/platform/memories": {
     parameters: {
       query?: never;
       header?: never;
@@ -5170,7 +5170,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/memories/{memory_id}": {
+  "/v1/platform/memories/{memory_id}": {
     parameters: {
       query?: never;
       header?: never;
@@ -5198,7 +5198,7 @@ export interface paths {
     patch: operations["update_memory"];
     trace?: never;
   };
-  "/v1/memories/{memory_id}/fs": {
+  "/v1/platform/memories/{memory_id}/fs": {
     parameters: {
       query?: never;
       header?: never;
@@ -5218,7 +5218,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/memories/{memory_id}/fs/_/download/{path}": {
+  "/v1/platform/memories/{memory_id}/fs/_/download/{path}": {
     parameters: {
       query?: never;
       header?: never;
@@ -5238,7 +5238,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/memories/{memory_id}/fs/_/grep": {
+  "/v1/platform/memories/{memory_id}/fs/_/grep": {
     parameters: {
       query?: never;
       header?: never;
@@ -5258,7 +5258,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/memories/{memory_id}/fs/_/stat": {
+  "/v1/platform/memories/{memory_id}/fs/_/stat": {
     parameters: {
       query?: never;
       header?: never;
@@ -5278,7 +5278,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/memories/{memory_id}/fs/{path}": {
+  "/v1/platform/memories/{memory_id}/fs/{path}": {
     parameters: {
       query?: never;
       header?: never;
@@ -5310,7 +5310,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/memories/{memory_id}/sync": {
+  "/v1/platform/memories/{memory_id}/sync": {
     parameters: {
       query?: never;
       header?: never;
@@ -5330,7 +5330,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/model-presets": {
+  "/v1/platform/model-presets": {
     parameters: {
       query?: never;
       header?: never;
@@ -5354,7 +5354,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/model-presets/{id}": {
+  "/v1/platform/model-presets/{id}": {
     parameters: {
       query?: never;
       header?: never;
@@ -5382,7 +5382,7 @@ export interface paths {
     patch: operations["update_model_preset"];
     trace?: never;
   };
-  "/v1/model-presets/{id}/apply": {
+  "/v1/platform/model-presets/{id}/apply": {
     parameters: {
       query?: never;
       header?: never;
@@ -5402,7 +5402,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/model-profiles": {
+  "/v1/platform/model-profiles": {
     parameters: {
       query?: never;
       header?: never;
@@ -5422,7 +5422,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/model-profiles/{key}": {
+  "/v1/platform/model-profiles/{key}": {
     parameters: {
       query?: never;
       header?: never;
@@ -5442,7 +5442,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/models": {
+  "/v1/platform/models": {
     parameters: {
       query?: never;
       header?: never;
@@ -5459,7 +5459,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/models/config": {
+  "/v1/platform/models/config": {
     parameters: {
       query?: never;
       header?: never;
@@ -5476,7 +5476,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/models/decision-default": {
+  "/v1/platform/models/decision-default": {
     parameters: {
       query?: never;
       header?: never;
@@ -5500,7 +5500,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/models/default": {
+  "/v1/platform/models/default": {
     parameters: {
       query?: never;
       header?: never;
@@ -5520,7 +5520,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/models/images-default": {
+  "/v1/platform/models/images-default": {
     parameters: {
       query?: never;
       header?: never;
@@ -5544,7 +5544,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/models/selection": {
+  "/v1/platform/models/selection": {
     parameters: {
       query?: never;
       header?: never;
@@ -5564,7 +5564,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/models/selection/undo": {
+  "/v1/platform/models/selection/undo": {
     parameters: {
       query?: never;
       header?: never;
@@ -5584,7 +5584,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/models/{id}": {
+  "/v1/platform/models/{id}": {
     parameters: {
       query?: never;
       header?: never;
@@ -5603,7 +5603,7 @@ export interface paths {
     patch: operations["update_model"];
     trace?: never;
   };
-  "/v1/monitoring": {
+  "/v1/platform/monitoring": {
     parameters: {
       query?: never;
       header?: never;
@@ -5620,7 +5620,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/monitoring/actors": {
+  "/v1/platform/monitoring/actors": {
     parameters: {
       query?: never;
       header?: never;
@@ -5637,7 +5637,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/monitoring/actors/{session_id}": {
+  "/v1/platform/monitoring/actors/{session_id}": {
     parameters: {
       query?: never;
       header?: never;
@@ -5654,7 +5654,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/monitoring/config": {
+  "/v1/platform/monitoring/config": {
     parameters: {
       query?: never;
       header?: never;
@@ -5671,7 +5671,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/monitoring/timeline": {
+  "/v1/platform/monitoring/timeline": {
     parameters: {
       query?: never;
       header?: never;
@@ -5688,7 +5688,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/monitoring/timeline/window": {
+  "/v1/platform/monitoring/timeline/window": {
     parameters: {
       query?: never;
       header?: never;
@@ -5705,7 +5705,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/notifications": {
+  "/v1/platform/notifications": {
     parameters: {
       query?: never;
       header?: never;
@@ -5722,7 +5722,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/notifications/{notification_id}/view": {
+  "/v1/platform/notifications/{notification_id}/view": {
     parameters: {
       query?: never;
       header?: never;
@@ -5739,7 +5739,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/observers": {
+  "/v1/platform/observers": {
     parameters: {
       query?: never;
       header?: never;
@@ -5757,7 +5757,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/observers/summary": {
+  "/v1/platform/observers/summary": {
     parameters: {
       query?: never;
       header?: never;
@@ -5774,7 +5774,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/observers/{observer_id}": {
+  "/v1/platform/observers/{observer_id}": {
     parameters: {
       query?: never;
       header?: never;
@@ -5793,7 +5793,7 @@ export interface paths {
     patch: operations["update_observer"];
     trace?: never;
   };
-  "/v1/observers/{observer_id}/backfill": {
+  "/v1/platform/observers/{observer_id}/backfill": {
     parameters: {
       query?: never;
       header?: never;
@@ -5810,7 +5810,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/observers/{observer_id}/scores": {
+  "/v1/platform/observers/{observer_id}/scores": {
     parameters: {
       query?: never;
       header?: never;
@@ -5827,7 +5827,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/observers/{observer_id}/scores/{score_id}/review": {
+  "/v1/platform/observers/{observer_id}/scores/{score_id}/review": {
     parameters: {
       query?: never;
       header?: never;
@@ -5844,7 +5844,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/organization-accounts/{id}": {
+  "/v1/platform/organization-accounts/{id}": {
     parameters: {
       query?: never;
       header?: never;
@@ -5868,7 +5868,7 @@ export interface paths {
     patch: operations["update_organization_account_name"];
     trace?: never;
   };
-  "/v1/orgs": {
+  "/v1/platform/orgs": {
     parameters: {
       query?: never;
       header?: never;
@@ -5886,7 +5886,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/orgs/{org}": {
+  "/v1/platform/orgs/{org}": {
     parameters: {
       query?: never;
       header?: never;
@@ -5904,7 +5904,7 @@ export interface paths {
     patch: operations["update_organization"];
     trace?: never;
   };
-  "/v1/orgs/{org}/audit-logs": {
+  "/v1/platform/orgs/{org}/audit-logs": {
     parameters: {
       query?: never;
       header?: never;
@@ -5924,7 +5924,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/orgs/{org}/decision-settings": {
+  "/v1/platform/orgs/{org}/decision-settings": {
     parameters: {
       query?: never;
       header?: never;
@@ -5944,7 +5944,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/orgs/{org}/egress-allowlist": {
+  "/v1/platform/orgs/{org}/egress-allowlist": {
     parameters: {
       query?: never;
       header?: never;
@@ -5968,7 +5968,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/orgs/{org}/egress-allowlist/grant": {
+  "/v1/platform/orgs/{org}/egress-allowlist/grant": {
     parameters: {
       query?: never;
       header?: never;
@@ -5988,7 +5988,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/orgs/{org}/feature-flags": {
+  "/v1/platform/orgs/{org}/feature-flags": {
     parameters: {
       query?: never;
       header?: never;
@@ -6012,7 +6012,7 @@ export interface paths {
     patch: operations["update_org_feature_flags"];
     trace?: never;
   };
-  "/v1/orgs/{org}/feature-flags/platform": {
+  "/v1/platform/orgs/{org}/feature-flags/platform": {
     parameters: {
       query?: never;
       header?: never;
@@ -6021,7 +6021,7 @@ export interface paths {
     };
     /**
      * List every feature flag for the operator console
-     * @description GET /v1/orgs/{org}/feature-flags/platform — every flag, including the
+     * @description GET /v1/platform/orgs/{org}/feature-flags/platform — every flag, including the
      *     platform-managed ones, for the operator console.
      *
      *     Platform users only. The tenant-facing settings route deliberately omits
@@ -6043,7 +6043,7 @@ export interface paths {
     patch: operations["update_platform_feature_flags"];
     trace?: never;
   };
-  "/v1/orgs/{org}/feature-flags/settings": {
+  "/v1/platform/orgs/{org}/feature-flags/settings": {
     parameters: {
       query?: never;
       header?: never;
@@ -6063,7 +6063,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/orgs/{org}/github/everruns-app": {
+  "/v1/platform/orgs/{org}/github/everruns-app": {
     parameters: {
       query?: never;
       header?: never;
@@ -6083,7 +6083,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/orgs/{org}/github/everruns-app/authorize": {
+  "/v1/platform/orgs/{org}/github/everruns-app/authorize": {
     parameters: {
       query?: never;
       header?: never;
@@ -6103,7 +6103,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/orgs/{org}/github/everruns-app/{connection_id}": {
+  "/v1/platform/orgs/{org}/github/everruns-app/{connection_id}": {
     parameters: {
       query?: never;
       header?: never;
@@ -6123,7 +6123,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/orgs/{org}/onboarding/complete": {
+  "/v1/platform/orgs/{org}/onboarding/complete": {
     parameters: {
       query?: never;
       header?: never;
@@ -6147,7 +6147,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/orgs/{org}/organization-connections": {
+  "/v1/platform/orgs/{org}/organization-connections": {
     parameters: {
       query?: never;
       header?: never;
@@ -6167,7 +6167,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/orgs/{org}/organization-connections/providers/{provider}": {
+  "/v1/platform/orgs/{org}/organization-connections/providers/{provider}": {
     parameters: {
       query?: never;
       header?: never;
@@ -6187,7 +6187,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/orgs/{org}/organization-connections/{connection_id}": {
+  "/v1/platform/orgs/{org}/organization-connections/{connection_id}": {
     parameters: {
       query?: never;
       header?: never;
@@ -6215,7 +6215,7 @@ export interface paths {
     patch: operations["rename_connection"];
     trace?: never;
   };
-  "/v1/orgs/{org}/organization-connections/{connection_id}/verify": {
+  "/v1/platform/orgs/{org}/organization-connections/{connection_id}/verify": {
     parameters: {
       query?: never;
       header?: never;
@@ -6235,7 +6235,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/orgs/{org}/quality-monitoring": {
+  "/v1/platform/orgs/{org}/quality-monitoring": {
     parameters: {
       query?: never;
       header?: never;
@@ -6255,7 +6255,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/orgs/{org}/quality-monitoring/scores": {
+  "/v1/platform/orgs/{org}/quality-monitoring/scores": {
     parameters: {
       query?: never;
       header?: never;
@@ -6275,7 +6275,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/orgs/{org}/quality-monitoring/scores/{score}/review": {
+  "/v1/platform/orgs/{org}/quality-monitoring/scores/{score}/review": {
     parameters: {
       query?: never;
       header?: never;
@@ -6295,7 +6295,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/plugin_marketplaces": {
+  "/v1/platform/plugin_marketplaces": {
     parameters: {
       query?: never;
       header?: never;
@@ -6313,7 +6313,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/plugin_marketplaces/{id}": {
+  "/v1/platform/plugin_marketplaces/{id}": {
     parameters: {
       query?: never;
       header?: never;
@@ -6332,7 +6332,7 @@ export interface paths {
     patch: operations["update_plugin_marketplace"];
     trace?: never;
   };
-  "/v1/plugin_marketplaces/{id}/plugins": {
+  "/v1/platform/plugin_marketplaces/{id}/plugins": {
     parameters: {
       query?: never;
       header?: never;
@@ -6349,7 +6349,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/plugin_marketplaces/{id}/sync": {
+  "/v1/platform/plugin_marketplaces/{id}/sync": {
     parameters: {
       query?: never;
       header?: never;
@@ -6366,7 +6366,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/plugins": {
+  "/v1/platform/plugins": {
     parameters: {
       query?: never;
       header?: never;
@@ -6384,7 +6384,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/plugins/{id}": {
+  "/v1/platform/plugins/{id}": {
     parameters: {
       query?: never;
       header?: never;
@@ -6403,7 +6403,7 @@ export interface paths {
     patch: operations["patch_installed_plugin"];
     trace?: never;
   };
-  "/v1/plugins/{id}/update": {
+  "/v1/platform/plugins/{id}/update": {
     parameters: {
       query?: never;
       header?: never;
@@ -6420,7 +6420,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/providers": {
+  "/v1/platform/providers": {
     parameters: {
       query?: never;
       header?: never;
@@ -6438,7 +6438,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/providers/check-credentials": {
+  "/v1/platform/providers/check-credentials": {
     parameters: {
       query?: never;
       header?: never;
@@ -6461,7 +6461,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/providers/config": {
+  "/v1/platform/providers/config": {
     parameters: {
       query?: never;
       header?: never;
@@ -6478,7 +6478,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/providers/{id}": {
+  "/v1/platform/providers/{id}": {
     parameters: {
       query?: never;
       header?: never;
@@ -6497,7 +6497,7 @@ export interface paths {
     patch: operations["update_provider"];
     trace?: never;
   };
-  "/v1/providers/{id}/models/review": {
+  "/v1/platform/providers/{id}/models/review": {
     parameters: {
       query?: never;
       header?: never;
@@ -6518,7 +6518,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/providers/{id}/sync-models": {
+  "/v1/platform/providers/{id}/sync-models": {
     parameters: {
       query?: never;
       header?: never;
@@ -6539,7 +6539,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/providers/{provider_id}/chatgpt": {
+  "/v1/platform/providers/{provider_id}/chatgpt": {
     parameters: {
       query?: never;
       header?: never;
@@ -6565,7 +6565,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/providers/{provider_id}/chatgpt/import": {
+  "/v1/platform/providers/{provider_id}/chatgpt/import": {
     parameters: {
       query?: never;
       header?: never;
@@ -6586,7 +6586,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/providers/{provider_id}/chatgpt/login": {
+  "/v1/platform/providers/{provider_id}/chatgpt/login": {
     parameters: {
       query?: never;
       header?: never;
@@ -6607,7 +6607,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/providers/{provider_id}/models": {
+  "/v1/platform/providers/{provider_id}/models": {
     parameters: {
       query?: never;
       header?: never;
@@ -6625,7 +6625,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/resolve-org": {
+  "/v1/platform/resolve-org": {
     parameters: {
       query?: never;
       header?: never;
@@ -6649,7 +6649,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/resources/{id}/grants": {
+  "/v1/platform/resources/{id}/grants": {
     parameters: {
       query?: never;
       header?: never;
@@ -6667,7 +6667,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/resources/{id}/grants/{grant_id}": {
+  "/v1/platform/resources/{id}/grants/{grant_id}": {
     parameters: {
       query?: never;
       header?: never;
@@ -6684,7 +6684,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/rooms": {
+  "/v1/platform/rooms": {
     parameters: {
       query?: never;
       header?: never;
@@ -6705,7 +6705,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/rooms/events": {
+  "/v1/platform/rooms/events": {
     parameters: {
       query?: never;
       header?: never;
@@ -6725,7 +6725,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/rooms/{room_id}": {
+  "/v1/platform/rooms/{room_id}": {
     parameters: {
       query?: never;
       header?: never;
@@ -6746,7 +6746,7 @@ export interface paths {
     patch: operations["update_room"];
     trace?: never;
   };
-  "/v1/rooms/{room_id}/archive": {
+  "/v1/platform/rooms/{room_id}/archive": {
     parameters: {
       query?: never;
       header?: never;
@@ -6766,7 +6766,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/rooms/{room_id}/events": {
+  "/v1/platform/rooms/{room_id}/events": {
     parameters: {
       query?: never;
       header?: never;
@@ -6786,7 +6786,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/rooms/{room_id}/files": {
+  "/v1/platform/rooms/{room_id}/files": {
     parameters: {
       query?: never;
       header?: never;
@@ -6814,7 +6814,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/rooms/{room_id}/files/content": {
+  "/v1/platform/rooms/{room_id}/files/content": {
     parameters: {
       query?: never;
       header?: never;
@@ -6834,7 +6834,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/rooms/{room_id}/files/edit": {
+  "/v1/platform/rooms/{room_id}/files/edit": {
     parameters: {
       query?: never;
       header?: never;
@@ -6854,7 +6854,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/rooms/{room_id}/files/history": {
+  "/v1/platform/rooms/{room_id}/files/history": {
     parameters: {
       query?: never;
       header?: never;
@@ -6874,7 +6874,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/rooms/{room_id}/files/move": {
+  "/v1/platform/rooms/{room_id}/files/move": {
     parameters: {
       query?: never;
       header?: never;
@@ -6894,7 +6894,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/rooms/{room_id}/files/restore": {
+  "/v1/platform/rooms/{room_id}/files/restore": {
     parameters: {
       query?: never;
       header?: never;
@@ -6914,7 +6914,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/rooms/{room_id}/members": {
+  "/v1/platform/rooms/{room_id}/members": {
     parameters: {
       query?: never;
       header?: never;
@@ -6935,7 +6935,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/rooms/{room_id}/members/{member_id}": {
+  "/v1/platform/rooms/{room_id}/members/{member_id}": {
     parameters: {
       query?: never;
       header?: never;
@@ -6959,7 +6959,7 @@ export interface paths {
     patch: operations["update_room_member"];
     trace?: never;
   };
-  "/v1/rooms/{room_id}/messages": {
+  "/v1/platform/rooms/{room_id}/messages": {
     parameters: {
       query?: never;
       header?: never;
@@ -6983,7 +6983,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/rooms/{room_id}/messages/{message_id}": {
+  "/v1/platform/rooms/{room_id}/messages/{message_id}": {
     parameters: {
       query?: never;
       header?: never;
@@ -7008,7 +7008,7 @@ export interface paths {
     patch: operations["edit_room_message"];
     trace?: never;
   };
-  "/v1/rooms/{room_id}/messages/{message_id}/pin": {
+  "/v1/platform/rooms/{room_id}/messages/{message_id}/pin": {
     parameters: {
       query?: never;
       header?: never;
@@ -7028,7 +7028,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/rooms/{room_id}/messages/{message_id}/reactions": {
+  "/v1/platform/rooms/{room_id}/messages/{message_id}/reactions": {
     parameters: {
       query?: never;
       header?: never;
@@ -7048,7 +7048,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/rooms/{room_id}/messages/{message_id}/readers": {
+  "/v1/platform/rooms/{room_id}/messages/{message_id}/readers": {
     parameters: {
       query?: never;
       header?: never;
@@ -7065,7 +7065,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/rooms/{room_id}/messages/{message_id}/replies": {
+  "/v1/platform/rooms/{room_id}/messages/{message_id}/replies": {
     parameters: {
       query?: never;
       header?: never;
@@ -7082,7 +7082,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/rooms/{room_id}/pins": {
+  "/v1/platform/rooms/{room_id}/pins": {
     parameters: {
       query?: never;
       header?: never;
@@ -7099,7 +7099,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/rooms/{room_id}/read": {
+  "/v1/platform/rooms/{room_id}/read": {
     parameters: {
       query?: never;
       header?: never;
@@ -7119,7 +7119,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/rooms/{room_id}/search": {
+  "/v1/platform/rooms/{room_id}/search": {
     parameters: {
       query?: never;
       header?: never;
@@ -7136,7 +7136,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/rooms/{room_id}/unread": {
+  "/v1/platform/rooms/{room_id}/unread": {
     parameters: {
       query?: never;
       header?: never;
@@ -7156,7 +7156,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sandbox-targets": {
+  "/v1/platform/sandbox-targets": {
     parameters: {
       query?: never;
       header?: never;
@@ -7176,7 +7176,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sandbox-template-builds/{id}": {
+  "/v1/platform/sandbox-template-builds/{id}": {
     parameters: {
       query?: never;
       header?: never;
@@ -7196,7 +7196,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sandbox-template-builds/{id}/apply": {
+  "/v1/platform/sandbox-template-builds/{id}/apply": {
     parameters: {
       query?: never;
       header?: never;
@@ -7216,7 +7216,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sandbox-template-builds/{id}/cancel": {
+  "/v1/platform/sandbox-template-builds/{id}/cancel": {
     parameters: {
       query?: never;
       header?: never;
@@ -7236,7 +7236,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sandbox-template-builds/{id}/discard": {
+  "/v1/platform/sandbox-template-builds/{id}/discard": {
     parameters: {
       query?: never;
       header?: never;
@@ -7256,7 +7256,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sandbox-template-metadata/{id}": {
+  "/v1/platform/sandbox-template-metadata/{id}": {
     parameters: {
       query?: never;
       header?: never;
@@ -7280,7 +7280,7 @@ export interface paths {
     patch: operations["update_sandbox_template_metadata"];
     trace?: never;
   };
-  "/v1/sandbox-templates": {
+  "/v1/platform/sandbox-templates": {
     parameters: {
       query?: never;
       header?: never;
@@ -7304,7 +7304,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sandbox-templates/{id}/builds": {
+  "/v1/platform/sandbox-templates/{id}/builds": {
     parameters: {
       query?: never;
       header?: never;
@@ -7328,7 +7328,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sandbox-templates/{sandbox_template_id}": {
+  "/v1/platform/sandbox-templates/{sandbox_template_id}": {
     parameters: {
       query?: never;
       header?: never;
@@ -7356,7 +7356,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sandboxes": {
+  "/v1/platform/sandboxes": {
     parameters: {
       query?: never;
       header?: never;
@@ -7376,7 +7376,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sandboxes/stats": {
+  "/v1/platform/sandboxes/stats": {
     parameters: {
       query?: never;
       header?: never;
@@ -7396,7 +7396,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sandboxes/timeline": {
+  "/v1/platform/sandboxes/timeline": {
     parameters: {
       query?: never;
       header?: never;
@@ -7416,7 +7416,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sandboxes/{id}": {
+  "/v1/platform/sandboxes/{id}": {
     parameters: {
       query?: never;
       header?: never;
@@ -7436,7 +7436,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sandboxes/{id}/diagnosis": {
+  "/v1/platform/sandboxes/{id}/diagnosis": {
     parameters: {
       query?: never;
       header?: never;
@@ -7456,7 +7456,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sandboxes/{id}/events": {
+  "/v1/platform/sandboxes/{id}/events": {
     parameters: {
       query?: never;
       header?: never;
@@ -7476,7 +7476,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sandboxes/{id}/provider": {
+  "/v1/platform/sandboxes/{id}/provider": {
     parameters: {
       query?: never;
       header?: never;
@@ -7496,7 +7496,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/search-providers": {
+  "/v1/platform/search-providers": {
     parameters: {
       query?: never;
       header?: never;
@@ -7516,7 +7516,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/search-providers/preview": {
+  "/v1/platform/search-providers/preview": {
     parameters: {
       query?: never;
       header?: never;
@@ -7536,7 +7536,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sessions": {
+  "/v1/platform/sessions": {
     parameters: {
       query?: never;
       header?: never;
@@ -7554,7 +7554,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sessions/facets": {
+  "/v1/platform/sessions/facets": {
     parameters: {
       query?: never;
       header?: never;
@@ -7571,7 +7571,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sessions/platform-chat": {
+  "/v1/platform/sessions/platform-chat": {
     parameters: {
       query?: never;
       header?: never;
@@ -7591,7 +7591,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sessions/stats": {
+  "/v1/platform/sessions/stats": {
     parameters: {
       query?: never;
       header?: never;
@@ -7608,7 +7608,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sessions/{session_id}": {
+  "/v1/platform/sessions/{session_id}": {
     parameters: {
       query?: never;
       header?: never;
@@ -7627,7 +7627,7 @@ export interface paths {
     patch: operations["update_session"];
     trace?: never;
   };
-  "/v1/sessions/{session_id}/agent-view": {
+  "/v1/platform/sessions/{session_id}/agent-view": {
     parameters: {
       query?: never;
       header?: never;
@@ -7648,7 +7648,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sessions/{session_id}/approval-mode": {
+  "/v1/platform/sessions/{session_id}/approval-mode": {
     parameters: {
       query?: never;
       header?: never;
@@ -7666,7 +7666,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sessions/{session_id}/archive": {
+  "/v1/platform/sessions/{session_id}/archive": {
     parameters: {
       query?: never;
       header?: never;
@@ -7684,7 +7684,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sessions/{session_id}/budget-check": {
+  "/v1/platform/sessions/{session_id}/budget-check": {
     parameters: {
       query?: never;
       header?: never;
@@ -7701,7 +7701,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sessions/{session_id}/budgets": {
+  "/v1/platform/sessions/{session_id}/budgets": {
     parameters: {
       query?: never;
       header?: never;
@@ -7718,7 +7718,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sessions/{session_id}/cancel": {
+  "/v1/platform/sessions/{session_id}/cancel": {
     parameters: {
       query?: never;
       header?: never;
@@ -7743,7 +7743,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sessions/{session_id}/context-report": {
+  "/v1/platform/sessions/{session_id}/context-report": {
     parameters: {
       query?: never;
       header?: never;
@@ -7760,7 +7760,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sessions/{session_id}/cost": {
+  "/v1/platform/sessions/{session_id}/cost": {
     parameters: {
       query?: never;
       header?: never;
@@ -7780,7 +7780,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sessions/{session_id}/databases": {
+  "/v1/platform/sessions/{session_id}/databases": {
     parameters: {
       query?: never;
       header?: never;
@@ -7798,7 +7798,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sessions/{session_id}/databases/{name}": {
+  "/v1/platform/sessions/{session_id}/databases/{name}": {
     parameters: {
       query?: never;
       header?: never;
@@ -7816,7 +7816,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sessions/{session_id}/databases/{name}/schema": {
+  "/v1/platform/sessions/{session_id}/databases/{name}/schema": {
     parameters: {
       query?: never;
       header?: never;
@@ -7833,7 +7833,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sessions/{session_id}/events": {
+  "/v1/platform/sessions/{session_id}/events": {
     parameters: {
       query?: never;
       header?: never;
@@ -7867,7 +7867,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sessions/{session_id}/events/summary": {
+  "/v1/platform/sessions/{session_id}/events/summary": {
     parameters: {
       query?: never;
       header?: never;
@@ -7887,7 +7887,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sessions/{session_id}/export": {
+  "/v1/platform/sessions/{session_id}/export": {
     parameters: {
       query?: never;
       header?: never;
@@ -7919,7 +7919,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sessions/{session_id}/feedback": {
+  "/v1/platform/sessions/{session_id}/feedback": {
     parameters: {
       query?: never;
       header?: never;
@@ -7939,7 +7939,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sessions/{session_id}/fork": {
+  "/v1/platform/sessions/{session_id}/fork": {
     parameters: {
       query?: never;
       header?: never;
@@ -7956,7 +7956,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sessions/{session_id}/git/branches": {
+  "/v1/platform/sessions/{session_id}/git/branches": {
     parameters: {
       query?: never;
       header?: never;
@@ -7973,7 +7973,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sessions/{session_id}/git/branches/{name}": {
+  "/v1/platform/sessions/{session_id}/git/branches/{name}": {
     parameters: {
       query?: never;
       header?: never;
@@ -7990,7 +7990,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sessions/{session_id}/git/commit": {
+  "/v1/platform/sessions/{session_id}/git/commit": {
     parameters: {
       query?: never;
       header?: never;
@@ -8007,7 +8007,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sessions/{session_id}/git/diff": {
+  "/v1/platform/sessions/{session_id}/git/diff": {
     parameters: {
       query?: never;
       header?: never;
@@ -8024,7 +8024,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sessions/{session_id}/git/log": {
+  "/v1/platform/sessions/{session_id}/git/log": {
     parameters: {
       query?: never;
       header?: never;
@@ -8041,7 +8041,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sessions/{session_id}/git/refs": {
+  "/v1/platform/sessions/{session_id}/git/refs": {
     parameters: {
       query?: never;
       header?: never;
@@ -8058,7 +8058,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sessions/{session_id}/mcp-elicitation-consent": {
+  "/v1/platform/sessions/{session_id}/mcp-elicitation-consent": {
     parameters: {
       query?: never;
       header?: never;
@@ -8079,7 +8079,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sessions/{session_id}/mcp-servers": {
+  "/v1/platform/sessions/{session_id}/mcp-servers": {
     parameters: {
       query?: never;
       header?: never;
@@ -8100,7 +8100,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sessions/{session_id}/mcp-servers/{name}": {
+  "/v1/platform/sessions/{session_id}/mcp-servers/{name}": {
     parameters: {
       query?: never;
       header?: never;
@@ -8120,7 +8120,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sessions/{session_id}/messages": {
+  "/v1/platform/sessions/{session_id}/messages": {
     parameters: {
       query?: never;
       header?: never;
@@ -8138,7 +8138,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sessions/{session_id}/messages/{message_id}/feedback": {
+  "/v1/platform/sessions/{session_id}/messages/{message_id}/feedback": {
     parameters: {
       query?: never;
       header?: never;
@@ -8158,7 +8158,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sessions/{session_id}/messages/{message_id}/reactions/{emoji}": {
+  "/v1/platform/sessions/{session_id}/messages/{message_id}/reactions/{emoji}": {
     parameters: {
       query?: never;
       header?: never;
@@ -8182,7 +8182,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sessions/{session_id}/participants": {
+  "/v1/platform/sessions/{session_id}/participants": {
     parameters: {
       query?: never;
       header?: never;
@@ -8200,7 +8200,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sessions/{session_id}/participants/{participant_id}": {
+  "/v1/platform/sessions/{session_id}/participants/{participant_id}": {
     parameters: {
       query?: never;
       header?: never;
@@ -8217,7 +8217,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sessions/{session_id}/pin": {
+  "/v1/platform/sessions/{session_id}/pin": {
     parameters: {
       query?: never;
       header?: never;
@@ -8235,7 +8235,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sessions/{session_id}/question-answers": {
+  "/v1/platform/sessions/{session_id}/question-answers": {
     parameters: {
       query?: never;
       header?: never;
@@ -8256,7 +8256,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sessions/{session_id}/reactions": {
+  "/v1/platform/sessions/{session_id}/reactions": {
     parameters: {
       query?: never;
       header?: never;
@@ -8276,7 +8276,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sessions/{session_id}/repositories": {
+  "/v1/platform/sessions/{session_id}/repositories": {
     parameters: {
       query?: never;
       header?: never;
@@ -8296,7 +8296,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sessions/{session_id}/resolved-model": {
+  "/v1/platform/sessions/{session_id}/resolved-model": {
     parameters: {
       query?: never;
       header?: never;
@@ -8313,7 +8313,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sessions/{session_id}/resources": {
+  "/v1/platform/sessions/{session_id}/resources": {
     parameters: {
       query?: never;
       header?: never;
@@ -8333,7 +8333,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sessions/{session_id}/resume": {
+  "/v1/platform/sessions/{session_id}/resume": {
     parameters: {
       query?: never;
       header?: never;
@@ -8350,7 +8350,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sessions/{session_id}/run": {
+  "/v1/platform/sessions/{session_id}/run": {
     parameters: {
       query?: never;
       header?: never;
@@ -8370,7 +8370,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sessions/{session_id}/run-requests": {
+  "/v1/platform/sessions/{session_id}/run-requests": {
     parameters: {
       query?: never;
       header?: never;
@@ -8391,7 +8391,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sessions/{session_id}/sandbox": {
+  "/v1/platform/sessions/{session_id}/sandbox": {
     parameters: {
       query?: never;
       header?: never;
@@ -8415,7 +8415,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sessions/{session_id}/sse": {
+  "/v1/platform/sessions/{session_id}/sse": {
     parameters: {
       query?: never;
       header?: never;
@@ -8471,7 +8471,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sessions/{session_id}/storage/keys": {
+  "/v1/platform/sessions/{session_id}/storage/keys": {
     parameters: {
       query?: never;
       header?: never;
@@ -8488,7 +8488,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sessions/{session_id}/storage/secrets": {
+  "/v1/platform/sessions/{session_id}/storage/secrets": {
     parameters: {
       query?: never;
       header?: never;
@@ -8510,7 +8510,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sessions/{session_id}/storage/secrets/{name}": {
+  "/v1/platform/sessions/{session_id}/storage/secrets/{name}": {
     parameters: {
       query?: never;
       header?: never;
@@ -8530,7 +8530,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sessions/{session_id}/tasks": {
+  "/v1/platform/sessions/{session_id}/tasks": {
     parameters: {
       query?: never;
       header?: never;
@@ -8547,7 +8547,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sessions/{session_id}/tasks/{task_id}": {
+  "/v1/platform/sessions/{session_id}/tasks/{task_id}": {
     parameters: {
       query?: never;
       header?: never;
@@ -8564,7 +8564,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sessions/{session_id}/tasks/{task_id}/cancel": {
+  "/v1/platform/sessions/{session_id}/tasks/{task_id}/cancel": {
     parameters: {
       query?: never;
       header?: never;
@@ -8581,7 +8581,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sessions/{session_id}/tasks/{task_id}/messages": {
+  "/v1/platform/sessions/{session_id}/tasks/{task_id}/messages": {
     parameters: {
       query?: never;
       header?: never;
@@ -8598,7 +8598,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sessions/{session_id}/tasks/{task_id}/push-configs": {
+  "/v1/platform/sessions/{session_id}/tasks/{task_id}/push-configs": {
     parameters: {
       query?: never;
       header?: never;
@@ -8616,7 +8616,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sessions/{session_id}/tasks/{task_id}/push-configs/{config_id}": {
+  "/v1/platform/sessions/{session_id}/tasks/{task_id}/push-configs/{config_id}": {
     parameters: {
       query?: never;
       header?: never;
@@ -8633,7 +8633,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sessions/{session_id}/tool-approvals": {
+  "/v1/platform/sessions/{session_id}/tool-approvals": {
     parameters: {
       query?: never;
       header?: never;
@@ -8654,7 +8654,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sessions/{session_id}/tool-results": {
+  "/v1/platform/sessions/{session_id}/tool-results": {
     parameters: {
       query?: never;
       header?: never;
@@ -8675,7 +8675,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sessions/{session_id}/trace": {
+  "/v1/platform/sessions/{session_id}/trace": {
     parameters: {
       query?: never;
       header?: never;
@@ -8695,7 +8695,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sessions/{session_id}/trace/turns": {
+  "/v1/platform/sessions/{session_id}/trace/turns": {
     parameters: {
       query?: never;
       header?: never;
@@ -8715,7 +8715,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sessions/{session_id}/trace/turns/{turn}/events": {
+  "/v1/platform/sessions/{session_id}/trace/turns/{turn}/events": {
     parameters: {
       query?: never;
       header?: never;
@@ -8735,7 +8735,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sessions/{session_id}/trace/turns/{turn}/input": {
+  "/v1/platform/sessions/{session_id}/trace/turns/{turn}/input": {
     parameters: {
       query?: never;
       header?: never;
@@ -8752,7 +8752,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sessions/{session_id}/trace/turns/{turn}/steps": {
+  "/v1/platform/sessions/{session_id}/trace/turns/{turn}/steps": {
     parameters: {
       query?: never;
       header?: never;
@@ -8772,7 +8772,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sessions/{session_id}/trace/turns/{turn}/steps/{step}": {
+  "/v1/platform/sessions/{session_id}/trace/turns/{turn}/steps/{step}": {
     parameters: {
       query?: never;
       header?: never;
@@ -8792,7 +8792,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sessions/{session_id}/trace/turns/{turn}/steps/{step}/request": {
+  "/v1/platform/sessions/{session_id}/trace/turns/{turn}/steps/{step}/request": {
     parameters: {
       query?: never;
       header?: never;
@@ -8812,7 +8812,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sessions/{session_id}/voice/calls": {
+  "/v1/platform/sessions/{session_id}/voice/calls": {
     parameters: {
       query?: never;
       header?: never;
@@ -8832,7 +8832,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sessions/{session_id}/voice/{voice_connection_id}/end": {
+  "/v1/platform/sessions/{session_id}/voice/{voice_connection_id}/end": {
     parameters: {
       query?: never;
       header?: never;
@@ -8852,7 +8852,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/sessions/{session_id}/work": {
+  "/v1/platform/sessions/{session_id}/work": {
     parameters: {
       query?: never;
       header?: never;
@@ -8869,7 +8869,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/skills": {
+  "/v1/platform/skills": {
     parameters: {
       query?: never;
       header?: never;
@@ -8890,7 +8890,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/skills/config": {
+  "/v1/platform/skills/config": {
     parameters: {
       query?: never;
       header?: never;
@@ -8907,7 +8907,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/skills/upload": {
+  "/v1/platform/skills/upload": {
     parameters: {
       query?: never;
       header?: never;
@@ -8924,7 +8924,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/skills/usage": {
+  "/v1/platform/skills/usage": {
     parameters: {
       query?: never;
       header?: never;
@@ -8944,7 +8944,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/skills/validate": {
+  "/v1/platform/skills/validate": {
     parameters: {
       query?: never;
       header?: never;
@@ -8961,7 +8961,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/skills/{id}": {
+  "/v1/platform/skills/{id}": {
     parameters: {
       query?: never;
       header?: never;
@@ -8986,7 +8986,7 @@ export interface paths {
     patch: operations["update_skill"];
     trace?: never;
   };
-  "/v1/skills/{id}/content": {
+  "/v1/platform/skills/{id}/content": {
     parameters: {
       query?: never;
       header?: never;
@@ -9003,7 +9003,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/skills/{id}/delete": {
+  "/v1/platform/skills/{id}/delete": {
     parameters: {
       query?: never;
       header?: never;
@@ -9020,7 +9020,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/system/detections": {
+  "/v1/platform/system/detections": {
     parameters: {
       query?: never;
       header?: never;
@@ -9037,7 +9037,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/system/doctor": {
+  "/v1/platform/system/doctor": {
     parameters: {
       query?: never;
       header?: never;
@@ -9054,7 +9054,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/task-webhooks": {
+  "/v1/platform/task-webhooks": {
     parameters: {
       query?: never;
       header?: never;
@@ -9072,7 +9072,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/task-webhooks/{webhook_id}": {
+  "/v1/platform/task-webhooks/{webhook_id}": {
     parameters: {
       query?: never;
       header?: never;
@@ -9091,7 +9091,7 @@ export interface paths {
     patch: operations["update_webhook"];
     trace?: never;
   };
-  "/v1/tasks": {
+  "/v1/platform/tasks": {
     parameters: {
       query?: never;
       header?: never;
@@ -9111,7 +9111,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/tracing/defaults": {
+  "/v1/platform/tracing/defaults": {
     parameters: {
       query?: never;
       header?: never;
@@ -9129,7 +9129,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/tracing/destination-metadata/{id}": {
+  "/v1/platform/tracing/destination-metadata/{id}": {
     parameters: {
       query?: never;
       header?: never;
@@ -9153,7 +9153,7 @@ export interface paths {
     patch: operations["update_tracing_destination_metadata"];
     trace?: never;
   };
-  "/v1/tracing/destinations": {
+  "/v1/platform/tracing/destinations": {
     parameters: {
       query?: never;
       header?: never;
@@ -9171,7 +9171,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/tracing/destinations/{id}": {
+  "/v1/platform/tracing/destinations/{id}": {
     parameters: {
       query?: never;
       header?: never;
@@ -9189,7 +9189,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/tracing/destinations/{id}/test": {
+  "/v1/platform/tracing/destinations/{id}/test": {
     parameters: {
       query?: never;
       header?: never;
@@ -9206,7 +9206,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/tracing/policies/{id}": {
+  "/v1/platform/tracing/policies/{id}": {
     parameters: {
       query?: never;
       header?: never;
@@ -9230,7 +9230,7 @@ export interface paths {
     patch: operations["update_tracing_policy"];
     trace?: never;
   };
-  "/v1/user/connected-clients": {
+  "/v1/platform/user/connected-clients": {
     parameters: {
       query?: never;
       header?: never;
@@ -9250,7 +9250,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/user/connected-clients/{grant_id}": {
+  "/v1/platform/user/connected-clients/{grant_id}": {
     parameters: {
       query?: never;
       header?: never;
@@ -9270,7 +9270,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/user/connection-migrations": {
+  "/v1/platform/user/connection-migrations": {
     parameters: {
       query?: never;
       header?: never;
@@ -9290,7 +9290,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/user/connection-migrations/{connection_id}": {
+  "/v1/platform/user/connection-migrations/{connection_id}": {
     parameters: {
       query?: never;
       header?: never;
@@ -9310,7 +9310,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/user/mcp-connections": {
+  "/v1/platform/user/mcp-connections": {
     parameters: {
       query?: never;
       header?: never;
@@ -9330,7 +9330,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/users": {
+  "/v1/platform/users": {
     parameters: {
       query?: never;
       header?: never;
@@ -9351,7 +9351,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/users/me": {
+  "/v1/platform/users/me": {
     parameters: {
       query?: never;
       header?: never;
@@ -9373,7 +9373,7 @@ export interface paths {
     patch: operations["update_profile"];
     trace?: never;
   };
-  "/v1/users/me/export": {
+  "/v1/platform/users/me/export": {
     parameters: {
       query?: never;
       header?: never;
@@ -9393,7 +9393,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/users/me/switch-org": {
+  "/v1/platform/users/me/switch-org": {
     parameters: {
       query?: never;
       header?: never;
@@ -9415,7 +9415,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/users/{id}/profile": {
+  "/v1/platform/users/{id}/profile": {
     parameters: {
       query?: never;
       header?: never;
@@ -9435,7 +9435,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/virtual-users": {
+  "/v1/platform/virtual-users": {
     parameters: {
       query?: never;
       header?: never;
@@ -9448,6 +9448,501 @@ export interface paths {
     /** Create virtual user */
     post: operations["create_virtual_user"];
     delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/virtual-users/{identity_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get virtual user */
+    get: operations["get_virtual_user"];
+    put?: never;
+    post?: never;
+    /** Delete virtual user */
+    delete: operations["delete_virtual_user"];
+    options?: never;
+    head?: never;
+    /** Update virtual user */
+    patch: operations["update_virtual_user"];
+    trace?: never;
+  };
+  "/v1/platform/virtual-users/{identity_id}/bindings": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List verified external identity bindings */
+    get: operations["list_bindings"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/virtual-users/{identity_id}/bindings/{binding_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /** Revoke an external binding and its runtime self authority */
+    delete: operations["revoke_binding"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/virtual-users/{identity_id}/connections": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List virtual user connections */
+    get: operations["list_virtual_user_connections"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/virtual-users/{identity_id}/connections/{provider}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Create api key connection */
+    post: operations["create_api_key_connection"];
+    /** Delete a virtual user connection */
+    delete: operations["delete_virtual_user_connection"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/virtual-users/{identity_id}/connections/{provider}/authorize": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Start provider setup bound to the authorized virtual user */
+    get: operations["authorize_target_connection"];
+    put?: never;
+    /** Create a target-bound provider setup URL */
+    post: operations["start_target_connection"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/virtual-users/{identity_id}/connections/{provider}/verify": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Verify a virtual user connection */
+    post: operations["verify_virtual_user_connection"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/virtual-users/{identity_id}/delete": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Destroy virtual user */
+    post: operations["destroy_virtual_user"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/virtual-users/{identity_id}/mcp-servers": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List the person's own MCP servers */
+    get: operations["list_user_mcp_servers"];
+    put?: never;
+    /**
+     * Add an MCP server for the person
+     * @description Add an MCP server for the person, from the catalog or by URL.
+     */
+    post: operations["add_user_mcp_server"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/virtual-users/{identity_id}/mcp-servers/{server_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Read one of the person's MCP servers */
+    get: operations["get_user_mcp_server"];
+    put?: never;
+    post?: never;
+    /** Remove one of the person's MCP servers and its sign-in */
+    delete: operations["remove_user_mcp_server"];
+    options?: never;
+    head?: never;
+    /**
+     * Update one of the person's MCP servers
+     * @description Rename, enable, disable, set on-demand loading of, or replace the API key of one of the person's MCP servers.
+     */
+    patch: operations["update_user_mcp_server"];
+    trace?: never;
+  };
+  "/v1/platform/virtual-users/{identity_id}/mcp-servers/{server_id}/tools": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List the tools of one of the person's MCP servers
+     * @description List the tools of one of the person's custom MCP servers, asked live, with their risk labels.
+     */
+    get: operations["list_user_mcp_server_tools"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/virtual-users/{identity_id}/mcp-servers/{server_id}/tools/{tool_name}/label": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /**
+     * Set the person's risk label for an MCP tool
+     * @description Set or clear the person's risk label for one tool of their custom MCP server.
+     */
+    put: operations["set_user_mcp_tool_label"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/virtual-users/{identity_id}/preferences": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List agent-facing preferences */
+    get: operations["list_preferences"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/virtual-users/{identity_id}/preferences/{key}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Read one agent-facing preference */
+    get: operations["get_preference"];
+    /** Set a bounded agent-facing preference */
+    put: operations["set_preference"];
+    post?: never;
+    /** Delete an agent-facing preference */
+    delete: operations["delete_preference"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/virtual-users/{identity_id}/sessions": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List the virtual user's recent sessions
+     * @description List recent sessions associated with the authorized virtual user.
+     */
+    get: operations["list_sessions"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/workspaces": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List workspaces
+     * @description List Workspaces.
+     */
+    get: operations["list_workspaces"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/workspaces/{workspace_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get workspace
+     * @description Get a Workspace by ID.
+     */
+    get: operations["get_workspace"];
+    put?: never;
+    post?: never;
+    /**
+     * Delete workspace
+     * @description Archive a Workspace.
+     */
+    delete: operations["delete_workspace"];
+    options?: never;
+    head?: never;
+    /**
+     * Update workspace
+     * @description Update a Workspace.
+     */
+    patch: operations["update_workspace"];
+    trace?: never;
+  };
+  "/v1/platform/workspaces/{workspace_id}/fs": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Workspace root listing */
+    get: operations["get_root"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/workspaces/{workspace_id}/fs/_/copy": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Copy a file */
+    post: operations["copy_file"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/workspaces/{workspace_id}/fs/_/download/{path}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Download raw file bytes */
+    get: operations["download_path"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/workspaces/{workspace_id}/fs/_/grep": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Search files */
+    post: operations["grep_files"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/workspaces/{workspace_id}/fs/_/move": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Move/rename a file or directory */
+    post: operations["move_file"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/workspaces/{workspace_id}/fs/_/preview/{path}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Sandboxed HTML render
+     * @description Serves an HTML file as a `text/html` document carrying a strict `sandbox`
+     *     CSP (TM-WEB-010) so the file viewer can render it — with JavaScript — inside
+     *     an iframe without exposing everruns cookies, storage, the parent DOM, or
+     *     top-frame navigation. Only `.html`/`.htm` files are eligible; everything else
+     *     returns 415 (use the download endpoint instead).
+     */
+    get: operations["preview_path"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/workspaces/{workspace_id}/fs/_/stat": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** File metadata */
+    post: operations["stat_file"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/workspaces/{workspace_id}/fs/_/upload/{path}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /**
+     * Upload raw file bytes
+     * @description Creates or replaces the file with the request body, streamed to storage,
+     *     so files larger than the JSON API carries (recordings, media) can be
+     *     uploaded. Parent directories are created as needed.
+     */
+    put: operations["upload_path"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/workspaces/{workspace_id}/fs/{path}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Read file or list directory */
+    get: operations["get_path"];
+    /** Update file content */
+    put: operations["update_path"];
+    /** Create file or directory */
+    post: operations["create_path"];
+    /** Delete file or directory */
+    delete: operations["delete_path"];
     options?: never;
     head?: never;
     patch?: never;
@@ -9472,285 +9967,6 @@ export interface paths {
      * @description Update the runtime profile without changing management identity or lifecycle.
      */
     patch: operations["update_me"];
-    trace?: never;
-  };
-  "/v1/virtual-users/{identity_id}": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** Get virtual user */
-    get: operations["get_virtual_user"];
-    put?: never;
-    post?: never;
-    /** Delete virtual user */
-    delete: operations["delete_virtual_user"];
-    options?: never;
-    head?: never;
-    /** Update virtual user */
-    patch: operations["update_virtual_user"];
-    trace?: never;
-  };
-  "/v1/virtual-users/{identity_id}/bindings": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** List verified external identity bindings */
-    get: operations["list_bindings"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/virtual-users/{identity_id}/bindings/{binding_id}": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    post?: never;
-    /** Revoke an external binding and its runtime self authority */
-    delete: operations["revoke_binding"];
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/virtual-users/{identity_id}/connections": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** List virtual user connections */
-    get: operations["list_virtual_user_connections"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/virtual-users/{identity_id}/connections/{provider}": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** Create api key connection */
-    post: operations["create_api_key_connection"];
-    /** Delete a virtual user connection */
-    delete: operations["delete_virtual_user_connection"];
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/virtual-users/{identity_id}/connections/{provider}/authorize": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** Start provider setup bound to the authorized virtual user */
-    get: operations["authorize_target_connection"];
-    put?: never;
-    /** Create a target-bound provider setup URL */
-    post: operations["start_target_connection"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/virtual-users/{identity_id}/connections/{provider}/verify": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** Verify a virtual user connection */
-    post: operations["verify_virtual_user_connection"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/virtual-users/{identity_id}/delete": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** Destroy virtual user */
-    post: operations["destroy_virtual_user"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/virtual-users/{identity_id}/mcp-servers": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** List the person's own MCP servers */
-    get: operations["list_user_mcp_servers"];
-    put?: never;
-    /**
-     * Add an MCP server for the person
-     * @description Add an MCP server for the person, from the catalog or by URL.
-     */
-    post: operations["add_user_mcp_server"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/virtual-users/{identity_id}/mcp-servers/{server_id}": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** Read one of the person's MCP servers */
-    get: operations["get_user_mcp_server"];
-    put?: never;
-    post?: never;
-    /** Remove one of the person's MCP servers and its sign-in */
-    delete: operations["remove_user_mcp_server"];
-    options?: never;
-    head?: never;
-    /**
-     * Update one of the person's MCP servers
-     * @description Rename, enable, disable, set on-demand loading of, or replace the API key of one of the person's MCP servers.
-     */
-    patch: operations["update_user_mcp_server"];
-    trace?: never;
-  };
-  "/v1/virtual-users/{identity_id}/mcp-servers/{server_id}/tools": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * List the tools of one of the person's MCP servers
-     * @description List the tools of one of the person's custom MCP servers, asked live, with their risk labels.
-     */
-    get: operations["list_user_mcp_server_tools"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/virtual-users/{identity_id}/mcp-servers/{server_id}/tools/{tool_name}/label": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    /**
-     * Set the person's risk label for an MCP tool
-     * @description Set or clear the person's risk label for one tool of their custom MCP server.
-     */
-    put: operations["set_user_mcp_tool_label"];
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/virtual-users/{identity_id}/preferences": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** List agent-facing preferences */
-    get: operations["list_preferences"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/virtual-users/{identity_id}/preferences/{key}": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** Read one agent-facing preference */
-    get: operations["get_preference"];
-    /** Set a bounded agent-facing preference */
-    put: operations["set_preference"];
-    post?: never;
-    /** Delete an agent-facing preference */
-    delete: operations["delete_preference"];
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/virtual-users/{identity_id}/sessions": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * List the virtual user's recent sessions
-     * @description List recent sessions associated with the authorized virtual user.
-     */
-    get: operations["list_sessions"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
     trace?: never;
   };
   "/v1/virtual-users/{id}/self-profile": {
@@ -9792,222 +10008,6 @@ export interface paths {
     put?: never;
     post?: never;
     delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/workspaces": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * List workspaces
-     * @description List Workspaces.
-     */
-    get: operations["list_workspaces"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/workspaces/{workspace_id}": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * Get workspace
-     * @description Get a Workspace by ID.
-     */
-    get: operations["get_workspace"];
-    put?: never;
-    post?: never;
-    /**
-     * Delete workspace
-     * @description Archive a Workspace.
-     */
-    delete: operations["delete_workspace"];
-    options?: never;
-    head?: never;
-    /**
-     * Update workspace
-     * @description Update a Workspace.
-     */
-    patch: operations["update_workspace"];
-    trace?: never;
-  };
-  "/v1/workspaces/{workspace_id}/fs": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** Workspace root listing */
-    get: operations["get_root"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/workspaces/{workspace_id}/fs/_/copy": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** Copy a file */
-    post: operations["copy_file"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/workspaces/{workspace_id}/fs/_/download/{path}": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** Download raw file bytes */
-    get: operations["download_path"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/workspaces/{workspace_id}/fs/_/grep": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** Search files */
-    post: operations["grep_files"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/workspaces/{workspace_id}/fs/_/move": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** Move/rename a file or directory */
-    post: operations["move_file"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/workspaces/{workspace_id}/fs/_/preview/{path}": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * Sandboxed HTML render
-     * @description Serves an HTML file as a `text/html` document carrying a strict `sandbox`
-     *     CSP (TM-WEB-010) so the file viewer can render it — with JavaScript — inside
-     *     an iframe without exposing everruns cookies, storage, the parent DOM, or
-     *     top-frame navigation. Only `.html`/`.htm` files are eligible; everything else
-     *     returns 415 (use the download endpoint instead).
-     */
-    get: operations["preview_path"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/workspaces/{workspace_id}/fs/_/stat": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** File metadata */
-    post: operations["stat_file"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/workspaces/{workspace_id}/fs/_/upload/{path}": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    /**
-     * Upload raw file bytes
-     * @description Creates or replaces the file with the request body, streamed to storage,
-     *     so files larger than the JSON API carries (recordings, media) can be
-     *     uploaded. Parent directories are created as needed.
-     */
-    put: operations["upload_path"];
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/workspaces/{workspace_id}/fs/{path}": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** Read file or list directory */
-    get: operations["get_path"];
-    /** Update file content */
-    put: operations["update_path"];
-    /** Create file or directory */
-    post: operations["create_path"];
-    /** Delete file or directory */
-    delete: operations["delete_path"];
     options?: never;
     head?: never;
     patch?: never;
@@ -10775,7 +10775,7 @@ export interface components {
     /** @description What the UI walks the user through after importing a template. */
     AgentExampleSetup: {
       /**
-       * @description The agent needs its own GitHub App (`POST /v1/agents/{id}/github/connect`).
+       * @description The agent needs its own GitHub App (`POST /v1/platform/agents/{id}/github/connect`).
        * @example true
        */
       connect_github: boolean;
@@ -10797,7 +10797,7 @@ export interface components {
        */
       settings: components["schemas"]["AgentExampleSetting"][];
       /**
-       * @description Body for `POST /v1/agents/{agent_id}/triggers` once the placeholder is
+       * @description Body for `POST /v1/platform/agents/{agent_id}/triggers` once the placeholder is
        *     replaced.
        */
       trigger: Record<string, unknown>;
@@ -16390,7 +16390,7 @@ export interface components {
       detail?: string | null;
       /**
        * @description Request URI for this occurrence.
-       * @example /v1/sessions/session_01933b5a000070008000000000000001
+       * @example /v1/platform/sessions/session_01933b5a000070008000000000000001
        */
       instance?: string | null;
       /**
@@ -17500,7 +17500,7 @@ export interface components {
       model_override?: string | null;
       target?: components["schemas"]["EvalTarget"] | null;
     };
-    /** @description Request body for `POST /v1/evals/{eval_id}/runs/{run_id}/dataset`. */
+    /** @description Request body for `POST /v1/platform/evals/{eval_id}/runs/{run_id}/dataset`. */
     ExportEvalRunDatasetRequest: {
       /** @description Per-case selection filters. */
       filters?: components["schemas"]["DatasetFilters"];
@@ -20153,7 +20153,7 @@ export interface components {
       status?: string | null;
     };
     /**
-     * @description Query parameters for `GET /v1/memories` — optional name search and a
+     * @description Query parameters for `GET /v1/platform/memories` — optional name search and a
      *     flag to include archived memories in the listing.
      */
     ListMemoriesQuery: {
@@ -28186,7 +28186,7 @@ export interface components {
     /** @description The agent a request came from. */
     RequestingAgent: {
       /**
-       * @description The agent's id, as `/v1/agents/{agent_id}` takes it.
+       * @description The agent's id, as `/v1/platform/agents/{agent_id}` takes it.
        * @example agent_01933b5a00007000800000000000001
        */
       id: string;
@@ -28973,7 +28973,7 @@ export interface components {
     /** @description The agent behind a session of the run. */
     RunAgent: {
       /**
-       * @description The agent's id, as `/v1/agents/{agent_id}` takes it.
+       * @description The agent's id, as `/v1/platform/agents/{agent_id}` takes it.
        * @example agent_01h9xk2m
        */
       id: string;
@@ -30873,7 +30873,7 @@ export interface components {
       name: string;
       /**
        * @description Connector id, used to connect an account at
-       *     `/v1/orgs/{org}/organization-connections/providers/{provider}`.
+       *     `/v1/platform/orgs/{org}/organization-connections/providers/{provider}`.
        * @example brave_search
        */
       provider: string;
@@ -31501,7 +31501,7 @@ export interface components {
      * @description Facet-rail counts and masthead metrics for the sessions surface (EVE-852).
      *
      *     Every count is aggregated server-side over the same filter predicate as
-     *     `GET /v1/sessions`, so a client never derives them by paging the list. Each
+     *     `GET /v1/platform/sessions`, so a client never derives them by paging the list. Each
      *     facet dimension is counted with the other filters applied but its own
      *     selection excluded, which is what lets the rail offer multi-select.
      */
@@ -32041,7 +32041,7 @@ export interface components {
       /** @description New session title. */
       title: string;
     };
-    /** @description Response of `GET /v1/sessions/{session_id}/work`. */
+    /** @description Response of `GET /v1/platform/sessions/{session_id}/work`. */
     SessionWorkResult: {
       report?: components["schemas"]["WorkReport"] | null;
     };
@@ -32301,7 +32301,7 @@ export interface components {
     SkillStatus: "active" | "disabled" | "archived" | "deleted";
     /**
      * @description Number of agents and harnesses that reference a skill via its
-     *     `skill:{uuid}` capability id. The `/v1/skills/usage` endpoint returns this
+     *     `skill:{uuid}` capability id. The `/v1/platform/skills/usage` endpoint returns this
      *     keyed by public `SkillId`; skills with no references are omitted from the
      *     map and the UI defaults missing entries to zero.
      */
@@ -32488,7 +32488,7 @@ export interface components {
       /**
        * @description Handle to the stored credential, on a `secret` question only — the value
        *     itself is never submitted here. Store it with
-       *     `PUT /v1/sessions/{session_id}/storage/secrets` first, then answer with
+       *     `PUT /v1/platform/sessions/{session_id}/storage/secrets` first, then answer with
        *     `session:{secret_name}`.
        * @example session:STRIPE_API_KEY
        */
@@ -35108,7 +35108,7 @@ export interface components {
       | "refusal"
       | "error"
       | "cancelled";
-    /** @description Waited result for `POST /v1/sessions/{session_id}/messages?wait=true`. */
+    /** @description Waited result for `POST /v1/platform/sessions/{session_id}/messages?wait=true`. */
     TurnWaitResponse: {
       /**
        * @description Turn failure detail when `status` is `failed`.
@@ -35852,7 +35852,7 @@ export interface components {
       status?: components["schemas"]["ObserverStatus"] | null;
     };
     /**
-     * @description Body of `PUT /v1/orgs/{org}/egress-allowlist/grant`. Omitted fields keep
+     * @description Body of `PUT /v1/platform/orgs/{org}/egress-allowlist/grant`. Omitted fields keep
      *     their current value; at least one is required.
      */
     UpdateOrgEgressAllowlistGrantRequest: {
@@ -35867,7 +35867,7 @@ export interface components {
        */
       open?: boolean | null;
     };
-    /** @description Body of `PUT /v1/orgs/{org}/egress-allowlist`. */
+    /** @description Body of `PUT /v1/platform/orgs/{org}/egress-allowlist`. */
     UpdateOrgEgressAllowlistRequest: {
       /**
        * @description The full list of host patterns; replaces the stored list. Blank entries
@@ -38852,6 +38852,2988 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+  invoke_a2a_legacy: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description App ID */
+        app_id: string;
+        /** @description A2A channel ID */
+        channel_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": unknown;
+      };
+    };
+    responses: {
+      /** @description JSON-RPC 2.0 response. For message/send and tasks/* the body is a single JSON envelope; for message/stream the body is text/event-stream of JSON-RPC envelopes. tasks/get and tasks/cancel surface -32001 Task not found for unknown task ids. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid API key */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description App or channel not found, not published, or channel disabled (collapsed to a single generic 404 to prevent app-existence enumeration) */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Per-channel A2A rate limit exceeded, or SSE connection limit reached for the org/session */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  agent_card_legacy: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description App ID */
+        app_id: string;
+        /** @description A2A channel ID */
+        channel_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Agent Card JSON */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description App or channel not found / unpublished / disabled */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  handshake: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description App ID */
+        app_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Markdown handshake describing the FCP endpoint and how to authenticate. Always `text/markdown`. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "text/markdown": unknown;
+        };
+      };
+      /** @description No FCP endpoint at this URL. Single sanitized body covers unknown apps, unpublished apps, apps without an FCP channel, and disabled FCP channels — operator state is never disclosed. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "text/markdown": unknown;
+        };
+      };
+      /** @description Per-channel FCP rate limit exceeded. `Retry-After: 60` header is set. */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "text/markdown": unknown;
+        };
+      };
+    };
+  };
+  message_legacy: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description App ID */
+        app_id: string;
+      };
+      cookie?: never;
+    };
+    /** @description Plain UTF-8 text, or `application/json` of shape `{"message": "..."}`. Maximum 256 KiB. */
+    requestBody: {
+      content: {
+        "text/plain": string;
+      };
+    };
+    responses: {
+      /** @description Agent reply as Markdown. The `Set-Cookie: fcp_session=...` header is emitted so subsequent POSTs can resume the same conversation. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "text/markdown": unknown;
+        };
+      };
+      /** @description Malformed body. Distinct messages for empty body, non-UTF-8 bytes, and JSON that did not parse into the expected shape — each Markdown body points back at the handshake. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "text/markdown": unknown;
+        };
+      };
+      /** @description Token required but missing or wrong. Markdown body explains both accepted headers (`Authorization: Bearer` and `X-Everruns-FCP-Token`) and points at the handshake. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "text/markdown": unknown;
+        };
+      };
+      /** @description Same generic 404 as the handshake — operator state is never disclosed. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "text/markdown": unknown;
+        };
+      };
+      /** @description FCP session expired. Body tells the client to drop the `fcp_session` cookie and POST again. */
+      410: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "text/markdown": unknown;
+        };
+      };
+      /** @description Body exceeds 256 KiB. */
+      413: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "text/markdown": unknown;
+        };
+      };
+      /** @description Per-channel FCP rate limit exceeded. `Retry-After: 60` header is set. */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "text/markdown": unknown;
+        };
+      };
+      /** @description Agent did not reply within the configured timeout. The same `fcp_session` cookie is set so the client can retry the same conversation. */
+      504: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "text/markdown": unknown;
+        };
+      };
+    };
+  };
+  invoke_webhook_legacy: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description App ID */
+        app_id: string;
+        /** @description Webhook channel ID */
+        channel_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/octet-stream": string;
+      };
+    };
+    responses: {
+      /** @description Webhook accepted */
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["WebhookInvocationResponse"];
+        };
+      };
+      /** @description Invalid or missing webhook token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description App or channel not found, not published, or channel disabled (collapsed to a single generic 404 to prevent app-existence enumeration) */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  list_avatar_presets: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AvatarPreset"][];
+        };
+      };
+    };
+  };
+  get_avatar_preset_variant: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        preset_id: string;
+        variant: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "image/png": unknown;
+        };
+      };
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  get_avatar_variant: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Avatar ID (avatar_...) */
+        avatar_id: string;
+        /** @description e.g. square-128.png, circle-64.png, source.png */
+        variant: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description PNG image */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "image/png": unknown;
+        };
+      };
+      /** @description Unknown avatar or variant */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  agent_api_get_card: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description api channel ID */
+        channel_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Agent card */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentCard"];
+        };
+      };
+      /** @description Missing or invalid agent key */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Agent not available */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Channel not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  invoke_a2a_channel: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description A2A endpoint channel ID */
+        channel_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": unknown;
+      };
+    };
+    responses: {
+      /** @description JSON-RPC response or event stream */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Invalid JSON-RPC request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid endpoint credentials */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Channel not found, app not published, or channel disabled */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Per-channel or SSE connection limit exceeded */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  agent_card_channel: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description A2A endpoint channel ID */
+        channel_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Agent Card JSON */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Endpoint not found, app not published, or channel disabled */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  get_work_chat_config: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        channel_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description Consumer sign-in required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Channel or resource unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  resolve_work_chat_main: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        channel_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description Consumer sign-in required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Channel or resource unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  read_work_chat_share: {
+    parameters: {
+      query?: {
+        before?: number;
+      };
+      header?: never;
+      path: {
+        channel_id: string;
+        token: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Read-only transcript page */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  get_work_chat_view: {
+    parameters: {
+      query?: {
+        session?: string;
+      };
+      header?: never;
+      path: {
+        channel_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Published view */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PublishedAgentView"];
+        };
+      };
+      /** @description View unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  set_work_chat_view_preference: {
+    parameters: {
+      query?: {
+        session?: string;
+      };
+      header?: never;
+      path: {
+        channel_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["AgentViewPreference"];
+      };
+    };
+    responses: {
+      /** @description Saved personal layout */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PublishedAgentView"];
+        };
+      };
+      /** @description View unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  message_channel: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description FCP endpoint channel ID */
+        channel_id: string;
+      };
+      cookie?: never;
+    };
+    /** @description Plain UTF-8 text or JSON with a message field. Maximum 256 KiB. */
+    requestBody: {
+      content: {
+        "text/plain": string;
+      };
+    };
+    responses: {
+      /** @description Agent reply as Markdown */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "text/markdown": unknown;
+        };
+      };
+      /** @description Malformed or empty message */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "text/markdown": unknown;
+        };
+      };
+      /** @description Missing or invalid FCP token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "text/markdown": unknown;
+        };
+      };
+      /** @description Channel not found, app not published, or channel disabled */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "text/markdown": unknown;
+        };
+      };
+      /** @description FCP session expired */
+      410: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "text/markdown": unknown;
+        };
+      };
+      /** @description Body exceeds 256 KiB */
+      413: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "text/markdown": unknown;
+        };
+      };
+      /** @description Per-channel FCP rate limit exceeded */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "text/markdown": unknown;
+        };
+      };
+      /** @description Agent response timeout */
+      504: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "text/markdown": unknown;
+        };
+      };
+    };
+  };
+  exchange: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        channel_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description An agent key without an End-User id */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Authentication required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Permission denied */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  agent_api_list_sessions: {
+    parameters: {
+      query?: {
+        /** @description Page size, 1 to 200 (default 50). */
+        limit?: number | null;
+        /** @description `next_page_token` of the previous page. */
+        page_token?: string | null;
+        include_archived?: boolean;
+      };
+      header?: never;
+      path: {
+        /** @description api channel ID */
+        channel_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description One page of sessions: `{data, next_page_token?}` */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description Invalid page size or token */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Missing or invalid agent key */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Channel not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  agent_api_create_session: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description api channel ID */
+        channel_id: string;
+      };
+      cookie?: never;
+    };
+    /** @description Optional title. May be empty. */
+    requestBody?: {
+      content: {
+        /**
+         * @example {
+         *       "title": "Order 42"
+         *     }
+         */
+        "application/json": components["schemas"]["CreatePlatformAgentSessionRequest"];
+      };
+    };
+    responses: {
+      /** @description Session started */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentSessionView"];
+        };
+      };
+      /** @description Invalid body, or the retired api_endpoint body `{"message": …}` */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Missing or invalid credentials */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Agent not available */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Channel not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Rate or daily spending limit reached */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  agent_api_get_session: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description api channel ID */
+        channel_id: string;
+        /** @description Session ID */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The session */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentSessionView"];
+        };
+      };
+      /** @description Missing or invalid credentials */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Agent not available */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Channel or session not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  agent_api_cancel: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description api channel ID */
+        channel_id: string;
+        /** @description Session ID */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Turn cancelled */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description Missing or invalid credentials */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Agent not available */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Channel or session not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  agent_api_list_events: {
+    parameters: {
+      query?: {
+        /** @description Return events after this sequence number (exclusive). */
+        after_sequence?: number | null;
+        /** @description Page size, 1 to 500 (default 100). */
+        limit?: number | null;
+      };
+      header?: never;
+      path: {
+        /** @description api channel ID */
+        channel_id: string;
+        /** @description Session ID */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Events: `{data}`, each in the canonical event envelope */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description Invalid page size */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Missing or invalid agent key */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Channel or session not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  get_work_chat_files: {
+    parameters: {
+      query?: {
+        path?: string;
+      };
+      header?: never;
+      path: {
+        channel_id: string;
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description Consumer sign-in required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Channel or resource unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  write_work_chat_file: {
+    parameters: {
+      query?: {
+        path?: string;
+      };
+      header?: never;
+      path: {
+        channel_id: string;
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["FileWrite"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description Consumer sign-in required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Channel or resource unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  delete_work_chat_file: {
+    parameters: {
+      query?: {
+        path?: string;
+      };
+      header?: never;
+      path: {
+        channel_id: string;
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description Consumer sign-in required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Channel or resource unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  agent_api_send_message: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description api channel ID */
+        channel_id: string;
+        /** @description Session ID */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    /** @description `{"message": {"role": "user", "content": [{"type": "text", "text": …}]}, "files": [MessageFile]}`. Content holds text and image parts; `files` (optional) carries files as base64 `data` or a public https `url`, each kept in the session's `/attachments`. */
+    requestBody: {
+      content: {
+        "application/json": unknown;
+      };
+    };
+    responses: {
+      /** @description Message stored */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description Invalid body, or the retired api_endpoint body `{"message": "text"}` */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Missing or invalid credentials */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Agent not available */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Channel or session not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Rate or daily spending limit reached */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  agent_api_add_reaction: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description api channel ID */
+        channel_id: string;
+        /** @description Session ID */
+        session_id: string;
+        /** @description Message ID */
+        message_id: string;
+        /** @description One emoji (URL-encoded), or a custom emoji as :name: */
+        emoji: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The reaction is on the message */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ReactionChange"];
+        };
+      };
+      /** @description Not one emoji */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Missing or invalid credentials */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Channel, session or message not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  agent_api_remove_reaction: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description api channel ID */
+        channel_id: string;
+        /** @description Session ID */
+        session_id: string;
+        /** @description Message ID */
+        message_id: string;
+        /** @description One emoji (URL-encoded), or a custom emoji as :name: */
+        emoji: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The reaction is off the message */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ReactionChange"];
+        };
+      };
+      /** @description Not one emoji */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Missing or invalid credentials */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Channel, session or message not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  agent_api_answer_questions: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description api channel ID */
+        channel_id: string;
+        /** @description Session ID */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["QuestionAnswersRequest"];
+      };
+    };
+    responses: {
+      /** @description Answer recorded and turn resumed */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["QuestionAnswersResponse"];
+        };
+      };
+      /** @description Answers that do not match what was asked, or a credential */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Missing or invalid agent key */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Channel, session or pending question set not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Not waiting, or already answered */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  agent_api_list_reactions: {
+    parameters: {
+      query?: {
+        /** @description Only this message's reactions. */
+        message_id?: string | null;
+      };
+      header?: never;
+      path: {
+        /** @description api channel ID */
+        channel_id: string;
+        /** @description Session ID */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Reactions by message */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["MessageReactions"][];
+        };
+      };
+      /** @description Missing or invalid credentials */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Channel or session not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  update_work_chat_conversation: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        channel_id: string;
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["Settings"];
+      };
+    };
+    responses: {
+      /** @description Updated */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  share_work_chat_conversation: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        channel_id: string;
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Revocable link token */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  revoke_work_chat_share: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        channel_id: string;
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Revoked */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  agent_api_stream_events: {
+    parameters: {
+      query?: {
+        /** @description Resume after this event (the last `id:` received). */
+        since_id?: components["schemas"]["eventId"] | null;
+        /** @description Replay events after this sequence first. `0` replays the whole session. */
+        after_sequence?: number | null;
+      };
+      header?: never;
+      path: {
+        /** @description api channel ID */
+        channel_id: string;
+        /** @description Session ID */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Server-Sent Events stream of canonical event envelopes */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "text/event-stream": unknown;
+        };
+      };
+      /** @description Missing or invalid agent key */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Channel or session not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Too many open streams */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  agent_api_submit_tool_approvals: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description api channel ID */
+        channel_id: string;
+        /** @description Session ID */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SubmitToolApprovalsRequest"];
+      };
+    };
+    responses: {
+      /** @description Decisions recorded and turn resumed */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SubmitToolApprovalsResponse"];
+        };
+      };
+      /** @description Invalid decisions */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Missing or invalid agent key */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Channel, session or pending request not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Not waiting, expired, or already answered */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  list_work_chat_tasks: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        channel_id: string;
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description Consumer sign-in required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Channel or resource unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  invoke_webhook_channel: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Webhook endpoint channel ID */
+        channel_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/octet-stream": string;
+      };
+    };
+    responses: {
+      /** @description Webhook accepted */
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["WebhookInvocationResponse"];
+        };
+      };
+      /** @description Invalid or missing webhook token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Channel not found, app not published, or channel disabled */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Per-channel rate limit exceeded */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  list_runtime_connectors: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Available connection providers */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ProviderResponse"][];
+        };
+      };
+    };
+  };
+  invoke_a2a_endpoint: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description A2A endpoint channel ID */
+        channel_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": unknown;
+      };
+    };
+    responses: {
+      /** @description JSON-RPC response or event stream */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Invalid JSON-RPC request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid endpoint credentials */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Channel not found, app not published, or channel disabled */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Per-channel or SSE connection limit exceeded */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  agent_card_endpoint: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description A2A endpoint channel ID */
+        channel_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Agent Card JSON */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Endpoint not found, app not published, or channel disabled */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  get_work_chat_config_legacy: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        channel_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description Consumer sign-in required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Channel or resource unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  resolve_work_chat_main_legacy: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        channel_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description Consumer sign-in required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Channel or resource unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  read_work_chat_share_legacy: {
+    parameters: {
+      query?: {
+        before?: number;
+      };
+      header?: never;
+      path: {
+        channel_id: string;
+        token: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Read-only transcript page */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  get_work_chat_view_legacy: {
+    parameters: {
+      query?: {
+        session?: string;
+      };
+      header?: never;
+      path: {
+        channel_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Published view */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PublishedAgentView"];
+        };
+      };
+      /** @description View unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  set_work_chat_view_preference_legacy: {
+    parameters: {
+      query?: {
+        session?: string;
+      };
+      header?: never;
+      path: {
+        channel_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["AgentViewPreference"];
+      };
+    };
+    responses: {
+      /** @description Saved personal layout */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PublishedAgentView"];
+        };
+      };
+      /** @description View unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  message_endpoint: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description FCP endpoint channel ID */
+        channel_id: string;
+      };
+      cookie?: never;
+    };
+    /** @description Plain UTF-8 text or JSON with a message field. Maximum 256 KiB. */
+    requestBody: {
+      content: {
+        "text/plain": string;
+      };
+    };
+    responses: {
+      /** @description Agent reply as Markdown */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "text/markdown": unknown;
+        };
+      };
+      /** @description Malformed or empty message */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "text/markdown": unknown;
+        };
+      };
+      /** @description Missing or invalid FCP token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "text/markdown": unknown;
+        };
+      };
+      /** @description Channel not found, app not published, or channel disabled */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "text/markdown": unknown;
+        };
+      };
+      /** @description FCP session expired */
+      410: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "text/markdown": unknown;
+        };
+      };
+      /** @description Body exceeds 256 KiB */
+      413: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "text/markdown": unknown;
+        };
+      };
+      /** @description Per-channel FCP rate limit exceeded */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "text/markdown": unknown;
+        };
+      };
+      /** @description Agent response timeout */
+      504: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "text/markdown": unknown;
+        };
+      };
+    };
+  };
+  agent_api_create_session_legacy: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description api channel ID */
+        channel_id: string;
+      };
+      cookie?: never;
+    };
+    /** @description Optional title. May be empty. */
+    requestBody?: {
+      content: {
+        /**
+         * @example {
+         *       "title": "Order 42"
+         *     }
+         */
+        "application/json": components["schemas"]["CreatePlatformAgentSessionRequest"];
+      };
+    };
+    responses: {
+      /** @description Session started */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentSessionView"];
+        };
+      };
+      /** @description Invalid body, or the retired api_endpoint body `{"message": …}` */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Missing or invalid credentials */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Agent not available */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Channel not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Rate or daily spending limit reached */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  agent_api_get_session_legacy: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description api channel ID */
+        channel_id: string;
+        /** @description Session ID */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The session */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentSessionView"];
+        };
+      };
+      /** @description Missing or invalid credentials */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Agent not available */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Channel or session not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  agent_api_cancel_legacy: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description api channel ID */
+        channel_id: string;
+        /** @description Session ID */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Turn cancelled */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description Missing or invalid credentials */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Agent not available */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Channel or session not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  get_work_chat_files_legacy: {
+    parameters: {
+      query?: {
+        path?: string;
+      };
+      header?: never;
+      path: {
+        channel_id: string;
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description Consumer sign-in required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Channel or resource unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  write_work_chat_file_legacy: {
+    parameters: {
+      query?: {
+        path?: string;
+      };
+      header?: never;
+      path: {
+        channel_id: string;
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["FileWrite"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description Consumer sign-in required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Channel or resource unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  delete_work_chat_file_legacy: {
+    parameters: {
+      query?: {
+        path?: string;
+      };
+      header?: never;
+      path: {
+        channel_id: string;
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description Consumer sign-in required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Channel or resource unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  agent_api_send_message_legacy: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description api channel ID */
+        channel_id: string;
+        /** @description Session ID */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    /** @description `{"message": {"role": "user", "content": [{"type": "text", "text": …}]}, "files": [MessageFile]}`. Content holds text and image parts; `files` (optional) carries files as base64 `data` or a public https `url`, each kept in the session's `/attachments`. */
+    requestBody: {
+      content: {
+        "application/json": unknown;
+      };
+    };
+    responses: {
+      /** @description Message stored */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description Invalid body, or the retired api_endpoint body `{"message": "text"}` */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Missing or invalid credentials */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Agent not available */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Channel or session not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Rate or daily spending limit reached */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  agent_api_answer_questions_legacy: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description api channel ID */
+        channel_id: string;
+        /** @description Session ID */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["QuestionAnswersRequest"];
+      };
+    };
+    responses: {
+      /** @description Answer recorded and turn resumed */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["QuestionAnswersResponse"];
+        };
+      };
+      /** @description Answers that do not match what was asked, or a credential */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Missing or invalid agent key */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Channel, session or pending question set not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Not waiting, or already answered */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  update_work_chat_conversation_legacy: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        channel_id: string;
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["Settings"];
+      };
+    };
+    responses: {
+      /** @description Updated */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  share_work_chat_conversation_legacy: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        channel_id: string;
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Revocable link token */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  revoke_work_chat_share_legacy: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        channel_id: string;
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Revoked */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  agent_api_stream_events_legacy: {
+    parameters: {
+      query?: {
+        /** @description Resume after this event (the last `id:` received). */
+        since_id?: components["schemas"]["eventId"] | null;
+        /** @description Replay events after this sequence first. `0` replays the whole session. */
+        after_sequence?: number | null;
+      };
+      header?: never;
+      path: {
+        /** @description api channel ID */
+        channel_id: string;
+        /** @description Session ID */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Server-Sent Events stream of canonical event envelopes */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "text/event-stream": unknown;
+        };
+      };
+      /** @description Missing or invalid agent key */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Channel or session not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Too many open streams */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  agent_api_submit_tool_approvals_legacy: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description api channel ID */
+        channel_id: string;
+        /** @description Session ID */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SubmitToolApprovalsRequest"];
+      };
+    };
+    responses: {
+      /** @description Decisions recorded and turn resumed */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SubmitToolApprovalsResponse"];
+        };
+      };
+      /** @description Invalid decisions */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Missing or invalid agent key */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Channel, session or pending request not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Not waiting, expired, or already answered */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  list_work_chat_tasks_legacy: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        channel_id: string;
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description Consumer sign-in required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Channel or resource unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  invoke_webhook_endpoint: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Webhook endpoint channel ID */
+        channel_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/octet-stream": string;
+      };
+    };
+    responses: {
+      /** @description Webhook accepted */
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["WebhookInvocationResponse"];
+        };
+      };
+      /** @description Invalid or missing webhook token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Channel not found, app not published, or channel disabled */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Per-channel rate limit exceeded */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  exchange_legacy: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        endpoint_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description An agent key without an End-User id */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Authentication required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Permission denied */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   list_agent_examples: {
     parameters: {
       query?: never;
@@ -42472,359 +45454,6 @@ export interface operations {
       };
     };
   };
-  invoke_a2a_legacy: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description App ID */
-        app_id: string;
-        /** @description A2A channel ID */
-        channel_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/json": unknown;
-      };
-    };
-    responses: {
-      /** @description JSON-RPC 2.0 response. For message/send and tasks/* the body is a single JSON envelope; for message/stream the body is text/event-stream of JSON-RPC envelopes. tasks/get and tasks/cancel surface -32001 Task not found for unknown task ids. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Missing or invalid API key */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description App or channel not found, not published, or channel disabled (collapsed to a single generic 404 to prevent app-existence enumeration) */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Per-channel A2A rate limit exceeded, or SSE connection limit reached for the org/session */
-      429: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  agent_card_legacy: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description App ID */
-        app_id: string;
-        /** @description A2A channel ID */
-        channel_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Agent Card JSON */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description App or channel not found / unpublished / disabled */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  handshake: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description App ID */
-        app_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Markdown handshake describing the FCP endpoint and how to authenticate. Always `text/markdown`. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "text/markdown": unknown;
-        };
-      };
-      /** @description No FCP endpoint at this URL. Single sanitized body covers unknown apps, unpublished apps, apps without an FCP channel, and disabled FCP channels — operator state is never disclosed. */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "text/markdown": unknown;
-        };
-      };
-      /** @description Per-channel FCP rate limit exceeded. `Retry-After: 60` header is set. */
-      429: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "text/markdown": unknown;
-        };
-      };
-    };
-  };
-  message_legacy: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description App ID */
-        app_id: string;
-      };
-      cookie?: never;
-    };
-    /** @description Plain UTF-8 text, or `application/json` of shape `{"message": "..."}`. Maximum 256 KiB. */
-    requestBody: {
-      content: {
-        "text/plain": string;
-      };
-    };
-    responses: {
-      /** @description Agent reply as Markdown. The `Set-Cookie: fcp_session=...` header is emitted so subsequent POSTs can resume the same conversation. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "text/markdown": unknown;
-        };
-      };
-      /** @description Malformed body. Distinct messages for empty body, non-UTF-8 bytes, and JSON that did not parse into the expected shape — each Markdown body points back at the handshake. */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "text/markdown": unknown;
-        };
-      };
-      /** @description Token required but missing or wrong. Markdown body explains both accepted headers (`Authorization: Bearer` and `X-Everruns-FCP-Token`) and points at the handshake. */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "text/markdown": unknown;
-        };
-      };
-      /** @description Same generic 404 as the handshake — operator state is never disclosed. */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "text/markdown": unknown;
-        };
-      };
-      /** @description FCP session expired. Body tells the client to drop the `fcp_session` cookie and POST again. */
-      410: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "text/markdown": unknown;
-        };
-      };
-      /** @description Body exceeds 256 KiB. */
-      413: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "text/markdown": unknown;
-        };
-      };
-      /** @description Per-channel FCP rate limit exceeded. `Retry-After: 60` header is set. */
-      429: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "text/markdown": unknown;
-        };
-      };
-      /** @description Agent did not reply within the configured timeout. The same `fcp_session` cookie is set so the client can retry the same conversation. */
-      504: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "text/markdown": unknown;
-        };
-      };
-    };
-  };
-  invoke_webhook_legacy: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description App ID */
-        app_id: string;
-        /** @description Webhook channel ID */
-        channel_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/octet-stream": string;
-      };
-    };
-    responses: {
-      /** @description Webhook accepted */
-      202: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["WebhookInvocationResponse"];
-        };
-      };
-      /** @description Invalid or missing webhook token */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description App or channel not found, not published, or channel disabled (collapsed to a single generic 404 to prevent app-existence enumeration) */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Internal server error */
-      500: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  list_avatar_presets: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["AvatarPreset"][];
-        };
-      };
-    };
-  };
-  get_avatar_preset_variant: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        preset_id: string;
-        variant: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "image/png": unknown;
-        };
-      };
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-    };
-  };
-  get_avatar_variant: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Avatar ID (avatar_...) */
-        avatar_id: string;
-        /** @description e.g. square-128.png, circle-64.png, source.png */
-        variant: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description PNG image */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "image/png": unknown;
-        };
-      };
-      /** @description Unknown avatar or variant */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-    };
-  };
   list_budgets: {
     parameters: {
       query?: {
@@ -43416,1471 +46045,6 @@ export interface operations {
       };
     };
   };
-  agent_api_get_card: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description api channel ID */
-        channel_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Agent card */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["AgentCard"];
-        };
-      };
-      /** @description Missing or invalid agent key */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Agent not available */
-      403: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Channel not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  invoke_a2a_channel: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description A2A endpoint channel ID */
-        channel_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/json": unknown;
-      };
-    };
-    responses: {
-      /** @description JSON-RPC response or event stream */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Invalid JSON-RPC request */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Missing or invalid endpoint credentials */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Channel not found, app not published, or channel disabled */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Per-channel or SSE connection limit exceeded */
-      429: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  agent_card_channel: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description A2A endpoint channel ID */
-        channel_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Agent Card JSON */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Endpoint not found, app not published, or channel disabled */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  get_work_chat_config: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        channel_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Success */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": unknown;
-        };
-      };
-      /** @description Consumer sign-in required */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Channel or resource unavailable */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-    };
-  };
-  resolve_work_chat_main: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        channel_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Success */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": unknown;
-        };
-      };
-      /** @description Consumer sign-in required */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Channel or resource unavailable */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-    };
-  };
-  read_work_chat_share: {
-    parameters: {
-      query?: {
-        before?: number;
-      };
-      header?: never;
-      path: {
-        channel_id: string;
-        token: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Read-only transcript page */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Unavailable */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-    };
-  };
-  get_work_chat_view: {
-    parameters: {
-      query?: {
-        session?: string;
-      };
-      header?: never;
-      path: {
-        channel_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Published view */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["PublishedAgentView"];
-        };
-      };
-      /** @description View unavailable */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-    };
-  };
-  set_work_chat_view_preference: {
-    parameters: {
-      query?: {
-        session?: string;
-      };
-      header?: never;
-      path: {
-        channel_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["AgentViewPreference"];
-      };
-    };
-    responses: {
-      /** @description Saved personal layout */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["PublishedAgentView"];
-        };
-      };
-      /** @description View unavailable */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-    };
-  };
-  message_channel: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description FCP endpoint channel ID */
-        channel_id: string;
-      };
-      cookie?: never;
-    };
-    /** @description Plain UTF-8 text or JSON with a message field. Maximum 256 KiB. */
-    requestBody: {
-      content: {
-        "text/plain": string;
-      };
-    };
-    responses: {
-      /** @description Agent reply as Markdown */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "text/markdown": unknown;
-        };
-      };
-      /** @description Malformed or empty message */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "text/markdown": unknown;
-        };
-      };
-      /** @description Missing or invalid FCP token */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "text/markdown": unknown;
-        };
-      };
-      /** @description Channel not found, app not published, or channel disabled */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "text/markdown": unknown;
-        };
-      };
-      /** @description FCP session expired */
-      410: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "text/markdown": unknown;
-        };
-      };
-      /** @description Body exceeds 256 KiB */
-      413: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "text/markdown": unknown;
-        };
-      };
-      /** @description Per-channel FCP rate limit exceeded */
-      429: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "text/markdown": unknown;
-        };
-      };
-      /** @description Agent response timeout */
-      504: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "text/markdown": unknown;
-        };
-      };
-    };
-  };
-  exchange: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        channel_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Success */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": unknown;
-        };
-      };
-      /** @description An agent key without an End-User id */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Authentication required */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Permission denied */
-      403: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-    };
-  };
-  agent_api_list_sessions: {
-    parameters: {
-      query?: {
-        /** @description Page size, 1 to 200 (default 50). */
-        limit?: number | null;
-        /** @description `next_page_token` of the previous page. */
-        page_token?: string | null;
-        include_archived?: boolean;
-      };
-      header?: never;
-      path: {
-        /** @description api channel ID */
-        channel_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description One page of sessions: `{data, next_page_token?}` */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": unknown;
-        };
-      };
-      /** @description Invalid page size or token */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Missing or invalid agent key */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Channel not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  agent_api_create_session: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description api channel ID */
-        channel_id: string;
-      };
-      cookie?: never;
-    };
-    /** @description Optional title. May be empty. */
-    requestBody?: {
-      content: {
-        /**
-         * @example {
-         *       "title": "Order 42"
-         *     }
-         */
-        "application/json": components["schemas"]["CreatePlatformAgentSessionRequest"];
-      };
-    };
-    responses: {
-      /** @description Session started */
-      201: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["AgentSessionView"];
-        };
-      };
-      /** @description Invalid body, or the retired api_endpoint body `{"message": …}` */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Missing or invalid credentials */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Agent not available */
-      403: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Channel not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Rate or daily spending limit reached */
-      429: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  agent_api_get_session: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description api channel ID */
-        channel_id: string;
-        /** @description Session ID */
-        session_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description The session */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["AgentSessionView"];
-        };
-      };
-      /** @description Missing or invalid credentials */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Agent not available */
-      403: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Channel or session not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  agent_api_cancel: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description api channel ID */
-        channel_id: string;
-        /** @description Session ID */
-        session_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Turn cancelled */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": unknown;
-        };
-      };
-      /** @description Missing or invalid credentials */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Agent not available */
-      403: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Channel or session not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  agent_api_list_events: {
-    parameters: {
-      query?: {
-        /** @description Return events after this sequence number (exclusive). */
-        after_sequence?: number | null;
-        /** @description Page size, 1 to 500 (default 100). */
-        limit?: number | null;
-      };
-      header?: never;
-      path: {
-        /** @description api channel ID */
-        channel_id: string;
-        /** @description Session ID */
-        session_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Events: `{data}`, each in the canonical event envelope */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": unknown;
-        };
-      };
-      /** @description Invalid page size */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Missing or invalid agent key */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Channel or session not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  get_work_chat_files: {
-    parameters: {
-      query?: {
-        path?: string;
-      };
-      header?: never;
-      path: {
-        channel_id: string;
-        session_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Success */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": unknown;
-        };
-      };
-      /** @description Consumer sign-in required */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Channel or resource unavailable */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-    };
-  };
-  write_work_chat_file: {
-    parameters: {
-      query?: {
-        path?: string;
-      };
-      header?: never;
-      path: {
-        channel_id: string;
-        session_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["FileWrite"];
-      };
-    };
-    responses: {
-      /** @description Success */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": unknown;
-        };
-      };
-      /** @description Consumer sign-in required */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Channel or resource unavailable */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-    };
-  };
-  delete_work_chat_file: {
-    parameters: {
-      query?: {
-        path?: string;
-      };
-      header?: never;
-      path: {
-        channel_id: string;
-        session_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Success */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": unknown;
-        };
-      };
-      /** @description Consumer sign-in required */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Channel or resource unavailable */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-    };
-  };
-  agent_api_send_message: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description api channel ID */
-        channel_id: string;
-        /** @description Session ID */
-        session_id: string;
-      };
-      cookie?: never;
-    };
-    /** @description `{"message": {"role": "user", "content": [{"type": "text", "text": …}]}, "files": [MessageFile]}`. Content holds text and image parts; `files` (optional) carries files as base64 `data` or a public https `url`, each kept in the session's `/attachments`. */
-    requestBody: {
-      content: {
-        "application/json": unknown;
-      };
-    };
-    responses: {
-      /** @description Message stored */
-      201: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": unknown;
-        };
-      };
-      /** @description Invalid body, or the retired api_endpoint body `{"message": "text"}` */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Missing or invalid credentials */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Agent not available */
-      403: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Channel or session not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Rate or daily spending limit reached */
-      429: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  agent_api_add_reaction: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description api channel ID */
-        channel_id: string;
-        /** @description Session ID */
-        session_id: string;
-        /** @description Message ID */
-        message_id: string;
-        /** @description One emoji (URL-encoded), or a custom emoji as :name: */
-        emoji: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description The reaction is on the message */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ReactionChange"];
-        };
-      };
-      /** @description Not one emoji */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Missing or invalid credentials */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Channel, session or message not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  agent_api_remove_reaction: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description api channel ID */
-        channel_id: string;
-        /** @description Session ID */
-        session_id: string;
-        /** @description Message ID */
-        message_id: string;
-        /** @description One emoji (URL-encoded), or a custom emoji as :name: */
-        emoji: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description The reaction is off the message */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ReactionChange"];
-        };
-      };
-      /** @description Not one emoji */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Missing or invalid credentials */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Channel, session or message not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  agent_api_answer_questions: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description api channel ID */
-        channel_id: string;
-        /** @description Session ID */
-        session_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["QuestionAnswersRequest"];
-      };
-    };
-    responses: {
-      /** @description Answer recorded and turn resumed */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["QuestionAnswersResponse"];
-        };
-      };
-      /** @description Answers that do not match what was asked, or a credential */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Missing or invalid agent key */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Channel, session or pending question set not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Not waiting, or already answered */
-      409: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  agent_api_list_reactions: {
-    parameters: {
-      query?: {
-        /** @description Only this message's reactions. */
-        message_id?: string | null;
-      };
-      header?: never;
-      path: {
-        /** @description api channel ID */
-        channel_id: string;
-        /** @description Session ID */
-        session_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Reactions by message */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["MessageReactions"][];
-        };
-      };
-      /** @description Missing or invalid credentials */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Channel or session not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  update_work_chat_conversation: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        channel_id: string;
-        session_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["Settings"];
-      };
-    };
-    responses: {
-      /** @description Updated */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Unavailable */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-    };
-  };
-  share_work_chat_conversation: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        channel_id: string;
-        session_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Revocable link token */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Unavailable */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-    };
-  };
-  revoke_work_chat_share: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        channel_id: string;
-        session_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Revoked */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Unavailable */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-    };
-  };
-  agent_api_stream_events: {
-    parameters: {
-      query?: {
-        /** @description Resume after this event (the last `id:` received). */
-        since_id?: components["schemas"]["eventId"] | null;
-        /** @description Replay events after this sequence first. `0` replays the whole session. */
-        after_sequence?: number | null;
-      };
-      header?: never;
-      path: {
-        /** @description api channel ID */
-        channel_id: string;
-        /** @description Session ID */
-        session_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Server-Sent Events stream of canonical event envelopes */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "text/event-stream": unknown;
-        };
-      };
-      /** @description Missing or invalid agent key */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Channel or session not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Too many open streams */
-      429: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  agent_api_submit_tool_approvals: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description api channel ID */
-        channel_id: string;
-        /** @description Session ID */
-        session_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["SubmitToolApprovalsRequest"];
-      };
-    };
-    responses: {
-      /** @description Decisions recorded and turn resumed */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["SubmitToolApprovalsResponse"];
-        };
-      };
-      /** @description Invalid decisions */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Missing or invalid agent key */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Channel, session or pending request not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Not waiting, expired, or already answered */
-      409: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  list_work_chat_tasks: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        channel_id: string;
-        session_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Success */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": unknown;
-        };
-      };
-      /** @description Consumer sign-in required */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Channel or resource unavailable */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-    };
-  };
-  invoke_webhook_channel: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Webhook endpoint channel ID */
-        channel_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/octet-stream": string;
-      };
-    };
-    responses: {
-      /** @description Webhook accepted */
-      202: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["WebhookInvocationResponse"];
-        };
-      };
-      /** @description Invalid or missing webhook token */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Channel not found, app not published, or channel disabled */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Per-channel rate limit exceeded */
-      429: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Internal server error */
-      500: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
   list_commands: {
     parameters: {
       query?: never;
@@ -44983,26 +46147,6 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  list_runtime_connectors: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Available connection providers */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ProviderResponse"][];
         };
       };
     };
@@ -47053,1150 +48197,6 @@ export interface operations {
       };
       /** @description Durable store not available */
       503: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-    };
-  };
-  invoke_a2a_endpoint: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description A2A endpoint channel ID */
-        channel_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/json": unknown;
-      };
-    };
-    responses: {
-      /** @description JSON-RPC response or event stream */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Invalid JSON-RPC request */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Missing or invalid endpoint credentials */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Channel not found, app not published, or channel disabled */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Per-channel or SSE connection limit exceeded */
-      429: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  agent_card_endpoint: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description A2A endpoint channel ID */
-        channel_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Agent Card JSON */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Endpoint not found, app not published, or channel disabled */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  get_work_chat_config_legacy: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        channel_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Success */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": unknown;
-        };
-      };
-      /** @description Consumer sign-in required */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Channel or resource unavailable */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-    };
-  };
-  resolve_work_chat_main_legacy: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        channel_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Success */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": unknown;
-        };
-      };
-      /** @description Consumer sign-in required */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Channel or resource unavailable */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-    };
-  };
-  read_work_chat_share_legacy: {
-    parameters: {
-      query?: {
-        before?: number;
-      };
-      header?: never;
-      path: {
-        channel_id: string;
-        token: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Read-only transcript page */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Unavailable */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-    };
-  };
-  get_work_chat_view_legacy: {
-    parameters: {
-      query?: {
-        session?: string;
-      };
-      header?: never;
-      path: {
-        channel_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Published view */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["PublishedAgentView"];
-        };
-      };
-      /** @description View unavailable */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-    };
-  };
-  set_work_chat_view_preference_legacy: {
-    parameters: {
-      query?: {
-        session?: string;
-      };
-      header?: never;
-      path: {
-        channel_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["AgentViewPreference"];
-      };
-    };
-    responses: {
-      /** @description Saved personal layout */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["PublishedAgentView"];
-        };
-      };
-      /** @description View unavailable */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-    };
-  };
-  message_endpoint: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description FCP endpoint channel ID */
-        channel_id: string;
-      };
-      cookie?: never;
-    };
-    /** @description Plain UTF-8 text or JSON with a message field. Maximum 256 KiB. */
-    requestBody: {
-      content: {
-        "text/plain": string;
-      };
-    };
-    responses: {
-      /** @description Agent reply as Markdown */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "text/markdown": unknown;
-        };
-      };
-      /** @description Malformed or empty message */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "text/markdown": unknown;
-        };
-      };
-      /** @description Missing or invalid FCP token */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "text/markdown": unknown;
-        };
-      };
-      /** @description Channel not found, app not published, or channel disabled */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "text/markdown": unknown;
-        };
-      };
-      /** @description FCP session expired */
-      410: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "text/markdown": unknown;
-        };
-      };
-      /** @description Body exceeds 256 KiB */
-      413: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "text/markdown": unknown;
-        };
-      };
-      /** @description Per-channel FCP rate limit exceeded */
-      429: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "text/markdown": unknown;
-        };
-      };
-      /** @description Agent response timeout */
-      504: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "text/markdown": unknown;
-        };
-      };
-    };
-  };
-  agent_api_create_session_legacy: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description api channel ID */
-        channel_id: string;
-      };
-      cookie?: never;
-    };
-    /** @description Optional title. May be empty. */
-    requestBody?: {
-      content: {
-        /**
-         * @example {
-         *       "title": "Order 42"
-         *     }
-         */
-        "application/json": components["schemas"]["CreatePlatformAgentSessionRequest"];
-      };
-    };
-    responses: {
-      /** @description Session started */
-      201: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["AgentSessionView"];
-        };
-      };
-      /** @description Invalid body, or the retired api_endpoint body `{"message": …}` */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Missing or invalid credentials */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Agent not available */
-      403: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Channel not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Rate or daily spending limit reached */
-      429: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  agent_api_get_session_legacy: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description api channel ID */
-        channel_id: string;
-        /** @description Session ID */
-        session_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description The session */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["AgentSessionView"];
-        };
-      };
-      /** @description Missing or invalid credentials */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Agent not available */
-      403: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Channel or session not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  agent_api_cancel_legacy: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description api channel ID */
-        channel_id: string;
-        /** @description Session ID */
-        session_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Turn cancelled */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": unknown;
-        };
-      };
-      /** @description Missing or invalid credentials */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Agent not available */
-      403: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Channel or session not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  get_work_chat_files_legacy: {
-    parameters: {
-      query?: {
-        path?: string;
-      };
-      header?: never;
-      path: {
-        channel_id: string;
-        session_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Success */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": unknown;
-        };
-      };
-      /** @description Consumer sign-in required */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Channel or resource unavailable */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-    };
-  };
-  write_work_chat_file_legacy: {
-    parameters: {
-      query?: {
-        path?: string;
-      };
-      header?: never;
-      path: {
-        channel_id: string;
-        session_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["FileWrite"];
-      };
-    };
-    responses: {
-      /** @description Success */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": unknown;
-        };
-      };
-      /** @description Consumer sign-in required */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Channel or resource unavailable */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-    };
-  };
-  delete_work_chat_file_legacy: {
-    parameters: {
-      query?: {
-        path?: string;
-      };
-      header?: never;
-      path: {
-        channel_id: string;
-        session_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Success */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": unknown;
-        };
-      };
-      /** @description Consumer sign-in required */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Channel or resource unavailable */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-    };
-  };
-  agent_api_send_message_legacy: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description api channel ID */
-        channel_id: string;
-        /** @description Session ID */
-        session_id: string;
-      };
-      cookie?: never;
-    };
-    /** @description `{"message": {"role": "user", "content": [{"type": "text", "text": …}]}, "files": [MessageFile]}`. Content holds text and image parts; `files` (optional) carries files as base64 `data` or a public https `url`, each kept in the session's `/attachments`. */
-    requestBody: {
-      content: {
-        "application/json": unknown;
-      };
-    };
-    responses: {
-      /** @description Message stored */
-      201: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": unknown;
-        };
-      };
-      /** @description Invalid body, or the retired api_endpoint body `{"message": "text"}` */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Missing or invalid credentials */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Agent not available */
-      403: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Channel or session not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Rate or daily spending limit reached */
-      429: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  agent_api_answer_questions_legacy: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description api channel ID */
-        channel_id: string;
-        /** @description Session ID */
-        session_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["QuestionAnswersRequest"];
-      };
-    };
-    responses: {
-      /** @description Answer recorded and turn resumed */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["QuestionAnswersResponse"];
-        };
-      };
-      /** @description Answers that do not match what was asked, or a credential */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Missing or invalid agent key */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Channel, session or pending question set not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Not waiting, or already answered */
-      409: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  update_work_chat_conversation_legacy: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        channel_id: string;
-        session_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["Settings"];
-      };
-    };
-    responses: {
-      /** @description Updated */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Unavailable */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-    };
-  };
-  share_work_chat_conversation_legacy: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        channel_id: string;
-        session_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Revocable link token */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Unavailable */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-    };
-  };
-  revoke_work_chat_share_legacy: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        channel_id: string;
-        session_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Revoked */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Unavailable */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-    };
-  };
-  agent_api_stream_events_legacy: {
-    parameters: {
-      query?: {
-        /** @description Resume after this event (the last `id:` received). */
-        since_id?: components["schemas"]["eventId"] | null;
-        /** @description Replay events after this sequence first. `0` replays the whole session. */
-        after_sequence?: number | null;
-      };
-      header?: never;
-      path: {
-        /** @description api channel ID */
-        channel_id: string;
-        /** @description Session ID */
-        session_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Server-Sent Events stream of canonical event envelopes */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "text/event-stream": unknown;
-        };
-      };
-      /** @description Missing or invalid agent key */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Channel or session not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Too many open streams */
-      429: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  agent_api_submit_tool_approvals_legacy: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description api channel ID */
-        channel_id: string;
-        /** @description Session ID */
-        session_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["SubmitToolApprovalsRequest"];
-      };
-    };
-    responses: {
-      /** @description Decisions recorded and turn resumed */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["SubmitToolApprovalsResponse"];
-        };
-      };
-      /** @description Invalid decisions */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Missing or invalid agent key */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Channel, session or pending request not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Not waiting, expired, or already answered */
-      409: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  list_work_chat_tasks_legacy: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        channel_id: string;
-        session_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Success */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": unknown;
-        };
-      };
-      /** @description Consumer sign-in required */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Channel or resource unavailable */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-    };
-  };
-  invoke_webhook_endpoint: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Webhook endpoint channel ID */
-        channel_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/octet-stream": string;
-      };
-    };
-    responses: {
-      /** @description Webhook accepted */
-      202: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["WebhookInvocationResponse"];
-        };
-      };
-      /** @description Invalid or missing webhook token */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Channel not found, app not published, or channel disabled */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Per-channel rate limit exceeded */
-      429: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Internal server error */
-      500: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  exchange_legacy: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        endpoint_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Success */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": unknown;
-        };
-      };
-      /** @description An agent key without an End-User id */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Authentication required */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Permission denied */
-      403: {
         headers: {
           [name: string]: unknown;
         };
@@ -57233,7 +57233,7 @@ export interface operations {
            *       "id": "session_01933b5a00007000800000000000001",
            *       "organization_id": "org_00000000000000000000000000000001",
            *       "owner_principal_id": "principal_01933b5a000070008000000000000001",
-           *       "self_url": "https://app.everruns.com/api/v1/sessions/session_01933b5a00007000800000000000001",
+           *       "self_url": "https://app.everruns.com/api/v1/platform/sessions/session_01933b5a00007000800000000000001",
            *       "status": "started",
            *       "tags": [
            *         "debugging",
@@ -61853,78 +61853,6 @@ export interface operations {
       };
     };
   };
-  get_me: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Success */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["VirtualUser"];
-        };
-      };
-      /** @description Authentication required */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Permission denied */
-      403: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-    };
-  };
-  update_me: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["UpdateVirtualUserRequest"];
-      };
-    };
-    responses: {
-      /** @description Success */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["VirtualUser"];
-        };
-      };
-      /** @description Authentication required */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Permission denied */
-      403: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-    };
-  };
   get_virtual_user: {
     parameters: {
       query?: never;
@@ -62923,85 +62851,6 @@ export interface operations {
       };
     };
   };
-  get_own_virtual_user_profile: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Prefixed public identifier */
-        id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Success */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["VirtualUser"];
-        };
-      };
-    };
-  };
-  update_own_virtual_user_profile: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Prefixed public identifier */
-        id: string;
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["UpdateVirtualUserRequest"];
-      };
-    };
-    responses: {
-      /** @description Success */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["VirtualUser"];
-        };
-      };
-    };
-  };
-  get_work_chat_by_host: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        label: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Success */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": unknown;
-        };
-      };
-      /** @description No live Work Chat uses this hostname */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-    };
-  };
   list_workspaces: {
     parameters: {
       query?: {
@@ -63723,6 +63572,157 @@ export interface operations {
       };
       /** @description Internal server error */
       500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  get_me: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["VirtualUser"];
+        };
+      };
+      /** @description Authentication required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Permission denied */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  update_me: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["UpdateVirtualUserRequest"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["VirtualUser"];
+        };
+      };
+      /** @description Authentication required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Permission denied */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  get_own_virtual_user_profile: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["VirtualUser"];
+        };
+      };
+    };
+  };
+  update_own_virtual_user_profile: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["UpdateVirtualUserRequest"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["VirtualUser"];
+        };
+      };
+    };
+  };
+  get_work_chat_by_host: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        label: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description No live Work Chat uses this hostname */
+      404: {
         headers: {
           [name: string]: unknown;
         };

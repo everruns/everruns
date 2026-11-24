@@ -1,9 +1,9 @@
 // Workspace CRUD HTTP routes and the workspace-scoped filesystem alias.
 //
-// /v1/workspaces/* — read, rename and archive Workspaces. There is no create:
+// /v1/platform/workspaces/* — read, rename and archive Workspaces. There is no create:
 // every workspace is the one a session made for itself, and sessions can no
 // longer attach to another one (see `WORKSPACE_ATTACH_RETIRED`).
-// /v1/workspaces/{workspace_id}/fs/* — delegates to the existing session
+// /v1/platform/workspaces/{workspace_id}/fs/* — delegates to the existing session
 // filesystem service. Since the migration ensures each session's
 // `workspace_id` equals its `session.id` for the default 1:1 case, we can
 // pass the resolved internal UUID directly to the session_files service.
@@ -44,9 +44,9 @@ fn enforce(
 
 pub fn routes(state: ApiState) -> Router {
     Router::new()
-        .route("/v1/workspaces", get(list_workspaces))
+        .route("/v1/platform/workspaces", get(list_workspaces))
         .route(
-            "/v1/workspaces/{workspace_id}",
+            "/v1/platform/workspaces/{workspace_id}",
             get(get_workspace)
                 .patch(update_workspace)
                 .delete(delete_workspace),
@@ -57,7 +57,7 @@ pub fn routes(state: ApiState) -> Router {
 #[utoipa::path(
     description = "List Workspaces.",
     get,
-    path = "/v1/workspaces",
+    path = "/v1/platform/workspaces",
     params(ListWorkspacesQuery),
     responses(
         (status = 200, description = "Workspaces", body = ListResponse<WorkspaceResponse>),
@@ -83,7 +83,7 @@ pub async fn list_workspaces(
 #[utoipa::path(
     description = "Get a Workspace by ID.",
     get,
-    path = "/v1/workspaces/{workspace_id}",
+    path = "/v1/platform/workspaces/{workspace_id}",
     params(("workspace_id" = String, Path, description = "Workspace ID")),
     responses(
         (status = 200, description = "Workspace", body = WorkspaceResponse),
@@ -110,7 +110,7 @@ pub async fn get_workspace(
 #[utoipa::path(
     description = "Update a Workspace.",
     patch,
-    path = "/v1/workspaces/{workspace_id}",
+    path = "/v1/platform/workspaces/{workspace_id}",
     params(("workspace_id" = String, Path, description = "Workspace ID")),
     request_body = UpdateWorkspaceRequest,
     responses(
@@ -205,7 +205,7 @@ pub async fn update_workspace(
 #[utoipa::path(
     description = "Archive a Workspace.",
     delete,
-    path = "/v1/workspaces/{workspace_id}",
+    path = "/v1/platform/workspaces/{workspace_id}",
     params(("workspace_id" = String, Path, description = "Workspace ID")),
     responses(
         (status = 204, description = "Archived"),

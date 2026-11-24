@@ -2,7 +2,7 @@ use utoipa::openapi::{Components, Deprecated, OpenApi, RefOr};
 
 /// Operations added after the channel rename. They never had a legacy path,
 /// so none is advertised: the Agent Execution API and agent keys live only
-/// under `/v1/channels/…` and `/v1/agents/{agent_id}/channels/…`.
+/// under `/v1/channels/…` and `/v1/platform/agents/{agent_id}/channels/…`.
 const NO_LEGACY_ALIAS: &[&str] = &[
     "agent_api_get_card",
     "agent_api_list_sessions",
@@ -26,7 +26,7 @@ pub(super) fn add_route_aliases(openapi: &mut OpenApi) {
         .filter_map(|(path, item)| {
             let alias = if path.starts_with("/v1/channels/") {
                 path.replacen("/v1/channels/", "/v1/e/", 1)
-            } else if path.starts_with("/v1/agents/") && path.contains("/channels") {
+            } else if path.starts_with("/v1/platform/agents/") && path.contains("/channels") {
                 path.replace("/channels", "/endpoints")
                     .replace("{channel_id}", "{endpoint_id}")
             } else {

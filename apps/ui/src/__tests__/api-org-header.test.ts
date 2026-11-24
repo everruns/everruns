@@ -29,22 +29,22 @@ function sentHeaders(): Record<string, string> {
 test("sends the active org on every request", async () => {
   setActiveOrgId("org_test1");
 
-  await api.get("/v1/sessions");
+  await api.get("/v1/platform/sessions");
 
   expect(sentHeaders()["X-Org-Id"]).toBe("org_test1");
 });
 
 test("falls back to the cookie when no org is active yet", async () => {
-  await api.get("/v1/auth/me");
+  await api.get("/v1/platform/auth/me");
 
   expect(sentHeaders()["X-Org-Id"]).toBeUndefined();
 });
 
 test("follows the org across a switch, without waiting for the cookie", async () => {
   setActiveOrgId("org_personal");
-  await api.get("/v1/sessions");
+  await api.get("/v1/platform/sessions");
   setActiveOrgId("org_test1");
-  await api.get("/v1/sessions");
+  await api.get("/v1/platform/sessions");
 
   expect((mockFetch.mock.calls[0][1].headers as Record<string, string>)["X-Org-Id"]).toBe(
     "org_personal",

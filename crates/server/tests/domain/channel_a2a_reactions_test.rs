@@ -24,7 +24,7 @@ async fn create_app_with_a2a_mode(
 ) -> (Value, String) {
     let agent: Value = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": format!("{name}-agent"),
                 "display_name": format!("{name} agent"),
@@ -110,7 +110,7 @@ async fn task_with_a_message(
     .await;
     let task_id = send["result"]["id"].as_str().unwrap().to_string();
     let messages: Value = server
-        .get(&format!("/v1/sessions/{task_id}/messages"))
+        .get(&format!("/v1/platform/sessions/{task_id}/messages"))
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -137,7 +137,7 @@ fn reaction(task_id: Option<&str>, message_id: &str, emoji: &str, action: &str) 
 
 async fn reactions_on(server: &TestServer, task_id: &str) -> Value {
     server
-        .get(&format!("/v1/sessions/{task_id}/reactions"))
+        .get(&format!("/v1/platform/sessions/{task_id}/reactions"))
         .await
         .assert_status(StatusCode::OK)
         .json()
@@ -149,7 +149,7 @@ async fn a2a_reaction_is_stored_by_the_remote_caller_and_starts_no_turn() {
     let (app_id, channel_id, api_key, task_id, message_id) =
         task_with_a_message(&server, "a2a-reaction").await;
     let before: Value = server
-        .get(&format!("/v1/sessions/{task_id}/messages"))
+        .get(&format!("/v1/platform/sessions/{task_id}/messages"))
         .await
         .json();
 
@@ -182,7 +182,7 @@ async fn a2a_reaction_is_stored_by_the_remote_caller_and_starts_no_turn() {
 
     // A reaction is not a message: nothing was added to the conversation.
     let after: Value = server
-        .get(&format!("/v1/sessions/{task_id}/messages"))
+        .get(&format!("/v1/platform/sessions/{task_id}/messages"))
         .await
         .json();
     assert_eq!(

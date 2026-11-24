@@ -1,6 +1,6 @@
 // Connection management commands
 //
-// Decision: plain HTTP against `/v1/user/connections`. These are the caller's
+// Decision: plain HTTP against `/v1/platform/user/connections`. These are the caller's
 // own provider keys, not platform commands, so there is no contract command
 // to route them through, and the key is read from a prompt or stdin so it
 // never reaches argv.
@@ -118,7 +118,7 @@ async fn set(
     let resp = http_client()
         .post(connection_url(
             api_url,
-            &format!("/v1/user/connections/{}", provider),
+            &format!("/v1/platform/user/connections/{}", provider),
         ))
         .header("Authorization", format!("Bearer {}", api_key))
         .json(&CreateApiKeyRequest {
@@ -162,7 +162,7 @@ async fn set(
 
 async fn list(api_url: &str, api_key: &str, output: OutputFormat) -> Result<()> {
     let resp = http_client()
-        .get(connection_url(api_url, "/v1/user/connections"))
+        .get(connection_url(api_url, "/v1/platform/user/connections"))
         .header("Authorization", format!("Bearer {}", api_key))
         .send()
         .await
@@ -225,7 +225,10 @@ async fn remove(
     let resp = http_client()
         .delete(connection_url(
             api_url,
-            &format!("/v1/user/connections/{}", urlencoding::encode(provider)),
+            &format!(
+                "/v1/platform/user/connections/{}",
+                urlencoding::encode(provider)
+            ),
         ))
         .header("Authorization", format!("Bearer {}", api_key))
         .send()

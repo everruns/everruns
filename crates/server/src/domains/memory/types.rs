@@ -103,7 +103,7 @@ pub struct UpdateMemoryRequest {
     pub source: Option<CreateMemorySourceRequest>,
 }
 
-/// Query parameters for `GET /v1/memories` — optional name search and a
+/// Query parameters for `GET /v1/platform/memories` — optional name search and a
 /// flag to include archived memories in the listing.
 #[derive(Debug, Clone, Deserialize, IntoParams, ToSchema)]
 pub struct ListMemoriesQuery {

@@ -42,7 +42,7 @@ The mount configuration is captured when the session is created, so archiving or
 
 ## Organization memory access
 
-Organization memories are created and managed through the Memory UI and `/v1/memories` API. Add the `memory` capability to select an active organization memory, its mount path, and its access mode.
+Organization memories are created and managed through the Memory UI and `/v1/platform/memories` API. Add the `memory` capability to select an active organization memory, its mount path, and its access mode.
 
 - Omitted access mode defaults to `readonly`.
 - A `readwrite` mount writes through to the durable organization memory.

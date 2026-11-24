@@ -39,7 +39,7 @@ pub struct ManageSessionSandbox {
     category = "session_sandbox",
     description = "Pause, resume, or delete the managed sandbox for a session.",
     method = "POST",
-    path = "/v1/sessions/{session_id}/sandbox",
+    path = "/v1/platform/sessions/{session_id}/sandbox",
     policy = crate::domains::sessions::SESSION_MANAGE,
     cli = CliRoute::new(&["sessions", "sandbox"], "manage").with_examples(&[CliExample::new("Pause a session's sandbox to stop paying for idle compute", "everruns sessions sandbox manage --session-id session_01h9 --action pause --reason 'Idle overnight'")]),
 )]
@@ -478,7 +478,7 @@ fn sandbox_state_name(observed: &str) -> &'static str {
     category = "session_sandbox",
     description = "List the repositories checked out in a session's sandbox and what the session changed in each.",
     method = "GET",
-    path = "/v1/sessions/{session_id}/repositories",
+    path = "/v1/platform/sessions/{session_id}/repositories",
     policy = crate::domains::sessions::SESSION_VIEW,
     positional = "session_id",
     cli = CliRoute::new(&["sessions", "repositories"], "get").with_args(&[CliArg::new("session_id").at(1)]).with_examples(&[CliExample::new("See what a coding session changed in each repository", "everruns sessions repositories get session_01h9")]),

@@ -363,7 +363,7 @@ mod agents;
 pub(crate) use agents::SEED_AGENTS;
 
 // Agents are NOT auto-seeded. They live as examples (agent_examples.rs) and are adopted on
-// demand via POST /v1/agent-examples/{slug}/use. This prevents duplicate agents.
+// demand via POST /v1/platform/agent-examples/{slug}/use. This prevents duplicate agents.
 
 // ---- LLM Provider Seeder ----
 
@@ -1142,8 +1142,8 @@ pub async fn seed_all_with_host_composition(
     // all orgs. Auth registration handlers also call initialize_org_harnesses as
     // a safety net for the race between seed task and first user registration.
 
-    // Seed agents are available as examples (GET /v1/agent-examples) and adopted
-    // on demand via POST /v1/agent-examples/{slug}/use. No automatic seeding —
+    // Seed agents are available as examples (GET /v1/platform/agent-examples) and adopted
+    // on demand via POST /v1/platform/agent-examples/{slug}/use. No automatic seeding —
     // this prevents duplicate agents when users adopt from the examples gallery.
 
     Ok(result)

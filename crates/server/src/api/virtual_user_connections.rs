@@ -1,5 +1,5 @@
 // Virtual user connection HTTP routes.
-// Sub-resource of virtual users: /v1/virtual-users/{identity_id}/connections/...
+// Sub-resource of virtual users: /v1/platform/virtual-users/{identity_id}/connections/...
 // Mirrors user_connections but scoped to a virtual user instead of a user.
 //
 // THREAT[TM-TOOL-041]: Private end-user grants require self authority; service
@@ -28,7 +28,7 @@ pub struct AppState {
     pub encryption: Option<Arc<EncryptionService>>,
     pub auth: AuthState,
     pub connectors: ConnectorRegistry,
-    /// The deployment's own web search, listed by `/v1/search-providers`.
+    /// The deployment's own web search, listed by `/v1/platform/search-providers`.
     pub hosted_web_search: Option<everruns_integrations::web_search::HostedWebSearch>,
 }
 
@@ -74,6 +74,27 @@ pub use super::user_connections::{
 pub fn routes(state: AppState) -> Router {
     Router::new()
         .route(
+            "/v1/platform/virtual-users/{identity_id}/connections",
+            get(list_connections),
+        )
+        .route(
+            "/v1/platform/virtual-users/{identity_id}/connections/{provider}",
+            post(create_api_key_connection).delete(delete_connection),
+        )
+        .route(
+            "/v1/platform/virtual-users/{identity_id}/connections/{provider}/verify",
+            post(verify_connection),
+        )
+        .merge(runtime_routes(state.auth.clone()))
+        .with_state(state.clone())
+        .merge(super::github_apps::routes(
+            super::github_apps::AppState::from_connections(&state),
+        ))
+}
+
+fn runtime_routes(auth: AuthState) -> Router<AppState> {
+    Router::new()
+        .route(
             "/v1/virtual-users/{identity_id}/connections",
             get(list_connections),
         )
@@ -85,9 +106,9 @@ pub fn routes(state: AppState) -> Router {
             "/v1/virtual-users/{identity_id}/connections/{provider}/verify",
             post(verify_connection),
         )
-        .with_state(state.clone())
-        .merge(super::github_apps::routes(
-            super::github_apps::AppState::from_connections(&state),
+        .route_layer(axum::middleware::from_fn_with_state(
+            auth,
+            super::virtual_users::require_self,
         ))
 }
 
@@ -110,8 +131,8 @@ async fn resolve_identity(
 // Handlers
 // ============================================================================
 
-/// GET /v1/virtual-users/:identity_id/connections
-#[utoipa::path(operation_id = "list_virtual_user_connections", summary = "List virtual user connections.", get, path = "/v1/virtual-users/{identity_id}/connections", params(("identity_id" = String, Path)),  responses((status = 200, description = "Success", body = Vec<ConnectionResponse>), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied"), (status = 404, description = "Virtual user not found")), tag = "virtual-users")]
+/// GET /v1/platform/virtual-users/:identity_id/connections
+#[utoipa::path(operation_id = "list_virtual_user_connections", summary = "List virtual user connections.", get, path = "/v1/platform/virtual-users/{identity_id}/connections", params(("identity_id" = String, Path)),  responses((status = 200, description = "Success", body = Vec<ConnectionResponse>), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied"), (status = 404, description = "Virtual user not found")), tag = "virtual-users")]
 pub async fn list_connections(
     org: RuntimeAccount,
     State(state): State<AppState>,
@@ -143,8 +164,8 @@ pub async fn list_connections(
     Ok(Json(connections))
 }
 
-/// POST /v1/virtual-users/:identity_id/connections/:provider
-#[utoipa::path(summary = "Create api key connection.", post, path = "/v1/virtual-users/{identity_id}/connections/{provider}", params(("identity_id" = String, Path),("provider" = String, Path)), request_body = CreateApiKeyConnectionRequest, responses((status = 201, description = "Success", body = ConnectionResponse), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied"), (status = 404, description = "Virtual user not found")), tag = "virtual-users")]
+/// POST /v1/platform/virtual-users/:identity_id/connections/:provider
+#[utoipa::path(summary = "Create api key connection.", post, path = "/v1/platform/virtual-users/{identity_id}/connections/{provider}", params(("identity_id" = String, Path),("provider" = String, Path)), request_body = CreateApiKeyConnectionRequest, responses((status = 201, description = "Success", body = ConnectionResponse), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied"), (status = 404, description = "Virtual user not found")), tag = "virtual-users")]
 pub async fn create_api_key_connection(
     org: RuntimeAccount,
     State(state): State<AppState>,
@@ -241,8 +262,8 @@ pub async fn create_api_key_connection(
     ))
 }
 
-/// DELETE /v1/virtual-users/:identity_id/connections/:provider
-#[utoipa::path(operation_id = "delete_virtual_user_connection", summary = "Delete a virtual user connection.", delete, path = "/v1/virtual-users/{identity_id}/connections/{provider}", params(("identity_id" = String, Path),("provider" = String, Path)),  responses((status = 204, description = "Success"), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied"), (status = 404, description = "Virtual user not found")), tag = "virtual-users")]
+/// DELETE /v1/platform/virtual-users/:identity_id/connections/:provider
+#[utoipa::path(operation_id = "delete_virtual_user_connection", summary = "Delete a virtual user connection.", delete, path = "/v1/platform/virtual-users/{identity_id}/connections/{provider}", params(("identity_id" = String, Path),("provider" = String, Path)),  responses((status = 204, description = "Success"), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied"), (status = 404, description = "Virtual user not found")), tag = "virtual-users")]
 pub async fn delete_connection(
     org: RuntimeAccount,
     State(state): State<AppState>,
@@ -268,8 +289,8 @@ pub async fn delete_connection(
     }
 }
 
-/// POST /v1/virtual-users/:identity_id/connections/:provider/verify
-#[utoipa::path(operation_id = "verify_virtual_user_connection", summary = "Verify a virtual user connection.", post, path = "/v1/virtual-users/{identity_id}/connections/{provider}/verify", params(("identity_id" = String, Path),("provider" = String, Path)),  responses((status = 200, description = "Success", body = VerifyConnectionResponse), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied"), (status = 404, description = "Virtual user not found")), tag = "virtual-users")]
+/// POST /v1/platform/virtual-users/:identity_id/connections/:provider/verify
+#[utoipa::path(operation_id = "verify_virtual_user_connection", summary = "Verify a virtual user connection.", post, path = "/v1/platform/virtual-users/{identity_id}/connections/{provider}/verify", params(("identity_id" = String, Path),("provider" = String, Path)),  responses((status = 200, description = "Success", body = VerifyConnectionResponse), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied"), (status = 404, description = "Virtual user not found")), tag = "virtual-users")]
 pub async fn verify_connection(
     org: RuntimeAccount,
     State(state): State<AppState>,

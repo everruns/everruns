@@ -57,11 +57,11 @@ it("shows stored images and downloads without fetching external images", () => {
 
   expect(within(dialog).getByRole("img", { name: "chart.png" })).toHaveAttribute(
     "src",
-    `/api/v1/images/${imageId}/thumbnail`,
+    `/api/v1/platform/images/${imageId}/thumbnail`,
   );
   expect(within(dialog).getByRole("link", { name: /report.pdf/ })).toHaveAttribute(
     "href",
-    `/api/v1/files/${fileId}`,
+    `/api/v1/platform/files/${fileId}`,
   );
   expect(dialog.querySelector('img[src*="external.example"]')).not.toBeInTheDocument();
 });

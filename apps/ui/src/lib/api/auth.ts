@@ -22,7 +22,7 @@ import type {
  * This tells the UI what auth mode is enabled and what options are available.
  */
 export async function getAuthConfig(): Promise<AuthConfigResponse> {
-  const { data } = await api.get<AuthConfigResponse>("/v1/auth/config");
+  const { data } = await api.get<AuthConfigResponse>("/v1/platform/auth/config");
   return data;
 }
 
@@ -30,7 +30,7 @@ export async function getAuthConfig(): Promise<AuthConfigResponse> {
  * Login with email and password
  */
 export async function login(request: LoginRequest): Promise<TokenResponse> {
-  const { data } = await api.post<TokenResponse>("/v1/auth/login", request);
+  const { data } = await api.post<TokenResponse>("/v1/platform/auth/login", request);
   return data;
 }
 
@@ -38,7 +38,7 @@ export async function login(request: LoginRequest): Promise<TokenResponse> {
  * Register a new user
  */
 export async function register(request: RegisterRequest): Promise<TokenResponse> {
-  const { data } = await api.post<TokenResponse>("/v1/auth/register", request);
+  const { data } = await api.post<TokenResponse>("/v1/platform/auth/register", request);
   return data;
 }
 
@@ -47,7 +47,7 @@ export async function register(request: RegisterRequest): Promise<TokenResponse>
  * regardless of whether an account exists for the email.
  */
 export async function forgotPassword(request: ForgotPasswordRequest): Promise<OkResponse> {
-  const { data } = await api.post<OkResponse>("/v1/auth/forgot-password", request);
+  const { data } = await api.post<OkResponse>("/v1/platform/auth/forgot-password", request);
   return data;
 }
 
@@ -56,7 +56,7 @@ export async function forgotPassword(request: ForgotPasswordRequest): Promise<Ok
  * Throws ApiError: 422 if password < 8 chars, 400 if token invalid/expired/used.
  */
 export async function resetPassword(request: ResetPasswordRequest): Promise<OkResponse> {
-  const { data } = await api.post<OkResponse>("/v1/auth/reset-password", request);
+  const { data } = await api.post<OkResponse>("/v1/platform/auth/reset-password", request);
   return data;
 }
 
@@ -65,7 +65,7 @@ export async function resetPassword(request: ResetPasswordRequest): Promise<OkRe
  * Throws ApiError: 400 if token invalid/expired/used.
  */
 export async function verifyEmail(request: VerifyEmailRequest): Promise<OkResponse> {
-  const { data } = await api.post<OkResponse>("/v1/auth/verify-email", request);
+  const { data } = await api.post<OkResponse>("/v1/platform/auth/verify-email", request);
   return data;
 }
 
@@ -73,7 +73,7 @@ export async function verifyEmail(request: VerifyEmailRequest): Promise<OkRespon
  * Re-send a verification email. Enumeration-safe: always resolves 200 { ok: true }.
  */
 export async function resendVerification(request: ResendVerificationRequest): Promise<OkResponse> {
-  const { data } = await api.post<OkResponse>("/v1/auth/resend-verification", request);
+  const { data } = await api.post<OkResponse>("/v1/platform/auth/resend-verification", request);
   return data;
 }
 
@@ -81,7 +81,7 @@ export async function resendVerification(request: ResendVerificationRequest): Pr
  * Get current user info
  */
 export async function getCurrentUser(): Promise<UserInfoResponse> {
-  const { data } = await api.get<UserInfoResponse>("/v1/auth/me");
+  const { data } = await api.get<UserInfoResponse>("/v1/platform/auth/me");
   return data;
 }
 
@@ -89,7 +89,7 @@ export async function getCurrentUser(): Promise<UserInfoResponse> {
  * Logout (clear cookies)
  */
 export async function logout(): Promise<void> {
-  await api.post<void>("/v1/auth/logout");
+  await api.post<void>("/v1/platform/auth/logout");
 }
 
 /**
@@ -97,7 +97,7 @@ export async function logout(): Promise<void> {
  * The HttpOnly refresh_token cookie is sent automatically by the browser.
  */
 export async function refreshToken(): Promise<TokenResponse> {
-  const { data } = await api.post<TokenResponse>("/v1/auth/refresh");
+  const { data } = await api.post<TokenResponse>("/v1/platform/auth/refresh");
   return data;
 }
 
@@ -106,7 +106,7 @@ export async function refreshToken(): Promise<TokenResponse> {
  * Uses full URL since browser needs to navigate to this
  */
 export function getOAuthUrl(provider: string): string {
-  return `${getBackendUrl()}/v1/auth/oauth/${provider}`;
+  return `${getBackendUrl()}/v1/platform/auth/oauth/${provider}`;
 }
 
 /**
@@ -114,7 +114,7 @@ export function getOAuthUrl(provider: string): string {
  */
 export async function listPersonalAccessTokens(): Promise<PersonalAccessTokenListItem[]> {
   const { data } = await api.get<ListResponse<PersonalAccessTokenListItem>>(
-    "/v1/auth/personal-access-tokens",
+    "/v1/platform/auth/personal-access-tokens",
   );
   return data.data;
 }
@@ -126,7 +126,7 @@ export async function createPersonalAccessToken(
   request: CreatePersonalAccessTokenRequest,
 ): Promise<PersonalAccessTokenResponse> {
   const { data } = await api.post<PersonalAccessTokenResponse>(
-    "/v1/auth/personal-access-tokens",
+    "/v1/platform/auth/personal-access-tokens",
     request,
   );
   return data;
@@ -136,5 +136,5 @@ export async function createPersonalAccessToken(
  * Delete a personal access token
  */
 export async function deletePersonalAccessToken(tokenId: string): Promise<void> {
-  await api.delete<void>(`/v1/auth/personal-access-tokens/${tokenId}`);
+  await api.delete<void>(`/v1/platform/auth/personal-access-tokens/${tokenId}`);
 }

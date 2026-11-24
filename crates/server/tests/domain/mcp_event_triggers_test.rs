@@ -201,7 +201,7 @@ fn event(title: &str, cursor: &str) -> Value {
 async fn create_agent(server: &TestServer) -> String {
     let agent: Value = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": format!("mcp-events-{}", uuid::Uuid::now_v7().simple()),
                 "system_prompt": "triage issues",
@@ -235,7 +235,7 @@ fn trigger_request(server_name: &str) -> Value {
 async fn create_trigger(server: &TestServer, agent_id: &str) -> Value {
     server
         .post(
-            &format!("/v1/agents/{agent_id}/triggers"),
+            &format!("/v1/platform/agents/{agent_id}/triggers"),
             trigger_request("tracker"),
         )
         .await
@@ -323,7 +323,7 @@ async fn create_subscribes_and_a_signed_event_starts_a_run() {
         SessionSource::Webhook
     );
     let messages = server
-        .get(&format!("/v1/sessions/{session_id}/messages"))
+        .get(&format!("/v1/platform/sessions/{session_id}/messages"))
         .await
         .assert_success()
         .json_value()
@@ -519,7 +519,7 @@ async fn refresh_resubscribes(server: TestServer) {
 
     // Deleting drops the row, so it is never refreshed again.
     let path = format!(
-        "/v1/agents/{agent_id}/triggers/{}",
+        "/v1/platform/agents/{agent_id}/triggers/{}",
         trigger["id"].as_str().unwrap()
     );
     server.delete(&path).await.assert_success();
@@ -540,7 +540,7 @@ async fn disable_enable_and_delete_follow_the_subscription() {
     let agent_id = create_agent(&server).await;
     let trigger = create_trigger(&server, &agent_id).await;
     let path = format!(
-        "/v1/agents/{agent_id}/triggers/{}",
+        "/v1/platform/agents/{agent_id}/triggers/{}",
         trigger["id"].as_str().unwrap()
     );
     let first = fake.subscription();
@@ -609,7 +609,7 @@ async fn a_rejected_subscribe_leaves_no_trigger_behind() {
 
     let refused = server
         .post(
-            &format!("/v1/agents/{agent_id}/triggers"),
+            &format!("/v1/platform/agents/{agent_id}/triggers"),
             trigger_request("tracker"),
         )
         .await
@@ -620,7 +620,7 @@ async fn a_rejected_subscribe_leaves_no_trigger_behind() {
         refused.text()
     );
     let listed: Value = server
-        .get(&format!("/v1/agents/{agent_id}/triggers"))
+        .get(&format!("/v1/platform/agents/{agent_id}/triggers"))
         .await
         .assert_success()
         .json();
@@ -632,7 +632,7 @@ async fn create_validates_server_attachment_despite_retired_override() {
     let server = TestServer::in_memory().await;
     let fake = FakeEventsServer::install(&server);
     let agent_id = create_agent(&server).await;
-    let triggers = format!("/v1/agents/{agent_id}/triggers");
+    let triggers = format!("/v1/platform/agents/{agent_id}/triggers");
 
     let missing = server
         .post(&triggers, trigger_request("nope"))

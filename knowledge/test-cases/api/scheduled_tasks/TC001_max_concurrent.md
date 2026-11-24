@@ -55,10 +55,10 @@ Verify that the max_concurrent setting prevents overlapping executions when a pr
 
 ```bash
 # While first execution is running:
-curl "$API_URL/v1/durable/schedules/$SCHEDULE_ID" | jq '.stats'
+curl "$API_URL/v1/platform/durable/schedules/$SCHEDULE_ID" | jq '.stats'
 # Should show only 1 running
 
 # Try manual trigger while execution running:
-curl -X POST "$API_URL/v1/durable/schedules/$SCHEDULE_ID/trigger"
+curl -X POST "$API_URL/v1/platform/durable/schedules/$SCHEDULE_ID/trigger"
 # Should return error or skip message
 ```

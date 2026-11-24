@@ -349,7 +349,7 @@ Each step is one PR unless noted, and leaves everything working.
    installation id, agent choice between own App and shared App, migration of
    person-held installations.
    Done (3a): an org admin links a shared App installation from Settings >
-   Organization (`GET /v1/orgs/{org}/github/everruns-app`, `.../authorize`,
+   Organization (`GET /v1/platform/orgs/{org}/github/everruns-app`, `.../authorize`,
    `DELETE .../{connection_id}`, `api/user_connections/github_org.rs`). The
    link is an organization connection with `connection_type = everruns_app`,
    proven by the same GitHub user authorization as a person's install; the

@@ -67,7 +67,7 @@ async fn create_list_revoke_invite_flow() {
     // Create an invite for a brand-new email.
     let created: Value = server
         .post(
-            &format!("/v1/orgs/{DEFAULT_ORG}/invites"),
+            &format!("/v1/platform/orgs/{DEFAULT_ORG}/invites"),
             json!({ "email": "Newperson@Example.com", "role": "admin" }),
         )
         .await
@@ -88,7 +88,7 @@ async fn create_list_revoke_invite_flow() {
 
     // It shows up in the pending list.
     let list: Value = server
-        .get(&format!("/v1/orgs/{DEFAULT_ORG}/invites"))
+        .get(&format!("/v1/platform/orgs/{DEFAULT_ORG}/invites"))
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -100,13 +100,15 @@ async fn create_list_revoke_invite_flow() {
 
     // Revoke it.
     server
-        .delete(&format!("/v1/orgs/{DEFAULT_ORG}/invites/{invite_id}"))
+        .delete(&format!(
+            "/v1/platform/orgs/{DEFAULT_ORG}/invites/{invite_id}"
+        ))
         .await
         .assert_status(StatusCode::NO_CONTENT);
 
     // Pending list is empty again.
     let list_after: Value = server
-        .get(&format!("/v1/orgs/{DEFAULT_ORG}/invites"))
+        .get(&format!("/v1/platform/orgs/{DEFAULT_ORG}/invites"))
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -114,7 +116,9 @@ async fn create_list_revoke_invite_flow() {
 
     // Revoking a missing invite is a 404.
     server
-        .delete(&format!("/v1/orgs/{DEFAULT_ORG}/invites/{invite_id}"))
+        .delete(&format!(
+            "/v1/platform/orgs/{DEFAULT_ORG}/invites/{invite_id}"
+        ))
         .await
         .assert_status(StatusCode::NOT_FOUND);
 }
@@ -124,7 +128,7 @@ async fn create_invite_rejects_invalid_email() {
     let server = TestServer::in_memory().await;
     let resp = server
         .post(
-            &format!("/v1/orgs/{DEFAULT_ORG}/invites"),
+            &format!("/v1/platform/orgs/{DEFAULT_ORG}/invites"),
             json!({ "email": "not-an-email" }),
         )
         .await
@@ -200,7 +204,7 @@ async fn lists_only_actionable_invitations_for_verified_email() {
     .await;
 
     let body: Value = server
-        .get("/v1/me/invitations")
+        .get("/v1/platform/me/invitations")
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -225,7 +229,10 @@ async fn accepts_own_invitation_by_public_id() {
 
     let body: Value = server
         .post(
-            &format!("/v1/me/invitations/{}/accept", invitation.public_id),
+            &format!(
+                "/v1/platform/me/invitations/{}/accept",
+                invitation.public_id
+            ),
             json!({}),
         )
         .await
@@ -242,7 +249,7 @@ async fn accepts_own_invitation_by_public_id() {
     );
     assert!(
         server
-            .get("/v1/me/invitations")
+            .get("/v1/platform/me/invitations")
             .await
             .assert_status(StatusCode::OK)
             .json::<Value>()["data"]
@@ -276,14 +283,17 @@ async fn denies_unverified_email_for_list_and_accept() {
         .expect("update user");
 
     let list: Value = server
-        .get("/v1/me/invitations")
+        .get("/v1/platform/me/invitations")
         .await
         .assert_status(StatusCode::FORBIDDEN)
         .json();
     assert_eq!(list["code"], "invite_email_unverified");
     let accept: Value = server
         .post(
-            &format!("/v1/me/invitations/{}/accept", invitation.public_id),
+            &format!(
+                "/v1/platform/me/invitations/{}/accept",
+                invitation.public_id
+            ),
             json!({}),
         )
         .await
@@ -292,7 +302,7 @@ async fn denies_unverified_email_for_list_and_accept() {
     assert_eq!(accept["code"], "invite_email_unverified");
     let missing: Value = server
         .post(
-            "/v1/me/invitations/orginv_00000000000000000000000000000000/accept",
+            "/v1/platform/me/invitations/orginv_00000000000000000000000000000000/accept",
             json!({}),
         )
         .await
@@ -322,7 +332,10 @@ async fn public_id_accept_hides_wrong_addressee_and_rejects_expired_invite() {
 
     let wrong: Value = server
         .post(
-            &format!("/v1/me/invitations/{}/accept", wrong_addressee.public_id),
+            &format!(
+                "/v1/platform/me/invitations/{}/accept",
+                wrong_addressee.public_id
+            ),
             json!({}),
         )
         .await
@@ -330,7 +343,7 @@ async fn public_id_accept_hides_wrong_addressee_and_rejects_expired_invite() {
         .json();
     let missing: Value = server
         .post(
-            "/v1/me/invitations/orginv_00000000000000000000000000000000/accept",
+            "/v1/platform/me/invitations/orginv_00000000000000000000000000000000/accept",
             json!({}),
         )
         .await
@@ -340,7 +353,7 @@ async fn public_id_accept_hides_wrong_addressee_and_rejects_expired_invite() {
     assert_eq!(wrong["code"], "invite_invalid");
     let stale: Value = server
         .post(
-            &format!("/v1/me/invitations/{}/accept", expired.public_id),
+            &format!("/v1/platform/me/invitations/{}/accept", expired.public_id),
             json!({}),
         )
         .await

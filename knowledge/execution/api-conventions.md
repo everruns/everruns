@@ -30,7 +30,7 @@ convention is a per-cluster follow-on.
 
 ```json
 {
-  "self_url": "https://api.example/v1/sessions/session_…",
+  "self_url": "https://api.example/v1/platform/sessions/session_…",
   "view_url": "https://app.example/sessions/session_…/chat",
   "ui_link":  "https://app.example/sessions/session_…/chat",
   "allowed_actions": [
@@ -38,21 +38,21 @@ convention is a per-cluster follow-on.
       "rel": "cancel",
       "method": "POST",
       "operation_id": "cancel_turn",
-      "href": "https://api.example/v1/sessions/session_…/cancel",
+      "href": "https://api.example/v1/platform/sessions/session_…/cancel",
       "hint": "Cancel the active turn for this session."
     },
     {
       "rel": "events",
       "method": "GET",
       "operation_id": "list_events",
-      "href": "https://api.example/v1/sessions/session_…/events",
+      "href": "https://api.example/v1/platform/sessions/session_…/events",
       "hint": "List session events (JSON polling; supports type filters and pagination)."
     },
     {
       "rel": "stream",
       "method": "GET",
       "operation_id": "stream_sse",
-      "href": "https://api.example/v1/sessions/session_…/sse",
+      "href": "https://api.example/v1/platform/sessions/session_…/sse",
       "hint": "Subscribe to session events live over Server-Sent Events."
     }
   ],
@@ -63,7 +63,7 @@ convention is a per-cluster follow-on.
 ```
 
 This collapses dozens of "to cancel a session, POST to
-`/v1/sessions/{id}/cancel`" prose docs into a single structured field
+`/v1/platform/sessions/{id}/cancel`" prose docs into a single structured field
 the agent can iterate over.
 
 ## `AllowedAction` shape
@@ -110,7 +110,7 @@ vocabulary differs by surface.
 Adding a new `rel` is a spec change. Reuse existing rels before
 inventing new ones. Per-resource implementations live alongside the
 resource (see e.g. `session_allowed_actions` in
-`crates/server/src/api/common.rs`).
+`crates/server/src/api/common/mod.rs`).
 
 ## State-aware membership
 
@@ -149,7 +149,7 @@ are already terminal-state tombstones).
 
 Each resolver is a pure function over `(id, status, …, api_base)`,
 unit-tested alongside `session_allowed_actions` in
-`crates/server/src/api/common.rs`.
+`crates/server/src/api/common/mod.rs`.
 
 ## Out of scope (tracked separately)
 

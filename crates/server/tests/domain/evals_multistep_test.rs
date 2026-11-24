@@ -13,13 +13,16 @@ use test_harness::TestServer;
 
 async fn seed_eval(server: &TestServer) -> String {
     let harness: Value = server
-        .post("/v1/harnesses", json!({"name": "multistep-harness"}))
+        .post(
+            "/v1/platform/harnesses",
+            json!({"name": "multistep-harness"}),
+        )
         .await
         .assert_success()
         .json();
     let eval: Value = server
         .post(
-            "/v1/evals",
+            "/v1/platform/evals",
             json!({
                 "name": "multistep eval",
                 "target": {"type": "session", "harness_id": harness["id"]},
@@ -59,7 +62,7 @@ fn simulated_case() -> Value {
 async fn multistep_cases_round_trip_and_validate() {
     let server = TestServer::in_memory().await;
     let eval_id = seed_eval(&server).await;
-    let cases = format!("/v1/evals/{eval_id}/cases");
+    let cases = format!("/v1/platform/evals/{eval_id}/cases");
 
     let case: Value = server
         .post(&cases, simulated_case())
@@ -154,7 +157,7 @@ async fn multistep_cases_round_trip_and_validate() {
 async fn try_once_runs_only_the_selected_case() {
     let server = TestServer::in_memory().await;
     let eval_id = seed_eval(&server).await;
-    let cases = format!("/v1/evals/{eval_id}/cases");
+    let cases = format!("/v1/platform/evals/{eval_id}/cases");
     let simulated: Value = server
         .post(&cases, simulated_case())
         .await
@@ -175,7 +178,7 @@ async fn try_once_runs_only_the_selected_case() {
 
     let unknown = server
         .post(
-            &format!("/v1/evals/{eval_id}/runs"),
+            &format!("/v1/platform/evals/{eval_id}/runs"),
             json!({"case_ids": ["evalcase_00000000000000000000000000000000"]}),
         )
         .await;
@@ -184,13 +187,16 @@ async fn try_once_runs_only_the_selected_case() {
 
     let run: Value = server
         .post(
-            &format!("/v1/evals/{eval_id}/runs"),
+            &format!("/v1/platform/evals/{eval_id}/runs"),
             json!({"case_ids": [simulated["id"]]}),
         )
         .await
         .assert_status(StatusCode::CREATED)
         .json();
-    let path = format!("/v1/evals/{eval_id}/runs/{}", run["id"].as_str().unwrap());
+    let path = format!(
+        "/v1/platform/evals/{eval_id}/runs/{}",
+        run["id"].as_str().unwrap()
+    );
     let mut done = Value::Null;
     for _ in 0..80 {
         done = server.get(&path).await.assert_status(StatusCode::OK).json();
@@ -221,7 +227,7 @@ async fn run_without_target_harness_uses_default_harness() {
     let server = TestServer::in_memory().await;
     let eval: Value = server
         .post(
-            "/v1/evals",
+            "/v1/platform/evals",
             json!({"name": "org default harness", "target": {"type": "session"}}),
         )
         .await
@@ -230,7 +236,7 @@ async fn run_without_target_harness_uses_default_harness() {
     let eval_id = eval["id"].as_str().unwrap();
     server
         .post(
-            &format!("/v1/evals/{eval_id}/cases"),
+            &format!("/v1/platform/evals/{eval_id}/cases"),
             json!({
                 "name": "scripted",
                 "conversation": [{"content": "hello"}],
@@ -242,11 +248,14 @@ async fn run_without_target_harness_uses_default_harness() {
         .assert_status(StatusCode::CREATED);
 
     let run: Value = server
-        .post(&format!("/v1/evals/{eval_id}/runs"), json!({}))
+        .post(&format!("/v1/platform/evals/{eval_id}/runs"), json!({}))
         .await
         .assert_status(StatusCode::CREATED)
         .json();
-    let path = format!("/v1/evals/{eval_id}/runs/{}", run["id"].as_str().unwrap());
+    let path = format!(
+        "/v1/platform/evals/{eval_id}/runs/{}",
+        run["id"].as_str().unwrap()
+    );
     let mut done = Value::Null;
     for _ in 0..80 {
         done = server.get(&path).await.assert_status(StatusCode::OK).json();

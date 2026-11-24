@@ -82,10 +82,13 @@ impl RemoteClient {
     fn fs_url(&self, path: &str) -> String {
         let clean = path.trim_start_matches('/');
         if clean.is_empty() {
-            format!("{}/v1/sessions/{}/fs", self.base_url, self.session_id)
+            format!(
+                "{}/v1/platform/sessions/{}/fs",
+                self.base_url, self.session_id
+            )
         } else {
             format!(
-                "{}/v1/sessions/{}/fs/{}",
+                "{}/v1/platform/sessions/{}/fs/{}",
                 self.base_url, self.session_id, clean
             )
         }
@@ -277,7 +280,7 @@ mod tests {
         let client = test_client();
         assert_eq!(
             client.fs_url("/"),
-            "https://api.example.com/v1/sessions/ses_123/fs"
+            "https://api.example.com/v1/platform/sessions/ses_123/fs"
         );
     }
 
@@ -286,7 +289,7 @@ mod tests {
         let client = test_client();
         assert_eq!(
             client.fs_url("/src/main.rs"),
-            "https://api.example.com/v1/sessions/ses_123/fs/src/main.rs"
+            "https://api.example.com/v1/platform/sessions/ses_123/fs/src/main.rs"
         );
     }
 
@@ -295,7 +298,7 @@ mod tests {
         let client = RemoteClient::new("https://api.example.com/", "key", "ses_1");
         assert_eq!(
             client.fs_url("/file.txt"),
-            "https://api.example.com/v1/sessions/ses_1/fs/file.txt"
+            "https://api.example.com/v1/platform/sessions/ses_1/fs/file.txt"
         );
     }
 

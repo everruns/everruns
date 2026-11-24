@@ -1,0 +1,19 @@
+%% Source of truth for sse-reconnect.svg (the PostgreSQL-backed event path).
+sequenceDiagram
+    participant Client as Client (SDK, browser, curl)
+    participant Server as Platform API /v1/platform/sessions/{id}/sse
+    participant Events as Session events (PostgreSQL, by sequence)
+    Client->>Server: GET …/sse
+    Server-->>Client: connected
+    Events-->>Server: event_A, event_B
+    Server-->>Client: event_A, event_B (id on each durable event)
+    Note over Client,Server: Stream closes: connection cycle, network drop, or timeout
+    Note over Events: event_C and event_D are written while the client is away
+    Client->>Server: GET …/sse?since_id=event_B
+    Server-->>Client: connected
+    Server->>Events: Read after event_B's sequence
+    Events-->>Server: event_C, event_D
+    Server-->>Client: Replay event_C, event_D
+    Events-->>Server: New live events
+    Server-->>Client: Continue live delivery
+    Note over Client: Remember durable event IDs and deduplicate overlap

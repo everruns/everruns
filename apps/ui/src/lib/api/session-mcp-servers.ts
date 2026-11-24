@@ -4,7 +4,8 @@
 import { api } from "./client";
 import type { ChatMcpServer } from "./types";
 
-const base = (sessionId: string) => `/v1/sessions/${encodeURIComponent(sessionId)}/mcp-servers`;
+const base = (sessionId: string) =>
+  `/v1/platform/sessions/${encodeURIComponent(sessionId)}/mcp-servers`;
 
 export async function listChatMcpServers(sessionId: string): Promise<ChatMcpServer[]> {
   const response = await api.get<ChatMcpServer[]>(base(sessionId));

@@ -10,7 +10,7 @@ export interface UserPreference {
 }
 
 export async function listUserPreferences(): Promise<UserPreference[]> {
-  const response = await api.get<UserPreference[]>("/v1/user/preferences");
+  const response = await api.get<UserPreference[]>("/v1/platform/user/preferences");
   return response.data;
 }
 
@@ -21,7 +21,7 @@ export async function listUserPreferences(): Promise<UserPreference[]> {
 export async function getUserPreference(key: string): Promise<UserPreference | null> {
   try {
     const response = await api.get<UserPreference>(
-      `/v1/user/preferences/${encodeURIComponent(key)}`,
+      `/v1/platform/user/preferences/${encodeURIComponent(key)}`,
     );
     return response.data;
   } catch (error) {
@@ -34,7 +34,7 @@ export async function getUserPreference(key: string): Promise<UserPreference | n
 
 export async function setUserPreference(key: string, value: unknown): Promise<UserPreference> {
   const response = await api.put<UserPreference>(
-    `/v1/user/preferences/${encodeURIComponent(key)}`,
+    `/v1/platform/user/preferences/${encodeURIComponent(key)}`,
     { value },
   );
   return response.data;

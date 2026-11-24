@@ -40,7 +40,7 @@ Someone who wants a voice agent on Everruns today has no supported path.
   (`interrupt_response: false`).
 - The Framework and `everruns-serve` have no voice at all. The only way to
   speak to a served agent is to run your own voice stack (LiveKit, Pipecat,
-  Twilio) in front of `/v1/sessions/{id}/messages` and `/sse`.
+  Twilio) in front of `/v1/platform/sessions/{id}/messages` and `/sse`.
 - Speech is not a provider service. `ServiceKind::Realtime` exists and the
   OpenAI descriptor declares it, but there is no realtime, speech-to-text or
   text-to-speech driver trait. The server talks to OpenAI with hand-written
@@ -329,7 +329,7 @@ wire contract in `crates/serve/docs/wire-api.md`.
   edited on the agent's Channels tab like other channels, with a "Talk to
   this channel" test button.
 - Built: the call route sits under the agent's channel
-  (`/v1/agents/{agent_id}/channels/{channel_id}/voice/calls`) next to the
+  (`/v1/platform/agents/{agent_id}/channels/{channel_id}/voice/calls`) next to the
   session route and the end route, authorized as org requests. Per-channel
   caller auth (anonymous lines, channel API keys, rate limits, budgets), the
   client-secret route and WebSocket audio are not built yet.

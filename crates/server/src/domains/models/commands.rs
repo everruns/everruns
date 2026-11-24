@@ -46,7 +46,7 @@ pub struct CreateModel {
     description = "Create a new model for a provider.",
     method = "POST",
     cli = CliRoute::new(&["providers", "models"], "create").with_examples(&[CliExample::new("Register a model that provider discovery does not list", "everruns providers models create --provider-id provider_01h9 --model-id gpt-5.1 --display-name 'GPT-5.1' --enabled true --reason 'Make the new model selectable'")]),
-    path = "/v1/providers/{provider_id}/models",
+    path = "/v1/platform/providers/{provider_id}/models",
     policy = LLM_MODEL_MANAGE,
 )]
 impl Command for CreateModel {
@@ -85,7 +85,7 @@ pub struct ListProviderModels {
     description = "List models for a specific provider.",
     method = "GET",
     cli = CliRoute::new(&["providers", "models"], "list").with_examples(&[CliExample::new("See which models one provider offers", "everruns providers models list --provider-id provider_01h9")]),
-    path = "/v1/providers/{provider_id}/models",
+    path = "/v1/platform/providers/{provider_id}/models",
     policy = LLM_MODEL_VIEW,
 )]
 impl Command for ListProviderModels {
@@ -127,7 +127,7 @@ const fn default_true() -> bool {
     description = "List all models across all providers.",
     method = "GET",
     cli = CliRoute::new(&["models"], "list").with_examples(&[CliExample::new("Find the models you have starred", "everruns models list --favorites-only true")]),
-    path = "/v1/models",
+    path = "/v1/platform/models",
     policy = LLM_MODEL_VIEW,
 )]
 impl Command for ListModels {
@@ -169,7 +169,7 @@ pub struct GetModel {
     description = "Get a specific model with provider information.",
     method = "GET",
     cli = CliRoute::new(&["models"], "get").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Show a model with its provider and capabilities", "everruns models get model_01h9")]),
-    path = "/v1/models/{id}",
+    path = "/v1/platform/models/{id}",
     policy = LLM_MODEL_VIEW,
     positional = "id",
 )]
@@ -217,7 +217,7 @@ pub struct UpdateModel {
     description = "Update a model.",
     method = "PATCH",
     cli = CliRoute::new(&["models"], "update").with_examples(&[CliExample::new("Star a model so it appears first in pickers", "everruns models update --id model_01h9 --is-favorite true --reason 'Team default'")]),
-    path = "/v1/models/{id}",
+    path = "/v1/platform/models/{id}",
     policy = LLM_MODEL_MANAGE,
 )]
 impl Command for UpdateModel {
@@ -265,7 +265,7 @@ pub struct DeleteModel {
     description = "Delete a model.",
     method = "DELETE",
     cli = CliRoute::new(&["models"], "delete").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Remove a model that was registered by mistake", "everruns models delete model_01h9 --reason 'Duplicate of an existing entry'")]),
-    path = "/v1/models/{id}",
+    path = "/v1/platform/models/{id}",
     policy = LLM_MODEL_MANAGE,
     positional = "id",
 )]
@@ -369,7 +369,7 @@ pub struct GetDefaultModel {}
     description = "Get the effective organization default model.",
     method = "GET",
     cli = CliRoute::new(&["models", "default"], "get").with_examples(&[CliExample::new("Check which model new sessions use when none is chosen", "everruns models default get")]),
-    path = "/v1/models/default",
+    path = "/v1/platform/models/default",
     policy = LLM_MODEL_VIEW,
 )]
 impl Command for GetDefaultModel {
@@ -391,7 +391,7 @@ pub struct GetDefaultDecisionModel {}
     description = "Get the selected decision model.",
     method = "GET",
     cli = CliRoute::new(&["models", "decision-default"], "get").with_examples(&[CliExample::new("Check which model handles typed decisions", "everruns models decision-default get")]),
-    path = "/v1/models/decision-default",
+    path = "/v1/platform/models/decision-default",
     policy = LLM_MODEL_VIEW,
 )]
 impl Command for GetDefaultDecisionModel {
@@ -416,7 +416,7 @@ pub struct SetDefaultDecisionModel {
     description = "Set the selected decision model.",
     method = "PUT",
     cli = CliRoute::new(&["models", "decision-default"], "set").with_examples(&[CliExample::new("Choose the model that handles typed decisions", "everruns models decision-default set --model-id model_01h9 --reason 'Cheaper model is accurate enough'")]),
-    path = "/v1/models/decision-default",
+    path = "/v1/platform/models/decision-default",
     policy = LLM_MODEL_MANAGE,
 )]
 impl Command for SetDefaultDecisionModel {
@@ -467,7 +467,7 @@ pub struct GetDefaultImageModel {}
     description = "Get the organization's default image model.",
     method = "GET",
     cli = CliRoute::new(&["models", "images-default"], "get").with_examples(&[CliExample::new("Check which model agents use for images", "everruns models images-default get")]),
-    path = "/v1/models/images-default",
+    path = "/v1/platform/models/images-default",
     policy = LLM_MODEL_VIEW,
 )]
 impl Command for GetDefaultImageModel {
@@ -493,7 +493,7 @@ pub struct SetDefaultImageModel {
     description = "Set the organization's default image model.",
     method = "PUT",
     cli = CliRoute::new(&["models", "images-default"], "set").with_examples(&[CliExample::new("Make GPT Image 2.6 Sunburst the default image model", "everruns models images-default set --model-id model_01h9 --reason 'Sharper text in diagrams'")]),
-    path = "/v1/models/images-default",
+    path = "/v1/platform/models/images-default",
     policy = LLM_MODEL_MANAGE,
 )]
 impl Command for SetDefaultImageModel {

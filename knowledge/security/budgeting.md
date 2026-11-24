@@ -21,7 +21,7 @@ Two things, kept apart on purpose:
 Credits are not an OSS concept. A host that bills usage itself (the hosted
 platform charges Everruns credits for built-in models) reports what it charged
 through `BudgetService::record_host_charge`, and that charge replaces the
-estimate for the usage. The API keeps the `/v1/budgets` paths; the UI says
+estimate for the usage. The API keeps the `/v1/platform/budgets` paths; the UI says
 "usage policy".
 
 Budget enforcement is owned by this domain.
@@ -253,7 +253,7 @@ budget roots. Detached count caps (`max_active_detached_tasks` /
 An ask step is answered by the person using the agent, per session:
 
 1. Spend crosses the step. The loop gate (via `check_budgets_for_session`) reports `pause` before the next provider call, the turn fails with `budget_paused`, and chat shows a "Continue this turn" card.
-2. `POST /v1/sessions/{id}/resume` (any member who can view policies) records a `usage_policy_approvals` row for the session and the policy's current window, and the person sends again.
+2. `POST /v1/platform/sessions/{id}/resume` (any member who can view policies) records a `usage_policy_approvals` row for the session and the policy's current window, and the person sends again.
 3. That session (and its delegation tree, through the root) continues; other sessions are still asked. The approval ends when the window resets. A stop step is never passed by an approval.
 
 Unattended work has no one to ask: a schedule or trigger turn stops at an ask step the same way, and its owner sees it in the session.
@@ -274,35 +274,35 @@ All four events use the same `BudgetEventData` struct. See `crates/core/src/even
 ### Budget CRUD
 
 ```
-POST   /v1/budgets                        Create budget
-GET    /v1/budgets                        List budgets (?subject_type=&subject_id=)
-GET    /v1/budgets/{id}                   Get budget with current balance
-PATCH  /v1/budgets/{id}                   Update limit / soft_limit / period / policy / status
-DELETE /v1/budgets/{id}                   Soft-delete (sets status=disabled)
+POST   /v1/platform/budgets                        Create budget
+GET    /v1/platform/budgets                        List budgets (?subject_type=&subject_id=)
+GET    /v1/platform/budgets/{id}                   Get budget with current balance
+PATCH  /v1/platform/budgets/{id}                   Update limit / soft_limit / period / policy / status
+DELETE /v1/platform/budgets/{id}                   Soft-delete (sets status=disabled)
 
-POST   /v1/budgets/{id}/top-up           Allow more in this window (negative ledger entry)
-GET    /v1/budgets/{id}/ledger           Paginated ledger entries (?limit=&offset=)
-GET    /v1/budgets/{id}/check            Check budget status
+POST   /v1/platform/budgets/{id}/top-up           Allow more in this window (negative ledger entry)
+GET    /v1/platform/budgets/{id}/ledger           Paginated ledger entries (?limit=&offset=)
+GET    /v1/platform/budgets/{id}/check            Check budget status
 ```
 
 ### Session shortcuts
 
 ```
-GET    /v1/sessions/{id}/budgets          List budgets for this session
-GET    /v1/sessions/{id}/budget-check     Check all budgets (session + hierarchy)
-POST   /v1/sessions/{id}/resume           Let this session past ask steps for the current window
+GET    /v1/platform/sessions/{id}/budgets          List budgets for this session
+GET    /v1/platform/sessions/{id}/budget-check     Check all budgets (session + hierarchy)
+POST   /v1/platform/sessions/{id}/resume           Let this session past ask steps for the current window
 ```
 
 ### Costs
 
 ```
-GET    /v1/cost-rates                     Price list, history included
-POST   /v1/cost-rates                     Add a rate (never edits one)
-POST   /v1/cost-rates/{id}/retire         Retire a rate from a date
-GET    /v1/costs/summary                  Org cost by basis, source, agent, person, day
-GET    /v1/agents/{id}/costs              One agent's cost this month
-GET    /v1/costs/settings                 Org timezone for calendar windows
-PATCH  /v1/costs/settings
+GET    /v1/platform/cost-rates                     Price list, history included
+POST   /v1/platform/cost-rates                     Add a rate (never edits one)
+POST   /v1/platform/cost-rates/{id}/retire         Retire a rate from a date
+GET    /v1/platform/costs/summary                  Org cost by basis, source, agent, person, day
+GET    /v1/platform/agents/{id}/costs              One agent's cost this month
+GET    /v1/platform/costs/settings                 Org timezone for calendar windows
+PATCH  /v1/platform/costs/settings
 ```
 
 Commands: [cost_commands.rs](../../crates/server/src/domains/budgets/cost_commands.rs).
@@ -311,7 +311,7 @@ Commands: [cost_commands.rs](../../crates/server/src/domains/budgets/cost_comman
 
 **Give a session $10 with $8 soft limit:**
 ```json
-POST /v1/budgets
+POST /v1/platform/budgets
 {
   "subject_type": "session",
   "subject_id": "session_01abc...",
@@ -323,7 +323,7 @@ POST /v1/budgets
 
 **Give an agent $50 a month, notify at 80%, ask at 90%:**
 ```json
-POST /v1/budgets
+POST /v1/platform/budgets
 {
   "subject_type": "agent",
   "subject_id": "agent_xyz789",
@@ -343,7 +343,7 @@ POST /v1/budgets
 
 **Top up an exhausted budget:**
 ```json
-POST /v1/budgets/{id}/top-up
+POST /v1/platform/budgets/{id}/top-up
 {
   "amount": 5.00,
   "description": "Emergency top-up"

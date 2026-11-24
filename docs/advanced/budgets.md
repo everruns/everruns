@@ -120,33 +120,33 @@ list_session_budgets --session_id ses_xxx
 ### Budget CRUD
 
 ```
-POST   /v1/budgets                  Create budget
-GET    /v1/budgets                  List budgets (?subject_type=&subject_id=)
-GET    /v1/budgets/{id}             Get budget with current balance
-PATCH  /v1/budgets/{id}             Update limit / soft_limit / status
-DELETE /v1/budgets/{id}             Soft-delete (sets status=disabled)
+POST   /v1/platform/budgets                  Create budget
+GET    /v1/platform/budgets                  List budgets (?subject_type=&subject_id=)
+GET    /v1/platform/budgets/{id}             Get budget with current balance
+PATCH  /v1/platform/budgets/{id}             Update limit / soft_limit / status
+DELETE /v1/platform/budgets/{id}             Soft-delete (sets status=disabled)
 ```
 
 ### Budget operations
 
 ```
-POST   /v1/budgets/{id}/top-up     Add credits (negative ledger entry)
-GET    /v1/budgets/{id}/ledger     Paginated ledger entries (?limit=&offset=)
-GET    /v1/budgets/{id}/check      Check budget status
+POST   /v1/platform/budgets/{id}/top-up     Add credits (negative ledger entry)
+GET    /v1/platform/budgets/{id}/ledger     Paginated ledger entries (?limit=&offset=)
+GET    /v1/platform/budgets/{id}/check      Check budget status
 ```
 
 ### Session shortcuts
 
 ```
-GET    /v1/sessions/{id}/budgets       List budgets for this session
-GET    /v1/sessions/{id}/budget-check  Check all budgets (session + hierarchy)
-POST   /v1/sessions/{id}/resume        Resume paused budgets
+GET    /v1/platform/sessions/{id}/budgets       List budgets for this session
+GET    /v1/platform/sessions/{id}/budget-check  Check all budgets (session + hierarchy)
+POST   /v1/platform/sessions/{id}/resume        Resume paused budgets
 ```
 
 ### Create a session budget
 
 ```bash
-curl -X POST https://your-instance/api/v1/budgets \
+curl -X POST https://your-instance/api/v1/platform/budgets \
   -H "Authorization: Bearer $API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -161,7 +161,7 @@ curl -X POST https://your-instance/api/v1/budgets \
 ### Top up an exhausted budget
 
 ```bash
-curl -X POST https://your-instance/api/v1/budgets/{budget_id}/top-up \
+curl -X POST https://your-instance/api/v1/platform/budgets/{budget_id}/top-up \
   -H "Authorization: Bearer $API_KEY" \
   -H "Content-Type: application/json" \
   -d '{

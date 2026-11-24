@@ -77,7 +77,7 @@ def read_agent_file():
 def provider_connection(api, org, provider):
     """Reuse the example's provider account, or save the key as a new one."""
     name = f"Desktop X review ({provider})"
-    listing = api.call("GET", f"/v1/orgs/{org}/organization-connections")
+    listing = api.call("GET", f"/v1/platform/orgs/{org}/organization-connections")
     rows = listing.get("data", listing) if isinstance(listing, dict) else listing
     for row in rows:
         if row.get("provider") == provider and row.get("name") == name:
@@ -88,7 +88,7 @@ def provider_connection(api, org, provider):
         raise SystemExit(f"Set {key_env} to save a {provider} account.")
     created = api.call(
         "POST",
-        f"/v1/orgs/{org}/organization-connections/providers/{provider}",
+        f"/v1/platform/orgs/{org}/organization-connections/providers/{provider}",
         {"name": name, "api_key": api_key},
     )
     return created["id"]
@@ -160,7 +160,7 @@ def wait_for_turn(api, session_id):
     deadline = time.time() + TURN_TIMEOUT_SECONDS
     while time.time() < deadline:
         query = f"?since_id={since}" if since else ""
-        page = api.call("GET", f"/v1/sessions/{session_id}/events{query}")
+        page = api.call("GET", f"/v1/platform/sessions/{session_id}/events{query}")
         for event in page.get("data", []):
             since = event["id"]
             line = describe(event)
@@ -175,7 +175,7 @@ def wait_for_turn(api, session_id):
 
 
 def last_assistant_text(api, session_id):
-    messages = api.call("GET", f"/v1/sessions/{session_id}/messages")
+    messages = api.call("GET", f"/v1/platform/sessions/{session_id}/messages")
     for message in reversed(messages.get("data", [])):
         if message.get("role") == "agent" or message.get("role") == "assistant":
             parts = message.get("content") or []
@@ -199,10 +199,10 @@ def main():
         os.environ.get("EVERRUNS_API_URL", DEFAULT_BASE_URL),
         os.environ.get("EVERRUNS_API_KEY", ""),
     )
-    org = os.environ.get("EVERRUNS_ORG") or api.call("GET", "/v1/orgs")["data"][0]["id"]
+    org = os.environ.get("EVERRUNS_ORG") or api.call("GET", "/v1/platform/orgs")["data"][0]["id"]
     model = os.environ.get("EVERRUNS_MODEL", DEFAULT_MODEL)
     model_id = next(
-        (m["id"] for m in api.call("GET", "/v1/models")["data"] if m.get("model_id") == model),
+        (m["id"] for m in api.call("GET", "/v1/platform/models")["data"] if m.get("model_id") == model),
         None,
     )
     if not model_id:
@@ -221,18 +221,18 @@ def main():
     }
     # Rerunning the example updates the agent it created the first time.
     existing = next(
-        (a for a in api.call("GET", "/v1/agents?limit=200")["data"] if a["name"] == fields["name"]),
+        (a for a in api.call("GET", "/v1/platform/agents?limit=200")["data"] if a["name"] == fields["name"]),
         None,
     )
     if existing:
-        agent = api.call("PUT", f"/v1/agents/{existing['id']}", definition)
+        agent = api.call("PUT", f"/v1/platform/agents/{existing['id']}", definition)
     else:
-        agent = api.call("POST", "/v1/agents", definition)
+        agent = api.call("POST", "/v1/platform/agents", definition)
     print(f"Agent: {agent['id']} ({agent['name']}), model {model}")
 
     session = api.call(
         "POST",
-        "/v1/sessions",
+        "/v1/platform/sessions",
         {"agent_id": agent["id"], "title": f"Review @{args.handle} on X"},
     )
     print(f"Session: {session['id']}")
@@ -244,7 +244,7 @@ def main():
     )
     api.call(
         "POST",
-        f"/v1/sessions/{session['id']}/messages",
+        f"/v1/platform/sessions/{session['id']}/messages",
         {"message": {"role": "user", "content": [{"type": "text", "text": prompt}]}},
     )
     print(f"\nUser: {prompt}\n")

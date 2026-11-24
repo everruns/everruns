@@ -116,7 +116,7 @@ export interface CredentialFormSchema {
   instructions_markdown: string;
 }
 
-/** Per-driver credential schema from `GET /v1/providers/config`. */
+/** Per-driver credential schema from `GET /v1/platform/providers/config`. */
 export interface DriverCredentialInfo {
   /** Explicit chat API choices advertised by the server. */
   apis?: string[];
@@ -126,7 +126,7 @@ export interface DriverCredentialInfo {
   supports_oauth: boolean;
 }
 
-/** Response shape of `GET /v1/providers/config`. */
+/** Response shape of `GET /v1/platform/providers/config`. */
 export interface ProvidersConfigResponse {
   policies: Record<string, boolean>;
   drivers: DriverCredentialInfo[];

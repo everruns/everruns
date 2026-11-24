@@ -49,7 +49,7 @@ The endpoint must pass an authenticated challenge before the CP saves a binding.
 Changing a binding requires no active turns. The account needs permission to
 manage dangerous Agent settings.
 
-Or use `POST /api/v1/agents/{agent_id}/external-worker` with your ordinary user
+Or use `POST /api/v1/platform/agents/{agent_id}/external-worker` with your ordinary user
 credential and JSON:
 
 ```json
@@ -75,12 +75,12 @@ user PAT, used only by your terminal; never install it in the Worker.
 The ordinary session API also works:
 
 ```bash
-curl "$EVERRUNS_URL/api/v1/sessions" \
+curl "$EVERRUNS_URL/api/v1/platform/sessions" \
   -H "Authorization: Bearer $EVERRUNS_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"agent_id":"agent_YOUR_ID","source":"playground"}'
 # Substitute the returned session ID:
-curl "$EVERRUNS_URL/api/v1/sessions/session_YOUR_ID/messages" \
+curl "$EVERRUNS_URL/api/v1/platform/sessions/session_YOUR_ID/messages" \
   -H "Authorization: Bearer $EVERRUNS_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"message":{"role":"user","content":[{"type":"text","text":"What are north sales? Include exact cents and order count."}]}}'
@@ -105,11 +105,11 @@ You can create the draft Slack channel through the ordinary API too, then finish
 installation/publishing on the Agent's Integrations page:
 
 ```bash
-curl -X PATCH "$EVERRUNS_URL/api/v1/agents/agent_YOUR_ID" \
+curl -X PATCH "$EVERRUNS_URL/api/v1/platform/agents/agent_YOUR_ID" \
   -H "Authorization: Bearer $EVERRUNS_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"communication":"direct"}'
-curl "$EVERRUNS_URL/api/v1/agents/agent_YOUR_ID/channels" \
+curl "$EVERRUNS_URL/api/v1/platform/agents/agent_YOUR_ID/channels" \
   -H "Authorization: Bearer $EVERRUNS_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"channel_type":"slack","channel_config":{"session_strategy":"per_thread","response_policy":"mentions_only"},"enabled":true}'

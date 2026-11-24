@@ -1,5 +1,5 @@
 // Capability API functions
-// Org is sent via everruns_org cookie (set by OrgProvider via /v1/users/me/switch-org)
+// Org is sent via everruns_org cookie (set by OrgProvider via /v1/platform/users/me/switch-org)
 //
 // Note: Agent-specific capabilities are managed through the agents API.
 // See agents.ts for createAgent/updateAgent with capabilities.
@@ -36,7 +36,7 @@ export async function listCapabilities(
     const params = new URLSearchParams({ offset: String(offset), limit: "100" });
     if (includeRetired) params.set("include_retired", "true");
     const { data: page } = await api.get<PaginatedResponse<Capability>>(
-      `/v1/capabilities?${params}`,
+      `/v1/platform/capabilities?${params}`,
       options,
     );
     capabilities.push(...page.data);
@@ -47,31 +47,35 @@ export async function listCapabilities(
 }
 
 export async function getCapability(capabilityId: CapabilityId): Promise<Capability> {
-  const response = await api.get<Capability>(`/v1/capabilities/${capabilityId}`);
+  const response = await api.get<Capability>(`/v1/platform/capabilities/${capabilityId}`);
   return response.data;
 }
 
 export async function listGuardrailExamples(): Promise<GuardrailExample[]> {
-  const response = await api.get<GuardrailExamplesResponse>("/v1/capabilities/guardrails/examples");
+  const response = await api.get<GuardrailExamplesResponse>(
+    "/v1/platform/capabilities/guardrails/examples",
+  );
   return response.data.examples;
 }
 
 export async function listDeclarativeCapabilities(): Promise<DeclarativeCapability[]> {
   const response = await api.get<ListResponse<DeclarativeCapability>>(
-    "/v1/capabilities/declarative",
+    "/v1/platform/capabilities/declarative",
   );
   return response.data.data;
 }
 
 export async function getDeclarativeCapability(id: string): Promise<DeclarativeCapability> {
-  const response = await api.get<DeclarativeCapability>(`/v1/capabilities/declarative/${id}`);
+  const response = await api.get<DeclarativeCapability>(
+    `/v1/platform/capabilities/declarative/${id}`,
+  );
   return response.data;
 }
 
 export async function createDeclarativeCapability(
   request: CreateDeclarativeCapabilityRequest,
 ): Promise<DeclarativeCapability> {
-  const response = await api.post<DeclarativeCapability>("/v1/capabilities", request);
+  const response = await api.post<DeclarativeCapability>("/v1/platform/capabilities", request);
   return response.data;
 }
 
@@ -80,12 +84,12 @@ export async function updateDeclarativeCapability(
   request: UpdateDeclarativeCapabilityRequest,
 ): Promise<DeclarativeCapability> {
   const response = await api.patch<DeclarativeCapability>(
-    `/v1/capabilities/declarative/${id}`,
+    `/v1/platform/capabilities/declarative/${id}`,
     request,
   );
   return response.data;
 }
 
 export async function deleteDeclarativeCapability(id: string): Promise<void> {
-  await api.delete(`/v1/capabilities/declarative/${id}`);
+  await api.delete(`/v1/platform/capabilities/declarative/${id}`);
 }

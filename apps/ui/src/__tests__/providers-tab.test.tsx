@@ -52,7 +52,9 @@ jest.mock("@/hooks/use-organizations", () => ({
 jest.mock("@/lib/api/providers", () => ({
   checkProviderCredentials: jest.fn(),
   providerSupportsOAuth: jest.fn(() => false),
-  providerOAuthAuthorizeUrl: jest.fn((id: string) => `/api/v1/providers/${id}/oauth/authorize`),
+  providerOAuthAuthorizeUrl: jest.fn(
+    (id: string) => `/api/v1/platform/providers/${id}/oauth/authorize`,
+  ),
 }));
 
 const provider = (overrides: Partial<Provider>): Provider =>

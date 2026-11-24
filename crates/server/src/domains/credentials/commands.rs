@@ -53,7 +53,7 @@ pub struct ListScopedCredentials {
     pub owner: domain::CredentialOwnerInput,
 }
 #[command(
-    name="list_scoped_credentials",category="credentials",description="List credential metadata for an authorized owner. Values are never returned.",method="GET",path="/v1/credential-bindings",policy=CREDENTIAL_VIEW,
+    name="list_scoped_credentials",category="credentials",description="List credential metadata for an authorized owner. Values are never returned.",method="GET",path="/v1/platform/credential-bindings",policy=CREDENTIAL_VIEW,
     cli = CliRoute::new(&["credential-bindings"], "list").with_examples(&[CliExample::new("Review organization credential metadata before granting access", "everruns credential-bindings list --scope organization --usage service")]),
 )]
 impl Command for ListScopedCredentials {
@@ -63,7 +63,7 @@ impl Command for ListScopedCredentials {
     }
 }
 #[command(
-    name="create_scoped_credential",category="credentials",description="Declare an HTTP or MCP write-only credential binding. The owner provisions its value in the secure Credentials UI.",method="POST",path="/v1/credential-bindings",policy=CREDENTIAL_MANAGE,
+    name="create_scoped_credential",category="credentials",description="Declare an HTTP or MCP write-only credential binding. The owner provisions its value in the secure Credentials UI.",method="POST",path="/v1/platform/credential-bindings",policy=CREDENTIAL_MANAGE,
     cli = CliRoute::new(&["credential-bindings"], "create").with_examples(&[CliExample::new("Declare personal mailbox access without putting a value in the command", "everruns credential-bindings create --scope virtual_user --owner-id me --usage user --name MAIL_TOKEN --label 'Mailbox API' --binding '{\"url\":\"https://mail.example/api\",\"auth\":{\"type\":\"bearer\"}}'")]),
 )]
 impl Command for domain::CreateScopedCredential {
@@ -81,7 +81,7 @@ pub struct RevokeScopedCredential {
     pub revision: i64,
 }
 #[command(
-    name="revoke_scoped_credential",category="credentials",description="Revoke a credential at the observed revision; future sends fail closed.",method="DELETE",path="/v1/credential-bindings/{id}",policy=CREDENTIAL_MANAGE,
+    name="revoke_scoped_credential",category="credentials",description="Revoke a credential at the observed revision; future sends fail closed.",method="DELETE",path="/v1/platform/credential-bindings/{id}",policy=CREDENTIAL_MANAGE,
     cli = CliRoute::new(&["credential-bindings"], "revoke").with_examples(&[CliExample::new("Revoke a credential using the revision returned by the metadata list", "everruns credential-bindings revoke --id 00000000-0000-0000-0000-000000000001 --revision 3")]),
 )]
 impl Command for RevokeScopedCredential {
@@ -97,7 +97,7 @@ pub struct ListResourceGrants {
     pub id: Uuid,
 }
 #[command(
-    name="list_resource_grants",category="credentials",description="List explicit use grants for an authorized resource owner.",method="GET",path="/v1/resources/{id}/grants",policy=CREDENTIAL_VIEW,
+    name="list_resource_grants",category="credentials",description="List explicit use grants for an authorized resource owner.",method="GET",path="/v1/platform/resources/{id}/grants",policy=CREDENTIAL_VIEW,
     cli = CliRoute::new(&["resources", "grants"], "list").with_examples(&[CliExample::new("Review who can use a credential or connection", "everruns resources grants list --id 00000000-0000-0000-0000-000000000001")]),
 )]
 impl Command for ListResourceGrants {
@@ -116,7 +116,7 @@ pub struct GrantResource {
     pub grant: domain::GrantCredential,
 }
 #[command(
-    name="grant_resource_access",category="credentials",description="Explicitly grant bounded resource use to a consumer. Use does not grant management or resharing.",method="POST",path="/v1/resources/{id}/grants",policy=CREDENTIAL_MANAGE,
+    name="grant_resource_access",category="credentials",description="Explicitly grant bounded resource use to a consumer. Use does not grant management or resharing.",method="POST",path="/v1/platform/resources/{id}/grants",policy=CREDENTIAL_MANAGE,
     cli = CliRoute::new(&["resources", "grants"], "grant").with_examples(&[CliExample::new("Allow one service agent to use an organization credential", "everruns resources grants grant --id 00000000-0000-0000-0000-000000000001 --consumer-scope agent --consumer-id agent_00000000000000000000000000000002 --usage service")]),
 )]
 impl Command for GrantResource {
@@ -134,7 +134,7 @@ pub struct RevokeResourceGrant {
     pub grant_id: Uuid,
 }
 #[command(
-    name="revoke_resource_grant",category="credentials",description="Revoke an explicit resource use grant.",method="DELETE",path="/v1/resources/{id}/grants/{grant_id}",policy=CREDENTIAL_MANAGE,
+    name="revoke_resource_grant",category="credentials",description="Revoke an explicit resource use grant.",method="DELETE",path="/v1/platform/resources/{id}/grants/{grant_id}",policy=CREDENTIAL_MANAGE,
     cli = CliRoute::new(&["resources", "grants"], "revoke").with_examples(&[CliExample::new("Stop a consumer from using a resource without revoking its other grants", "everruns resources grants revoke --id 00000000-0000-0000-0000-000000000001 --grant-id 00000000-0000-0000-0000-000000000003")]),
 )]
 impl Command for RevokeResourceGrant {

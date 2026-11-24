@@ -1,5 +1,5 @@
 // MCP Server CRUD HTTP routes
-// Routes: /v1/mcp-servers/...
+// Routes: /v1/platform/mcp-servers/...
 //
 // Spec: knowledge/integrations/mcp.md (umbrella), knowledge/integrations/mcp-servers.md (API endpoints)
 
@@ -95,17 +95,20 @@ pub struct McpServerConfigResponse {
 pub fn routes(state: ApiState) -> Router {
     Router::new()
         .route(
-            "/v1/mcp-servers",
+            "/v1/platform/mcp-servers",
             post(create_mcp_server).get(list_mcp_servers),
         )
-        .route("/v1/mcp-servers/config", get(mcp_server_config))
-        .route("/v1/mcp-servers/catalog", get(list_mcp_server_catalog))
+        .route("/v1/platform/mcp-servers/config", get(mcp_server_config))
         .route(
-            "/v1/mcp-servers/{server_id}/usage",
+            "/v1/platform/mcp-servers/catalog",
+            get(list_mcp_server_catalog),
+        )
+        .route(
+            "/v1/platform/mcp-servers/{server_id}/usage",
             get(get_mcp_server_usage),
         )
         .route(
-            "/v1/mcp-servers/{server_id}",
+            "/v1/platform/mcp-servers/{server_id}",
             get(get_mcp_server)
                 .patch(update_mcp_server)
                 .delete(delete_mcp_server),
@@ -118,12 +121,12 @@ pub fn routes(state: ApiState) -> Router {
         .with_state(state)
 }
 
-/// GET /v1/mcp-servers/config
+/// GET /v1/platform/mcp-servers/config
 ///
 /// Returns which MCP server policies the caller satisfies.
 #[utoipa::path(
     get,
-    path = "/v1/mcp-servers/config",
+    path = "/v1/platform/mcp-servers/config",
     responses(
         (status = 200, description = "Resource config for MCP servers", body = ResourceConfigResponse),
     ),
@@ -142,10 +145,10 @@ pub async fn mcp_server_config(
     Json(ResourceConfigResponse { policies })
 }
 
-/// POST /v1/mcp-servers - Create a new MCP server
+/// POST /v1/platform/mcp-servers - Create a new MCP server
 #[utoipa::path(
     post,
-    path = "/v1/mcp-servers",
+    path = "/v1/platform/mcp-servers",
     request_body = CreateMcpServerRequest,
     responses(
         (status = 201, description = "MCP server created successfully", body = WithUrls<McpServer>),
@@ -165,10 +168,10 @@ pub async fn create_mcp_server(
         .await
 }
 
-/// GET /v1/mcp-servers - List all MCP servers
+/// GET /v1/platform/mcp-servers - List all MCP servers
 #[utoipa::path(
     get,
-    path = "/v1/mcp-servers",
+    path = "/v1/platform/mcp-servers",
     responses(
         (status = 200, description = "List of MCP servers", body = ListResponse<WithUrls<McpServer>>),
         (status = 500, description = "Internal server error")
@@ -193,7 +196,7 @@ pub async fn list_mcp_servers(
 #[utoipa::path(
     description = "List a cursor-paginated MCP server catalog with active-agent usage counts for the selected organization.",
     get,
-    path = "/v1/mcp-servers/catalog",
+    path = "/v1/platform/mcp-servers/catalog",
     params(ListMcpServerCatalogQuery),
     responses(
         (status = 200, description = "Cursor-paginated MCP server catalog with active-agent usage counts", body = McpServerCatalogResponse),
@@ -278,7 +281,7 @@ pub async fn list_mcp_server_catalog(
 #[utoipa::path(
     description = "Get the bounded active-agent impact summary used before archiving an MCP server preset.",
     get,
-    path = "/v1/mcp-servers/{server_id}/usage",
+    path = "/v1/platform/mcp-servers/{server_id}/usage",
     params(("server_id" = String, Path, description = "MCP server ID")),
     responses(
         (status = 200, description = "Bounded active-agent archive impact", body = McpServerUsageResponse),
@@ -327,10 +330,10 @@ pub async fn get_mcp_server_usage(
     }))
 }
 
-/// GET /v1/mcp-servers/{server_id} - Get MCP server by ID
+/// GET /v1/platform/mcp-servers/{server_id} - Get MCP server by ID
 #[utoipa::path(
     get,
-    path = "/v1/mcp-servers/{server_id}",
+    path = "/v1/platform/mcp-servers/{server_id}",
     params(
         ("server_id" = String, Path, description = "MCP server ID (prefixed, e.g., mcp_...)")
     ),
@@ -353,10 +356,10 @@ pub async fn get_mcp_server(
         .await
 }
 
-/// PATCH /v1/mcp-servers/{server_id} - Update MCP server
+/// PATCH /v1/platform/mcp-servers/{server_id} - Update MCP server
 #[utoipa::path(
     patch,
-    path = "/v1/mcp-servers/{server_id}",
+    path = "/v1/platform/mcp-servers/{server_id}",
     params(
         ("server_id" = String, Path, description = "MCP server ID (prefixed, e.g., mcp_...)")
     ),
@@ -381,10 +384,10 @@ pub async fn update_mcp_server(
         .await
 }
 
-/// DELETE /v1/mcp-servers/{server_id} - Delete MCP server
+/// DELETE /v1/platform/mcp-servers/{server_id} - Delete MCP server
 #[utoipa::path(
     delete,
-    path = "/v1/mcp-servers/{server_id}",
+    path = "/v1/platform/mcp-servers/{server_id}",
     params(
         ("server_id" = String, Path, description = "MCP server ID (prefixed, e.g., mcp_...)")
     ),

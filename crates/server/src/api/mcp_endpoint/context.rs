@@ -61,12 +61,12 @@ pub(crate) fn mcp_ctx(org: &ResolvedOrg, state: &AppState) -> Ctx {
 }
 
 /// Agent GitHub Apps with this server's public URLs, so a manifest started
-/// over MCP or `/v1/commands` names the same URLs as one started over REST.
+/// over MCP or `/v1/platform/commands` names the same URLs as one started over REST.
 fn github_apps(state: &AppState) -> crate::github_apps::GitHubAppContext {
     crate::github_apps::GitHubAppContext::from_env().with_auth_config(&state.auth.config)
 }
 
-/// Attach the provider-domain services `/v1/providers` uses, so provider
+/// Attach the provider-domain services `/v1/platform/providers` uses, so provider
 /// commands behave the same over MCP and the generic command adapter.
 fn with_provider_services(
     ctx: crate::domains::common::Ctx,
@@ -190,7 +190,7 @@ mod tests {
     }
 
     /// Provider commands dispatched over MCP (and the generic command adapter,
-    /// which shares this context) need the services `/v1/providers` attaches.
+    /// which shares this context) need the services `/v1/platform/providers` attaches.
     /// Without them `sync_provider_models` failed with "Model sync service not
     /// configured" (Sentry EVERRUNS-2D, EVERRUNS-1G) and provider
     /// create/update silently skipped model provisioning.

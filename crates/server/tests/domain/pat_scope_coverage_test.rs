@@ -153,7 +153,7 @@ fn per_command_class_is_only_the_command_endpoint() {
         if *access == RouteAccess::PerCommand {
             assert_eq!(
                 (*m, *p),
-                ("POST", "/v1/commands/{name}"),
+                ("POST", "/v1/platform/commands/{name}"),
                 "only the command endpoint defers to the command"
             );
         }

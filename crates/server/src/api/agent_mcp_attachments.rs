@@ -19,18 +19,18 @@ use super::common::{ApiResult, ErrorResponse};
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route(
-            "/v1/agents/{agent_id}/mcp-attachments",
+            "/v1/platform/agents/{agent_id}/mcp-attachments",
             get(list_agent_mcp_attachments),
         )
         .route(
-            "/v1/agents/{agent_id}/mcp-attachments/{name}/connection",
+            "/v1/platform/agents/{agent_id}/mcp-attachments/{name}/connection",
             axum::routing::delete(revoke_agent_mcp_connection),
         )
 }
 
 #[utoipa::path(
     get,
-    path = "/v1/agents/{agent_id}/mcp-attachments",
+    path = "/v1/platform/agents/{agent_id}/mcp-attachments",
     description = "Lists the effective MCP attachments after capability, harness, and agent layers are merged. Connection state, the agent's sign-in state, and permitted actions are resolved for the current caller.",
     params(("agent_id" = String, Path, description = "Agent ID (prefixed) or name")),
     responses(
@@ -56,7 +56,7 @@ pub async fn list_agent_mcp_attachments(
 
 #[utoipa::path(
     delete,
-    path = "/v1/agents/{agent_id}/mcp-attachments/{name}/connection",
+    path = "/v1/platform/agents/{agent_id}/mcp-attachments/{name}/connection",
     description = "Revokes the current caller's user connection or the virtual user's shared service connection for an effective MCP attachment. The attachment configuration remains unchanged.",
     params(
         ("agent_id" = String, Path, description = "Agent ID (prefixed) or name"),

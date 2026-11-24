@@ -66,19 +66,19 @@ The response's `status` is `dispatched`, `filtered` (with the `reason`: the cond
 
 ## API
 
-Agent triggers are managed below `/v1/agents/{agent_id}/triggers`:
+Agent triggers are managed below `/v1/platform/agents/{agent_id}/triggers`:
 
 | Method | Path | Purpose |
 |---|---|---|
-| `GET` | `/v1/agents/{agent_id}/triggers` | List triggers |
-| `POST` | `/v1/agents/{agent_id}/triggers` | Create a schedule trigger |
-| `GET` | `/v1/agents/{agent_id}/triggers/{trigger_id}` | Get one trigger |
-| `PATCH` | `/v1/agents/{agent_id}/triggers/{trigger_id}` | Update provided fields |
-| `DELETE` | `/v1/agents/{agent_id}/triggers/{trigger_id}` | Delete a trigger |
-| `POST` | `/v1/agents/{agent_id}/triggers/{trigger_id}/trigger` | Run it now, optionally on an `event` |
-| `GET` | `/v1/agents/{agent_id}/triggers/{trigger_id}/runs` | List recent outcomes |
+| `GET` | `/v1/platform/agents/{agent_id}/triggers` | List triggers |
+| `POST` | `/v1/platform/agents/{agent_id}/triggers` | Create a schedule trigger |
+| `GET` | `/v1/platform/agents/{agent_id}/triggers/{trigger_id}` | Get one trigger |
+| `PATCH` | `/v1/platform/agents/{agent_id}/triggers/{trigger_id}` | Update provided fields |
+| `DELETE` | `/v1/platform/agents/{agent_id}/triggers/{trigger_id}` | Delete a trigger |
+| `POST` | `/v1/platform/agents/{agent_id}/triggers/{trigger_id}/trigger` | Run it now, optionally on an `event` |
+| `GET` | `/v1/platform/agents/{agent_id}/triggers/{trigger_id}/runs` | List recent outcomes |
 
-Schedule create requests accept `trigger_type: "schedule"`, `cron_expression`, `timezone`, `session_mode`, `message`, and `enabled`. `GET /v1/agents/{agent_id}/triggers/{trigger_id}/deliveries` lists recent deliveries, including ones that were filtered out or deduplicated. See the [API reference](/api/) for current request and response schemas.
+Schedule create requests accept `trigger_type: "schedule"`, `cron_expression`, `timezone`, `session_mode`, `message`, and `enabled`. `GET /v1/platform/agents/{agent_id}/triggers/{trigger_id}/deliveries` lists recent deliveries, including ones that were filtered out or deduplicated. See the [API reference](/api/) for current request and response schemas.
 
 ## Run a saved script
 

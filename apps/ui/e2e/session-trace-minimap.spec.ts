@@ -102,14 +102,14 @@ async function mockSession(page: Page, baseURL: string) {
     const url = new URL(route.request().url());
     const path = url.pathname;
     let json: unknown = { data: [], has_more: false, total: 0 };
-    if (path === "/api/v1/auth/config")
+    if (path === "/api/v1/platform/auth/config")
       json = {
         mode: "none",
         password_auth_enabled: false,
         oauth_providers: [],
         signup_enabled: false,
       };
-    else if (path === "/api/v1/auth/me")
+    else if (path === "/api/v1/platform/auth/me")
       json = {
         id: "fixture-user",
         email: "fixture@example.test",
@@ -120,7 +120,7 @@ async function mockSession(page: Page, baseURL: string) {
       };
     else if (path.endsWith("/feature-flags")) json = {};
     else if (path.endsWith("/switch-org")) json = { success: true, org_id: ORG };
-    else if (path === `/api/v1/sessions/${SESSION}`)
+    else if (path === `/api/v1/platform/sessions/${SESSION}`)
       json = {
         id: SESSION,
         organization_id: ORG,
@@ -134,8 +134,8 @@ async function mockSession(page: Page, baseURL: string) {
         created_at: "2026-10-01T00:00:00Z",
         updated_at: "2026-10-01T00:00:00Z",
       };
-    else if (path === `/api/v1/sessions/${SESSION}/resolved-model`) json = { model_id: null };
-    else if (path === `/api/v1/sessions/${SESSION}/trace`)
+    else if (path === `/api/v1/platform/sessions/${SESSION}/resolved-model`) json = { model_id: null };
+    else if (path === `/api/v1/platform/sessions/${SESSION}/trace`)
       json = {
         turn_count: TURN_COUNT,
         step_count: TURN_COUNT * 30,
@@ -146,15 +146,15 @@ async function mockSession(page: Page, baseURL: string) {
         bucket_size: BUCKET,
         buckets,
       };
-    else if (path === `/api/v1/sessions/${SESSION}/trace/turns`) json = turnsPage(url.searchParams);
-    else if (path.startsWith(`/api/v1/sessions/${SESSION}/trace/turns/`)) {
+    else if (path === `/api/v1/platform/sessions/${SESSION}/trace/turns`) json = turnsPage(url.searchParams);
+    else if (path.startsWith(`/api/v1/platform/sessions/${SESSION}/trace/turns/`)) {
       // turns/{turn}/steps/{step}
       const [turnNo, , stepNo] = path.split("/trace/turns/")[1]!.split("/");
       const detail = turn(Number(turnNo)).items[Number(stepNo) - 1];
       json = path.endsWith("/events")
         ? { events: [] }
         : { step: detail, events: [], input: null, output: null, request: null };
-    } else if (path === `/api/v1/orgs/${ORG}`)
+    } else if (path === `/api/v1/platform/orgs/${ORG}`)
       json = { id: ORG, name: "Fixture", default_model_id: null };
     await route.fulfill({ json });
   });
@@ -211,7 +211,7 @@ test("opens the requested message page or tools in a fixed-size model request mo
 }) => {
   test.setTimeout(90_000);
   await mockSession(page, baseURL!);
-  const call = `**/api/v1/sessions/${SESSION}/trace/turns/1833/steps/1`;
+  const call = `**/api/v1/platform/sessions/${SESSION}/trace/turns/1833/steps/1`;
   const preview = "Inspect the attached report";
   const system = "Read workspace reports before answering.";
   const longMessage = `${preview}\n${"A long line in the report.\n".repeat(150)}`;
@@ -309,7 +309,7 @@ test("opens the full recorded turn input in the trace sidebar", async ({ page, b
   test.setTimeout(90_000);
   await mockSession(page, baseURL!);
   const fullInput = `Prompt of turn 1833\n${"An unabridged line.\n".repeat(500)}End of message.`;
-  await page.route(`**/api/v1/sessions/${SESSION}/trace/turns/1833/input`, (route) =>
+  await page.route(`**/api/v1/platform/sessions/${SESSION}/trace/turns/1833/input`, (route) =>
     route.fulfill({ json: { content: fullInput } }),
   );
   await page.goto(`/sessions/${SESSION}/trace?turn=1833`);

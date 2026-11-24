@@ -17,7 +17,7 @@ import type { OrgRole } from "@/lib/api/types";
 export function useInvitations() {
   const { currentOrg, hasRole, isLoading: orgLoading } = useOrg();
   const org = currentOrg?.public_id;
-  // GET /v1/orgs/:org/invites is OrgAdmin-only, so members would fetch a
+  // GET /v1/platform/orgs/:org/invites is OrgAdmin-only, so members would fetch a
   // guaranteed 403 on every render of the members page.
   const canManage = hasRole("admin");
 

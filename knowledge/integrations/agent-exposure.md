@@ -240,7 +240,7 @@ POST /v1/channels/{channel_id}/sessions
 GET  /c/{endpoint_slug}
 ```
 
-Old `/v1/apps/{app_id}/…` paths stay mounted permanently as aliases that resolve from
+Old `/v1/platform/apps/{app_id}/…` paths stay mounted permanently as aliases that resolve from
 `agent_channels.legacy_alias_id`. They never read the frozen `apps` table or the
 `app_channels` compatibility view. Nothing installed breaks, ever. Deprecate in docs,
 not in code.
@@ -330,7 +330,7 @@ output carries its `view_url`, so an external agent can hand out a direct link
 ### Pause agent
 
 `exposures_suspended` is the agent-level kill switch, presented as **Pause agent**
-(`POST /v1/agents/{id}/pause` and `/resume`, `everruns agents pause|resume`). Paused, the
+(`POST /v1/platform/agents/{id}/pause` and `/resume`, `everruns agents pause|resume`). Paused, the
 agent's channels refuse messages and its triggers do not start it, schedules included
 (schedules used to keep firing, which made the old "suspend exposures" name only half
 true). Each channel's publish state and each trigger's on/off setting are left alone, so

@@ -345,7 +345,7 @@ pub async fn fixers_for(ctx: &Ctx, row: &HealthIssueRow) -> Result<Vec<IssueFixe
     description = "Run a fixer the issue offers, such as adding missing Slack permissions to the agent's app. A fix that needs approval in the provider returns the page to approve it on; the issue resolves only when a fresh check confirms it.",
     method = "POST",
     cli = CliRoute::new(&["health-issues"], "fix").with_examples(&[CliExample::new("Add missing Slack permissions to an agent's app", "everruns health-issues fix --issue-id 550e8400-e29b-41d4-a716-446655440000 --kind slack.add_permissions")]),
-    path = "/v1/health-issues/{issue_id}/fix",
+    path = "/v1/platform/health-issues/{issue_id}/fix",
     policy = AGENT_MANAGE,
     request_body(RunIssueFixerRequest),
     http = plain,

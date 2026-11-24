@@ -104,7 +104,7 @@ async fn create_org_app_with_roles(
 fn create_org_request(name: &str) -> Request<Body> {
     Request::builder()
         .method("POST")
-        .uri("/v1/orgs")
+        .uri("/v1/platform/orgs")
         .header("Authorization", "Bearer test-token")
         .header("content-type", "application/json")
         .body(Body::from(format!(r#"{{"name":"{name}"}}"#)))
@@ -122,7 +122,7 @@ fn update_default_org_json_request(body: impl Into<Body>) -> Request<Body> {
 fn update_org_json_request(org_public_id: &str, body: impl Into<Body>) -> Request<Body> {
     Request::builder()
         .method("PATCH")
-        .uri(format!("/v1/orgs/{org_public_id}"))
+        .uri(format!("/v1/platform/orgs/{org_public_id}"))
         .header("Authorization", "Bearer test-token")
         .header("content-type", "application/json")
         .body(body.into())
@@ -782,7 +782,7 @@ async fn complete_org_onboarding_marks_and_is_idempotent() {
     let complete_req = |id: &str| {
         Request::builder()
             .method("POST")
-            .uri(format!("/v1/orgs/{id}/onboarding/complete"))
+            .uri(format!("/v1/platform/orgs/{id}/onboarding/complete"))
             .header("Authorization", "Bearer test-token")
             .body(Body::empty())
             .unwrap()
@@ -1271,7 +1271,7 @@ async fn org_owned_by(db: &StorageBackend, user_id: Uuid, name: &str) -> (i64, S
 fn add_member_request(org_public_id: &str, target: Uuid) -> Request<Body> {
     Request::builder()
         .method("POST")
-        .uri(format!("/v1/orgs/{org_public_id}/members"))
+        .uri(format!("/v1/platform/orgs/{org_public_id}/members"))
         .header("Authorization", "Bearer test-token")
         .header("content-type", "application/json")
         .body(Body::from(

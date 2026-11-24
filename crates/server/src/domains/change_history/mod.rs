@@ -122,7 +122,7 @@ pub async fn agent_session_intent(
     }
 }
 
-/// `ctx` for commands MCP `execute` runs (and `/v1/commands`, which overrides).
+/// `ctx` for commands MCP `execute` runs (and `/v1/platform/commands`, which overrides).
 pub fn on_surface(ctx: Ctx) -> Ctx {
     let mut intent = ChangeIntent::on(ChangeSurface::Mcp);
     intent.mcp_client = ctx

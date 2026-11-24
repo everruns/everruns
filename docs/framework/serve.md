@@ -74,10 +74,10 @@ cargo run -p serve-example-revenue-analyst -- manifest
 Then talk to it with the same requests you would send an Everruns server:
 
 ```sh
-ID=$(curl -s localhost:3000/v1/sessions -H 'content-type: application/json' -d '{}' | jq -r .id)
-curl -s localhost:3000/v1/sessions/$ID/messages -H 'content-type: application/json' \
+ID=$(curl -s localhost:3000/v1/platform/sessions -H 'content-type: application/json' -d '{}' | jq -r .id)
+curl -s localhost:3000/v1/platform/sessions/$ID/messages -H 'content-type: application/json' \
   -d '{"message":{"content":[{"type":"text","text":"What was revenue last week?"}]}}'
-curl -N "localhost:3000/v1/sessions/$ID/sse?after_sequence=0"
+curl -N "localhost:3000/v1/platform/sessions/$ID/sse?after_sequence=0"
 ```
 
 For `openai/<model>` agents, set `OPENAI_API_KEY`. Optional `OPENAI_BASE_URL`
@@ -202,18 +202,18 @@ a bucket prefix at a time; give each daemon its own prefix.
 A serve app speaks a subset of the Everruns server `/v1` API, with the same
 request and response bodies:
 
-- `POST /v1/sessions` and `GET /v1/sessions/{id}`
-- `POST /v1/sessions/{id}/messages`, which also steers an active turn. Its
+- `POST /v1/platform/sessions` and `GET /v1/platform/sessions/{id}`
+- `POST /v1/platform/sessions/{id}/messages`, which also steers an active turn. Its
   `files` list sends files as base64 `data` or a public `url`, as on the
   [Agent API](/how-to/call-your-agent-from-code/#send-files); each is kept in
   the session's `/attachments` folder
-- `POST /v1/sessions/{id}/cancel`
-- `GET /v1/sessions/{id}/sse` (resume with `since_id` or `after_sequence`) and `GET /v1/sessions/{id}/events`
-- `POST /v1/sessions/{id}/question-answers`, for [`ask_user`](/framework/ask-user/) questions
-- `POST /v1/sessions/{id}/tool-approvals`, to allow or reject pending tool calls
+- `POST /v1/platform/sessions/{id}/cancel`
+- `GET /v1/platform/sessions/{id}/sse` (resume with `since_id` or `after_sequence`) and `GET /v1/platform/sessions/{id}/events`
+- `POST /v1/platform/sessions/{id}/question-answers`, for [`ask_user`](/framework/ask-user/) questions
+- `POST /v1/platform/sessions/{id}/tool-approvals`, to allow or reject pending tool calls
 
 It adds a few routes of its own: `GET /health`, `GET /v1/agent` (the agent
-card), channel webhooks, the [AG-UI](#ag-ui-and-copilotkit), [A2A](#a2a) and [voice](#voice) routes, and `POST /v1/sessions/{id}/approvals/{tool_call_id}`
+card), channel webhooks, the [AG-UI](#ag-ui-and-copilotkit), [A2A](#a2a) and [voice](#voice) routes, and `POST /v1/platform/sessions/{id}/approvals/{tool_call_id}`
 to approve or deny one pending tool call. Errors are `application/problem+json`.
 
 ### One agent's API

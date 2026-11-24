@@ -22,7 +22,7 @@ export function usePlatformChatThread(
   const { currentOrg, isLoading } = useOrg();
   const query = useQuery({
     queryKey: ["sessions", "platform-chat", currentOrg?.public_id],
-    queryFn: async () => (await api.post<Session>("/v1/sessions/platform-chat", {})).data,
+    queryFn: async () => (await api.post<Session>("/v1/platform/sessions/platform-chat", {})).data,
     enabled: !!currentOrg && (options.ensure ?? true),
     staleTime: Infinity,
   });

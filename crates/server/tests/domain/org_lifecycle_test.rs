@@ -27,7 +27,7 @@ async fn test_created_org_appears_in_list() {
 
     // List orgs before — should have only the default org
     let before: Value = server
-        .get("/v1/orgs")
+        .get("/v1/platform/orgs")
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -36,7 +36,7 @@ async fn test_created_org_appears_in_list() {
 
     // Create a new org
     let created: Value = server
-        .post("/v1/orgs", json!({"name": "Acme Corp"}))
+        .post("/v1/platform/orgs", json!({"name": "Acme Corp"}))
         .await
         .assert_status(StatusCode::CREATED)
         .json();
@@ -45,7 +45,7 @@ async fn test_created_org_appears_in_list() {
 
     // List orgs after — new org must be present
     let after: Value = server
-        .get("/v1/orgs")
+        .get("/v1/platform/orgs")
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -71,16 +71,16 @@ async fn test_created_org_appears_in_list() {
 // ============================================
 
 // ============================================
-// Bug regression: /v1/auth/me must return newly created org (auth=none)
+// Bug regression: /v1/platform/auth/me must return newly created org (auth=none)
 // ============================================
 
 #[tokio::test]
 async fn test_auth_me_includes_newly_created_org() {
     let server = TestServer::in_memory().await;
 
-    // Before creation, /v1/auth/me should show at least the default org
+    // Before creation, /v1/platform/auth/me should show at least the default org
     let me_before: Value = server
-        .get("/v1/auth/me")
+        .get("/v1/platform/auth/me")
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -91,15 +91,15 @@ async fn test_auth_me_includes_newly_created_org() {
 
     // Create a new org
     let created: Value = server
-        .post("/v1/orgs", json!({"name": "AuthMe Corp"}))
+        .post("/v1/platform/orgs", json!({"name": "AuthMe Corp"}))
         .await
         .assert_status(StatusCode::CREATED)
         .json();
     let new_org_id = created["id"].as_str().expect("org id");
 
-    // After creation, /v1/auth/me must include the new org
+    // After creation, /v1/platform/auth/me must include the new org
     let me_after: Value = server
-        .get("/v1/auth/me")
+        .get("/v1/platform/auth/me")
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -118,7 +118,7 @@ async fn test_auth_me_includes_newly_created_org() {
         .collect();
     assert!(
         org_ids.contains(&new_org_id),
-        "newly created org must appear in /v1/auth/me organizations"
+        "newly created org must appear in /v1/platform/auth/me organizations"
     );
 }
 
@@ -131,7 +131,7 @@ async fn test_create_org_empty_name_rejected() {
     let server = TestServer::in_memory().await;
 
     server
-        .post("/v1/orgs", json!({"name": ""}))
+        .post("/v1/platform/orgs", json!({"name": ""}))
         .await
         .assert_status(StatusCode::BAD_REQUEST);
 }
@@ -146,7 +146,7 @@ async fn test_create_org_long_name_rejected() {
 
     let long_name = "x".repeat(256);
     server
-        .post("/v1/orgs", json!({"name": long_name}))
+        .post("/v1/platform/orgs", json!({"name": long_name}))
         .await
         .assert_status(StatusCode::BAD_REQUEST);
 }
@@ -161,7 +161,7 @@ async fn test_switch_to_unknown_org_rejected() {
 
     server
         .post(
-            "/v1/users/me/switch-org",
+            "/v1/platform/users/me/switch-org",
             json!({"org_id": "org_ffffffffffffffffffffffffffffffff"}),
         )
         .await
@@ -178,7 +178,7 @@ async fn test_switch_invalid_org_id_format() {
 
     server
         .post(
-            "/v1/users/me/switch-org",
+            "/v1/platform/users/me/switch-org",
             json!({"org_id": "not-an-org-id"}),
         )
         .await
@@ -190,7 +190,7 @@ async fn test_switch_invalid_org_id_format() {
 // ============================================
 
 // ============================================
-// Created org visible via GET /v1/orgs/:id
+// Created org visible via GET /v1/platform/orgs/:id
 // ============================================
 
 #[tokio::test]
@@ -198,14 +198,14 @@ async fn test_get_created_org_by_id() {
     let server = TestServer::in_memory().await;
 
     let created: Value = server
-        .post("/v1/orgs", json!({"name": "Get By ID"}))
+        .post("/v1/platform/orgs", json!({"name": "Get By ID"}))
         .await
         .assert_status(StatusCode::CREATED)
         .json();
     let org_id = created["id"].as_str().unwrap();
 
     let fetched: Value = server
-        .get(&format!("/v1/orgs/{org_id}"))
+        .get(&format!("/v1/platform/orgs/{org_id}"))
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -223,7 +223,7 @@ async fn test_switch_org_cookie_has_secure_flag() {
 
     // Create a new org to switch to
     let created: Value = server
-        .post("/v1/orgs", json!({"name": "Secure Cookie Test"}))
+        .post("/v1/platform/orgs", json!({"name": "Secure Cookie Test"}))
         .await
         .assert_status(StatusCode::CREATED)
         .json();
@@ -231,7 +231,10 @@ async fn test_switch_org_cookie_has_secure_flag() {
 
     // Switch to new org and inspect Set-Cookie header
     let resp = server
-        .post("/v1/users/me/switch-org", json!({"org_id": new_org_id}))
+        .post(
+            "/v1/platform/users/me/switch-org",
+            json!({"org_id": new_org_id}),
+        )
         .await
         .assert_status(StatusCode::OK);
 
@@ -261,14 +264,17 @@ async fn test_switch_org_cookie_lists_built_in_harnesses_for_fresh_org() {
     let server = TestServer::in_memory().await;
 
     let created_org: Value = server
-        .post("/v1/orgs", json!({"name": "Matrix Org"}))
+        .post("/v1/platform/orgs", json!({"name": "Matrix Org"}))
         .await
         .assert_status(StatusCode::CREATED)
         .json();
     let org_id = created_org["id"].as_str().expect("org id");
 
     let switch_resp = server
-        .post("/v1/users/me/switch-org", json!({"org_id": org_id}))
+        .post(
+            "/v1/platform/users/me/switch-org",
+            json!({"org_id": org_id}),
+        )
         .await
         .assert_status(StatusCode::OK);
     let org_cookie = extract_cookie(switch_resp.headers(), "everruns_org");
@@ -276,7 +282,7 @@ async fn test_switch_org_cookie_lists_built_in_harnesses_for_fresh_org() {
     let switched_harnesses: Value = server
         .request_raw(
             Method::GET,
-            "/v1/harnesses",
+            "/v1/platform/harnesses",
             vec![("cookie", org_cookie.as_str())],
             vec![],
         )
@@ -304,14 +310,17 @@ async fn test_switch_org_cookie_allows_creating_and_listing_harnesses() {
     let server = TestServer::in_memory().await;
 
     let created_org: Value = server
-        .post("/v1/orgs", json!({"name": "Scoped Harness Org"}))
+        .post("/v1/platform/orgs", json!({"name": "Scoped Harness Org"}))
         .await
         .assert_status(StatusCode::CREATED)
         .json();
     let org_id = created_org["id"].as_str().expect("org id");
 
     let switch_resp = server
-        .post("/v1/users/me/switch-org", json!({"org_id": org_id}))
+        .post(
+            "/v1/platform/users/me/switch-org",
+            json!({"org_id": org_id}),
+        )
         .await
         .assert_status(StatusCode::OK);
     let org_cookie = extract_cookie(switch_resp.headers(), "everruns_org");
@@ -319,7 +328,7 @@ async fn test_switch_org_cookie_allows_creating_and_listing_harnesses() {
     let created_harness: Value = server
         .request_raw(
             Method::POST,
-            "/v1/harnesses",
+            "/v1/platform/harnesses",
             vec![
                 ("content-type", "application/json"),
                 ("cookie", org_cookie.as_str()),
@@ -339,7 +348,7 @@ async fn test_switch_org_cookie_allows_creating_and_listing_harnesses() {
     let switched_after_create: Value = server
         .request_raw(
             Method::GET,
-            "/v1/harnesses",
+            "/v1/platform/harnesses",
             vec![("cookie", org_cookie.as_str())],
             vec![],
         )
@@ -362,7 +371,7 @@ async fn test_api_keys_remain_visible_across_active_org_switches() {
 
     let default_key: Value = server
         .post(
-            "/v1/auth/personal-access-tokens",
+            "/v1/platform/auth/personal-access-tokens",
             json!({"name": "default-org-key"}),
         )
         .await
@@ -371,14 +380,17 @@ async fn test_api_keys_remain_visible_across_active_org_switches() {
     let default_key_id = default_key["id"].as_str().expect("api key id");
 
     let created_org: Value = server
-        .post("/v1/orgs", json!({"name": "API Key Org"}))
+        .post("/v1/platform/orgs", json!({"name": "API Key Org"}))
         .await
         .assert_status(StatusCode::CREATED)
         .json();
     let org_id = created_org["id"].as_str().expect("org id");
 
     let switch_resp = server
-        .post("/v1/users/me/switch-org", json!({"org_id": org_id}))
+        .post(
+            "/v1/platform/users/me/switch-org",
+            json!({"org_id": org_id}),
+        )
         .await
         .assert_status(StatusCode::OK);
     let org_cookie = extract_cookie(switch_resp.headers(), "everruns_org");
@@ -386,7 +398,7 @@ async fn test_api_keys_remain_visible_across_active_org_switches() {
     let switched_list: Value = server
         .request_raw(
             Method::GET,
-            "/v1/auth/personal-access-tokens",
+            "/v1/platform/auth/personal-access-tokens",
             vec![("cookie", org_cookie.as_str())],
             vec![],
         )
@@ -405,7 +417,7 @@ async fn test_api_keys_remain_visible_across_active_org_switches() {
     let switched_key: Value = server
         .request_raw(
             Method::POST,
-            "/v1/auth/personal-access-tokens",
+            "/v1/platform/auth/personal-access-tokens",
             vec![
                 ("content-type", "application/json"),
                 ("cookie", org_cookie.as_str()),
@@ -419,7 +431,7 @@ async fn test_api_keys_remain_visible_across_active_org_switches() {
     let switched_key_id = switched_key["id"].as_str().expect("api key id");
 
     let default_list: Value = server
-        .get("/v1/auth/personal-access-tokens")
+        .get("/v1/platform/auth/personal-access-tokens")
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -446,7 +458,7 @@ async fn test_api_key_creation_enforces_per_user_limit() {
     for idx in 0..25 {
         server
             .post(
-                "/v1/auth/personal-access-tokens",
+                "/v1/platform/auth/personal-access-tokens",
                 json!({ "name": format!("quota-key-{idx}") }),
             )
             .await
@@ -455,7 +467,7 @@ async fn test_api_key_creation_enforces_per_user_limit() {
 
     let over_limit: Value = server
         .post(
-            "/v1/auth/personal-access-tokens",
+            "/v1/platform/auth/personal-access-tokens",
             json!({"name": "quota-key-over-limit"}),
         )
         .await
@@ -477,7 +489,7 @@ async fn test_api_key_expiry_validation() {
     // Valid expiry creates the token and echoes the expiration timestamp.
     let resp: Value = server
         .post(
-            "/v1/auth/personal-access-tokens",
+            "/v1/platform/auth/personal-access-tokens",
             json!({"name": "expires-soon", "expires_in_days": 30}),
         )
         .await
@@ -491,7 +503,7 @@ async fn test_api_key_expiry_validation() {
     // Zero days is rejected.
     let err: Value = server
         .post(
-            "/v1/auth/personal-access-tokens",
+            "/v1/platform/auth/personal-access-tokens",
             json!({"name": "bad-zero", "expires_in_days": 0}),
         )
         .await
@@ -508,7 +520,7 @@ async fn test_api_key_expiry_validation() {
     // Negative days are rejected (previously could panic via Duration::days).
     let err: Value = server
         .post(
-            "/v1/auth/personal-access-tokens",
+            "/v1/platform/auth/personal-access-tokens",
             json!({"name": "bad-negative", "expires_in_days": -1}),
         )
         .await
@@ -525,7 +537,7 @@ async fn test_api_key_expiry_validation() {
     // Exceeding 3650 days is rejected.
     let err: Value = server
         .post(
-            "/v1/auth/personal-access-tokens",
+            "/v1/platform/auth/personal-access-tokens",
             json!({"name": "bad-huge", "expires_in_days": 3651}),
         )
         .await
@@ -542,7 +554,7 @@ async fn test_api_key_expiry_validation() {
     // No expiry is fine — token is created without expires_at.
     let resp: Value = server
         .post(
-            "/v1/auth/personal-access-tokens",
+            "/v1/platform/auth/personal-access-tokens",
             json!({"name": "no-expiry"}),
         )
         .await

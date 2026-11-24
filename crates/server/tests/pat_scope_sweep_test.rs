@@ -11,12 +11,12 @@
 //!   a router spelling the classification layer does not resolve;
 //! - with a `*` PAT, no route ever answers `insufficient_scope`.
 //!
-//! It also checks `POST /v1/commands/{name}` per command, and the surfaces of
+//! It also checks `POST /v1/platform/commands/{name}` per command, and the surfaces of
 //! Tests item 6 that validate a PAT outside the route table: the
-//! `GET /v1/commands` listing and `/mcp` (`tools/list`, `tools/call`). The
+//! `GET /v1/platform/commands` listing and `/mcp` (`tools/list`, `tools/call`). The
 //! sweep's tokens are inserted directly; `creation` mints them through
-//! `POST /v1/auth/personal-access-tokens` instead and follows a `read` token
-//! end to end, with `token_scope` on `GET /v1/auth/me` and the creation audit
+//! `POST /v1/platform/auth/personal-access-tokens` instead and follows a `read` token
+//! end to end, with `token_scope` on `GET /v1/platform/auth/me` and the creation audit
 //! event (rollout step 4).
 //!
 //! A dedicated single-test binary because the production builder reads
@@ -216,8 +216,12 @@ const NOT_DENIED_BY_THE_EXTRACTOR: &[(&str, &str, &str)] = &[
     ("GET", "/v1/user/connections/github/callback", CALLBACK),
     ("GET", "/v1/user/connections/{}/callback", CALLBACK),
     // Documented but not routed in this configuration.
-    ("POST", "/v1/agents/{}/endpoints/{}/voice/calls", NOT_ROUTED),
-    ("POST", "/v1/sessions/{}/sandbox", NOT_ROUTED),
+    (
+        "POST",
+        "/v1/platform/agents/{}/endpoints/{}/voice/calls",
+        NOT_ROUTED,
+    ),
+    ("POST", "/v1/platform/sessions/{}/sandbox", NOT_ROUTED),
 ];
 const INGRESS: &str = "channel ingress, own credential";
 const CALLBACK: &str = "flow callback, bound to flow state";
@@ -363,13 +367,16 @@ async fn sweep(port: u16, context: ServerContext) {
     // (both methods), while the general sweep below checks write-scope denial.
     let missing_review_resources = [
         (
-            format!("/v1/organization-accounts/{}", uuid::Uuid::now_v7()),
+            format!(
+                "/v1/platform/organization-accounts/{}",
+                uuid::Uuid::now_v7()
+            ),
             serde_json::json!({"name": "Review account"}),
             "Account not found",
         ),
         (
             format!(
-                "/v1/sandbox-template-metadata/{}",
+                "/v1/platform/sandbox-template-metadata/{}",
                 everruns_contracts::typed_id::SandboxTemplateId::new()
             ),
             serde_json::json!({"display_name": "Review template"}),
@@ -384,12 +391,15 @@ async fn sweep(port: u16, context: ServerContext) {
             "Profile not found",
         ),
         (
-            format!("/v1/tracing/policies/{}", uuid::Uuid::now_v7()),
+            format!("/v1/platform/tracing/policies/{}", uuid::Uuid::now_v7()),
             serde_json::json!({"mode": "off", "destination_ids": []}),
             "Tracing policy not found",
         ),
         (
-            format!("/v1/tracing/destination-metadata/{}", uuid::Uuid::now_v7()),
+            format!(
+                "/v1/platform/tracing/destination-metadata/{}",
+                uuid::Uuid::now_v7()
+            ),
             serde_json::json!({"enabled": false}),
             "Destination not found",
         ),
@@ -467,7 +477,7 @@ async fn sweep(port: u16, context: ServerContext) {
         &base,
         &read_token,
         "POST",
-        &format!("/v1/commands/{write_command}"),
+        &format!("/v1/platform/commands/{write_command}"),
         Some(serde_json::json!({"params": {}})),
     )
     .await
@@ -482,7 +492,7 @@ async fn sweep(port: u16, context: ServerContext) {
         &base,
         &read_token,
         "POST",
-        &format!("/v1/commands/{read_command}"),
+        &format!("/v1/platform/commands/{read_command}"),
         Some(serde_json::json!({"params": {}})),
     )
     .await
@@ -498,7 +508,7 @@ async fn sweep(port: u16, context: ServerContext) {
         &base,
         &read_token,
         "POST",
-        "/v1/commands/no_such_command",
+        "/v1/platform/commands/no_such_command",
         Some(serde_json::json!({"params": {}})),
     )
     .await
@@ -508,7 +518,7 @@ async fn sweep(port: u16, context: ServerContext) {
     // `*`: nothing is ever insufficient_scope. Deleting the account goes last,
     // so the token stays valid for the rest of the sweep.
     let mut routes: Vec<_> = universe().into_iter().collect();
-    routes.sort_by_key(|(method, path)| method == "DELETE" && path == "/v1/users/me");
+    routes.sort_by_key(|(method, path)| method == "DELETE" && path == "/v1/platform/users/me");
     let mut wrong = Vec::new();
     for (method, path) in routes {
         let answer = send(
@@ -533,7 +543,7 @@ async fn sweep(port: u16, context: ServerContext) {
 
 async fn list_commands(client: &reqwest::Client, base: &str, token: &str) -> Vec<String> {
     let catalog: serde_json::Value = client
-        .get(format!("{base}/v1/commands"))
+        .get(format!("{base}/v1/platform/commands"))
         .bearer_auth(token)
         .send()
         .await
@@ -611,7 +621,7 @@ const READ_ONLY_MCP_TOOLS: &[&str] = &[
     "session_view",
 ];
 
-/// Tests item 6: `GET /v1/commands` and `/mcp` honor a `read` token's scope
+/// Tests item 6: `GET /v1/platform/commands` and `/mcp` honor a `read` token's scope
 /// and leave a `*` token as it was.
 async fn surfaces(port: u16, db: &StorageBackend) {
     let base = format!("http://127.0.0.1:{port}");
@@ -619,7 +629,7 @@ async fn surfaces(port: u16, db: &StorageBackend) {
     let read_token = mint_pat(db, &["read"]).await;
     let full_token = mint_pat(db, &["*"]).await;
 
-    // GET /v1/commands lists exactly the commands each token can run.
+    // GET /v1/platform/commands lists exactly the commands each token can run.
     let read_commands = list_commands(&client, &base, &read_token).await;
     let full_commands = list_commands(&client, &base, &full_token).await;
     let class = |name: &str| {
@@ -681,7 +691,10 @@ async fn surfaces(port: u16, db: &StorageBackend) {
         &base,
         &read_token,
         "tools/call",
-        call("app_read", serde_json::json!({"path":"/v1/agents"})),
+        call(
+            "app_read",
+            serde_json::json!({"path":"/v1/platform/agents"}),
+        ),
     )
     .await;
     assert_eq!(read["result"]["structuredContent"]["status"], 200, "{read}");
@@ -692,7 +705,7 @@ async fn surfaces(port: u16, db: &StorageBackend) {
         "tools/call",
         call(
             "app_write",
-            serde_json::json!({"path":"/v1/agents","method":"POST","body":{}}),
+            serde_json::json!({"path":"/v1/platform/agents","method":"POST","body":{}}),
         ),
     )
     .await;
@@ -790,7 +803,7 @@ async fn creation(port: u16, db: &StorageBackend) {
 
     let email = format!("pat-create-{}@example.com", uuid::Uuid::now_v7());
     let response = client
-        .post(format!("{base}/v1/auth/register"))
+        .post(format!("{base}/v1/platform/auth/register"))
         .json(&serde_json::json!({
             "email": email,
             "password": "pat-scope-creation-password-1",
@@ -822,7 +835,7 @@ async fn creation(port: u16, db: &StorageBackend) {
             &base,
             jwt,
             Method::POST,
-            "/v1/auth/personal-access-tokens",
+            "/v1/platform/auth/personal-access-tokens",
             Some(body),
         )
     };
@@ -856,7 +869,7 @@ async fn creation(port: u16, db: &StorageBackend) {
         &base,
         jwt,
         Method::GET,
-        "/v1/auth/personal-access-tokens",
+        "/v1/platform/auth/personal-access-tokens",
         None,
     )
     .await;
@@ -869,20 +882,36 @@ async fn creation(port: u16, db: &StorageBackend) {
         .expect("read token listed");
     assert_eq!(listed["scopes"], serde_json::json!(["read"]));
 
-    // GET /v1/auth/me reports the scope of the credential, null for a JWT.
+    // GET /v1/platform/auth/me reports the scope of the credential, null for a JWT.
     for (token, expected) in [
         (read_token, serde_json::json!("read")),
         (full_token, serde_json::json!("*")),
         (jwt, serde_json::Value::Null),
     ] {
-        let (status, me) = call(&client, &base, token, Method::GET, "/v1/auth/me", None).await;
+        let (status, me) = call(
+            &client,
+            &base,
+            token,
+            Method::GET,
+            "/v1/platform/auth/me",
+            None,
+        )
+        .await;
         assert_eq!(status, 200, "{me}");
         assert_eq!(me["token_scope"], expected, "{me}");
         assert_eq!(me["email"], email.as_str());
     }
 
     // The read token reads, and is refused a write with 403 insufficient_scope.
-    let (status, agents) = call(&client, &base, read_token, Method::GET, "/v1/agents", None).await;
+    let (status, agents) = call(
+        &client,
+        &base,
+        read_token,
+        Method::GET,
+        "/v1/platform/agents",
+        None,
+    )
+    .await;
     assert_eq!(status, 200, "read route with a read token: {agents}");
     let agent = serde_json::json!({ "name": "pat-scope-creation", "system_prompt": "hi" });
     let (status, denied) = call(
@@ -890,7 +919,7 @@ async fn creation(port: u16, db: &StorageBackend) {
         &base,
         read_token,
         Method::POST,
-        "/v1/agents",
+        "/v1/platform/agents",
         Some(agent.clone()),
     )
     .await;
@@ -901,11 +930,50 @@ async fn creation(port: u16, db: &StorageBackend) {
         &base,
         full_token,
         Method::POST,
-        "/v1/agents",
+        "/v1/platform/agents",
         Some(agent),
     )
     .await;
     assert_ne!(created["code"], INSUFFICIENT_SCOPE, "{status} {created}");
+
+    // Published clients keep working through the legacy prefix with exactly
+    // the canonical PAT permissions, including the Never credential routes.
+    for (method, path, token, expected) in [
+        (Method::GET, "/v1/agents", read_token, 200),
+        (Method::POST, "/v1/agents", read_token, 403),
+        (Method::POST, "/v1/agents", full_token, 201),
+        (
+            Method::POST,
+            "/v1/auth/personal-access-tokens",
+            full_token,
+            403,
+        ),
+        (Method::GET, "/v1/auth/me", read_token, 200),
+    ] {
+        let response = client
+            .request(method, format!("{base}{path}"))
+            .bearer_auth(token)
+            .json(&serde_json::json!({"name":"legacy-pat-scope", "system_prompt":"hi"}))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(
+            response.headers()["deprecation"],
+            everruns_contracts::platform_api::LEGACY_DEPRECATION
+        );
+        assert!(
+            response.headers()["link"]
+                .to_str()
+                .unwrap()
+                .contains("/v1/platform/")
+        );
+        assert_eq!(
+            response.status().as_u16(),
+            expected,
+            "{path}: {}",
+            response.text().await.unwrap()
+        );
+    }
 
     // A PAT still cannot mint a PAT, whatever its scope.
     let (status, _) = call(
@@ -913,7 +981,7 @@ async fn creation(port: u16, db: &StorageBackend) {
         &base,
         full_token,
         Method::POST,
-        "/v1/auth/personal-access-tokens",
+        "/v1/platform/auth/personal-access-tokens",
         Some(serde_json::json!({ "name": "from a pat" })),
     )
     .await;

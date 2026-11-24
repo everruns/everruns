@@ -30,7 +30,7 @@ Verify that when no AGENTS.md file exists in the session filesystem, the agent o
 
 1. Create session with Generic harness:
    ```bash
-   curl -s -X POST "http://localhost:9000/v1/sessions" \
+   curl -s -X POST "http://localhost:9000/v1/platform/sessions" \
      -H "Content-Type: application/json" \
      -d '{"harness_id": "harness_01933b5a000070008000000000000602"}'
    ```
@@ -39,7 +39,7 @@ Verify that when no AGENTS.md file exists in the session filesystem, the agent o
 
 3. Send a message:
    ```bash
-   curl -s -X POST "http://localhost:9000/v1/sessions/{session_id}/messages" \
+   curl -s -X POST "http://localhost:9000/v1/platform/sessions/{session_id}/messages" \
      -H "Content-Type: application/json" \
      -d '{"message": {"content": [{"type": "text", "text": "Say hello"}]}}'
    ```

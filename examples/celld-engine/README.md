@@ -13,7 +13,7 @@ bash build.sh
 celld dev .
 ```
 
-Use the standard `/v1/sessions`, `/messages`, `/events` and `/sse` endpoints.
+Use the standard `/v1/platform/sessions`, `/messages`, `/events` and `/sse` endpoints.
 The reference configuration uses celld dev's loopback ingress for notification
 WebSockets. For a fleet, set `NOTIFICATION_ORIGIN` to a fixed trusted Worker
 ingress that forwards WebSocket upgrades. The authority credential is sent there;

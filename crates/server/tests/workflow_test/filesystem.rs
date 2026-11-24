@@ -15,7 +15,7 @@ async fn test_session_filesystem() {
     // Step 1: Create an agent
     println!("\nStep 1: Creating agent...");
     let agent_response = client
-        .post(format!("{}/v1/agents", API_BASE_URL))
+        .post(format!("{}/v1/platform/agents", API_BASE_URL))
         .json(&json!({
             "name": "filesystem-test-agent",
             "display_name": "Filesystem Test Agent",
@@ -31,7 +31,7 @@ async fn test_session_filesystem() {
     // Step 2: Create a session
     println!("\nStep 2: Creating session...");
     let session_response = client
-        .post(format!("{}/v1/sessions", API_BASE_URL))
+        .post(format!("{}/v1/platform/sessions", API_BASE_URL))
         .json(&json!({
             "harness_name": SEED_HARNESS_NAME,
             "agent_id": agent.public_id,
@@ -47,7 +47,7 @@ async fn test_session_filesystem() {
         .expect("Failed to parse session");
     println!("Created session: {}", session.id);
 
-    let fs_url = format!("{}/v1/sessions/{}/fs", API_BASE_URL, session.id);
+    let fs_url = format!("{}/v1/platform/sessions/{}/fs", API_BASE_URL, session.id);
 
     // Step 3: List root directory (new sessions mount scoped memory under the reserved memory root)
     println!("\nStep 3: Listing root directory...");
@@ -250,7 +250,7 @@ async fn test_session_filesystem() {
     println!("\nCleaning up...");
     cleanup_delete(
         &client,
-        format!("{}/v1/sessions/{}", API_BASE_URL, session.id),
+        format!("{}/v1/platform/sessions/{}", API_BASE_URL, session.id),
         "session",
     )
     .await;
@@ -274,7 +274,7 @@ async fn test_session_filesystem_workspace_prefix() {
     // Step 1: Create an agent and session
     println!("\nStep 1: Creating agent and session...");
     let agent_response = client
-        .post(format!("{}/v1/agents", API_BASE_URL))
+        .post(format!("{}/v1/platform/agents", API_BASE_URL))
         .json(&json!({
             "name": "workspace-test-agent",
             "display_name": "Workspace Test Agent",
@@ -287,7 +287,7 @@ async fn test_session_filesystem_workspace_prefix() {
     let agent: Agent = agent_response.json().await.expect("Failed to parse agent");
 
     let session_response = client
-        .post(format!("{}/v1/sessions", API_BASE_URL))
+        .post(format!("{}/v1/platform/sessions", API_BASE_URL))
         .json(&json!({
             "harness_name": SEED_HARNESS_NAME,
             "agent_id": agent.public_id,
@@ -301,7 +301,7 @@ async fn test_session_filesystem_workspace_prefix() {
         .json()
         .await
         .expect("Failed to parse session");
-    let fs_url = format!("{}/v1/sessions/{}/fs", API_BASE_URL, session.id);
+    let fs_url = format!("{}/v1/platform/sessions/{}/fs", API_BASE_URL, session.id);
 
     // Step 2: Create a file at /demo/a.txt (internal path)
     println!("\nStep 2: Creating file at internal path /demo/a.txt...");
@@ -385,7 +385,7 @@ async fn test_session_filesystem_workspace_prefix() {
     // Cleanup
     cleanup_delete(
         &client,
-        format!("{}/v1/sessions/{}", API_BASE_URL, session.id),
+        format!("{}/v1/platform/sessions/{}", API_BASE_URL, session.id),
         "session",
     )
     .await;
@@ -426,7 +426,7 @@ async fn test_agent_filesystem_and_bash_workspace_integration() {
     // Step 1: Create Anthropic provider and model
     println!("\nStep 1: Creating Anthropic provider and model...");
     let provider_response = client
-        .post(format!("{}/v1/providers", API_BASE_URL))
+        .post(format!("{}/v1/platform/providers", API_BASE_URL))
         .json(&json!({
             "name": "FS Bash Integration Test Provider",
             "provider_type": "anthropic",
@@ -454,7 +454,7 @@ async fn test_agent_filesystem_and_bash_workspace_integration() {
     // Create model (claude-haiku-4-5 for cost-effectiveness)
     let model_response = client
         .post(format!(
-            "{}/v1/providers/{}/models",
+            "{}/v1/platform/providers/{}/models",
             API_BASE_URL, provider.id
         ))
         .json(&json!({
@@ -480,7 +480,7 @@ async fn test_agent_filesystem_and_bash_workspace_integration() {
     // Step 2: Create agent with both session_file_system and bashkit_shell capabilities
     println!("\nStep 2: Creating agent with file_system and bashkit_shell capabilities...");
     let agent_response = client
-        .post(format!("{}/v1/agents", API_BASE_URL))
+        .post(format!("{}/v1/platform/agents", API_BASE_URL))
         .json(&json!({
             "name": "fs-bash-test-agent",
             "display_name": "FS Bash Test Agent",
@@ -505,7 +505,7 @@ async fn test_agent_filesystem_and_bash_workspace_integration() {
     // Step 3: Create session
     println!("\nStep 3: Creating session...");
     let session_response = client
-        .post(format!("{}/v1/sessions", API_BASE_URL))
+        .post(format!("{}/v1/platform/sessions", API_BASE_URL))
         .json(&json!({"harness_name": SEED_HARNESS_NAME, "agent_id": agent.public_id, "title": "FS Bash Integration Test"}))
         .send()
         .await
@@ -518,13 +518,13 @@ async fn test_agent_filesystem_and_bash_workspace_integration() {
         .expect("Failed to parse session");
     println!("Created session: {}", session.id);
 
-    let fs_url = format!("{}/v1/sessions/{}/fs", API_BASE_URL, session.id);
+    let fs_url = format!("{}/v1/platform/sessions/{}/fs", API_BASE_URL, session.id);
 
     // Step 4: Send message asking agent to create a file
     println!("\nStep 4: Sending message asking agent to create a file...");
     let message_response = client
         .post(format!(
-            "{}/v1/sessions/{}/messages",
+            "{}/v1/platform/sessions/{}/messages",
             API_BASE_URL, session.id
         ))
         .json(&json!({
@@ -549,7 +549,7 @@ async fn test_agent_filesystem_and_bash_workspace_integration() {
 
         let messages_response = client
             .get(format!(
-                "{}/v1/sessions/{}/messages",
+                "{}/v1/platform/sessions/{}/messages",
                 API_BASE_URL, session.id
             ))
             .send()
@@ -661,7 +661,7 @@ async fn test_agent_filesystem_and_bash_workspace_integration() {
     // model/provider delete is refused (EVE-955).
     cleanup_delete(
         &client,
-        format!("{}/v1/sessions/{}", API_BASE_URL, session.id),
+        format!("{}/v1/platform/sessions/{}", API_BASE_URL, session.id),
         "session",
     )
     .await;
@@ -669,7 +669,7 @@ async fn test_agent_filesystem_and_bash_workspace_integration() {
 
     cleanup_delete(
         &client,
-        format!("{}/v1/providers/{}", API_BASE_URL, provider.id),
+        format!("{}/v1/platform/providers/{}", API_BASE_URL, provider.id),
         "provider",
     )
     .await;

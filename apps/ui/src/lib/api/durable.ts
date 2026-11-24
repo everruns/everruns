@@ -34,7 +34,7 @@ import type {
  * Returns health, workers, workflows, tasks, DLQ, and circuit breakers.
  */
 export function getDurableSseUrl(): string {
-  return `${getApiBaseUrl()}/v1/durable/sse`;
+  return `${getApiBaseUrl()}/v1/platform/durable/sse`;
 }
 
 /**
@@ -42,7 +42,7 @@ export function getDurableSseUrl(): string {
  * Returns workflow details and events.
  */
 export function getWorkflowSseUrl(workflowId: string): string {
-  return `${getApiBaseUrl()}/v1/durable/workflows/${workflowId}/sse`;
+  return `${getApiBaseUrl()}/v1/platform/durable/workflows/${workflowId}/sse`;
 }
 
 // ============================================
@@ -50,7 +50,7 @@ export function getWorkflowSseUrl(workflowId: string): string {
 // ============================================
 
 export async function getDurableHealth(): Promise<DurableSystemHealth> {
-  const response = await api.get<DurableSystemHealth>("/v1/durable/health");
+  const response = await api.get<DurableSystemHealth>("/v1/platform/durable/health");
   return response.data;
 }
 
@@ -59,16 +59,16 @@ export async function getDurableHealth(): Promise<DurableSystemHealth> {
 // ============================================
 
 export async function listWorkers(): Promise<WorkersResponse> {
-  const response = await api.get<WorkersResponse>("/v1/durable/workers");
+  const response = await api.get<WorkersResponse>("/v1/platform/durable/workers");
   return response.data;
 }
 
 export async function drainWorker(workerId: string): Promise<void> {
-  await api.post(`/v1/durable/workers/${encodeURIComponent(workerId)}/drain`);
+  await api.post(`/v1/platform/durable/workers/${encodeURIComponent(workerId)}/drain`);
 }
 
 export async function resumeWorker(workerId: string): Promise<void> {
-  await api.post(`/v1/durable/workers/${encodeURIComponent(workerId)}/resume`);
+  await api.post(`/v1/platform/durable/workers/${encodeURIComponent(workerId)}/resume`);
 }
 
 // ============================================
@@ -90,25 +90,25 @@ export async function listWorkflows(params?: ListWorkflowsParams): Promise<Workf
   if (params?.offset) searchParams.set("offset", String(params.offset));
 
   const query = searchParams.toString();
-  const url = `/v1/durable/workflows${query ? `?${query}` : ""}`;
+  const url = `/v1/platform/durable/workflows${query ? `?${query}` : ""}`;
   const response = await api.get<WorkflowsResponse>(url);
   return response.data;
 }
 
 export async function getWorkflow(workflowId: string): Promise<DurableWorkflow> {
-  const response = await api.get<DurableWorkflow>(`/v1/durable/workflows/${workflowId}`);
+  const response = await api.get<DurableWorkflow>(`/v1/platform/durable/workflows/${workflowId}`);
   return response.data;
 }
 
 export async function getWorkflowEvents(workflowId: string): Promise<WorkflowEvent[]> {
   const response = await api.get<WorkflowEventsResponse>(
-    `/v1/durable/workflows/${workflowId}/events`,
+    `/v1/platform/durable/workflows/${workflowId}/events`,
   );
   return response.data.data;
 }
 
 export async function cancelWorkflow(workflowId: string): Promise<void> {
-  await api.post(`/v1/durable/workflows/${workflowId}/cancel`);
+  await api.post(`/v1/platform/durable/workflows/${workflowId}/cancel`);
 }
 
 // ============================================
@@ -132,18 +132,18 @@ export async function listTasks(params?: ListTasksParams): Promise<TasksResponse
   if (params?.offset) searchParams.set("offset", String(params.offset));
 
   const query = searchParams.toString();
-  const url = `/v1/durable/tasks${query ? `?${query}` : ""}`;
+  const url = `/v1/platform/durable/tasks${query ? `?${query}` : ""}`;
   const response = await api.get<TasksResponse>(url);
   return response.data;
 }
 
 export async function enqueueTask(request: EnqueueTaskRequest): Promise<EnqueueTaskResponse> {
-  const response = await api.post<EnqueueTaskResponse>("/v1/durable/tasks", request);
+  const response = await api.post<EnqueueTaskResponse>("/v1/platform/durable/tasks", request);
   return response.data;
 }
 
 export async function getTaskStats(): Promise<TaskQueueStats> {
-  const response = await api.get<TaskQueueStats>("/v1/durable/tasks/stats");
+  const response = await api.get<TaskQueueStats>("/v1/platform/durable/tasks/stats");
   return response.data;
 }
 
@@ -152,7 +152,9 @@ export async function getTaskStats(): Promise<TaskQueueStats> {
 // ============================================
 
 export async function getDurableMetrics(): Promise<MetricsTimeSeriesResponse> {
-  const response = await api.get<MetricsTimeSeriesResponse>("/v1/durable/metrics/timeseries");
+  const response = await api.get<MetricsTimeSeriesResponse>(
+    "/v1/platform/durable/metrics/timeseries",
+  );
   return response.data;
 }
 
@@ -173,22 +175,22 @@ export async function listDlq(params?: ListDlqParams): Promise<DlqResponse> {
   if (params?.offset) searchParams.set("offset", String(params.offset));
 
   const query = searchParams.toString();
-  const url = `/v1/durable/dlq${query ? `?${query}` : ""}`;
+  const url = `/v1/platform/durable/dlq${query ? `?${query}` : ""}`;
   const response = await api.get<DlqResponse>(url);
   return response.data;
 }
 
 export async function requeueDlqEntry(dlqId: string): Promise<string> {
-  const response = await api.post<{ task_id: string }>(`/v1/durable/dlq/${dlqId}/requeue`);
+  const response = await api.post<{ task_id: string }>(`/v1/platform/durable/dlq/${dlqId}/requeue`);
   return response.data.task_id;
 }
 
 export async function deleteDlqEntry(dlqId: string): Promise<void> {
-  await api.delete(`/v1/durable/dlq/${dlqId}`);
+  await api.delete(`/v1/platform/durable/dlq/${dlqId}`);
 }
 
 export async function purgeDlq(): Promise<{ deleted: number }> {
-  const response = await api.post<{ deleted: number }>("/v1/durable/dlq/purge");
+  const response = await api.post<{ deleted: number }>("/v1/platform/durable/dlq/purge");
   return response.data;
 }
 
@@ -197,7 +199,7 @@ export async function purgeDlq(): Promise<{ deleted: number }> {
 // ============================================
 
 export async function listCircuitBreakers(): Promise<CircuitBreakersResponse> {
-  const response = await api.get<CircuitBreakersResponse>("/v1/durable/circuit-breakers");
+  const response = await api.get<CircuitBreakersResponse>("/v1/platform/durable/circuit-breakers");
   return response.data;
 }
 
@@ -206,7 +208,7 @@ export async function listCircuitBreakers(): Promise<CircuitBreakersResponse> {
  * Immediately blocks all calls through this circuit.
  */
 export async function forceOpenCircuitBreaker(key: string): Promise<void> {
-  await api.post(`/v1/durable/circuit-breakers/${encodeURIComponent(key)}/open`);
+  await api.post(`/v1/platform/durable/circuit-breakers/${encodeURIComponent(key)}/open`);
 }
 
 /**
@@ -214,14 +216,14 @@ export async function forceOpenCircuitBreaker(key: string): Promise<void> {
  * Immediately allows calls through this circuit.
  */
 export async function forceCloseCircuitBreaker(key: string): Promise<void> {
-  await api.post(`/v1/durable/circuit-breakers/${encodeURIComponent(key)}/close`);
+  await api.post(`/v1/platform/durable/circuit-breakers/${encodeURIComponent(key)}/close`);
 }
 
 /**
  * Delete a circuit breaker (reset to default state).
  */
 export async function deleteCircuitBreaker(key: string): Promise<void> {
-  await api.delete(`/v1/durable/circuit-breakers/${encodeURIComponent(key)}`);
+  await api.delete(`/v1/platform/durable/circuit-breakers/${encodeURIComponent(key)}`);
 }
 
 // ============================================
@@ -243,18 +245,18 @@ export async function listSchedules(params?: ListSchedulesParams): Promise<Sched
   if (params?.offset) searchParams.set("offset", String(params.offset));
 
   const query = searchParams.toString();
-  const url = `/v1/durable/schedules${query ? `?${query}` : ""}`;
+  const url = `/v1/platform/durable/schedules${query ? `?${query}` : ""}`;
   const response = await api.get<SchedulesResponse>(url);
   return response.data;
 }
 
 export async function getSchedule(scheduleId: string): Promise<DurableSchedule> {
-  const response = await api.get<DurableSchedule>(`/v1/durable/schedules/${scheduleId}`);
+  const response = await api.get<DurableSchedule>(`/v1/platform/durable/schedules/${scheduleId}`);
   return response.data;
 }
 
 export async function createSchedule(request: CreateScheduleRequest): Promise<DurableSchedule> {
-  const response = await api.post<DurableSchedule>("/v1/durable/schedules", request);
+  const response = await api.post<DurableSchedule>("/v1/platform/durable/schedules", request);
   return response.data;
 }
 
@@ -262,26 +264,35 @@ export async function updateSchedule(
   scheduleId: string,
   request: UpdateScheduleRequest,
 ): Promise<DurableSchedule> {
-  const response = await api.patch<DurableSchedule>(`/v1/durable/schedules/${scheduleId}`, request);
+  const response = await api.patch<DurableSchedule>(
+    `/v1/platform/durable/schedules/${scheduleId}`,
+    request,
+  );
   return response.data;
 }
 
 export async function deleteSchedule(scheduleId: string): Promise<void> {
-  await api.delete(`/v1/durable/schedules/${scheduleId}`);
+  await api.delete(`/v1/platform/durable/schedules/${scheduleId}`);
 }
 
 export async function pauseSchedule(scheduleId: string): Promise<DurableSchedule> {
-  const response = await api.post<DurableSchedule>(`/v1/durable/schedules/${scheduleId}/pause`);
+  const response = await api.post<DurableSchedule>(
+    `/v1/platform/durable/schedules/${scheduleId}/pause`,
+  );
   return response.data;
 }
 
 export async function resumeSchedule(scheduleId: string): Promise<DurableSchedule> {
-  const response = await api.post<DurableSchedule>(`/v1/durable/schedules/${scheduleId}/resume`);
+  const response = await api.post<DurableSchedule>(
+    `/v1/platform/durable/schedules/${scheduleId}/resume`,
+  );
   return response.data;
 }
 
 export async function triggerSchedule(scheduleId: string): Promise<TriggerResponse> {
-  const response = await api.post<TriggerResponse>(`/v1/durable/schedules/${scheduleId}/trigger`);
+  const response = await api.post<TriggerResponse>(
+    `/v1/platform/durable/schedules/${scheduleId}/trigger`,
+  );
   return response.data;
 }
 
@@ -301,17 +312,21 @@ export async function listScheduleExecutions(
   if (params?.offset) searchParams.set("offset", String(params.offset));
 
   const query = searchParams.toString();
-  const url = `/v1/durable/schedules/${scheduleId}/executions${query ? `?${query}` : ""}`;
+  const url = `/v1/platform/durable/schedules/${scheduleId}/executions${query ? `?${query}` : ""}`;
   const response = await api.get<ScheduleExecutionsResponse>(url);
   return response.data;
 }
 
 export async function getScheduleExecution(executionId: string): Promise<ScheduleExecution> {
-  const response = await api.get<ScheduleExecution>(`/v1/durable/executions/${executionId}`);
+  const response = await api.get<ScheduleExecution>(
+    `/v1/platform/durable/executions/${executionId}`,
+  );
   return response.data;
 }
 
 export async function getScheduleStats(scheduleId: string): Promise<ScheduleStats> {
-  const response = await api.get<ScheduleStats>(`/v1/durable/schedules/${scheduleId}/stats`);
+  const response = await api.get<ScheduleStats>(
+    `/v1/platform/durable/schedules/${scheduleId}/stats`,
+  );
   return response.data;
 }

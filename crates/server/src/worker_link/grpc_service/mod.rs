@@ -435,7 +435,7 @@ impl WorkerServiceImpl {
             )
         });
         // Built over the shared resolver when it stands alone; `app_builder`
-        // replaces it with the `/v1/providers` instances (EVE-1234).
+        // replaces it with the `/v1/platform/providers` instances (EVE-1234).
         let provider_services = crate::domains::providers::ProviderServices::new(
             db.clone(),
             encryption.clone(),
@@ -544,7 +544,7 @@ impl WorkerServiceImpl {
     ///
     /// Without this the constructor's own in-memory backend stands, and the two
     /// never share state: a database an agent created through the worker is
-    /// invisible to `GET /v1/sessions/{id}/databases`, which answers `200` with
+    /// invisible to `GET /v1/platform/sessions/{id}/databases`, which answers `200` with
     /// an empty list rather than an error (EVE-1047). Both run in the same
     /// process — `app_builder` spawns the gRPC server — so one store is all
     /// that was ever needed.
@@ -577,7 +577,7 @@ impl WorkerServiceImpl {
         self.permission_resolver = resolver;
     }
 
-    /// Share the `/v1/providers` service instances, so a provider write over
+    /// Share the `/v1/platform/providers` service instances, so a provider write over
     /// the worker invalidates the same resolver cache the routes do.
     pub fn set_provider_services(&mut self, services: crate::domains::providers::ProviderServices) {
         self.provider_services = services;

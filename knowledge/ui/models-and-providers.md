@@ -53,7 +53,7 @@ service. The provider record itself is described in
 - **New models are tracked, stale ones are marked, never deleted.** A provider
   keeps `models_reviewed_at`; a discovered, not yet enabled model created after
   it is `is_new` and surfaces as "N new models · Review". Choosing or reviewing a
-  provider's models stamps it (`POST /v1/providers/{id}/models/review`). A
+  provider's models stamps it (`POST /v1/platform/providers/{id}/models/review`). A
   discovered model the provider stopped listing in its last sync is `stale`:
   agents and defaults that point at it keep their reference, and the UI says it
   is no longer listed instead of the row vanishing.

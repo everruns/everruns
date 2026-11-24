@@ -12,7 +12,7 @@ import type {
 } from "./types";
 
 const base = (identityId: string) =>
-  `/v1/virtual-users/${encodeURIComponent(identityId)}/mcp-servers`;
+  `/v1/platform/virtual-users/${encodeURIComponent(identityId)}/mcp-servers`;
 
 export async function listUserMcpServers(identityId = "me"): Promise<UserMcpServer[]> {
   const response = await api.get<UserMcpServersResponse>(base(identityId));

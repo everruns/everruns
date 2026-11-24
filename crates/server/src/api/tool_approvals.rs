@@ -62,7 +62,7 @@ pub use everruns_contracts::execution_api::{
 /// router because it is the same pause-and-resume surface.
 pub fn routes() -> axum::Router<AppState> {
     axum::Router::new().route(
-        "/v1/sessions/{session_id}/tool-approvals",
+        "/v1/platform/sessions/{session_id}/tool-approvals",
         post(submit_tool_approvals),
     )
 }
@@ -423,13 +423,13 @@ pub(crate) fn validate_decisions(
     Ok(outcomes)
 }
 
-/// POST /v1/sessions/{session_id}/tool-approvals
+/// POST /v1/platform/sessions/{session_id}/tool-approvals
 ///
 /// Records a person's decisions about tool calls an agent's `tool_approval`
 /// gate held back, and resumes the paused turn.
 #[utoipa::path(
     post,
-    path = "/v1/sessions/{session_id}/tool-approvals",
+    path = "/v1/platform/sessions/{session_id}/tool-approvals",
     params(
         ("session_id" = String, Path, description = "Session ID (prefixed, e.g., session_...)")
     ),

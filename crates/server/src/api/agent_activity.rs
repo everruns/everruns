@@ -1,4 +1,4 @@
-// GET /v1/agents/activity: the read model behind the Agents home page.
+// GET /v1/platform/agents/activity: the read model behind the Agents home page.
 //
 // Decision: one org-wide read instead of a stats call per agent. The page shows
 // every agent's load, 24-hour run bars, and every channel's 7-day traffic at
@@ -23,7 +23,7 @@ use crate::domains::sessions::limits::OrgCaps;
 use crate::storage::{AGENT_ACTIVITY_HOURS, AgentActivityRows, CHANNEL_ACTIVITY_DAYS};
 
 pub fn routes() -> Router<AppState> {
-    Router::new().route("/v1/agents/activity", get(get_agent_activity))
+    Router::new().route("/v1/platform/agents/activity", get(get_agent_activity))
 }
 
 /// Turns started and failed in one bucket.
@@ -244,10 +244,10 @@ fn oldest_first_index(ago: i32, len: usize) -> Option<usize> {
     (ago < len).then(|| len - 1 - ago)
 }
 
-/// GET /v1/agents/activity - Org-wide agent and channel activity
+/// GET /v1/platform/agents/activity - Org-wide agent and channel activity
 #[utoipa::path(
     get,
-    path = "/v1/agents/activity",
+    path = "/v1/platform/agents/activity",
     responses(
         (status = 200, description = "Agent and channel activity", body = AgentActivityOverview),
         (status = 403, description = "Forbidden", body = ErrorResponse),

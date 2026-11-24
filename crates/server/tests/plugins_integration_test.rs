@@ -5,7 +5,7 @@
 //   2. Sync to load marketplace.json catalog
 //   3. List catalog (microsoft-docs entry present)
 //   4. Install plugin → compiled fields present
-//   5. GET /v1/capabilities contains the stable plugin installation ref
+//   5. GET /v1/platform/capabilities contains the stable plugin installation ref
 //   6. Disable / re-enable
 //   7. Update (re-compile)
 //   8. Uninstall
@@ -43,7 +43,7 @@ async fn test_create_marketplace() {
 
     let resp = server
         .post(
-            "/v1/plugin_marketplaces",
+            "/v1/platform/plugin_marketplaces",
             json!({
                 "name": "test-fixtures",
                 "source_type": "local_path",
@@ -67,7 +67,7 @@ async fn test_update_marketplace_status() {
 
     let id = server
         .post(
-            "/v1/plugin_marketplaces",
+            "/v1/platform/plugin_marketplaces",
             json!({ "name": "update-status", "source_type": "local_path", "source": path }),
         )
         .await
@@ -79,7 +79,7 @@ async fn test_update_marketplace_status() {
 
     let updated = server
         .patch(
-            &format!("/v1/plugin_marketplaces/{id}"),
+            &format!("/v1/platform/plugin_marketplaces/{id}"),
             json!({ "status": "disabled" }),
         )
         .await
@@ -95,7 +95,7 @@ async fn test_delete_marketplace() {
 
     let id = server
         .post(
-            "/v1/plugin_marketplaces",
+            "/v1/platform/plugin_marketplaces",
             json!({ "name": "delete-me", "source_type": "local_path", "source": path }),
         )
         .await
@@ -106,7 +106,7 @@ async fn test_delete_marketplace() {
         .to_string();
 
     let del_resp = server
-        .delete(&format!("/v1/plugin_marketplaces/{id}"))
+        .delete(&format!("/v1/platform/plugin_marketplaces/{id}"))
         .await;
     assert_eq!(
         del_resp.status(),
@@ -116,7 +116,9 @@ async fn test_delete_marketplace() {
     );
 
     // Now it should be gone.
-    let get_resp = server.get(&format!("/v1/plugin_marketplaces/{id}")).await;
+    let get_resp = server
+        .get(&format!("/v1/platform/plugin_marketplaces/{id}"))
+        .await;
     assert_eq!(get_resp.status(), StatusCode::NOT_FOUND);
 }
 
@@ -132,7 +134,7 @@ async fn test_sync_and_catalog() {
     // Create marketplace.
     let id = server
         .post(
-            "/v1/plugin_marketplaces",
+            "/v1/platform/plugin_marketplaces",
             json!({ "name": "sync-catalog-test", "source_type": "local_path", "source": path }),
         )
         .await
@@ -144,7 +146,10 @@ async fn test_sync_and_catalog() {
 
     // Sync.
     let sync_resp = server
-        .post(&format!("/v1/plugin_marketplaces/{id}/sync"), json!({}))
+        .post(
+            &format!("/v1/platform/plugin_marketplaces/{id}/sync"),
+            json!({}),
+        )
         .await
         .assert_success();
 
@@ -156,7 +161,7 @@ async fn test_sync_and_catalog() {
 
     // List catalog entries.
     let catalog_resp = server
-        .get(&format!("/v1/plugin_marketplaces/{id}/plugins"))
+        .get(&format!("/v1/platform/plugin_marketplaces/{id}/plugins"))
         .await
         .assert_success();
 
@@ -194,7 +199,7 @@ async fn test_install_plugin_and_capability_listing() {
     // Register + sync marketplace.
     let marketplace_id = server
         .post(
-            "/v1/plugin_marketplaces",
+            "/v1/platform/plugin_marketplaces",
             json!({ "name": "install-test-mkt", "source_type": "local_path", "source": path }),
         )
         .await
@@ -206,7 +211,7 @@ async fn test_install_plugin_and_capability_listing() {
 
     server
         .post(
-            &format!("/v1/plugin_marketplaces/{marketplace_id}/sync"),
+            &format!("/v1/platform/plugin_marketplaces/{marketplace_id}/sync"),
             json!({}),
         )
         .await
@@ -215,7 +220,7 @@ async fn test_install_plugin_and_capability_listing() {
     // Install the plugin.
     let install_resp = server
         .post(
-            "/v1/plugins",
+            "/v1/platform/plugins",
             json!({
                 "marketplace_id": marketplace_id,
                 "plugin_name": "microsoft-docs"
@@ -238,7 +243,7 @@ async fn test_install_plugin_and_capability_listing() {
     assert_eq!(plugin["capability_ref"], capability_ref);
     assert_eq!(plugin["marketplace"], "install-test-mkt");
 
-    // GET /v1/capabilities exposes exactly the same stable ref.
+    // GET /v1/platform/capabilities exposes exactly the same stable ref.
     let caps = server.all_capabilities().await;
     let cap_ids: Vec<&str> = caps.iter().filter_map(|c| c["id"].as_str()).collect();
     assert!(
@@ -260,7 +265,7 @@ async fn test_install_plugin_and_capability_listing() {
     // Assignment persists and reloads with the same stable identity.
     let agent = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": "plugin-capability-agent",
                 "display_name": "Plugin Capability Agent",
@@ -275,7 +280,7 @@ async fn test_install_plugin_and_capability_listing() {
     assert_eq!(agent["capabilities"][0]["ref"], capability_ref);
 
     let reloaded = server
-        .get(&format!("/v1/agents/{agent_id}"))
+        .get(&format!("/v1/platform/agents/{agent_id}"))
         .await
         .assert_success()
         .json_value();
@@ -288,7 +293,7 @@ async fn test_install_plugin_and_capability_listing() {
     // in a fresh session rather than being skipped as an empty agent config.
     let session = server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             json!({
                 "agent_id": agent_id,
                 "title": "Plugin runtime hydration"
@@ -300,7 +305,7 @@ async fn test_install_plugin_and_capability_listing() {
     let session_id = session["id"].as_str().unwrap();
     let mounted_skill = server
         .get(&format!(
-            "/v1/sessions/{session_id}/fs/.agents/skills/microsoft-docs/SKILL.md"
+            "/v1/platform/sessions/{session_id}/fs/.agents/skills/microsoft-docs/SKILL.md"
         ))
         .await
         .assert_success()
@@ -314,7 +319,9 @@ async fn test_install_plugin_and_capability_listing() {
 
     // Catalog installed flag should now be true.
     let catalog_resp = server
-        .get(&format!("/v1/plugin_marketplaces/{marketplace_id}/plugins"))
+        .get(&format!(
+            "/v1/platform/plugin_marketplaces/{marketplace_id}/plugins"
+        ))
         .await
         .assert_success();
     let ms_docs = catalog_resp.json_value()["data"]
@@ -334,7 +341,7 @@ async fn test_install_plugin_and_capability_listing() {
 /// Collect the set of `mcp_oauth_*` provider ids from the connections API.
 async fn mcp_oauth_providers(server: &TestServer) -> std::collections::BTreeSet<String> {
     server
-        .get("/v1/user/connections/providers")
+        .get("/v1/platform/user/connections/providers")
         .await
         .assert_success()
         .json_value()
@@ -358,7 +365,7 @@ async fn test_install_oauth_plugin_creates_connection_provider() {
 
     let marketplace_id = server
         .post(
-            "/v1/plugin_marketplaces",
+            "/v1/platform/plugin_marketplaces",
             json!({ "name": "oauth-mkt", "source_type": "local_path", "source": path }),
         )
         .await
@@ -370,7 +377,7 @@ async fn test_install_oauth_plugin_creates_connection_provider() {
 
     server
         .post(
-            &format!("/v1/plugin_marketplaces/{marketplace_id}/sync"),
+            &format!("/v1/platform/plugin_marketplaces/{marketplace_id}/sync"),
             json!({}),
         )
         .await
@@ -380,7 +387,7 @@ async fn test_install_oauth_plugin_creates_connection_provider() {
 
     let install = server
         .post(
-            "/v1/plugins",
+            "/v1/platform/plugins",
             json!({ "marketplace_id": marketplace_id, "plugin_name": "oauth-mail" }),
         )
         .await;
@@ -423,7 +430,7 @@ async fn test_install_oauth_plugin_creates_connection_provider() {
 
     // Uninstall removes the anchor → provider set returns to baseline.
     server
-        .delete(&format!("/v1/plugins/{plugin_id}"))
+        .delete(&format!("/v1/platform/plugins/{plugin_id}"))
         .await
         .assert_success();
     let after_uninstall = mcp_oauth_providers(&server).await;
@@ -444,7 +451,7 @@ async fn test_plugin_disable_and_enable() {
 
     let marketplace_id = server
         .post(
-            "/v1/plugin_marketplaces",
+            "/v1/platform/plugin_marketplaces",
             json!({ "name": "lifecycle-mkt", "source_type": "local_path", "source": path }),
         )
         .await
@@ -456,7 +463,7 @@ async fn test_plugin_disable_and_enable() {
 
     server
         .post(
-            &format!("/v1/plugin_marketplaces/{marketplace_id}/sync"),
+            &format!("/v1/platform/plugin_marketplaces/{marketplace_id}/sync"),
             json!({}),
         )
         .await
@@ -464,7 +471,7 @@ async fn test_plugin_disable_and_enable() {
 
     let plugin_id = server
         .post(
-            "/v1/plugins",
+            "/v1/platform/plugins",
             json!({ "marketplace_id": marketplace_id, "plugin_name": "microsoft-docs" }),
         )
         .await
@@ -477,7 +484,7 @@ async fn test_plugin_disable_and_enable() {
     // Disable.
     let disabled = server
         .patch(
-            &format!("/v1/plugins/{plugin_id}"),
+            &format!("/v1/platform/plugins/{plugin_id}"),
             json!({ "status": "disabled" }),
         )
         .await
@@ -486,7 +493,7 @@ async fn test_plugin_disable_and_enable() {
     let disabled_ref = format!("plugin:{plugin_id}");
     let rejected = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": "disabled-plugin-agent",
                 "system_prompt": "test",
@@ -500,7 +507,7 @@ async fn test_plugin_disable_and_enable() {
     // Re-enable.
     let enabled = server
         .patch(
-            &format!("/v1/plugins/{plugin_id}"),
+            &format!("/v1/platform/plugins/{plugin_id}"),
             json!({ "status": "active" }),
         )
         .await
@@ -515,7 +522,7 @@ async fn test_uninstall_plugin() {
 
     let marketplace_id = server
         .post(
-            "/v1/plugin_marketplaces",
+            "/v1/platform/plugin_marketplaces",
             json!({ "name": "uninstall-mkt", "source_type": "local_path", "source": path }),
         )
         .await
@@ -527,7 +534,7 @@ async fn test_uninstall_plugin() {
 
     server
         .post(
-            &format!("/v1/plugin_marketplaces/{marketplace_id}/sync"),
+            &format!("/v1/platform/plugin_marketplaces/{marketplace_id}/sync"),
             json!({}),
         )
         .await
@@ -535,7 +542,7 @@ async fn test_uninstall_plugin() {
 
     let plugin_id = server
         .post(
-            "/v1/plugins",
+            "/v1/platform/plugins",
             json!({ "marketplace_id": marketplace_id, "plugin_name": "microsoft-docs" }),
         )
         .await
@@ -546,18 +553,22 @@ async fn test_uninstall_plugin() {
         .to_string();
     let old_capability_ref = format!("plugin:{plugin_id}");
 
-    let del = server.delete(&format!("/v1/plugins/{plugin_id}")).await;
+    let del = server
+        .delete(&format!("/v1/platform/plugins/{plugin_id}"))
+        .await;
     assert_eq!(del.status(), StatusCode::NO_CONTENT, "{}", del.text());
 
     // Should now be gone.
-    let get = server.get(&format!("/v1/plugins/{plugin_id}")).await;
+    let get = server
+        .get(&format!("/v1/platform/plugins/{plugin_id}"))
+        .await;
     assert_eq!(get.status(), StatusCode::NOT_FOUND);
 
     // Reinstalling the same manifest name gets a new identity. The old ref
     // remains stale and cannot silently bind to the replacement install.
     let replacement = server
         .post(
-            "/v1/plugins",
+            "/v1/platform/plugins",
             json!({ "marketplace_id": marketplace_id, "plugin_name": "microsoft-docs" }),
         )
         .await
@@ -566,7 +577,7 @@ async fn test_uninstall_plugin() {
     assert_ne!(replacement["capability_ref"], old_capability_ref);
     let rejected = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": "stale-plugin-agent",
                 "system_prompt": "test",
@@ -589,7 +600,7 @@ async fn test_update_plugin() {
 
     let marketplace_id = server
         .post(
-            "/v1/plugin_marketplaces",
+            "/v1/platform/plugin_marketplaces",
             json!({ "name": "update-plugin-mkt", "source_type": "local_path", "source": path }),
         )
         .await
@@ -601,7 +612,7 @@ async fn test_update_plugin() {
 
     server
         .post(
-            &format!("/v1/plugin_marketplaces/{marketplace_id}/sync"),
+            &format!("/v1/platform/plugin_marketplaces/{marketplace_id}/sync"),
             json!({}),
         )
         .await
@@ -609,7 +620,7 @@ async fn test_update_plugin() {
 
     let plugin_id = server
         .post(
-            "/v1/plugins",
+            "/v1/platform/plugins",
             json!({ "marketplace_id": marketplace_id, "plugin_name": "microsoft-docs" }),
         )
         .await
@@ -622,7 +633,10 @@ async fn test_update_plugin() {
 
     // Update (re-compile from current catalog source).
     let updated = server
-        .post(&format!("/v1/plugins/{plugin_id}/update"), json!({}))
+        .post(
+            &format!("/v1/platform/plugins/{plugin_id}/update"),
+            json!({}),
+        )
         .await;
 
     assert_eq!(
@@ -683,7 +697,7 @@ async fn test_install_rejects_unsafe_mcp_server_url() {
 
     let resp = server
         .post(
-            "/v1/plugin_marketplaces",
+            "/v1/platform/plugin_marketplaces",
             json!({
                 "name": "unsafe-fixtures",
                 "source_type": "local_path",
@@ -695,13 +709,16 @@ async fn test_install_rejects_unsafe_mcp_server_url() {
     let mkt_id = resp.json_value()["id"].as_str().unwrap().to_string();
 
     let resp = server
-        .post(&format!("/v1/plugin_marketplaces/{mkt_id}/sync"), json!({}))
+        .post(
+            &format!("/v1/platform/plugin_marketplaces/{mkt_id}/sync"),
+            json!({}),
+        )
         .await;
     assert_eq!(resp.status(), StatusCode::OK, "{}", resp.text());
 
     let resp = server
         .post(
-            "/v1/plugins",
+            "/v1/platform/plugins",
             json!({"marketplace_id": mkt_id, "plugin_name": "unsafe-mcp"}),
         )
         .await;
@@ -729,7 +746,10 @@ async fn test_install_rejects_unsafe_mcp_server_url() {
 async fn test_default_marketplace_seeded_at_org_creation() {
     let server = dev_server().await;
 
-    let resp = server.get("/v1/plugin_marketplaces").await.assert_success();
+    let resp = server
+        .get("/v1/platform/plugin_marketplaces")
+        .await
+        .assert_success();
     let data = resp.json_value();
     let marketplaces = data["data"].as_array().unwrap();
 
@@ -781,7 +801,10 @@ async fn test_default_marketplace_deletion_is_permanent() {
     let server = dev_server().await;
 
     // Locate the seeded default marketplace.
-    let list_resp = server.get("/v1/plugin_marketplaces").await.assert_success();
+    let list_resp = server
+        .get("/v1/platform/plugin_marketplaces")
+        .await
+        .assert_success();
     let data = list_resp.json_value();
     let marketplaces = data["data"].as_array().unwrap();
 
@@ -794,7 +817,7 @@ async fn test_default_marketplace_deletion_is_permanent() {
 
     // Delete it.
     let del = server
-        .delete(&format!("/v1/plugin_marketplaces/{mkt_id}"))
+        .delete(&format!("/v1/platform/plugin_marketplaces/{mkt_id}"))
         .await;
     assert_eq!(
         del.status(),
@@ -804,7 +827,10 @@ async fn test_default_marketplace_deletion_is_permanent() {
     );
 
     // List again — the marketplace must be gone and not have been re-seeded.
-    let list2 = server.get("/v1/plugin_marketplaces").await.assert_success();
+    let list2 = server
+        .get("/v1/platform/plugin_marketplaces")
+        .await
+        .assert_success();
     let data2 = list2.json_value();
     let marketplaces2 = data2["data"].as_array().unwrap();
 
@@ -821,7 +847,7 @@ async fn test_default_marketplace_deletion_is_permanent() {
 
     // Direct GET must 404.
     let get = server
-        .get(&format!("/v1/plugin_marketplaces/{mkt_id}"))
+        .get(&format!("/v1/platform/plugin_marketplaces/{mkt_id}"))
         .await;
     assert_eq!(
         get.status(),

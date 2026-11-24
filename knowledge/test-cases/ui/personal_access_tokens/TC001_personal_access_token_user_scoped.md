@@ -41,11 +41,11 @@ Verify that a personal access token created through the UI grants access to all 
 
 **API verification** (curl):
 
-10. Create an agent in org A: `POST /v1/agents` with `Authorization: Bearer <token>` and `X-Org-Id: <org-a-public-id>`
-11. Create an agent in org B: `POST /v1/agents` with `Authorization: Bearer <token>` and `X-Org-Id: <org-b-public-id>`
-12. List agents in org A: `GET /v1/agents` with `Authorization: Bearer <token>` and `X-Org-Id: <org-a-public-id>`
-13. List agents in org B: `GET /v1/agents` with `Authorization: Bearer <token>` and `X-Org-Id: <org-b-public-id>`
-14. Call without `X-Org-Id` when user has multiple orgs: `GET /v1/agents` with `Authorization: Bearer <token>` only
+10. Create an agent in org A: `POST /v1/platform/agents` with `Authorization: Bearer <token>` and `X-Org-Id: <org-a-public-id>`
+11. Create an agent in org B: `POST /v1/platform/agents` with `Authorization: Bearer <token>` and `X-Org-Id: <org-b-public-id>`
+12. List agents in org A: `GET /v1/platform/agents` with `Authorization: Bearer <token>` and `X-Org-Id: <org-a-public-id>`
+13. List agents in org B: `GET /v1/platform/agents` with `Authorization: Bearer <token>` and `X-Org-Id: <org-b-public-id>`
+14. Call without `X-Org-Id` when user has multiple orgs: `GET /v1/platform/agents` with `Authorization: Bearer <token>` only
 
 ## Expected Result
 

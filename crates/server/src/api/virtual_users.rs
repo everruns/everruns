@@ -28,11 +28,59 @@ pub fn routes(state: ApiState) -> Router {
     Router::new()
         .command::<crate::domains::virtual_users::self_profile::GetOwnVirtualUserProfile>()
         .command::<crate::domains::virtual_users::self_profile::UpdateOwnVirtualUserProfile>()
-        .route("/v1/virtual-users/config", get(virtual_user_config))
+        .route(
+            "/v1/platform/virtual-users/config",
+            get(virtual_user_config),
+        )
         .route("/v1/virtual-users/me", get(get_me).patch(update_me))
         .route(
-            "/v1/virtual-users/{identity_id}/sessions",
+            "/v1/platform/virtual-users/{identity_id}/sessions",
             get(list_sessions),
+        )
+        .route(
+            "/v1/platform/virtual-users/{identity_id}/bindings",
+            get(list_bindings),
+        )
+        .route(
+            "/v1/platform/virtual-users/{identity_id}/bindings/{binding_id}",
+            axum::routing::delete(revoke_binding),
+        )
+        .route(
+            "/v1/platform/virtual-users/{identity_id}/preferences",
+            get(list_preferences),
+        )
+        .route(
+            "/v1/platform/virtual-users/{identity_id}/preferences/{key}",
+            get(get_preference)
+                .put(set_preference)
+                .delete(delete_preference),
+        )
+        .route(
+            "/v1/platform/virtual-users",
+            post(create_virtual_user).get(list_virtual_users),
+        )
+        .route(
+            "/v1/platform/virtual-users/{identity_id}",
+            get(get_virtual_user)
+                .patch(update_virtual_user)
+                .delete(delete_virtual_user),
+        )
+        .route(
+            "/v1/platform/virtual-users/{identity_id}/delete",
+            post(destroy_virtual_user),
+        )
+        .merge(super::user_mcp_servers::routes())
+        .merge(runtime_routes(state.auth.clone()))
+        .with_state(state)
+}
+
+/// Runtime profile operations retain their published URLs. They cannot be used
+/// to administer another account; that authority belongs to the Platform API.
+fn runtime_routes(auth: AuthState) -> Router<ApiState> {
+    Router::new()
+        .route(
+            "/v1/virtual-users/{identity_id}",
+            get(get_virtual_user).patch(update_me_by_id),
         )
         .route(
             "/v1/virtual-users/{identity_id}/bindings",
@@ -52,22 +100,41 @@ pub fn routes(state: ApiState) -> Router {
                 .put(set_preference)
                 .delete(delete_preference),
         )
-        .route(
-            "/v1/virtual-users",
-            post(create_virtual_user).get(list_virtual_users),
-        )
-        .route(
-            "/v1/virtual-users/{identity_id}",
-            get(get_virtual_user)
-                .patch(update_virtual_user)
-                .delete(delete_virtual_user),
-        )
-        .route(
-            "/v1/virtual-users/{identity_id}/delete",
-            post(destroy_virtual_user),
-        )
-        .merge(super::user_mcp_servers::routes())
-        .with_state(state)
+        .merge(super::user_mcp_servers::runtime_routes())
+        .route_layer(axum::middleware::from_fn_with_state(auth, require_self))
+}
+
+async fn update_me_by_id(
+    account: RuntimeAccount,
+    state: State<ApiState>,
+    Json(req): Json<UpdateVirtualUserRequest>,
+) -> Result<Json<VirtualUser>, (StatusCode, Json<ErrorResponse>)> {
+    update_me(account, state, Json(req)).await
+}
+
+pub(crate) async fn require_self(
+    State(auth): State<AuthState>,
+    request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    use axum::extract::FromRequestParts;
+    use axum::response::IntoResponse;
+    let (mut parts, body) = request.into_parts();
+    let account = match RuntimeAccount::from_request_parts(&mut parts, &auth).await {
+        Ok(account) => account,
+        Err(error) => return error.into_response(),
+    };
+    let target = parts
+        .uri
+        .path()
+        .split("/virtual-users/")
+        .nth(1)
+        .and_then(|s| s.split('/').next());
+    if !target.is_some_and(|id| account.permits_self(id)) {
+        return StatusCode::FORBIDDEN.into_response();
+    }
+    next.run(axum::extract::Request::from_parts(parts, body))
+        .await
 }
 
 pub async fn virtual_user_config(
@@ -87,7 +154,7 @@ pub async fn virtual_user_config(
     Json(ResourceConfigResponse { policies })
 }
 
-#[utoipa::path(summary = "Create virtual user.", post, path = "/v1/virtual-users",  request_body = CreateVirtualUserRequest, responses((status = 201, description = "Success", body = VirtualUser), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied")), tag = "virtual-users")]
+#[utoipa::path(summary = "Create virtual user.", post, path = "/v1/platform/virtual-users",  request_body = CreateVirtualUserRequest, responses((status = 201, description = "Success", body = VirtualUser), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied")), tag = "virtual-users")]
 pub async fn create_virtual_user(
     org: ResolvedOrg,
     State(state): State<ApiState>,
@@ -99,7 +166,7 @@ pub async fn create_virtual_user(
         .await
 }
 
-#[utoipa::path(summary = "List virtual users.", get, path = "/v1/virtual-users", params(ListVirtualUsersQuery), responses((status = 200, description = "Success", body = PaginatedResponse<VirtualUser>), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied")), tag = "virtual-users")]
+#[utoipa::path(summary = "List virtual users.", get, path = "/v1/platform/virtual-users", params(ListVirtualUsersQuery), responses((status = 200, description = "Success", body = PaginatedResponse<VirtualUser>), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied")), tag = "virtual-users")]
 pub async fn list_virtual_users(
     org: ResolvedOrg,
     State(state): State<ApiState>,
@@ -122,7 +189,7 @@ pub async fn list_virtual_users(
     )))
 }
 
-#[utoipa::path(summary = "Get virtual user.", get, path = "/v1/virtual-users/{identity_id}", params(("identity_id" = String, Path)),  responses((status = 200, description = "Success", body = VirtualUser), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied")), tag = "virtual-users")]
+#[utoipa::path(summary = "Get virtual user.", get, path = "/v1/platform/virtual-users/{identity_id}", params(("identity_id" = String, Path)),  responses((status = 200, description = "Success", body = VirtualUser), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied")), tag = "virtual-users")]
 pub async fn get_virtual_user(
     account: RuntimeAccount,
     State(state): State<ApiState>,
@@ -140,7 +207,7 @@ pub async fn get_virtual_user(
         .await
 }
 
-#[utoipa::path(summary = "Update virtual user.", patch, path = "/v1/virtual-users/{identity_id}", params(("identity_id" = String, Path)), request_body = UpdateVirtualUserRequest, responses((status = 200, description = "Success", body = VirtualUser), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied")), tag = "virtual-users")]
+#[utoipa::path(summary = "Update virtual user.", patch, path = "/v1/platform/virtual-users/{identity_id}", params(("identity_id" = String, Path)), request_body = UpdateVirtualUserRequest, responses((status = 200, description = "Success", body = VirtualUser), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied")), tag = "virtual-users")]
 pub async fn update_virtual_user(
     account: RuntimeAccount,
     State(state): State<ApiState>,
@@ -166,7 +233,7 @@ pub async fn update_virtual_user(
         .await
 }
 
-#[utoipa::path(summary = "Delete virtual user.", delete, path = "/v1/virtual-users/{identity_id}", params(("identity_id" = String, Path)),  responses((status = 204, description = "Success"), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied")), tag = "virtual-users")]
+#[utoipa::path(summary = "Delete virtual user.", delete, path = "/v1/platform/virtual-users/{identity_id}", params(("identity_id" = String, Path)),  responses((status = 204, description = "Success"), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied")), tag = "virtual-users")]
 pub async fn delete_virtual_user(
     org: ResolvedOrg,
     State(state): State<ApiState>,
@@ -178,7 +245,7 @@ pub async fn delete_virtual_user(
         .await
 }
 
-#[utoipa::path(summary = "Destroy virtual user.", post, path = "/v1/virtual-users/{identity_id}/delete", params(("identity_id" = String, Path)),  responses((status = 204, description = "Success"), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied")), tag = "virtual-users")]
+#[utoipa::path(summary = "Destroy virtual user.", post, path = "/v1/platform/virtual-users/{identity_id}/delete", params(("identity_id" = String, Path)),  responses((status = 204, description = "Success"), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied")), tag = "virtual-users")]
 pub async fn destroy_virtual_user(
     org: ResolvedOrg,
     State(state): State<ApiState>,
@@ -330,7 +397,7 @@ async fn update_me(
         })?;
     get_me(org, State(state)).await
 }
-#[utoipa::path(summary = "List verified external identity bindings.", get, path = "/v1/virtual-users/{identity_id}/bindings", params(("identity_id" = String, Path)),  responses((status = 200, description = "Success", body = serde_json::Value), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied")), tag = "virtual-users")]
+#[utoipa::path(summary = "List verified external identity bindings.", get, path = "/v1/platform/virtual-users/{identity_id}/bindings", params(("identity_id" = String, Path)),  responses((status = 200, description = "Success", body = serde_json::Value), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied")), tag = "virtual-users")]
 async fn list_bindings(
     org: RuntimeAccount,
     State(state): State<ApiState>,
@@ -347,7 +414,7 @@ async fn list_bindings(
         })?;
     Ok(Json(serde_json::json!({"data":bindings})))
 }
-#[utoipa::path(summary = "List agent-facing preferences.", get, path = "/v1/virtual-users/{identity_id}/preferences", params(("identity_id" = String, Path)),  responses((status = 200, description = "Success", body = serde_json::Value), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied")), tag = "virtual-users")]
+#[utoipa::path(summary = "List agent-facing preferences.", get, path = "/v1/platform/virtual-users/{identity_id}/preferences", params(("identity_id" = String, Path)),  responses((status = 200, description = "Success", body = serde_json::Value), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied")), tag = "virtual-users")]
 async fn list_preferences(
     org: RuntimeAccount,
     State(state): State<ApiState>,
@@ -366,7 +433,7 @@ async fn list_preferences(
         serde_json::json!({"data":rows.into_iter().map(preference_response).collect::<Vec<_>>()}),
     ))
 }
-#[utoipa::path(summary = "Read one agent-facing preference.", get, path = "/v1/virtual-users/{identity_id}/preferences/{key}", params(("identity_id" = String, Path),("key" = String, Path)),  responses((status = 200, description = "Success", body = serde_json::Value), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied")), tag = "virtual-users")]
+#[utoipa::path(summary = "Read one agent-facing preference.", get, path = "/v1/platform/virtual-users/{identity_id}/preferences/{key}", params(("identity_id" = String, Path),("key" = String, Path)),  responses((status = 200, description = "Success", body = serde_json::Value), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied")), tag = "virtual-users")]
 async fn get_preference(
     org: RuntimeAccount,
     State(state): State<ApiState>,
@@ -385,7 +452,7 @@ async fn get_preference(
         ErrorResponse::new("Preference not found").into_response(StatusCode::NOT_FOUND)
     })
 }
-#[utoipa::path(summary = "Set a bounded agent-facing preference.", put, path = "/v1/virtual-users/{identity_id}/preferences/{key}", params(("identity_id" = String, Path),("key" = String, Path)), request_body = crate::api::user_preferences::SetPreferenceRequest, responses((status = 200, description = "Success", body = serde_json::Value), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied")), tag = "virtual-users")]
+#[utoipa::path(summary = "Set a bounded agent-facing preference.", put, path = "/v1/platform/virtual-users/{identity_id}/preferences/{key}", params(("identity_id" = String, Path),("key" = String, Path)), request_body = crate::api::user_preferences::SetPreferenceRequest, responses((status = 200, description = "Success", body = serde_json::Value), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied")), tag = "virtual-users")]
 async fn set_preference(
     org: RuntimeAccount,
     State(state): State<ApiState>,
@@ -413,7 +480,7 @@ async fn set_preference(
         })?;
     Ok(Json(preference_response(row)))
 }
-#[utoipa::path(summary = "Delete an agent-facing preference.", delete, path = "/v1/virtual-users/{identity_id}/preferences/{key}", params(("identity_id" = String, Path),("key" = String, Path)),  responses((status = 204, description = "Success"), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied")), tag = "virtual-users")]
+#[utoipa::path(summary = "Delete an agent-facing preference.", delete, path = "/v1/platform/virtual-users/{identity_id}/preferences/{key}", params(("identity_id" = String, Path),("key" = String, Path)),  responses((status = 204, description = "Success"), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied")), tag = "virtual-users")]
 async fn delete_preference(
     org: RuntimeAccount,
     State(state): State<ApiState>,
@@ -431,7 +498,7 @@ async fn delete_preference(
     Ok(StatusCode::NO_CONTENT)
 }
 
-#[utoipa::path(summary = "Revoke an external binding and its runtime self authority.", delete, path = "/v1/virtual-users/{identity_id}/bindings/{binding_id}", params(("identity_id" = String, Path),("binding_id" = String, Path)),  responses((status = 204, description = "Success"), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied")), tag = "virtual-users")]
+#[utoipa::path(summary = "Revoke an external binding and its runtime self authority.", delete, path = "/v1/platform/virtual-users/{identity_id}/bindings/{binding_id}", params(("identity_id" = String, Path),("binding_id" = String, Path)),  responses((status = 204, description = "Success"), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied")), tag = "virtual-users")]
 async fn revoke_binding(
     org: RuntimeAccount,
     State(state): State<ApiState>,
@@ -459,7 +526,7 @@ fn preference_response(row: crate::storage::VirtualUserPreferenceRow) -> serde_j
     serde_json::json!({"key":row.key,"value":serde_json::from_str::<serde_json::Value>(&row.value).unwrap_or(serde_json::Value::Null),"created_at":row.created_at,"updated_at":row.updated_at})
 }
 
-#[utoipa::path(summary = "List the virtual user's recent sessions", description = "List recent sessions associated with the authorized virtual user.", get, path = "/v1/virtual-users/{identity_id}/sessions", params(("identity_id" = String, Path)),  responses((status = 200, description = "Success", body = serde_json::Value), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied")), tag = "virtual-users")]
+#[utoipa::path(summary = "List the virtual user's recent sessions", description = "List recent sessions associated with the authorized virtual user.", get, path = "/v1/platform/virtual-users/{identity_id}/sessions", params(("identity_id" = String, Path)),  responses((status = 200, description = "Success", body = serde_json::Value), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied")), tag = "virtual-users")]
 async fn list_sessions(
     org: RuntimeAccount,
     State(state): State<ApiState>,

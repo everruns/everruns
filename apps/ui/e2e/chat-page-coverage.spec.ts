@@ -7,7 +7,7 @@ for (const role of ["owner", "admin", "member"] as const) {
       { name: "access_token", value: "e2e-only", domain: new URL(baseURL!).hostname, path: "/" },
     ]);
     await mockKnowledgeApi(page, { role });
-    await page.route("**/api/v1/tracing/**", async (route) => {
+    await page.route("**/api/v1/platform/tracing/**", async (route) => {
       const path = new URL(route.request().url()).pathname;
       const json = path.endsWith("/defaults")
         ? { revision: 1, policy: { mode: "replace", destination_ids: [] } }
@@ -193,7 +193,7 @@ test("browser back and forward step through pages, full screen and threads", asy
   ]);
   await mockKnowledgeApi(page);
   const threadId = "session_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
-  await page.route(`**/api/v1/sessions/${threadId}`, (route) =>
+  await page.route(`**/api/v1/platform/sessions/${threadId}`, (route) =>
     route.fulfill({
       json: {
         id: threadId,

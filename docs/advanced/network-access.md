@@ -35,7 +35,7 @@ Domain matching is case-insensitive. Blocked patterns always take precedence ove
 Set a network access list when creating or updating an agent:
 
 ```json
-POST /v1/agents
+POST /v1/platform/agents
 {
   "name": "Research Agent",
   "system_prompt": "You are a research assistant.",
@@ -49,7 +49,7 @@ POST /v1/agents
 Restrict a specific session further:
 
 ```json
-POST /v1/sessions
+POST /v1/platform/sessions
 {
   "agent_id": "agent_...",
   "network_access": {
@@ -61,7 +61,7 @@ POST /v1/sessions
 To clear a network access list on update, send an empty object:
 
 ```json
-PATCH /v1/agents/{id}
+PATCH /v1/platform/agents/{id}
 {
   "network_access": {}
 }

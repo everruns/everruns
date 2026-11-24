@@ -106,10 +106,10 @@ question, the person answers it in the conversation they started, not in the
 other agent's session. Chat and Playground show the card headed with that
 agent's name.
 
-Over the API, `GET /v1/sessions/{session_id}/run-requests` on the first
+Over the API, `GET /v1/platform/sessions/{session_id}/run-requests` on the first
 session lists what the other agents wait on, each with the asking agent and
 its `session_id`. Answer with the usual
-`POST /v1/sessions/{session_id}/tool-approvals` or `…/question-answers` on
+`POST /v1/platform/sessions/{session_id}/tool-approvals` or `…/question-answers` on
 either session: the first session routes the answer to the agent that asked.
 On the Agent Execution API, `pending_approvals` and `pending_questions` on the
 session include these requests with `agent` and `session_id`, and answers on

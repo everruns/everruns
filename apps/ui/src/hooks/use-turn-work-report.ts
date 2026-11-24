@@ -1,7 +1,7 @@
 /**
  * Decisions:
  * - The server owns the one reducer that turns a turn's events into a work
- *   report (`GET /v1/sessions/{id}/work`). The UI never re-derives it; it
+ *   report (`GET /v1/platform/sessions/{id}/work`). The UI never re-derives it; it
  *   refetches when the turn's events change, which it already streams.
  * - `revision` is anything that changes when the turn gains events (the
  *   caller passes the work-event count and whether the turn ended). It is

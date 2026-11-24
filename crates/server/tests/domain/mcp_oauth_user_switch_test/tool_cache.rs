@@ -610,7 +610,7 @@ async fn oauth_callback_discovery_and_capability_reads_never_write_or_leak_share
 
     poison(server.db.as_ref(), id).await;
     let detailed: Value = server
-        .get(&format!("/v1/capabilities/{capability_id}"))
+        .get(&format!("/v1/platform/capabilities/{capability_id}"))
         .await
         .assert_status(StatusCode::OK)
         .json();

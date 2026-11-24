@@ -67,7 +67,10 @@ impl_dispatchable!(AppState);
 pub fn routes(state: AppState) -> Router {
     Router::new()
         .command::<ListNotifications>()
-        .route("/v1/notifications/sse", get(stream_notifications_sse))
+        .route(
+            "/v1/platform/notifications/sse",
+            get(stream_notifications_sse),
+        )
         .command::<MarkNotificationViewed>()
         .with_state(state)
 }

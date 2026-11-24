@@ -63,7 +63,7 @@ policy can count all usage, only built-in models, or only your own keys and
 sandboxes. Days, weeks and months start at midnight in the organization's
 timezone, set on the **Usage policies** tab (UTC until set).
 
-In the API, usage policies are the `/v1/budgets` resource with a `policy`
-object (`name`, `steps`, `source`); the price list is `/v1/cost-rates`, the
-overview is `GET /v1/costs/summary`, and `POST /v1/sessions/{id}/resume`
+In the API, usage policies are the `/v1/platform/budgets` resource with a `policy`
+object (`name`, `steps`, `source`); the price list is `/v1/platform/cost-rates`, the
+overview is `GET /v1/platform/costs/summary`, and `POST /v1/platform/sessions/{id}/resume`
 answers an ask step for one session.

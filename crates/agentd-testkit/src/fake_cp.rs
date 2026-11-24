@@ -149,7 +149,7 @@ impl FakeCp {
             .route("/injected/{name}/mcp", post(injected::serve))
             .route("/dp/v1/feed", post(feed))
             .route("/.well-known/jwks.json", axum::routing::get(jwks))
-            .route("/v1/auth/token", post(exchange))
+            .route("/v1/platform/auth/token", post(exchange))
             .fallback(api)
             .with_state(cp.clone());
         tokio::spawn(async move { axum::serve(listener, app).await });
@@ -407,7 +407,7 @@ fn unavailable() -> (StatusCode, String) {
     (StatusCode::SERVICE_UNAVAILABLE, "control plane down".into())
 }
 
-/// `POST /v1/auth/token`, with credentials of the form `Bearer user-<org>`
+/// `POST /v1/platform/auth/token`, with credentials of the form `Bearer user-<org>`
 /// (a member of `<org>`, on this data plane) or `Bearer v1-user` (an org
 /// that is not on a data plane).
 async fn exchange(

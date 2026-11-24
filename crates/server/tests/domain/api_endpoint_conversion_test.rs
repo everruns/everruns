@@ -81,7 +81,10 @@ async fn legacy_endpoint(
 /// channel and carrying its App-era routing tags.
 async fn legacy_session(server: &TestServer, channel: &ApiChannel) -> String {
     let session: Value = server
-        .post("/v1/sessions", json!({ "agent_id": channel.agent_id }))
+        .post(
+            "/v1/platform/sessions",
+            json!({ "agent_id": channel.agent_id }),
+        )
         .await
         .assert_status(StatusCode::CREATED)
         .json();
@@ -103,7 +106,7 @@ async fn legacy_session(server: &TestServer, channel: &ApiChannel) -> String {
 async fn channel_row(server: &TestServer, channel: &ApiChannel) -> Value {
     server
         .get(&format!(
-            "/v1/agents/{}/channels/{}",
+            "/v1/platform/agents/{}/channels/{}",
             channel.agent_id, channel.channel_id
         ))
         .await
@@ -114,7 +117,7 @@ async fn channel_row(server: &TestServer, channel: &ApiChannel) -> Value {
 async fn keys(server: &TestServer, channel: &ApiChannel) -> Vec<Value> {
     server
         .get(&format!(
-            "/v1/agents/{}/channels/{}/keys",
+            "/v1/platform/agents/{}/channels/{}/keys",
             channel.agent_id, channel.channel_id
         ))
         .await
@@ -327,7 +330,7 @@ async fn retired_api_endpoint_surfaces_point_to_the_agent_api() {
     // The type can no longer be created.
     let created = server
         .post(
-            &format!("/v1/agents/{}/channels", channel.agent_id),
+            &format!("/v1/platform/agents/{}/channels", channel.agent_id),
             json!({
                 "channel_type": "api_endpoint",
                 "channel_config": { "api_key_hash": "ab", "api_key_prefix": "evr_app_" },

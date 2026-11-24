@@ -69,7 +69,7 @@ export function assignRecordingsToEvents(events: Event[]): Map<string, DesktopRe
 /** Same-origin raw download of a session file, playable by `<video>`. */
 export function sessionFileDownloadUrl(sessionId: string, path: string): string {
   const encoded = path.replace(/^\/+/, "").split("/").map(encodeURIComponent).join("/");
-  return `${getApiBaseUrl()}/v1/sessions/${sessionId}/fs/_/download/${encoded}`;
+  return `${getApiBaseUrl()}/v1/platform/sessions/${sessionId}/fs/_/download/${encoded}`;
 }
 
 function formatSize(bytes: number): string {

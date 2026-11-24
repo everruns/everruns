@@ -22,45 +22,54 @@ use serde::Deserialize;
 use serde_json::Value;
 pub fn routes(state: ApiState) -> Router {
     Router::new()
-        .route("/v1/knowledge", get(list_knowledge).post(create_knowledge))
-        .route("/v1/knowledge/search", post(search_knowledge_collections))
         .route(
-            "/v1/knowledge-indexers",
+            "/v1/platform/knowledge",
+            get(list_knowledge).post(create_knowledge),
+        )
+        .route(
+            "/v1/platform/knowledge/search",
+            post(search_knowledge_collections),
+        )
+        .route(
+            "/v1/platform/knowledge-indexers",
             get(list_knowledge_indexers).post(create_knowledge_indexer),
         )
         .route(
-            "/v1/knowledge/{collection_id}",
+            "/v1/platform/knowledge/{collection_id}",
             get(get_knowledge)
                 .patch(update_knowledge)
                 .delete(archive_knowledge),
         )
         .route(
-            "/v1/knowledge/{collection_id}/files",
+            "/v1/platform/knowledge/{collection_id}/files",
             get(list_knowledge_files)
                 .put(write_knowledge_file)
                 .patch(update_knowledge_file_metadata)
                 .delete(delete_knowledge_file),
         )
         .route(
-            "/v1/knowledge/{collection_id}/files/content",
+            "/v1/platform/knowledge/{collection_id}/files/content",
             get(get_knowledge_file_content),
         )
         .route(
-            "/v1/knowledge/{collection_id}/upload",
+            "/v1/platform/knowledge/{collection_id}/upload",
             put(upload_knowledge_file).layer(DefaultBodyLimit::disable()),
         )
         .route(
-            "/v1/knowledge/{collection_id}/sources",
+            "/v1/platform/knowledge/{collection_id}/sources",
             post(add_knowledge_source),
         )
-        .route("/v1/knowledge/{collection_id}/sync", post(sync_knowledge))
         .route(
-            "/v1/knowledge/{collection_id}/okf",
+            "/v1/platform/knowledge/{collection_id}/sync",
+            post(sync_knowledge),
+        )
+        .route(
+            "/v1/platform/knowledge/{collection_id}/okf",
             get(validate_knowledge_okf),
         )
         .with_state(state)
 }
-#[utoipa::path(operation_id="list_knowledge",get,path="/v1/knowledge",params(PageQuery),responses((status=200,description="Knowledge collections",body=Value)),tag="knowledge")]
+#[utoipa::path(operation_id="list_knowledge",get,path="/v1/platform/knowledge",params(PageQuery),responses((status=200,description="Knowledge collections",body=Value)),tag="knowledge")]
 pub async fn list_knowledge(
     org: ResolvedOrg,
     State(s): State<ApiState>,
@@ -75,7 +84,7 @@ pub async fn list_knowledge(
         .await?,
     ))
 }
-#[utoipa::path(operation_id="create_knowledge",post,path="/v1/knowledge",request_body=CollectionInput,responses((status=200,description="Created collection",body=Value)),tag="knowledge")]
+#[utoipa::path(operation_id="create_knowledge",post,path="/v1/platform/knowledge",request_body=CollectionInput,responses((status=200,description="Created collection",body=Value)),tag="knowledge")]
 pub async fn create_knowledge(
     org: ResolvedOrg,
     State(s): State<ApiState>,
@@ -83,7 +92,7 @@ pub async fn create_knowledge(
 ) -> ApiResult<Value> {
     Ok(Json(CreateKnowledge { input }.run(&s.ctx(&org)).await?))
 }
-#[utoipa::path(operation_id="get_knowledge",get,path="/v1/knowledge/{collection_id}",params(("collection_id"=String,Path,description="Knowledge collection")),responses((status=200,description="Collection and processing status",body=Value)),tag="knowledge")]
+#[utoipa::path(operation_id="get_knowledge",get,path="/v1/platform/knowledge/{collection_id}",params(("collection_id"=String,Path,description="Knowledge collection")),responses((status=200,description="Collection and processing status",body=Value)),tag="knowledge")]
 pub async fn get_knowledge(
     org: ResolvedOrg,
     State(s): State<ApiState>,
@@ -93,7 +102,7 @@ pub async fn get_knowledge(
         GetKnowledge { collection_id }.run(&s.ctx(&org)).await?,
     ))
 }
-#[utoipa::path(operation_id="update_knowledge",patch,path="/v1/knowledge/{collection_id}",params(("collection_id"=String,Path,description="Knowledge collection")),request_body=CollectionInput,responses((status=200,description="Updated collection",body=Value)),tag="knowledge")]
+#[utoipa::path(operation_id="update_knowledge",patch,path="/v1/platform/knowledge/{collection_id}",params(("collection_id"=String,Path,description="Knowledge collection")),request_body=CollectionInput,responses((status=200,description="Updated collection",body=Value)),tag="knowledge")]
 pub async fn update_knowledge(
     org: ResolvedOrg,
     State(s): State<ApiState>,
@@ -109,7 +118,7 @@ pub async fn update_knowledge(
         .await?,
     ))
 }
-#[utoipa::path(operation_id="archive_knowledge",delete,path="/v1/knowledge/{collection_id}",params(("collection_id"=String,Path,description="Knowledge collection")),responses((status=200,description="Archived collection",body=Value)),tag="knowledge")]
+#[utoipa::path(operation_id="archive_knowledge",delete,path="/v1/platform/knowledge/{collection_id}",params(("collection_id"=String,Path,description="Knowledge collection")),responses((status=200,description="Archived collection",body=Value)),tag="knowledge")]
 pub async fn archive_knowledge(
     org: ResolvedOrg,
     State(s): State<ApiState>,
@@ -119,7 +128,7 @@ pub async fn archive_knowledge(
         ArchiveKnowledge { collection_id }.run(&s.ctx(&org)).await?,
     ))
 }
-#[utoipa::path(operation_id="list_knowledge_files",get,path="/v1/knowledge/{collection_id}/files",params(("collection_id"=String,Path,description="Knowledge collection"),PageQuery),responses((status=200,description="File catalog page",body=Value)),tag="knowledge")]
+#[utoipa::path(operation_id="list_knowledge_files",get,path="/v1/platform/knowledge/{collection_id}/files",params(("collection_id"=String,Path,description="Knowledge collection"),PageQuery),responses((status=200,description="File catalog page",body=Value)),tag="knowledge")]
 pub async fn list_knowledge_files(
     org: ResolvedOrg,
     State(s): State<ApiState>,
@@ -135,7 +144,7 @@ pub async fn list_knowledge_files(
         .await?,
     ))
 }
-#[utoipa::path(operation_id="write_knowledge_file",put,path="/v1/knowledge/{collection_id}/files",params(("collection_id"=String,Path,description="Knowledge collection")),request_body=FileInput,responses((status=200,description="Stored immutable file version",body=Value)),tag="knowledge")]
+#[utoipa::path(operation_id="write_knowledge_file",put,path="/v1/platform/knowledge/{collection_id}/files",params(("collection_id"=String,Path,description="Knowledge collection")),request_body=FileInput,responses((status=200,description="Stored immutable file version",body=Value)),tag="knowledge")]
 pub async fn write_knowledge_file(
     org: ResolvedOrg,
     State(s): State<ApiState>,
@@ -151,7 +160,7 @@ pub async fn write_knowledge_file(
         .await?,
     ))
 }
-#[utoipa::path(operation_id="delete_knowledge_file",delete,path="/v1/knowledge/{collection_id}/files",params(("collection_id"=String,Path,description="Knowledge collection"),("path"=String,Query,description="File path")),responses((status=200,description="Deleted file",body=Value)),tag="knowledge")]
+#[utoipa::path(operation_id="delete_knowledge_file",delete,path="/v1/platform/knowledge/{collection_id}/files",params(("collection_id"=String,Path,description="Knowledge collection"),("path"=String,Query,description="File path")),responses((status=200,description="Deleted file",body=Value)),tag="knowledge")]
 pub async fn delete_knowledge_file(
     org: ResolvedOrg,
     State(s): State<ApiState>,
@@ -167,7 +176,7 @@ pub async fn delete_knowledge_file(
         .await?,
     ))
 }
-#[utoipa::path(operation_id="add_knowledge_source",post,path="/v1/knowledge/{collection_id}/sources",params(("collection_id"=String,Path,description="Knowledge collection")),request_body=SourceInput,responses((status=200,description="Connected source",body=Value)),tag="knowledge")]
+#[utoipa::path(operation_id="add_knowledge_source",post,path="/v1/platform/knowledge/{collection_id}/sources",params(("collection_id"=String,Path,description="Knowledge collection")),request_body=SourceInput,responses((status=200,description="Connected source",body=Value)),tag="knowledge")]
 pub async fn add_knowledge_source(
     org: ResolvedOrg,
     State(s): State<ApiState>,
@@ -183,7 +192,7 @@ pub async fn add_knowledge_source(
         .await?,
     ))
 }
-#[utoipa::path(operation_id="sync_knowledge",post,path="/v1/knowledge/{collection_id}/sync",params(("collection_id"=String,Path,description="Knowledge collection")),responses((status=200,description="Refresh queued",body=Value)),tag="knowledge")]
+#[utoipa::path(operation_id="sync_knowledge",post,path="/v1/platform/knowledge/{collection_id}/sync",params(("collection_id"=String,Path,description="Knowledge collection")),responses((status=200,description="Refresh queued",body=Value)),tag="knowledge")]
 pub async fn sync_knowledge(
     org: ResolvedOrg,
     State(s): State<ApiState>,
@@ -193,7 +202,7 @@ pub async fn sync_knowledge(
         SyncKnowledge { collection_id }.run(&s.ctx(&org)).await?,
     ))
 }
-#[utoipa::path(operation_id="search_knowledge_collections",post,path="/v1/knowledge/search",request_body=everruns_contracts::knowledge::KnowledgeQuery,responses((status=200,description="Versioned search results",body=Value)),tag="knowledge")]
+#[utoipa::path(operation_id="search_knowledge_collections",post,path="/v1/platform/knowledge/search",request_body=everruns_contracts::knowledge::KnowledgeQuery,responses((status=200,description="Versioned search results",body=Value)),tag="knowledge")]
 pub async fn search_knowledge_collections(
     org: ResolvedOrg,
     State(s): State<ApiState>,
@@ -205,14 +214,14 @@ pub async fn search_knowledge_collections(
             .await?,
     ))
 }
-#[utoipa::path(operation_id="list_knowledge_indexers",get,path="/v1/knowledge-indexers",responses((status=200,description="Organization search accounts",body=Value)),tag="knowledge")]
+#[utoipa::path(operation_id="list_knowledge_indexers",get,path="/v1/platform/knowledge-indexers",responses((status=200,description="Organization search accounts",body=Value)),tag="knowledge")]
 pub async fn list_knowledge_indexers(
     org: ResolvedOrg,
     State(s): State<ApiState>,
 ) -> ApiResult<Value> {
     Ok(Json(ListKnowledgeIndexers {}.run(&s.ctx(&org)).await?))
 }
-#[utoipa::path(operation_id="create_knowledge_indexer",post,path="/v1/knowledge-indexers",request_body=IndexerInput,responses((status=200,description="Configured search account",body=Value)),tag="knowledge")]
+#[utoipa::path(operation_id="create_knowledge_indexer",post,path="/v1/platform/knowledge-indexers",request_body=IndexerInput,responses((status=200,description="Configured search account",body=Value)),tag="knowledge")]
 pub async fn create_knowledge_indexer(
     org: ResolvedOrg,
     State(s): State<ApiState>,
@@ -222,7 +231,7 @@ pub async fn create_knowledge_indexer(
         CreateKnowledgeIndexer { input }.run(&s.ctx(&org)).await?,
     ))
 }
-#[utoipa::path(operation_id="get_knowledge_file_content",get,path="/v1/knowledge/{collection_id}/files/content",params(("collection_id"=String,Path,description="Knowledge collection"),PageQuery),responses((status=200,description="Bounded original or extracted bytes",body=String)),tag="knowledge")]
+#[utoipa::path(operation_id="get_knowledge_file_content",get,path="/v1/platform/knowledge/{collection_id}/files/content",params(("collection_id"=String,Path,description="Knowledge collection"),PageQuery),responses((status=200,description="Bounded original or extracted bytes",body=String)),tag="knowledge")]
 pub async fn get_knowledge_file_content(
     org: ResolvedOrg,
     State(s): State<ApiState>,
@@ -326,7 +335,7 @@ pub struct UploadQuery {
     pub path: String,
     pub mime_type: Option<String>,
 }
-#[utoipa::path(operation_id="upload_knowledge_file",put,path="/v1/knowledge/{collection_id}/upload",params(("collection_id"=String,Path,description="Knowledge collection"),UploadQuery),request_body(content=String,content_type="application/octet-stream"),responses((status=200,description="Stored streamed original",body=Value)),tag="knowledge")]
+#[utoipa::path(operation_id="upload_knowledge_file",put,path="/v1/platform/knowledge/{collection_id}/upload",params(("collection_id"=String,Path,description="Knowledge collection"),UploadQuery),request_body(content=String,content_type="application/octet-stream"),responses((status=200,description="Stored streamed original",body=Value)),tag="knowledge")]
 pub async fn upload_knowledge_file(
     org: ResolvedOrg,
     State(s): State<ApiState>,
@@ -366,7 +375,7 @@ pub async fn upload_knowledge_file(
     ))
 }
 
-#[utoipa::path(operation_id="update_knowledge_file_metadata",patch,path="/v1/knowledge/{collection_id}/files",params(("collection_id"=String,Path,description="Knowledge collection")),request_body=FileMetadataInput,responses((status=200,description="Updated file metadata and policy",body=Value)),tag="knowledge")]
+#[utoipa::path(operation_id="update_knowledge_file_metadata",patch,path="/v1/platform/knowledge/{collection_id}/files",params(("collection_id"=String,Path,description="Knowledge collection")),request_body=FileMetadataInput,responses((status=200,description="Updated file metadata and policy",body=Value)),tag="knowledge")]
 pub async fn update_knowledge_file_metadata(
     org: ResolvedOrg,
     State(s): State<ApiState>,
@@ -383,7 +392,7 @@ pub async fn update_knowledge_file_metadata(
     ))
 }
 
-#[utoipa::path(operation_id="validate_knowledge_okf",get,path="/v1/knowledge/{collection_id}/okf",params(("collection_id"=String,Path,description="Knowledge collection"),PageQuery),responses((status=200,description="OKF metadata validation page",body=Value)),tag="knowledge")]
+#[utoipa::path(operation_id="validate_knowledge_okf",get,path="/v1/platform/knowledge/{collection_id}/okf",params(("collection_id"=String,Path,description="Knowledge collection"),PageQuery),responses((status=200,description="OKF metadata validation page",body=Value)),tag="knowledge")]
 pub async fn validate_knowledge_okf(
     org: ResolvedOrg,
     State(s): State<ApiState>,

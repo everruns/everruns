@@ -143,14 +143,14 @@ Path prefix for REST API routes.
 **Example:**
 
 ```bash
-# Routes at /api/v1/agents
+# Routes at /api/v1/platform/agents
 API_PREFIX=/api
 ```
 
 **Notes:**
 - `/health`, `/api-doc/openapi.json`, `/mcp`, `/.well-known/*`, `/oauth/*`, and `/cli/login-success` stay at the server root
 - `/mcp` is always mounted and authenticated; there is no `FEATURE_MCP_ENDPOINT` deployment variable or organization feature toggle
-- REST API routes including auth (`/v1/auth/*`) are mounted under this prefix
+- REST API routes including auth (`/v1/platform/auth/*`) are mounted under this prefix
 - OAuth callback URLs use `AUTH_BASE_URL`, which defaults to `PUBLIC_APP_URL` plus `API_PREFIX` when unset
 - Override only if you need a non-`/api` REST prefix behind a reverse proxy or gateway
 
@@ -453,7 +453,7 @@ LLM provider API keys (OpenAI, Anthropic, Gemini) are primarily stored encrypted
 | Property | Value |
 |----------|-------|
 | **Storage** | Database (encrypted with AES-256-GCM) |
-| **Configuration** | Models > Providers UI or `/v1/providers` API |
+| **Configuration** | Models > Providers UI or `/v1/platform/providers` API |
 | **Supported Providers** | OpenAI, Anthropic, Google Gemini |
 
 **Required for encryption:**
@@ -696,7 +696,7 @@ The UI makes all REST API requests (including SSE) to `/api/*` paths. The backen
 
 **Local Development:**
 - Caddy on `:9300` routes `/api/*`, `/oauth/*`, `/mcp`, and `/.well-known/*` to backend at `:9301`
-- Example: `/api/v1/agents` → `http://localhost:9301/api/v1/agents`
+- Example: `/api/v1/platform/agents` → `http://localhost:9301/api/v1/platform/agents`
 - Example: `/oauth/authorize?...` → `http://localhost:9301/oauth/authorize?...`
 - Example: `/mcp` → `http://localhost:9301/mcp`
 - Example: `/.well-known/oauth-authorization-server` → `http://localhost:9301/.well-known/oauth-authorization-server`

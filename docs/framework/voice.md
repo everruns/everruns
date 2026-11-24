@@ -219,7 +219,7 @@ Each call lands in a session of the agent's voice channel:
   started typed.
 - With neither, the call starts a new session.
 
-Follow the transcript at `/v1/sessions/{session_id}/sse` like any session.
+Follow the transcript at `/v1/platform/sessions/{session_id}/sse` like any session.
 
 ### Cascaded calls over a WebSocket
 

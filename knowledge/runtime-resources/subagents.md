@@ -55,7 +55,7 @@ The `Session` entity is extended with subagent tree metadata:
 | Field | Type | Description |
 |-------|------|-------------|
 | `parent_session_id` | SessionId? | Parent session (null for top-level sessions). Used to compute delegation depth. |
-| `root_session_id` | SessionId? | Root of this session's delegation tree (EVE-680). A top-level session is its own root; a subagent child inherits its parent's root. Denormalized (migration 094) so a whole tree is one indexed query; mirrored onto `session_tasks.root_session_id` and filterable via `GET /v1/tasks?root_session_id=`. |
+| `root_session_id` | SessionId? | Root of this session's delegation tree (EVE-680). A top-level session is its own root; a subagent child inherits its parent's root. Denormalized (migration 094) so a whole tree is one indexed query; mirrored onto `session_tasks.root_session_id` and filterable via `GET /v1/platform/tasks?root_session_id=`. |
 
 `subagent_name`, `subagent_task`, and `subagent_status` were retired in
 migration 062. Lifecycle state is now tracked via `SessionTask` records

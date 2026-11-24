@@ -19,7 +19,7 @@ export function usePolicies(resource: string) {
   const query = useQuery({
     queryKey: [...queryKeys.policies.config(resource), org],
     queryFn: async () => {
-      const response = await api.get<ResourceConfigResponse>(`/v1/${resource}/config`);
+      const response = await api.get<ResourceConfigResponse>(`/v1/platform/${resource}/config`);
       return response.data;
     },
     enabled: !!org,

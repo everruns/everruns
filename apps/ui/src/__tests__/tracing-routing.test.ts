@@ -14,11 +14,11 @@ it.each([
   );
 });
 it("binds routing review to the correct organization or agent", () => {
-  expect(resourceWrite("PUT", "/v1/tracing/defaults", org)).toMatchObject({
+  expect(resourceWrite("PUT", "/v1/platform/tracing/defaults", org)).toMatchObject({
     kind: "tracing_policy",
     id: org,
   });
-  expect(resourceWrite("PUT", `/v1/agents/${agent}/tracing`, org)).toMatchObject({
+  expect(resourceWrite("PUT", `/v1/platform/agents/${agent}/tracing`, org)).toMatchObject({
     kind: "tracing_policy",
     id: agent,
   });
@@ -26,11 +26,11 @@ it("binds routing review to the correct organization or agent", () => {
     kind: "tracing_policy",
     id: agent,
   });
-  expect(resourceWrite("POST", "/v1/tracing/destinations", org)).toBeUndefined();
+  expect(resourceWrite("POST", "/v1/platform/tracing/destinations", org)).toBeUndefined();
   expect(
     resourceWrite(
       "POST",
-      "/v1/tracing/destinations/00000000-0000-0000-0000-000000000001/test",
+      "/v1/platform/tracing/destinations/00000000-0000-0000-0000-000000000001/test",
       org,
     ),
   ).toBeUndefined();

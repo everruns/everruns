@@ -38,7 +38,7 @@ Verify explicit organization selection, header precedence, tenant isolation, and
 ## Steps
 
 1. Execute every row against the corresponding `/agents` or `/sessions` route. Compare returned IDs against the recorded fixtures, not total counts.
-2. Resolve the Org B agent and session through `GET /api/v1/resolve-org?id=<id>` as A. Expect B's org id/name; the detail endpoint itself still requires B's context.
+2. Resolve the Org B agent and session through `GET /api/v1/platform/resolve-org?id=<id>` as A. Expect B's org id/name; the detail endpoint itself still requires B's context.
 3. Repeat resolve-org with Org C's fixture, an unknown same-type ID, and an unknown prefix. Compare status and response bodies.
 4. Repeat resolution without credentials. Re-read all fixtures using their authorized account and org.
 5. With a separate single-org account's PAT and no org selection, verify its own list loads through the single-org fallback.

@@ -33,7 +33,7 @@ Verify that an agent can be partially updated via PATCH, including name (slug) a
 
 1. Create agent:
    ```bash
-   curl -s -X POST "http://localhost:9300/api/v1/agents" \
+   curl -s -X POST "http://localhost:9300/api/v1/platform/agents" \
      -H "Content-Type: application/json" \
      -d '{
        "name": "original-agent",
@@ -46,26 +46,26 @@ Verify that an agent can be partially updated via PATCH, including name (slug) a
 
 2. Patch agent (update name only):
    ```bash
-   curl -s -X PATCH "http://localhost:9300/api/v1/agents/{id}" \
+   curl -s -X PATCH "http://localhost:9300/api/v1/platform/agents/{id}" \
      -H "Content-Type: application/json" \
      -d '{"name": "updated-agent"}'
    ```
 
 3. Fetch agent:
    ```bash
-   curl -s "http://localhost:9300/api/v1/agents/{id}"
+   curl -s "http://localhost:9300/api/v1/platform/agents/{id}"
    ```
 
 4. Patch agent (update display_name only):
    ```bash
-   curl -s -X PATCH "http://localhost:9300/api/v1/agents/{id}" \
+   curl -s -X PATCH "http://localhost:9300/api/v1/platform/agents/{id}" \
      -H "Content-Type: application/json" \
      -d '{"display_name": "Updated Agent"}'
    ```
 
 5. Patch agent (update prompt and tags):
    ```bash
-   curl -s -X PATCH "http://localhost:9300/api/v1/agents/{id}" \
+   curl -s -X PATCH "http://localhost:9300/api/v1/platform/agents/{id}" \
      -H "Content-Type: application/json" \
      -d '{
        "system_prompt": "You are updated.",

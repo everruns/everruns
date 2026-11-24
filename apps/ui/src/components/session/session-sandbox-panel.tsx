@@ -51,7 +51,7 @@ function useSessionSandbox(sessionId: string) {
   return useQuery({
     queryKey: ["session-sandbox", sessionId],
     queryFn: async () => {
-      const response = await api.get<SessionSandbox>(`/v1/sessions/${sessionId}/sandbox`);
+      const response = await api.get<SessionSandbox>(`/v1/platform/sessions/${sessionId}/sandbox`);
       return response.data;
     },
   });

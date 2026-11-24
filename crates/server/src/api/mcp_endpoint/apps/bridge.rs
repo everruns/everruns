@@ -22,6 +22,14 @@ pub(super) fn is_tool(name: &str) -> bool {
 /// credentials, org administration, command execution and external URLs stay out.
 fn allowed_path(raw: &str, read: bool) -> bool {
     let path = raw.split('?').next().unwrap_or_default();
+    let Some(rest) = path
+        .strip_prefix("/v1/platform/")
+        .or_else(|| path.strip_prefix("/v1/"))
+    else {
+        return false;
+    };
+    let native = format!("/v1/{rest}");
+    let path = native.as_str();
     let lower = path.to_ascii_lowercase();
     let workspace_files =
         path.split('/').nth(2) == Some("workspaces") && path.split('/').nth(4) == Some("fs");
@@ -114,6 +122,18 @@ pub(super) async fn call(
     if !allowed_path(path, name == READ) {
         return Err("This API is not available in the MCP workspace".into());
     }
+    // Cached workspace clients can still send legacy management paths. The
+    // internal router remains canonical, and self-service retains its URL.
+    let canonical;
+    let path = if !path.starts_with("/v1/platform/")
+        && path != "/v1/virtual-users/me"
+        && !path.starts_with("/v1/virtual-users/me/")
+    {
+        canonical = path.replacen("/v1/", "/v1/platform/", 1);
+        canonical.as_str()
+    } else {
+        path
+    };
     let method = if name == READ {
         Method::GET
     } else {
@@ -194,28 +214,35 @@ mod tests {
     #[test]
     fn workspace_paths_are_local_and_exclude_credentials_and_recursion() {
         for path in [
-            "/v1/sessions/session_1/trace?limit=20",
             "/v1/agents/activity",
-            "/v1/knowledge",
-            "/v1/workspaces/ws_1/fs/workspace/report%25.txt",
-            "/v1/workspaces/ws_1/fs/_/download/workspace/keys",
-            "/v1/sessions/session_1/storage/secrets",
-            "/v1/sessions/session_1/storage/keys",
-            "/v1/durable/config",
-            "/v1/system/doctor",
+            "/v1/sessions/session_1/trace?limit=20",
+            "/v1/platform/sessions/session_1/trace?limit=20",
+            "/v1/platform/agents/activity",
+            "/v1/platform/knowledge",
+            "/v1/platform/workspaces/ws_1/fs/workspace/report%25.txt",
+            "/v1/platform/workspaces/ws_1/fs/_/download/workspace/keys",
+            "/v1/platform/sessions/session_1/storage/secrets",
+            "/v1/platform/sessions/session_1/storage/keys",
+            "/v1/platform/durable/config",
+            "/v1/platform/system/doctor",
         ] {
             assert!(allowed_path(path, true), "{path}");
         }
         for path in [
-            "https://example.com/v1/agents",
-            "//example.com/v1/agents",
-            "/mcp",
             "/v1/auth/me",
             "/v1/commands/run",
             "/v1/agents/../auth/me",
             "/v1/agents/%2e%2e/auth/me",
             "/v1/agents/agent_1/credentials",
-            "/v1/sessions/session_1/sse",
+            "https://example.com/v1/platform/agents",
+            "//example.com/v1/platform/agents",
+            "/mcp",
+            "/v1/platform/auth/me",
+            "/v1/platform/commands/run",
+            "/v1/platform/agents/../auth/me",
+            "/v1/platform/agents/%2e%2e/auth/me",
+            "/v1/platform/agents/agent_1/credentials",
+            "/v1/platform/sessions/session_1/sse",
         ] {
             assert!(!allowed_path(path, true), "{path}");
         }

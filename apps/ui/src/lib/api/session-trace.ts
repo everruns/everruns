@@ -21,7 +21,7 @@ function query(params: Record<string, string | number | boolean | undefined>): s
   return text ? `?${text}` : "";
 }
 
-const base = (sessionId: string) => `/v1/sessions/${sessionId}/trace`;
+const base = (sessionId: string) => `/v1/platform/sessions/${sessionId}/trace`;
 
 /** Totals, the minimap and the turns that failed. */
 export async function getSessionTrace(sessionId: string, buckets?: number): Promise<TraceOverview> {

@@ -17,7 +17,7 @@ export async function listUsers(query?: ListUsersQuery): Promise<User[]> {
     params.set("search", query.search);
   }
 
-  const url = params.toString() ? `/v1/users?${params.toString()}` : `/v1/users`;
+  const url = params.toString() ? `/v1/platform/users?${params.toString()}` : `/v1/platform/users`;
 
   const response = await api.get<ListResponse<User>>(url);
   return response.data.data;
@@ -32,7 +32,7 @@ interface SwitchOrgResponse {
  * Update current user's profile (name).
  */
 export async function updateProfile(req: UpdateProfileRequest): Promise<ProfileResponse> {
-  const response = await api.patch<ProfileResponse>("/v1/users/me", req);
+  const response = await api.patch<ProfileResponse>("/v1/platform/users/me", req);
   return response.data;
 }
 
@@ -42,7 +42,7 @@ export async function updateProfile(req: UpdateProfileRequest): Promise<ProfileR
  * This is the preferred method for org selection as cookies work with SSE (EventSource).
  */
 export async function switchOrg(orgId: string): Promise<SwitchOrgResponse> {
-  const response = await api.post<SwitchOrgResponse>("/v1/users/me/switch-org", {
+  const response = await api.post<SwitchOrgResponse>("/v1/platform/users/me/switch-org", {
     org_id: orgId,
   });
   return response.data;

@@ -48,7 +48,7 @@ impl IngressContext {
     pub fn matches_legacy_app_id(&self, legacy_app_id: &str) -> bool {
         match self.legacy_alias_id.as_deref() {
             Some(legacy) => legacy == legacy_app_id,
-            // A channel created through `/v1/agents/{id}/channels` never had
+            // A channel created through `/v1/platform/agents/{id}/channels` never had
             // an App. Its canonical `/v1/channels/{channel_id}` routes pass the
             // synthetic `public_id` derived from the channel, which must match
             // or every such channel answers 404.

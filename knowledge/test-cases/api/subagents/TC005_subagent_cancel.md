@@ -33,7 +33,7 @@ Verify that `cancel_task` delivers a cooperative cancellation request to a subag
 
 1. Create agent:
    ```bash
-   curl -s -X POST "http://localhost:9300/api/v1/agents" \
+   curl -s -X POST "http://localhost:9300/api/v1/platform/agents" \
      -H "Content-Type: application/json" \
      -d '{
        "name": "Cancel Tester",
@@ -45,7 +45,7 @@ Verify that `cancel_task` delivers a cooperative cancellation request to a subag
 
 2. Create session:
    ```bash
-   curl -s -X POST "http://localhost:9300/api/v1/sessions" \
+   curl -s -X POST "http://localhost:9300/api/v1/platform/sessions" \
      -H "Content-Type: application/json" \
      -d '{"agent_id": "{agent_id}"}'
    ```
@@ -53,7 +53,7 @@ Verify that `cancel_task` delivers a cooperative cancellation request to a subag
 
 3. Send first message to spawn subagent:
    ```bash
-   curl -s -X POST "http://localhost:9300/api/v1/sessions/{session_id}/messages" \
+   curl -s -X POST "http://localhost:9300/api/v1/platform/sessions/{session_id}/messages" \
      -H "Content-Type: application/json" \
      -d '{
        "message": {
@@ -67,7 +67,7 @@ Verify that `cancel_task` delivers a cooperative cancellation request to a subag
 
 5. Send cancel message:
    ```bash
-   curl -s -X POST "http://localhost:9300/api/v1/sessions/{session_id}/messages" \
+   curl -s -X POST "http://localhost:9300/api/v1/platform/sessions/{session_id}/messages" \
      -H "Content-Type: application/json" \
      -d '{
        "message": {
@@ -81,7 +81,7 @@ Verify that `cancel_task` delivers a cooperative cancellation request to a subag
 
 7. Retrieve events:
    ```bash
-   curl -s "http://localhost:9300/api/v1/sessions/{session_id}/events"
+   curl -s "http://localhost:9300/api/v1/platform/sessions/{session_id}/events"
    ```
 
 ## Expected Result

@@ -95,12 +95,12 @@ response. In Session Trace, a `web_search` step lists its attempts, with a faile
 ## Organization search accounts and defaults
 
 An organization admin connects search accounts as organization connections
-(`POST /v1/orgs/{org}/organization-connections/providers/brave_search`, `.../parallel` or
+(`POST /v1/platform/orgs/{org}/organization-connections/providers/brave_search`, `.../parallel` or
 `.../cloudflare_web_search`), the
 same way sandbox provider accounts are connected. Every agent of the organization can then search with them; the
 key never reaches the agent.
 
-`PATCH /v1/orgs/{org}` with `web_search_defaults` sets the organization's defaults:
+`PATCH /v1/platform/orgs/{org}` with `web_search_defaults` sets the organization's defaults:
 
 | Field | Default | Description |
 |---|---|---|
@@ -112,8 +112,8 @@ key never reaches the agent.
 | `blocked_domains` | none | Sites no search returns, on top of each agent's `blocked_domains` |
 
 Changes reach running sessions from their next search, within 30 seconds. `GET
-/v1/search-providers` lists what the organization can search with, and `POST
-/v1/search-providers/preview` shows the plan an agent's setting resolves to for a model.
+/v1/platform/search-providers` lists what the organization can search with, and `POST
+/v1/platform/search-providers/preview` shows the plan an agent's setting resolves to for a model.
 
 For `brave`, a key is read from the user's Brave Search connection, then the
 `BRAVE_SEARCH_API_KEY` session secret, then (Framework only) the `BRAVE_SEARCH_API_KEY`

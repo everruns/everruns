@@ -32,7 +32,7 @@ async fn test_no_duplicate_tool_calls() {
     };
 
     let provider_response = client
-        .post(format!("{}/v1/providers", API_BASE_URL))
+        .post(format!("{}/v1/platform/providers", API_BASE_URL))
         .json(&json!({
             "name": "Duplicate Tool Test Provider",
             "provider_type": "openai",
@@ -53,7 +53,7 @@ async fn test_no_duplicate_tool_calls() {
     println!("\nStep 2: Creating model...");
     let model_response = client
         .post(format!(
-            "{}/v1/providers/{}/models",
+            "{}/v1/platform/providers/{}/models",
             API_BASE_URL, provider.id
         ))
         .json(&json!({
@@ -76,7 +76,7 @@ async fn test_no_duplicate_tool_calls() {
     // Step 3: Create an agent with current_time capability
     println!("\nStep 3: Creating agent with current_time capability...");
     let agent_response = client
-        .post(format!("{}/v1/agents", API_BASE_URL))
+        .post(format!("{}/v1/platform/agents", API_BASE_URL))
         .json(&json!({
             "name": "time-tool-test-agent",
             "display_name": "Time Tool Test Agent",
@@ -97,7 +97,7 @@ async fn test_no_duplicate_tool_calls() {
     // Step 4: Create a session
     println!("\nStep 4: Creating session...");
     let session_response = client
-        .post(format!("{}/v1/sessions", API_BASE_URL))
+        .post(format!("{}/v1/platform/sessions", API_BASE_URL))
         .json(&json!({"harness_name": SEED_HARNESS_NAME, "agent_id": agent.public_id}))
         .send()
         .await
@@ -113,7 +113,7 @@ async fn test_no_duplicate_tool_calls() {
     println!("\nStep 5: Sending message to trigger tool use...");
     let message_response = client
         .post(format!(
-            "{}/v1/sessions/{}/messages",
+            "{}/v1/platform/sessions/{}/messages",
             API_BASE_URL, session.id
         ))
         .json(&json!({
@@ -139,7 +139,7 @@ async fn test_no_duplicate_tool_calls() {
 
         let messages_response = client
             .get(format!(
-                "{}/v1/sessions/{}/messages",
+                "{}/v1/platform/sessions/{}/messages",
                 API_BASE_URL, session.id
             ))
             .send()
@@ -186,7 +186,7 @@ async fn test_no_duplicate_tool_calls() {
     println!("\nStep 7: Checking for duplicate tool calls...");
     let messages_response = client
         .get(format!(
-            "{}/v1/sessions/{}/messages",
+            "{}/v1/platform/sessions/{}/messages",
             API_BASE_URL, session.id
         ))
         .send()
@@ -258,20 +258,20 @@ async fn test_no_duplicate_tool_calls() {
     // model/provider delete is refused (EVE-955).
     cleanup_delete(
         &client,
-        format!("{}/v1/sessions/{}", API_BASE_URL, session.id),
+        format!("{}/v1/platform/sessions/{}", API_BASE_URL, session.id),
         "session",
     )
     .await;
     cleanup_agent(&client, &agent.public_id).await;
     cleanup_delete(
         &client,
-        format!("{}/v1/models/{}", API_BASE_URL, model.id),
+        format!("{}/v1/platform/models/{}", API_BASE_URL, model.id),
         "model",
     )
     .await;
     cleanup_delete(
         &client,
-        format!("{}/v1/providers/{}", API_BASE_URL, provider.id),
+        format!("{}/v1/platform/providers/{}", API_BASE_URL, provider.id),
         "provider",
     )
     .await;
@@ -308,7 +308,7 @@ async fn test_agent_execution_llmsim_with_tool_calls() {
     // Step 1: Create LlmSim provider and model
     println!("\nStep 1: Creating LlmSim provider and model...");
     let provider_response = client
-        .post(format!("{}/v1/providers", API_BASE_URL))
+        .post(format!("{}/v1/platform/providers", API_BASE_URL))
         .json(&json!({
             "name": "LlmSim Tool Test Provider",
             "provider_type": "llmsim"
@@ -333,7 +333,7 @@ async fn test_agent_execution_llmsim_with_tool_calls() {
 
     let model_response = client
         .post(format!(
-            "{}/v1/providers/{}/models",
+            "{}/v1/platform/providers/{}/models",
             API_BASE_URL, provider.id
         ))
         .json(&json!({
@@ -359,7 +359,7 @@ async fn test_agent_execution_llmsim_with_tool_calls() {
     // Step 2: Create a dad jokes agent with current_time capability
     println!("\nStep 2: Creating dad jokes agent with current_time capability...");
     let agent_response = client
-        .post(format!("{}/v1/agents", API_BASE_URL))
+        .post(format!("{}/v1/platform/agents", API_BASE_URL))
         .json(&json!({
             "name": "dad-jokes-time-agent",
             "display_name": "Dad Jokes Time Agent",
@@ -381,7 +381,7 @@ async fn test_agent_execution_llmsim_with_tool_calls() {
     // Step 3: Create a session
     println!("\nStep 3: Creating session...");
     let session_response = client
-        .post(format!("{}/v1/sessions", API_BASE_URL))
+        .post(format!("{}/v1/platform/sessions", API_BASE_URL))
         .json(&json!({"harness_name": SEED_HARNESS_NAME, "agent_id": agent.public_id, "title": "Dad Jokes Session"}))
         .send()
         .await
@@ -398,7 +398,7 @@ async fn test_agent_execution_llmsim_with_tool_calls() {
     println!("\nStep 4: Sending message asking for time-based joke...");
     let message_response = client
         .post(format!(
-            "{}/v1/sessions/{}/messages",
+            "{}/v1/platform/sessions/{}/messages",
             API_BASE_URL, session.id
         ))
         .json(&json!({
@@ -424,7 +424,7 @@ async fn test_agent_execution_llmsim_with_tool_calls() {
 
         let messages_response = client
             .get(format!(
-                "{}/v1/sessions/{}/messages",
+                "{}/v1/platform/sessions/{}/messages",
                 API_BASE_URL, session.id
             ))
             .send()
@@ -495,7 +495,7 @@ async fn test_agent_execution_llmsim_with_tool_calls() {
     // Get final messages
     let final_messages_response = client
         .get(format!(
-            "{}/v1/sessions/{}/messages",
+            "{}/v1/platform/sessions/{}/messages",
             API_BASE_URL, session.id
         ))
         .send()
@@ -552,7 +552,7 @@ async fn test_agent_execution_llmsim_with_tool_calls() {
     // first or the model delete is refused (EVE-955).
     cleanup_delete(
         &client,
-        format!("{}/v1/sessions/{}", API_BASE_URL, session.id),
+        format!("{}/v1/platform/sessions/{}", API_BASE_URL, session.id),
         "session",
     )
     .await;
@@ -560,7 +560,7 @@ async fn test_agent_execution_llmsim_with_tool_calls() {
     cleanup_delete(
         &client,
         format!(
-            "{}/v1/providers/{}/models/{}",
+            "{}/v1/platform/providers/{}/models/{}",
             API_BASE_URL, provider.id, model.id
         ),
         "model",
@@ -568,7 +568,7 @@ async fn test_agent_execution_llmsim_with_tool_calls() {
     .await;
     cleanup_delete(
         &client,
-        format!("{}/v1/providers/{}", API_BASE_URL, provider.id),
+        format!("{}/v1/platform/providers/{}", API_BASE_URL, provider.id),
         "provider",
     )
     .await;
@@ -610,7 +610,7 @@ async fn test_agent_execution_openai_with_tool_calls() {
     let api_key = std::env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY should be set");
 
     let provider_response = client
-        .post(format!("{}/v1/providers", API_BASE_URL))
+        .post(format!("{}/v1/platform/providers", API_BASE_URL))
         .json(&json!({
             "name": "OpenAI Tool Test Provider",
             "provider_type": "openai",
@@ -638,7 +638,7 @@ async fn test_agent_execution_openai_with_tool_calls() {
     // Create model (gpt-5.4-mini for cost-effectiveness)
     let model_response = client
         .post(format!(
-            "{}/v1/providers/{}/models",
+            "{}/v1/platform/providers/{}/models",
             API_BASE_URL, provider.id
         ))
         .json(&json!({
@@ -661,7 +661,7 @@ async fn test_agent_execution_openai_with_tool_calls() {
     // Step 2: Create dad jokes agent with current_time capability
     println!("\nStep 2: Creating dad jokes agent with current_time capability...");
     let agent_response = client
-        .post(format!("{}/v1/agents", API_BASE_URL))
+        .post(format!("{}/v1/platform/agents", API_BASE_URL))
         .json(&json!({
             "name": "openai-dad-jokes-agent",
             "display_name": "OpenAI Dad Jokes Agent",
@@ -680,7 +680,7 @@ async fn test_agent_execution_openai_with_tool_calls() {
     // Step 3: Create session
     println!("\nStep 3: Creating session...");
     let session_response = client
-        .post(format!("{}/v1/sessions", API_BASE_URL))
+        .post(format!("{}/v1/platform/sessions", API_BASE_URL))
         .json(&json!({"harness_name": SEED_HARNESS_NAME, "agent_id": agent.public_id, "title": "OpenAI Dad Jokes Session"}))
         .send()
         .await
@@ -697,7 +697,7 @@ async fn test_agent_execution_openai_with_tool_calls() {
     println!("\nStep 4: Sending message...");
     let message_response = client
         .post(format!(
-            "{}/v1/sessions/{}/messages",
+            "{}/v1/platform/sessions/{}/messages",
             API_BASE_URL, session.id
         ))
         .json(&json!({
@@ -722,7 +722,7 @@ async fn test_agent_execution_openai_with_tool_calls() {
 
         let messages_response = client
             .get(format!(
-                "{}/v1/sessions/{}/messages",
+                "{}/v1/platform/sessions/{}/messages",
                 API_BASE_URL, session.id
             ))
             .send()
@@ -796,7 +796,7 @@ async fn test_agent_execution_openai_with_tool_calls() {
     // model/provider delete is refused (EVE-955).
     cleanup_delete(
         &client,
-        format!("{}/v1/sessions/{}", API_BASE_URL, session.id),
+        format!("{}/v1/platform/sessions/{}", API_BASE_URL, session.id),
         "session",
     )
     .await;
@@ -804,7 +804,7 @@ async fn test_agent_execution_openai_with_tool_calls() {
     cleanup_delete(
         &client,
         format!(
-            "{}/v1/providers/{}/models/{}",
+            "{}/v1/platform/providers/{}/models/{}",
             API_BASE_URL, provider.id, model.id
         ),
         "model",
@@ -812,7 +812,7 @@ async fn test_agent_execution_openai_with_tool_calls() {
     .await;
     cleanup_delete(
         &client,
-        format!("{}/v1/providers/{}", API_BASE_URL, provider.id),
+        format!("{}/v1/platform/providers/{}", API_BASE_URL, provider.id),
         "provider",
     )
     .await;
@@ -872,7 +872,7 @@ async fn test_agent_execution_anthropic_with_tool_calls() {
     let api_key = std::env::var("ANTHROPIC_API_KEY").expect("ANTHROPIC_API_KEY should be set");
 
     let provider_response = client
-        .post(format!("{}/v1/providers", API_BASE_URL))
+        .post(format!("{}/v1/platform/providers", API_BASE_URL))
         .json(&json!({
             "name": "Anthropic Tool Test Provider",
             "provider_type": "anthropic",
@@ -900,7 +900,7 @@ async fn test_agent_execution_anthropic_with_tool_calls() {
     // Create model (claude-haiku-4-5 for cost-effectiveness)
     let model_response = client
         .post(format!(
-            "{}/v1/providers/{}/models",
+            "{}/v1/platform/providers/{}/models",
             API_BASE_URL, provider.id
         ))
         .json(&json!({
@@ -923,7 +923,7 @@ async fn test_agent_execution_anthropic_with_tool_calls() {
     // Step 2: Create dad jokes agent with current_time capability
     println!("\nStep 2: Creating dad jokes agent with current_time capability...");
     let agent_response = client
-        .post(format!("{}/v1/agents", API_BASE_URL))
+        .post(format!("{}/v1/platform/agents", API_BASE_URL))
         .json(&json!({
             "name": "anthropic-dad-jokes-agent",
             "display_name": "Anthropic Dad Jokes Agent",
@@ -942,7 +942,7 @@ async fn test_agent_execution_anthropic_with_tool_calls() {
     // Step 3: Create session
     println!("\nStep 3: Creating session...");
     let session_response = client
-        .post(format!("{}/v1/sessions", API_BASE_URL))
+        .post(format!("{}/v1/platform/sessions", API_BASE_URL))
         .json(&json!({"harness_name": SEED_HARNESS_NAME, "agent_id": agent.public_id, "title": "Anthropic Dad Jokes Session"}))
         .send()
         .await
@@ -959,7 +959,7 @@ async fn test_agent_execution_anthropic_with_tool_calls() {
     println!("\nStep 4: Sending message...");
     let message_response = client
         .post(format!(
-            "{}/v1/sessions/{}/messages",
+            "{}/v1/platform/sessions/{}/messages",
             API_BASE_URL, session.id
         ))
         .json(&json!({
@@ -984,7 +984,7 @@ async fn test_agent_execution_anthropic_with_tool_calls() {
 
         let messages_response = client
             .get(format!(
-                "{}/v1/sessions/{}/messages",
+                "{}/v1/platform/sessions/{}/messages",
                 API_BASE_URL, session.id
             ))
             .send()
@@ -1058,7 +1058,7 @@ async fn test_agent_execution_anthropic_with_tool_calls() {
     // model/provider delete is refused (EVE-955).
     cleanup_delete(
         &client,
-        format!("{}/v1/sessions/{}", API_BASE_URL, session.id),
+        format!("{}/v1/platform/sessions/{}", API_BASE_URL, session.id),
         "session",
     )
     .await;
@@ -1066,7 +1066,7 @@ async fn test_agent_execution_anthropic_with_tool_calls() {
     cleanup_delete(
         &client,
         format!(
-            "{}/v1/providers/{}/models/{}",
+            "{}/v1/platform/providers/{}/models/{}",
             API_BASE_URL, provider.id, model.id
         ),
         "model",
@@ -1074,7 +1074,7 @@ async fn test_agent_execution_anthropic_with_tool_calls() {
     .await;
     cleanup_delete(
         &client,
-        format!("{}/v1/providers/{}", API_BASE_URL, provider.id),
+        format!("{}/v1/platform/providers/{}", API_BASE_URL, provider.id),
         "provider",
     )
     .await;
@@ -1122,7 +1122,7 @@ async fn test_agent_execution_multiple_tool_calls() {
     // Step 1: Create LlmSim provider and model
     println!("\nStep 1: Creating LlmSim provider and model...");
     let provider_response = client
-        .post(format!("{}/v1/providers", API_BASE_URL))
+        .post(format!("{}/v1/platform/providers", API_BASE_URL))
         .json(&json!({
             "name": "LlmSim Multi-Tool Test",
             "provider_type": "llmsim"
@@ -1146,7 +1146,7 @@ async fn test_agent_execution_multiple_tool_calls() {
 
     let model_response = client
         .post(format!(
-            "{}/v1/providers/{}/models",
+            "{}/v1/platform/providers/{}/models",
             API_BASE_URL, provider.id
         ))
         .json(&json!({
@@ -1164,7 +1164,7 @@ async fn test_agent_execution_multiple_tool_calls() {
     // Step 2: Create agent with current_time capability
     println!("\nStep 2: Creating agent with current_time capability...");
     let agent_response = client
-        .post(format!("{}/v1/agents", API_BASE_URL))
+        .post(format!("{}/v1/platform/agents", API_BASE_URL))
         .json(&json!({
             "name": "multi-tool-agent",
             "display_name": "Multi Tool Agent",
@@ -1183,7 +1183,7 @@ async fn test_agent_execution_multiple_tool_calls() {
     // Step 3: Create session and send message
     println!("\nStep 3: Creating session and sending message...");
     let session_response = client
-        .post(format!("{}/v1/sessions", API_BASE_URL))
+        .post(format!("{}/v1/platform/sessions", API_BASE_URL))
         .json(&json!({"harness_name": SEED_HARNESS_NAME, "agent_id": agent.public_id}))
         .send()
         .await
@@ -1196,7 +1196,7 @@ async fn test_agent_execution_multiple_tool_calls() {
 
     let message_response = client
         .post(format!(
-            "{}/v1/sessions/{}/messages",
+            "{}/v1/platform/sessions/{}/messages",
             API_BASE_URL, session.id
         ))
         .json(&json!({
@@ -1219,7 +1219,7 @@ async fn test_agent_execution_multiple_tool_calls() {
 
         let messages_response = client
             .get(format!(
-                "{}/v1/sessions/{}/messages",
+                "{}/v1/platform/sessions/{}/messages",
                 API_BASE_URL, session.id
             ))
             .send()
@@ -1256,7 +1256,7 @@ async fn test_agent_execution_multiple_tool_calls() {
     // first or the model delete is refused (EVE-955).
     cleanup_delete(
         &client,
-        format!("{}/v1/sessions/{}", API_BASE_URL, session.id),
+        format!("{}/v1/platform/sessions/{}", API_BASE_URL, session.id),
         "session",
     )
     .await;
@@ -1264,7 +1264,7 @@ async fn test_agent_execution_multiple_tool_calls() {
     cleanup_delete(
         &client,
         format!(
-            "{}/v1/providers/{}/models/{}",
+            "{}/v1/platform/providers/{}/models/{}",
             API_BASE_URL, provider.id, model.id
         ),
         "model",
@@ -1272,7 +1272,7 @@ async fn test_agent_execution_multiple_tool_calls() {
     .await;
     cleanup_delete(
         &client,
-        format!("{}/v1/providers/{}", API_BASE_URL, provider.id),
+        format!("{}/v1/platform/providers/{}", API_BASE_URL, provider.id),
         "provider",
     )
     .await;

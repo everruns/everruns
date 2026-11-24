@@ -135,13 +135,16 @@ impl_auth_state!(AppState);
 
 pub fn routes(state: AppState) -> Router {
     Router::new()
-        .route("/v1/sessions/{session_id}/voice/calls", post(create_call))
         .route(
-            "/v1/sessions/{session_id}/voice/{voice_connection_id}/end",
+            "/v1/platform/sessions/{session_id}/voice/calls",
+            post(create_call),
+        )
+        .route(
+            "/v1/platform/sessions/{session_id}/voice/{voice_connection_id}/end",
             post(end_call),
         )
         .route(
-            "/v1/agents/{agent_id}/channels/{channel_id}/voice/calls",
+            "/v1/platform/agents/{agent_id}/channels/{channel_id}/voice/calls",
             post(create_channel_call),
         )
         .with_state(state)
@@ -231,7 +234,7 @@ pub struct VoiceSessionResponse {
 #[utoipa::path(
     description = "Start a voice call on a session (the chat microphone). Uses the settings of a voice channel of the session's agent.",
     post,
-    path = "/v1/sessions/{session_id}/voice/calls",
+    path = "/v1/platform/sessions/{session_id}/voice/calls",
     request_body = VoiceCallRequest,
     responses((status = 200, description = "Realtime WebRTC call started", body = VoiceCallResponse)),
     tag = "voice"
@@ -265,7 +268,7 @@ pub async fn create_call(
 #[utoipa::path(
     description = "Call an agent's voice channel. Starts a new session for the call, or continues an existing session of the agent.",
     post,
-    path = "/v1/agents/{agent_id}/channels/{channel_id}/voice/calls",
+    path = "/v1/platform/agents/{agent_id}/channels/{channel_id}/voice/calls",
     request_body = ChannelVoiceCallRequest,
     responses((status = 201, description = "Session and realtime WebRTC call started", body = VoiceSessionResponse)),
     tag = "voice"
@@ -325,7 +328,7 @@ pub async fn create_channel_call(
 #[utoipa::path(
     description = "End a voice call.",
     post,
-    path = "/v1/sessions/{session_id}/voice/{voice_connection_id}/end",
+    path = "/v1/platform/sessions/{session_id}/voice/{voice_connection_id}/end",
     request_body = VoiceEndRequest,
     responses((status = 200, description = "Voice call ended", body = VoiceEndResponse)),
     tag = "voice"

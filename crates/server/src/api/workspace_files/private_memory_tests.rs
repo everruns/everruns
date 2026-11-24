@@ -1,4 +1,4 @@
-// EVE-1172: the canonical `/v1/workspaces/{id}/fs/*` surface must apply the
+// EVE-1172: the canonical `/v1/platform/workspaces/{id}/fs/*` surface must apply the
 // same `/memory/user` owner check the legacy session-fs alias got under EVE-63.
 // Two users in one org: the session owner and a same-org peer. The peer holds
 // workspace view/manage (admin role) and must still be unable to enumerate,

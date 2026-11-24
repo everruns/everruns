@@ -81,8 +81,8 @@ For DB-backed skills, `user_invocable` is stored in the metadata JSON field (no 
 
 ## API
 
-- `GET /v1/sessions/{session_id}/commands`, returns all available commands (system + invocable skills)
-- `POST /v1/sessions/{session_id}/commands/execute`, executes a system command without persisting a chat message
+- `GET /v1/platform/sessions/{session_id}/commands`, returns all available commands (system + invocable skills)
+- `POST /v1/platform/sessions/{session_id}/commands/execute`, executes a system command without persisting a chat message
 
 See `crates/server/src/api/commands.rs` for route handler.
 

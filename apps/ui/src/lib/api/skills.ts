@@ -1,5 +1,5 @@
 // Skills registry API functions
-// Org is sent via everruns_org cookie (set by OrgProvider via /v1/users/me/switch-org)
+// Org is sent via everruns_org cookie (set by OrgProvider via /v1/platform/users/me/switch-org)
 
 import { api, throwApiError } from "./client";
 import { createCrudApi } from "./crud";
@@ -15,7 +15,7 @@ import type {
 } from "./types";
 
 export const skillsCrudApi = createCrudApi<Skill, CreateSkillRequest, UpdateSkillRequest>(
-  "/v1/skills",
+  "/v1/platform/skills",
 );
 
 export const getSkills = skillsCrudApi.list;
@@ -26,17 +26,17 @@ export const deleteSkill = skillsCrudApi.delete;
 export const destroySkill = skillsCrudApi.destroy;
 
 export async function getSkillContent(skillId: string): Promise<SkillContent> {
-  const response = await api.get<SkillContent>(`/v1/skills/${skillId}/content`);
+  const response = await api.get<SkillContent>(`/v1/platform/skills/${skillId}/content`);
   return response.data;
 }
 
 export async function getSkillsUsage(): Promise<SkillUsageMap> {
-  const response = await api.get<SkillUsageMap>("/v1/skills/usage");
+  const response = await api.get<SkillUsageMap>("/v1/platform/skills/usage");
   return response.data;
 }
 
 export async function validateSkill(data: ValidateSkillRequest): Promise<SkillValidationResult> {
-  const response = await api.post<SkillValidationResult>("/v1/skills/validate", data);
+  const response = await api.post<SkillValidationResult>("/v1/platform/skills/validate", data);
   return response.data;
 }
 
@@ -45,7 +45,7 @@ export async function uploadSkillArchive(file: File): Promise<Skill> {
   formData.append("file", file);
 
   // Raw fetch needed for FormData (no Content-Type header — browser sets multipart boundary)
-  const response = await fetch("/api/v1/skills/upload", {
+  const response = await fetch("/api/v1/platform/skills/upload", {
     method: "POST",
     credentials: "include",
     headers: withOrgHeader(),

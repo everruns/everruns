@@ -23,7 +23,7 @@ pub struct BeginManagerConnectResponse {
     pub authorize_url: String,
 }
 
-/// POST /v1/slack/workspaces/oauth — admin only. Starts connecting a workspace
+/// POST /v1/platform/slack/workspaces/oauth — admin only. Starts connecting a workspace
 /// by Slack consent through this deployment's manager app.
 pub(super) async fn begin_manager_connect(
     org: ResolvedOrg,

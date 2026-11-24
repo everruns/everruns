@@ -1,9 +1,9 @@
 // Agent avatar routes.
 //
-//   PUT    /v1/agents/{agent_id}/avatar         upload (multipart `file`), replaces
-//   DELETE /v1/agents/{agent_id}/avatar         remove
-//   POST   /v1/agents/{agent_id}/avatar/set     `set_agent_avatar` command (JSON)
-//   POST   /v1/agents/{agent_id}/avatar/generate `generate_agent_avatar` command (JSON)
+//   PUT    /v1/platform/agents/{agent_id}/avatar         upload (multipart `file`), replaces
+//   DELETE /v1/platform/agents/{agent_id}/avatar         remove
+//   POST   /v1/platform/agents/{agent_id}/avatar/set     `set_agent_avatar` command (JSON)
+//   POST   /v1/platform/agents/{agent_id}/avatar/generate `generate_agent_avatar` command (JSON)
 //   GET    /v1/avatars/{avatar_id}/{variant}    public, immutable PNG
 //
 // Design decisions:
@@ -74,7 +74,7 @@ const IMMUTABLE: &str = "public, max-age=31536000, immutable";
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route(
-            "/v1/agents/{agent_id}/avatar",
+            "/v1/platform/agents/{agent_id}/avatar",
             put(upload_agent_avatar)
                 .delete(delete_agent_avatar)
                 // Multipart framing on top of the largest accepted image.
@@ -87,7 +87,7 @@ pub fn routes() -> Router<AppState> {
             get(get_avatar_preset_variant),
         )
         .route(
-            "/v1/agents/{agent_id}/avatar/preset",
+            "/v1/platform/agents/{agent_id}/avatar/preset",
             put(select_avatar_preset).get(get_avatar_preset_selection),
         )
         .merge(
@@ -134,10 +134,10 @@ async fn manageable_agent(
     Ok(avatars::manageable_agent(&state.db, org.org_id, agent_id).await?)
 }
 
-/// PUT /v1/agents/{agent_id}/avatar - Upload the agent's avatar
+/// PUT /v1/platform/agents/{agent_id}/avatar - Upload the agent's avatar
 #[utoipa::path(
     put,
-    path = "/v1/agents/{agent_id}/avatar",
+    path = "/v1/platform/agents/{agent_id}/avatar",
     description = "Upload an avatar for an agent as multipart field `file` (PNG, JPEG, GIF or WebP, at least 64x64, at most 10 MB). The image is center-cropped to a square and pre-rendered as square and circular PNG presets. Replaces any previous avatar, whose URLs stop resolving. Also sets the icon of the agent's one-click Slack apps.",
     params(("agent_id" = String, Path, description = "Agent ID")),
     request_body(content_type = "multipart/form-data", description = "Multipart form with a `file` field"),
@@ -250,7 +250,7 @@ pub async fn get_avatar_preset_variant(Path((id, variant)): Path<(String, String
 /// Set an agent's avatar from a curated preset
 ///
 /// Replace an agent's avatar with a curated preset, storing fresh immutable image URLs and updating its Slack app icons.
-#[utoipa::path(put, path = "/v1/agents/{agent_id}/avatar/preset",
+#[utoipa::path(put, path = "/v1/platform/agents/{agent_id}/avatar/preset",
     params(("agent_id" = String, Path)), request_body = SelectAvatarPreset,
     responses((status = 200, body = AgentAvatar), (status = 400, body = ErrorResponse), (status = 403, body = ErrorResponse), (status = 404, body = ErrorResponse)), tag = "agents")]
 pub async fn select_avatar_preset(
@@ -267,7 +267,7 @@ pub async fn select_avatar_preset(
 /// Get the agent's current avatar preset
 ///
 /// Return the agent's current curated preset ID, or null for a custom upload or no avatar. Requires permission to manage the agent.
-#[utoipa::path(get, path = "/v1/agents/{agent_id}/avatar/preset", params(("agent_id" = String, Path)),
+#[utoipa::path(get, path = "/v1/platform/agents/{agent_id}/avatar/preset", params(("agent_id" = String, Path)),
     responses((status = 200, body = AvatarPresetSelection), (status = 403, body = ErrorResponse), (status = 404, body = ErrorResponse)), tag = "agents")]
 pub async fn get_avatar_preset_selection(
     org: ResolvedOrg,
@@ -285,10 +285,10 @@ pub async fn get_avatar_preset_selection(
     }))
 }
 
-/// DELETE /v1/agents/{agent_id}/avatar - Remove the agent's avatar
+/// DELETE /v1/platform/agents/{agent_id}/avatar - Remove the agent's avatar
 #[utoipa::path(
     delete,
-    path = "/v1/agents/{agent_id}/avatar",
+    path = "/v1/platform/agents/{agent_id}/avatar",
     params(("agent_id" = String, Path, description = "Agent ID")),
     responses(
         (status = 204, description = "Avatar removed (or there was none)"),

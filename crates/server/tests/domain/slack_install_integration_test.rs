@@ -79,7 +79,7 @@ async fn draft_slack_channel_persists_oauth_with_postgres() {
 async fn exercise_install(server: test_harness::TestServer) {
     let agent: Value = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({"name":format!("slack-setup-{}", uuid::Uuid::now_v7().simple()), "system_prompt":"Test"}),
         )
         .await
@@ -87,7 +87,10 @@ async fn exercise_install(server: test_harness::TestServer) {
         .json();
     let endpoint: Value = server
         .post(
-            &format!("/v1/agents/{}/channels", agent["id"].as_str().unwrap()),
+            &format!(
+                "/v1/platform/agents/{}/channels",
+                agent["id"].as_str().unwrap()
+            ),
             json!({"channel_type":"slack", "channel_config":{}}),
         )
         .await
@@ -169,7 +172,7 @@ async fn exercise_install(server: test_harness::TestServer) {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/v1/channels/{id}/slack/install"))
+                .uri(format!("/v1/platform/channels/{id}/slack/install"))
                 .header("content-type", "application/json")
                 .body(Body::from(r#"{"team_id":"T1"}"#))
                 .unwrap(),
@@ -218,7 +221,7 @@ async fn exercise_install(server: test_harness::TestServer) {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri(format!("/v1/channels/{id}/slack/install"))
+                    .uri(format!("/v1/platform/channels/{id}/slack/install"))
                     .header("content-type", "application/json")
                     .body(Body::from(r#"{"team_id":"T1"}"#))
                     .unwrap(),
@@ -262,7 +265,7 @@ async fn exercise_install(server: test_harness::TestServer) {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/v1/channels/{id}/slack/install"))
+                .uri(format!("/v1/platform/channels/{id}/slack/install"))
                 .header("content-type", "application/json")
                 .body(Body::from(r#"{"team_id":"T1"}"#))
                 .unwrap(),
@@ -373,7 +376,7 @@ async fn socket_mode_without_https_installs_from_the_slack_app_page() {
     let server = test_harness::TestServer::in_memory().await;
     let agent: Value = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({"name":format!("slack-local-{}", uuid::Uuid::now_v7().simple()), "system_prompt":"Test"}),
         )
         .await
@@ -381,7 +384,10 @@ async fn socket_mode_without_https_installs_from_the_slack_app_page() {
         .json();
     let endpoint: Value = server
         .post(
-            &format!("/v1/agents/{}/channels", agent["id"].as_str().unwrap()),
+            &format!(
+                "/v1/platform/agents/{}/channels",
+                agent["id"].as_str().unwrap()
+            ),
             json!({"channel_type":"slack", "channel_config":{"connection":"socket_mode"}}),
         )
         .await
@@ -419,7 +425,7 @@ async fn socket_mode_without_https_installs_from_the_slack_app_page() {
     let begin = || {
         Request::builder()
             .method("POST")
-            .uri(format!("/v1/channels/{id}/slack/install"))
+            .uri(format!("/v1/platform/channels/{id}/slack/install"))
             .header("content-type", "application/json")
             .body(Body::from(r#"{"team_id":"T1"}"#))
             .unwrap()
@@ -514,7 +520,7 @@ async fn begin_manager_consent(router: &axum::Router) -> (String, String) {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/v1/slack/workspaces/oauth")
+                .uri("/v1/platform/slack/workspaces/oauth")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -623,7 +629,7 @@ async fn manager_app_consent_connects_a_workspace_without_a_pasted_token() {
     let response = router
         .oneshot(
             Request::builder()
-                .uri("/v1/slack/workspaces")
+                .uri("/v1/platform/slack/workspaces")
                 .body(Body::empty())
                 .unwrap(),
         )

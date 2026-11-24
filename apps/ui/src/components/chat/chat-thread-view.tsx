@@ -56,7 +56,7 @@ function ThreadContent({
   const { displayLocale } = useDisplayLocale();
   const ui = useUiTranslations();
   const { session, agent, agentId, sessionLoading } = useSessionContext();
-  // `GET /v1/sessions/{id}` carries no message preview — only the list does — so
+  // `GET /v1/platform/sessions/{id}` carries no message preview — only the list does — so
   // an untitled thread takes its display title from the same list the sidebar
   // reads. Both surfaces then name the thread identically. Archived threads are
   // included: opening one by URL must still name it properly.

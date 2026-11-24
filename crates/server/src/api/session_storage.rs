@@ -26,13 +26,16 @@ use super::common::{ApiResult, ErrorResponse, ListResponse};
 /// Create session storage routes (nested under sessions)
 pub fn routes(state: ApiState) -> Router {
     Router::new()
-        .route("/v1/sessions/{session_id}/storage/keys", get(list_keys))
         .route(
-            "/v1/sessions/{session_id}/storage/secrets",
+            "/v1/platform/sessions/{session_id}/storage/keys",
+            get(list_keys),
+        )
+        .route(
+            "/v1/platform/sessions/{session_id}/storage/secrets",
             get(list_secrets).put(batch_set_secrets),
         )
         .route(
-            "/v1/sessions/{session_id}/storage/secrets/{name}",
+            "/v1/platform/sessions/{session_id}/storage/secrets/{name}",
             axum::routing::delete(delete_secret),
         )
         .command::<crate::domains::session_storage::GetSessionApprovalMode>()
@@ -42,7 +45,7 @@ pub fn routes(state: ApiState) -> Router {
 
 #[utoipa::path(
     delete,
-    path = "/v1/sessions/{session_id}/storage/secrets/{name}",
+    path = "/v1/platform/sessions/{session_id}/storage/secrets/{name}",
     description = "Delete a user-managed encrypted secret from one session.",
     params(
         ("session_id" = String, Path, description = "Session ID"),
@@ -69,10 +72,10 @@ pub async fn delete_secret(
     }
 }
 
-/// GET /v1/sessions/{session_id}/storage/keys - List all key-value pairs
+/// GET /v1/platform/sessions/{session_id}/storage/keys - List all key-value pairs
 #[utoipa::path(
     get,
-    path = "/v1/sessions/{session_id}/storage/keys",
+    path = "/v1/platform/sessions/{session_id}/storage/keys",
     params(
         ("session_id" = String, Path, description = "Session ID")
     ),
@@ -98,10 +101,10 @@ pub async fn list_keys(
     Ok(Json(ListResponse::new(items)))
 }
 
-/// GET /v1/sessions/{session_id}/storage/secrets - List all secrets (names only)
+/// GET /v1/platform/sessions/{session_id}/storage/secrets - List all secrets (names only)
 #[utoipa::path(
     get,
-    path = "/v1/sessions/{session_id}/storage/secrets",
+    path = "/v1/platform/sessions/{session_id}/storage/secrets",
     params(
         ("session_id" = String, Path, description = "Session ID")
     ),
@@ -127,13 +130,13 @@ pub async fn list_secrets(
     Ok(Json(ListResponse::new(items)))
 }
 
-/// PUT /v1/sessions/{session_id}/storage/secrets - Batch set secrets
+/// PUT /v1/platform/sessions/{session_id}/storage/secrets - Batch set secrets
 ///
 /// Encrypts and stores multiple secrets in a single request.
 /// Existing secrets with the same name are overwritten.
 #[utoipa::path(
     put,
-    path = "/v1/sessions/{session_id}/storage/secrets",
+    path = "/v1/platform/sessions/{session_id}/storage/secrets",
     params(
         ("session_id" = String, Path, description = "Session ID")
     ),

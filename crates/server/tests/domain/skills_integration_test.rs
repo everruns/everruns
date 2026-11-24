@@ -39,7 +39,7 @@ async fn test_create_skill() {
     let name = unique_skill_name("test-skill");
     let resp = server
         .post(
-            "/v1/skills",
+            "/v1/platform/skills",
             json!({ "skill_md": skill_md(&name, "A test skill for integration testing.") }),
         )
         .await;
@@ -60,7 +60,7 @@ async fn test_get_skill_content() {
     let name = unique_skill_name("test-skill");
     let create_resp = server
         .post(
-            "/v1/skills",
+            "/v1/platform/skills",
             json!({ "skill_md": skill_md(&name, "A test skill for integration testing.") }),
         )
         .await
@@ -69,7 +69,7 @@ async fn test_get_skill_content() {
     let skill_id = create_resp.json_value()["id"].as_str().unwrap().to_string();
 
     let content_resp = server
-        .get(&format!("/v1/skills/{skill_id}/content"))
+        .get(&format!("/v1/platform/skills/{skill_id}/content"))
         .await
         .assert_success();
 
@@ -90,11 +90,14 @@ async fn linked_skill_content_is_stable_for_package_sync() {
         "---\nname: {name}\ndescription: Stable package export\nmetadata:\n  epsilon: five\n  delta: four\n  gamma: three\n  beta: two\n  alpha: one\n---\n\nUse this skill."
     );
     let skill = server
-        .post("/v1/skills", json!({"skill_md":content}))
+        .post("/v1/platform/skills", json!({"skill_md":content}))
         .await
         .assert_status(StatusCode::CREATED)
         .json_value();
-    let path = format!("/v1/skills/{}/content", skill["id"].as_str().unwrap());
+    let path = format!(
+        "/v1/platform/skills/{}/content",
+        skill["id"].as_str().unwrap()
+    );
     let first = server.get(&path).await.assert_success().json_value()["skill_md"].clone();
     for _ in 0..32 {
         let current = server.get(&path).await.assert_success().json_value();
@@ -117,21 +120,23 @@ async fn test_deleted_skill_content_returns_not_found() {
         "---\nname: {skill_name}\ndescription: Deleted content visibility test.\n---\n\n# Deleted Content Skill\n"
     );
     let create_resp = server
-        .post("/v1/skills", json!({ "skill_md": skill_md }))
+        .post("/v1/platform/skills", json!({ "skill_md": skill_md }))
         .await
         .assert_status(StatusCode::CREATED);
     let skill_id = create_resp.json_value()["id"].as_str().unwrap().to_string();
 
     server
-        .delete(&format!("/v1/skills/{skill_id}"))
+        .delete(&format!("/v1/platform/skills/{skill_id}"))
         .await
         .assert_status(StatusCode::NO_CONTENT);
     server
-        .post(&format!("/v1/skills/{skill_id}/delete"), json!({}))
+        .post(&format!("/v1/platform/skills/{skill_id}/delete"), json!({}))
         .await
         .assert_success();
 
-    let content_resp = server.get(&format!("/v1/skills/{skill_id}/content")).await;
+    let content_resp = server
+        .get(&format!("/v1/platform/skills/{skill_id}/content"))
+        .await;
     assert_eq!(content_resp.status(), StatusCode::NOT_FOUND);
 }
 
@@ -144,7 +149,7 @@ async fn test_update_skill_preserves_user_invocable_false() {
         "---\nname: {name}\ndescription: Hidden command.\nuser-invocable: false\n---\n\n# Hidden\n"
     );
     let create_resp = server
-        .post("/v1/skills", json!({ "skill_md": initial_md }))
+        .post("/v1/platform/skills", json!({ "skill_md": initial_md }))
         .await
         .assert_status(StatusCode::CREATED);
     let skill_id = create_resp.json_value()["id"].as_str().unwrap().to_string();
@@ -154,7 +159,7 @@ async fn test_update_skill_preserves_user_invocable_false() {
     );
     let update_resp = server
         .patch(
-            &format!("/v1/skills/{skill_id}"),
+            &format!("/v1/platform/skills/{skill_id}"),
             json!({ "skill_md": updated_md }),
         )
         .await
@@ -181,7 +186,7 @@ disable-model-invocation: true
 "
     );
     let create_resp = server
-        .post("/v1/skills", json!({ "skill_md": initial_md }))
+        .post("/v1/platform/skills", json!({ "skill_md": initial_md }))
         .await
         .assert_status(StatusCode::CREATED);
 
@@ -202,7 +207,7 @@ disable-model-invocation: true
     );
     let update_resp = server
         .patch(
-            &format!("/v1/skills/{skill_id}"),
+            &format!("/v1/platform/skills/{skill_id}"),
             json!({ "skill_md": updated_md }),
         )
         .await
@@ -220,7 +225,7 @@ async fn test_delete_skill() {
     let name = unique_skill_name("test-skill");
     let create_resp = server
         .post(
-            "/v1/skills",
+            "/v1/platform/skills",
             json!({ "skill_md": skill_md(&name, "A test skill for integration testing.") }),
         )
         .await
@@ -230,22 +235,22 @@ async fn test_delete_skill() {
 
     // DELETE archives the skill (soft delete); it stays GET-able as `archived`.
     server
-        .delete(&format!("/v1/skills/{skill_id}"))
+        .delete(&format!("/v1/platform/skills/{skill_id}"))
         .await
         .assert_status(StatusCode::NO_CONTENT);
     server
-        .get(&format!("/v1/skills/{skill_id}"))
+        .get(&format!("/v1/platform/skills/{skill_id}"))
         .await
         .assert_status(StatusCode::OK);
 
     // POST /delete (destroy) permanently deletes the archived skill; only then
     // is it gone (status `deleted`, excluded from GET).
     server
-        .post(&format!("/v1/skills/{skill_id}/delete"), json!({}))
+        .post(&format!("/v1/platform/skills/{skill_id}/delete"), json!({}))
         .await
         .assert_success();
 
-    let get_resp = server.get(&format!("/v1/skills/{skill_id}")).await;
+    let get_resp = server.get(&format!("/v1/platform/skills/{skill_id}")).await;
     assert_eq!(get_resp.status(), StatusCode::NOT_FOUND);
 }
 
@@ -255,7 +260,10 @@ async fn test_validate_skill() {
 
     // Valid skill
     let resp = server
-        .post("/v1/skills/validate", json!({ "skill_md": VALID_SKILL_MD }))
+        .post(
+            "/v1/platform/skills/validate",
+            json!({ "skill_md": VALID_SKILL_MD }),
+        )
         .await
         .assert_success();
 
@@ -266,7 +274,7 @@ async fn test_validate_skill() {
     // Invalid skill (no frontmatter)
     let resp = server
         .post(
-            "/v1/skills/validate",
+            "/v1/platform/skills/validate",
             json!({ "skill_md": "no frontmatter here" }),
         )
         .await
@@ -289,12 +297,14 @@ async fn test_create_skill_duplicate_name() {
         "A test skill for integration testing.",
     );
     server
-        .post("/v1/skills", json!({ "skill_md": md }))
+        .post("/v1/platform/skills", json!({ "skill_md": md }))
         .await
         .assert_status(StatusCode::CREATED);
 
     // Duplicate name should fail
-    let resp = server.post("/v1/skills", json!({ "skill_md": md })).await;
+    let resp = server
+        .post("/v1/platform/skills", json!({ "skill_md": md }))
+        .await;
 
     assert_eq!(resp.status(), StatusCode::CONFLICT);
 }
@@ -304,7 +314,10 @@ async fn test_create_skill_invalid_md() {
     let server = TestServer::new().await;
 
     let resp = server
-        .post("/v1/skills", json!({ "skill_md": "no valid frontmatter" }))
+        .post(
+            "/v1/platform/skills",
+            json!({ "skill_md": "no valid frontmatter" }),
+        )
         .await;
 
     assert_eq!(resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
@@ -316,7 +329,7 @@ async fn test_create_skill_invalid_name() {
 
     let invalid_md = "---\nname: INVALID_NAME\ndescription: Bad name format.\n---\n\n# Bad\n";
     let resp = server
-        .post("/v1/skills", json!({ "skill_md": invalid_md }))
+        .post("/v1/platform/skills", json!({ "skill_md": invalid_md }))
         .await;
 
     assert_eq!(resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
@@ -327,7 +340,7 @@ async fn test_get_nonexistent_skill() {
     let server = TestServer::new().await;
 
     let resp = server
-        .get("/v1/skills/skill_00000000000000000000000000000000")
+        .get("/v1/platform/skills/skill_00000000000000000000000000000000")
         .await;
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
@@ -344,7 +357,7 @@ async fn test_skill_appears_in_capabilities_listing() {
     let name = unique_skill_name("test-skill");
     server
         .post(
-            "/v1/skills",
+            "/v1/platform/skills",
             json!({ "skill_md": skill_md(&name, "A test skill for integration testing.") }),
         )
         .await
@@ -383,7 +396,7 @@ async fn test_disabled_skill_hidden_from_capabilities() {
     let name = unique_skill_name("test-skill");
     let create_resp = server
         .post(
-            "/v1/skills",
+            "/v1/platform/skills",
             json!({ "skill_md": skill_md(&name, "A test skill for integration testing.") }),
         )
         .await
@@ -393,7 +406,7 @@ async fn test_disabled_skill_hidden_from_capabilities() {
 
     server
         .patch(
-            &format!("/v1/skills/{skill_id}"),
+            &format!("/v1/platform/skills/{skill_id}"),
             json!({ "status": "disabled" }),
         )
         .await
@@ -425,7 +438,7 @@ async fn test_deleted_skill_hidden_from_usage() {
         "---\nname: {skill_name}\ndescription: Deleted usage visibility test.\n---\n\n# Deleted Usage Skill\n"
     );
     let create_resp = server
-        .post("/v1/skills", json!({ "skill_md": skill_md }))
+        .post("/v1/platform/skills", json!({ "skill_md": skill_md }))
         .await
         .assert_status(StatusCode::CREATED);
     let skill_id = create_resp.json_value()["id"].as_str().unwrap().to_string();
@@ -440,7 +453,7 @@ async fn test_deleted_skill_hidden_from_usage() {
 
     server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": agent_name,
                 "display_name": "Deleted Skill Usage Agent",
@@ -453,20 +466,26 @@ async fn test_deleted_skill_hidden_from_usage() {
         .await
         .assert_status(StatusCode::CREATED);
 
-    let usage_before = server.get("/v1/skills/usage").await.assert_success();
+    let usage_before = server
+        .get("/v1/platform/skills/usage")
+        .await
+        .assert_success();
     let usage_before_body = usage_before.json_value();
     assert_eq!(usage_before_body[&skill_id]["agents"], 1);
 
     server
-        .delete(&format!("/v1/skills/{skill_id}"))
+        .delete(&format!("/v1/platform/skills/{skill_id}"))
         .await
         .assert_status(StatusCode::NO_CONTENT);
     server
-        .post(&format!("/v1/skills/{skill_id}/delete"), json!({}))
+        .post(&format!("/v1/platform/skills/{skill_id}/delete"), json!({}))
         .await
         .assert_success();
 
-    let usage_after = server.get("/v1/skills/usage").await.assert_success();
+    let usage_after = server
+        .get("/v1/platform/skills/usage")
+        .await
+        .assert_success();
     let usage_after_body = usage_after.json_value();
     assert!(usage_after_body.get(&skill_id).is_none());
 }
@@ -480,7 +499,7 @@ async fn test_archived_skill_restores_via_status_only_patch() {
     let name = unique_skill_name("restore-skill");
     let created = server
         .post(
-            "/v1/skills",
+            "/v1/platform/skills",
             json!({ "skill_md": skill_md(&name, "Archive and restore me.") }),
         )
         .await
@@ -489,11 +508,11 @@ async fn test_archived_skill_restores_via_status_only_patch() {
     let skill_id = created["id"].as_str().unwrap().to_string();
 
     server
-        .delete(&format!("/v1/skills/{skill_id}"))
+        .delete(&format!("/v1/platform/skills/{skill_id}"))
         .await
         .assert_success();
     let archived = server
-        .get(&format!("/v1/skills/{skill_id}"))
+        .get(&format!("/v1/platform/skills/{skill_id}"))
         .await
         .assert_success()
         .json_value();
@@ -502,7 +521,7 @@ async fn test_archived_skill_restores_via_status_only_patch() {
     // Content edits on an archived skill stay rejected.
     server
         .patch(
-            &format!("/v1/skills/{skill_id}"),
+            &format!("/v1/platform/skills/{skill_id}"),
             json!({ "skill_md": skill_md(&name, "Edited while archived.") }),
         )
         .await
@@ -511,7 +530,7 @@ async fn test_archived_skill_restores_via_status_only_patch() {
     // Status-only PATCH restores it.
     let restored = server
         .patch(
-            &format!("/v1/skills/{skill_id}"),
+            &format!("/v1/platform/skills/{skill_id}"),
             json!({ "status": "active" }),
         )
         .await
@@ -527,7 +546,7 @@ async fn test_archived_skill_restores_via_status_only_patch() {
     // Restored skill is editable again.
     server
         .patch(
-            &format!("/v1/skills/{skill_id}"),
+            &format!("/v1/platform/skills/{skill_id}"),
             json!({ "skill_md": skill_md(&name, "Edited after restore.") }),
         )
         .await
@@ -546,7 +565,7 @@ async fn test_registry_skill_capability_mounts_into_session() {
     let name = unique_skill_name("mount-skill");
     server
         .post(
-            "/v1/skills",
+            "/v1/platform/skills",
             json!({ "skill_md": skill_md(&name, "Mounts into the session VFS.") }),
         )
         .await
@@ -565,7 +584,7 @@ async fn test_registry_skill_capability_mounts_into_session() {
     let agent_name = unique_skill_name("mount-agent");
     let agent = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": agent_name,
                 "display_name": "Mount Agent",
@@ -579,7 +598,7 @@ async fn test_registry_skill_capability_mounts_into_session() {
 
     let session = server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             json!({
                 "harness_id": server.seed_base_harness_id,
                 "agent_id": agent["id"],
@@ -592,7 +611,7 @@ async fn test_registry_skill_capability_mounts_into_session() {
 
     let skill_file = server
         .get(&format!(
-            "/v1/sessions/{session_id}/fs/.agents/skills/{name}/SKILL.md"
+            "/v1/platform/sessions/{session_id}/fs/.agents/skills/{name}/SKILL.md"
         ))
         .await
         .assert_status(StatusCode::OK)
@@ -614,7 +633,7 @@ async fn test_archived_skill_capability_skips_mount_without_failing_session() {
     let name = unique_skill_name("archived-mount-skill");
     let created = server
         .post(
-            "/v1/skills",
+            "/v1/platform/skills",
             json!({ "skill_md": skill_md(&name, "Archived before session creation.") }),
         )
         .await
@@ -634,7 +653,7 @@ async fn test_archived_skill_capability_skips_mount_without_failing_session() {
     let agent_name = unique_skill_name("archived-mount-agent");
     let agent = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": agent_name,
                 "display_name": "Archived Mount Agent",
@@ -647,14 +666,14 @@ async fn test_archived_skill_capability_skips_mount_without_failing_session() {
         .json_value();
 
     server
-        .delete(&format!("/v1/skills/{skill_id}"))
+        .delete(&format!("/v1/platform/skills/{skill_id}"))
         .await
         .assert_success();
 
     // Session still creates; the archived skill simply is not mounted.
     let session = server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             json!({
                 "harness_id": server.seed_base_harness_id,
                 "agent_id": agent["id"],
@@ -667,7 +686,7 @@ async fn test_archived_skill_capability_skips_mount_without_failing_session() {
 
     server
         .get(&format!(
-            "/v1/sessions/{session_id}/fs/.agents/skills/{name}/SKILL.md"
+            "/v1/platform/sessions/{session_id}/fs/.agents/skills/{name}/SKILL.md"
         ))
         .await
         .assert_status(StatusCode::NOT_FOUND);

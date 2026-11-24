@@ -140,7 +140,7 @@ pub struct ListAgentChannels {
     category = "agent_channels",
     description = "List an agent's ingress channels.",
     method = "GET",
-    path = "/v1/agents/{agent_id}/channels",
+    path = "/v1/platform/agents/{agent_id}/channels",
     policy = AGENT_VIEW,
     cli = CliRoute::new(&["agents", "channels"], "list").with_examples(&[CliExample::new("See every way an agent can be reached before adding another", "everruns agents channels list --agent-id agent_01h9",)]),
 )]
@@ -171,7 +171,7 @@ pub struct GetAgentChannel {
     category = "agent_channels",
     description = "Get an agent ingress channel.",
     method = "GET",
-    path = "/v1/agents/{agent_id}/channels/{channel_id}",
+    path = "/v1/platform/agents/{agent_id}/channels/{channel_id}",
     policy = AGENT_VIEW,
     cli = CliRoute::new(&["agents", "channels"], "get").with_examples(&[CliExample::new("Inspect one channel's configuration and whether it is live", "everruns agents channels get --agent-id agent_01h9 --channel-id appchan_01h9",)]),
 )]
@@ -202,7 +202,7 @@ pub struct CreateAgentChannel {
     category = "agent_channels",
     description = "Create an ingress channel for an agent.",
     method = "POST",
-    path = "/v1/agents/{agent_id}/channels",
+    path = "/v1/platform/agents/{agent_id}/channels",
     policy = AGENT_MANAGE,
     cli = CliRoute::new(&["agents", "channels"], "create").with_examples(&[CliExample::new("Add a weekday-morning schedule that starts the agent on its own", "everruns agents channels create --agent-id agent_01h9 --channel-type schedule --channel-config '{\"cron_expression\":\"0 9 * * 1-5\",\"message\":\"Summarize overnight alerts\"}' --reason 'Daily alert digest'",)]),
 )]
@@ -289,7 +289,7 @@ pub struct UpdateAgentChannelCmd {
     category = "agent_channels",
     description = "Update an agent ingress channel.",
     method = "PATCH",
-    path = "/v1/agents/{agent_id}/channels/{channel_id}",
+    path = "/v1/platform/agents/{agent_id}/channels/{channel_id}",
     policy = AGENT_MANAGE,
     cli = CliRoute::new(&["agents", "channels"], "update").with_examples(&[CliExample::new("Pause a channel without deleting it", "everruns agents channels update --agent-id agent_01h9 --channel-id appchan_01h9 --enabled false --reason 'Pause during the migration'",)]),
 )]
@@ -412,7 +412,7 @@ pub struct PublishAgentChannel {
     category = "agent_channels",
     description = "Publish an agent ingress channel.",
     method = "POST",
-    path = "/v1/agents/{agent_id}/channels/{channel_id}/publish",
+    path = "/v1/platform/agents/{agent_id}/channels/{channel_id}/publish",
     policy = AGENT_DANGEROUS,
     cli = CliRoute::new(&["agents", "channels"], "publish").with_examples(&[CliExample::new("Make a reviewed channel live so it accepts traffic", "everruns agents channels publish --agent-id agent_01h9 --channel-id appchan_01h9 --reason 'Config reviewed'",)]),
 )]
@@ -437,7 +437,7 @@ pub struct UnpublishAgentChannel {
     category = "agent_channels",
     description = "Unpublish an agent ingress channel.",
     method = "POST",
-    path = "/v1/agents/{agent_id}/channels/{channel_id}/unpublish",
+    path = "/v1/platform/agents/{agent_id}/channels/{channel_id}/unpublish",
     policy = AGENT_DANGEROUS,
     cli = CliRoute::new(&["agents", "channels"], "unpublish").with_examples(&[CliExample::new("Take a channel offline without deleting its configuration", "everruns agents channels unpublish --agent-id agent_01h9 --channel-id appchan_01h9 --reason 'Pause while the integration is reworked'",)]),
 )]
@@ -487,7 +487,7 @@ pub struct DeleteAgentChannel {
     category = "agent_channels",
     description = "Delete an agent ingress channel.",
     method = "DELETE",
-    path = "/v1/agents/{agent_id}/channels/{channel_id}",
+    path = "/v1/platform/agents/{agent_id}/channels/{channel_id}",
     policy = AGENT_DANGEROUS,
     cli = CliRoute::new(&["agents", "channels"], "delete").with_examples(&[CliExample::new("Remove a channel the agent should no longer be reachable through", "everruns agents channels delete --agent-id agent_01h9 --channel-id appchan_01h9 --reason 'Schedule replaced by a webhook'",)]),
 )]
@@ -542,7 +542,7 @@ pub struct TriggerAgentChannelOutput {
     category = "agent_channels",
     description = "Run an agent schedule channel now.",
     method = "POST",
-    path = "/v1/agents/{agent_id}/channels/{channel_id}/trigger",
+    path = "/v1/platform/agents/{agent_id}/channels/{channel_id}/trigger",
     policy = AGENT_MANAGE,
     cli = CliRoute::new(&["agents", "channels"], "trigger").with_examples(&[CliExample::new("Run a schedule channel now instead of waiting for its next fire time", "everruns agents channels trigger --agent-id agent_01h9 --channel-id appchan_01h9 --reason 'Check the digest before the first scheduled run'",)]),
 )]

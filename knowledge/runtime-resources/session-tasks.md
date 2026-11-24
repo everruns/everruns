@@ -324,7 +324,7 @@ Two snapshot-carrying event types on the existing session event stream
 
 Riding the events table gives persistence, per-session ordering, and
 `since_id` SSE replay with no new infrastructure. UIs follow
-snapshot-then-delta: fetch `GET /v1/sessions/{id}/tasks`, then reconcile
+snapshot-then-delta: fetch `GET /v1/platform/sessions/{id}/tasks`, then reconcile
 `task.updated` by `task_id`. High-frequency `output` deltas stay ephemeral
 (NATS / VFS tail) and render only on the task detail view.
 
@@ -335,7 +335,7 @@ from the snapshot, so new kinds appear with no frontend work. The current
 resources tab becomes tasks + resources.
 
 A cross-session **Work view** (EVE-756) reuses the same snapshot-driven chips
-and the per-session task detail card over the org-scoped `GET /v1/tasks`,
+and the per-session task detail card over the org-scoped `GET /v1/platform/tasks`,
 grouping tasks by `root_session_id` into a delegation tree (root session →
 owning sessions → tasks). It has no org-wide event stream, so it reconciles the
 same `task.created`/`task.updated` snapshots by `task_id` across one per-session
@@ -442,17 +442,17 @@ a registry policy rather than per-capability cleanup.
 ## API
 
 ```
-GET  /v1/tasks                                  — org-scoped list (state/kind/created_after/root_session_id, newest-first, bounded limit)
-GET  /v1/sessions/{session_id}/tasks            — list (filter by state/kind)
-GET  /v1/sessions/{session_id}/tasks/{task_id}  — snapshot + recent thread
-POST /v1/sessions/{session_id}/tasks/{task_id}/messages — inbound message
-POST /v1/sessions/{session_id}/tasks/{task_id}/cancel   — cancel intent
-GET    /v1/sessions/{session_id}/tasks/{task_id}/push-configs             — list per-task push configs
-POST   /v1/sessions/{session_id}/tasks/{task_id}/push-configs             — create a per-task push config
-DELETE /v1/sessions/{session_id}/tasks/{task_id}/push-configs/{config_id} — delete a per-task push config
+GET  /v1/platform/tasks                                  — org-scoped list (state/kind/created_after/root_session_id, newest-first, bounded limit)
+GET  /v1/platform/sessions/{session_id}/tasks            — list (filter by state/kind)
+GET  /v1/platform/sessions/{session_id}/tasks/{task_id}  — snapshot + recent thread
+POST /v1/platform/sessions/{session_id}/tasks/{task_id}/messages — inbound message
+POST /v1/platform/sessions/{session_id}/tasks/{task_id}/cancel   — cancel intent
+GET    /v1/platform/sessions/{session_id}/tasks/{task_id}/push-configs             — list per-task push configs
+POST   /v1/platform/sessions/{session_id}/tasks/{task_id}/push-configs             — create a per-task push config
+DELETE /v1/platform/sessions/{session_id}/tasks/{task_id}/push-configs/{config_id} — delete a per-task push config
 ```
 
-`GET /v1/tasks` (EVE-583) is the cross-session, org-scoped query for
+`GET /v1/platform/tasks` (EVE-583) is the cross-session, org-scoped query for
 ops/observability: it lists tasks across every session in the caller's org,
 newest-first, with optional `state`, `kind`, and `created_after` (RFC3339) age
 filters and a bounded `limit` (default 100, max 500). The org is taken from the
@@ -502,7 +502,7 @@ to the create-time resolution to defeat rebinding; EVE-625):
 
 - Organization task webhooks (`organization_task_webhooks`, EVE-579): org-scoped,
   fire only on terminal transitions (succeeded / failed / canceled). Managed via
-  `/v1/task-webhooks`. Unchanged by EVE-682.
+  `/v1/platform/task-webhooks`. Unchanged by EVE-682.
 - Per-task push configs (`session_task_push_configs`, EVE-682): scoped to a
   single task via `{ url, secret?, event_filter? }`, modeled on A2A
   `TaskPushNotificationConfig`. `event_filter` is a subset of `terminal`
@@ -557,7 +557,7 @@ No backward compatibility is required; data migrates forward once:
   `cancel_task`, `wait_task`).
 - Direct delegation entry points for subagents and first-party handoffs are
   retired; use `spawn_agent(target.type = "subagent" | "agent")` instead.
-- `GET /v1/sessions/{id}/resources` keeps serving infrastructure resources.
+- `GET /v1/platform/sessions/{id}/resources` keeps serving infrastructure resources.
 
 ## Implementation notes (v1)
 
@@ -650,7 +650,7 @@ No backward compatibility is required; data migrates forward once:
   is **not** wired in part A, it needs live Postgres/NATS/gRPC to validate and is
   deferred to a reviewed follow-up. The cross-session Work view (part B, EVE-756)
   builds on EVE-680's `root_session_id` and is now implemented in `apps/ui`
-  (grouped delegation tree over `GET /v1/tasks`, reusing the per-session chips
+  (grouped delegation tree over `GET /v1/platform/tasks`, reusing the per-session chips
   and task detail).
 - Background tool cancellation is cooperative: runs with a task record
   heartbeat every ~2s and poll `cancel_requested_at`, winding down to

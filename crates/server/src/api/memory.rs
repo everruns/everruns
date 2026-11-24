@@ -20,19 +20,25 @@ use super::common::{ApiResult, ErrorResponse, ListResponse};
 
 pub fn routes(state: ApiState) -> Router {
     Router::new()
-        .route("/v1/memories", post(create_memory).get(list_memories))
         .route(
-            "/v1/memories/{memory_id}",
+            "/v1/platform/memories",
+            post(create_memory).get(list_memories),
+        )
+        .route(
+            "/v1/platform/memories/{memory_id}",
             get(get_memory).patch(update_memory).delete(delete_memory),
         )
-        .route("/v1/memories/{memory_id}/sync", post(sync_memory_now))
+        .route(
+            "/v1/platform/memories/{memory_id}/sync",
+            post(sync_memory_now),
+        )
         .with_state(state)
 }
 
 #[utoipa::path(
     description = "Create a new workspace memory.",
     post,
-    path = "/v1/memories",
+    path = "/v1/platform/memories",
     request_body = CreateMemoryRequest,
     responses(
         (status = 201, description = "Memory created", body = MemoryResponse),
@@ -53,7 +59,7 @@ pub async fn create_memory(
 #[utoipa::path(
     description = "List workspace memories.",
     get,
-    path = "/v1/memories",
+    path = "/v1/platform/memories",
     params(ListMemoriesQuery),
     responses(
         (status = 200, description = "List memories", body = ListResponse<MemoryResponse>)
@@ -72,7 +78,7 @@ pub async fn list_memories(
 #[utoipa::path(
     description = "Get a workspace memory by ID.",
     get,
-    path = "/v1/memories/{memory_id}",
+    path = "/v1/platform/memories/{memory_id}",
     params(("memory_id" = String, Path, description = "Memory ID")),
     responses(
         (status = 200, description = "Memory found", body = MemoryResponse),
@@ -91,7 +97,7 @@ pub async fn get_memory(
 #[utoipa::path(
     description = "Update a workspace memory. Only provided fields are modified.",
     patch,
-    path = "/v1/memories/{memory_id}",
+    path = "/v1/platform/memories/{memory_id}",
     params(("memory_id" = String, Path, description = "Memory ID")),
     request_body = UpdateMemoryRequest,
     responses(
@@ -118,7 +124,7 @@ pub async fn update_memory(
 #[utoipa::path(
     description = "Trigger a synchronous sync of a memory now.",
     post,
-    path = "/v1/memories/{memory_id}/sync",
+    path = "/v1/platform/memories/{memory_id}/sync",
     params(("memory_id" = String, Path, description = "Memory ID")),
     responses(
         (status = 200, description = "Memory sync queued", body = MemoryResponse),
@@ -140,7 +146,7 @@ pub async fn sync_memory_now(
 #[utoipa::path(
     description = "Delete a workspace memory.",
     delete,
-    path = "/v1/memories/{memory_id}",
+    path = "/v1/platform/memories/{memory_id}",
     params(("memory_id" = String, Path, description = "Memory ID")),
     responses(
         (status = 204, description = "Memory archived"),

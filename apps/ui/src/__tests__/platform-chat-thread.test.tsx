@@ -29,7 +29,7 @@ it("resolves the permanent chat directly and deduplicates simultaneous consumers
   );
   await waitFor(() => expect(screen.getAllByText("ses_main")).toHaveLength(2));
   expect(mockPost).toHaveBeenCalledTimes(1);
-  expect(mockPost).toHaveBeenCalledWith("/v1/sessions/platform-chat", {});
+  expect(mockPost).toHaveBeenCalledWith("/v1/platform/sessions/platform-chat", {});
 });
 it("does not create with ensure disabled", () => {
   render(

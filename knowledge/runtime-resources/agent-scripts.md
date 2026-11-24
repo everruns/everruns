@@ -23,7 +23,7 @@ smaller: no schedule, webhook, or delivery machinery. Nothing runs on its own.
 Field shapes, limits, SQL, and handlers live in code: `AgentScript` in
 `crates/server/src/domains/agent_scripts/record.rs`, migration
 `194_agent_scripts.sql`, the `crates/server/src/domains/agent_scripts/` domain
-(limits in `validation.rs`), and the `/v1/agents/{agent_id}/scripts` API.
+(limits in `validation.rs`), and the `/v1/platform/agents/{agent_id}/scripts` API.
 
 ## Model
 

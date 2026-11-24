@@ -334,7 +334,7 @@ ServerAppBuilder::new(config)
 
 ## CLI Auth Extension Point
 
-CLI authentication routes (`/v1/auth/cli/*`) are decoupled from any specific auth backend via `CliAuthState`. Embedders with external auth providers can mount CLI login without duplicating handler code.
+CLI authentication routes (`/v1/platform/auth/cli/*`) are decoupled from any specific auth backend via `CliAuthState`. Embedders with external auth providers can mount CLI login without duplicating handler code.
 
 Construct `CliAuthState` with your storage backend, `AuthState`, and URLs, then mount via `cli_auth_routes()`. `base_url` must include any API path prefix (e.g. `/api`), no env-var lookup is performed at runtime:
 
@@ -357,7 +357,7 @@ See `crates/server/src/auth/cli_auth.rs` for the full implementation.
 
 ## Org Creation Policy Extension Point
 
-OSS owns organization creation (`POST /v1/orgs`). Wrappers that must run product policy before a tenant exists, verified-email gates, account/resource limits, supply that policy through OSS instead of forking the route. This keeps OSS as the owning boundary: wrappers provide policy, not a parallel create-org handler or a `/v1/saas/orgs` shadow endpoint.
+OSS owns organization creation (`POST /v1/platform/orgs`). Wrappers that must run product policy before a tenant exists, verified-email gates, account/resource limits, supply that policy through OSS instead of forking the route. This keeps OSS as the owning boundary: wrappers provide policy, not a parallel create-org handler or a `/v1/platform/saas/orgs` shadow endpoint.
 
 `everruns-server` defines:
 

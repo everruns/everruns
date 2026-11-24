@@ -22,12 +22,14 @@ export interface SlackManifest {
 }
 
 export async function listAgentChannels(agentId: string): Promise<AgentChannel[]> {
-  const response = await api.get<AgentChannel[]>(`/v1/agents/${agentId}/channels`);
+  const response = await api.get<AgentChannel[]>(`/v1/platform/agents/${agentId}/channels`);
   return response.data;
 }
 
 export async function getAgentChannel(agentId: string, channelId: string): Promise<AgentChannel> {
-  const response = await api.get<AgentChannel>(`/v1/agents/${agentId}/channels/${channelId}`);
+  const response = await api.get<AgentChannel>(
+    `/v1/platform/agents/${agentId}/channels/${channelId}`,
+  );
   return response.data;
 }
 
@@ -35,7 +37,7 @@ export async function createAgentChannel(
   agentId: string,
   request: CreateAgentChannelRequest,
 ): Promise<AgentChannel> {
-  const response = await api.post<AgentChannel>(`/v1/agents/${agentId}/channels`, request);
+  const response = await api.post<AgentChannel>(`/v1/platform/agents/${agentId}/channels`, request);
   return response.data;
 }
 
@@ -45,7 +47,7 @@ export async function updateAgentChannel(
   request: UpdateAgentChannelRequest,
 ): Promise<AgentChannel> {
   const response = await api.patch<AgentChannel>(
-    `/v1/agents/${agentId}/channels/${channelId}`,
+    `/v1/platform/agents/${agentId}/channels/${channelId}`,
     request,
   );
   return response.data;
@@ -57,7 +59,7 @@ export async function getSlackChannelManifest(channelId: string): Promise<SlackM
 }
 
 export async function deleteAgentChannel(agentId: string, channelId: string): Promise<void> {
-  await api.delete(`/v1/agents/${agentId}/channels/${channelId}`);
+  await api.delete(`/v1/platform/agents/${agentId}/channels/${channelId}`);
 }
 
 export async function publishAgentChannel(
@@ -65,7 +67,7 @@ export async function publishAgentChannel(
   channelId: string,
 ): Promise<AgentChannel> {
   const response = await api.post<AgentChannel>(
-    `/v1/agents/${agentId}/channels/${channelId}/publish`,
+    `/v1/platform/agents/${agentId}/channels/${channelId}/publish`,
   );
   return response.data;
 }
@@ -75,7 +77,7 @@ export async function unpublishAgentChannel(
   channelId: string,
 ): Promise<AgentChannel> {
   const response = await api.post<AgentChannel>(
-    `/v1/agents/${agentId}/channels/${channelId}/unpublish`,
+    `/v1/platform/agents/${agentId}/channels/${channelId}/unpublish`,
   );
   return response.data;
 }
@@ -85,13 +87,13 @@ export async function triggerAgentChannel(
   channelId: string,
 ): Promise<TriggerAgentChannelResult> {
   const response = await api.post<TriggerAgentChannelResult>(
-    `/v1/agents/${agentId}/channels/${channelId}/trigger`,
+    `/v1/platform/agents/${agentId}/channels/${channelId}/trigger`,
   );
   return response.data;
 }
 
 function agentKeysPath(agentId: string, channelId: string): string {
-  return `/v1/agents/${agentId}/channels/${channelId}/keys`;
+  return `/v1/platform/agents/${agentId}/channels/${channelId}/keys`;
 }
 
 /** Agent keys of an api channel, newest first. Secrets are never returned here. */
@@ -159,7 +161,7 @@ export interface SlackInstallCapability {
 }
 
 export async function getSlackInstallCapability(): Promise<SlackInstallCapability> {
-  const response = await api.get<SlackInstallCapability>("/v1/slack/install");
+  const response = await api.get<SlackInstallCapability>("/v1/platform/slack/install");
   return response.data;
 }
 
@@ -176,13 +178,13 @@ export interface SlackWorkspace {
 }
 
 export async function listSlackWorkspaces(): Promise<SlackWorkspace[]> {
-  const response = await api.get<SlackWorkspace[]>("/v1/slack/workspaces");
+  const response = await api.get<SlackWorkspace[]>("/v1/platform/slack/workspaces");
   return response.data;
 }
 
 /** Connects whichever workspace the refresh token belongs to. Admin only. */
 export async function connectSlackWorkspace(refreshToken: string): Promise<SlackWorkspace> {
-  const response = await api.post<SlackWorkspace>("/v1/slack/workspaces", {
+  const response = await api.post<SlackWorkspace>("/v1/platform/slack/workspaces", {
     refresh_token: refreshToken,
   });
   return response.data;
@@ -193,16 +195,16 @@ export async function connectSlackWorkspace(refreshToken: string): Promise<Slack
  * Slack returns the browser to Settings > Slack workspaces with `slack_connect=ok|failed`.
  */
 export async function beginSlackManagerConnect(): Promise<{ authorize_url: string }> {
-  const response = await api.post<{ authorize_url: string }>("/v1/slack/workspaces/oauth");
+  const response = await api.post<{ authorize_url: string }>("/v1/platform/slack/workspaces/oauth");
   return response.data;
 }
 
 export async function testSlackWorkspace(id: string): Promise<void> {
-  await api.post(`/v1/slack/workspaces/${id}/test`);
+  await api.post(`/v1/platform/slack/workspaces/${id}/test`);
 }
 
 export async function disconnectSlackWorkspace(id: string): Promise<void> {
-  await api.delete(`/v1/slack/workspaces/${id}`);
+  await api.delete(`/v1/platform/slack/workspaces/${id}`);
 }
 
 /**
@@ -223,7 +225,7 @@ export async function beginSlackInstall(
   teamId?: string | null,
 ): Promise<BeginSlackInstallResult> {
   const response = await api.post<BeginSlackInstallResult>(
-    `/v1/channels/${channelId}/slack/install`,
+    `/v1/platform/channels/${channelId}/slack/install`,
     teamId ? { team_id: teamId } : undefined,
   );
   return response.data;

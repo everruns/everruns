@@ -60,23 +60,26 @@ impl_auth_state!(AppState);
 
 pub fn routes(state: AppState) -> Router {
     Router::new()
-        .route("/v1/tasks", get(list_org_tasks))
-        .route("/v1/sessions/{session_id}/tasks", get(list_tasks))
-        .route("/v1/sessions/{session_id}/tasks/{task_id}", get(get_task))
+        .route("/v1/platform/tasks", get(list_org_tasks))
+        .route("/v1/platform/sessions/{session_id}/tasks", get(list_tasks))
         .route(
-            "/v1/sessions/{session_id}/tasks/{task_id}/messages",
+            "/v1/platform/sessions/{session_id}/tasks/{task_id}",
+            get(get_task),
+        )
+        .route(
+            "/v1/platform/sessions/{session_id}/tasks/{task_id}/messages",
             post(post_task_message),
         )
         .route(
-            "/v1/sessions/{session_id}/tasks/{task_id}/cancel",
+            "/v1/platform/sessions/{session_id}/tasks/{task_id}/cancel",
             post(cancel_task),
         )
         .route(
-            "/v1/sessions/{session_id}/tasks/{task_id}/push-configs",
+            "/v1/platform/sessions/{session_id}/tasks/{task_id}/push-configs",
             get(list_push_configs).post(create_push_config),
         )
         .route(
-            "/v1/sessions/{session_id}/tasks/{task_id}/push-configs/{config_id}",
+            "/v1/platform/sessions/{session_id}/tasks/{task_id}/push-configs/{config_id}",
             delete(delete_push_config),
         )
         .with_state(state)
@@ -96,7 +99,7 @@ pub struct ListOrgTasksQuery {
 /// List background tasks across every session in the caller's org.
 #[utoipa::path(
     get,
-    path = "/v1/tasks",
+    path = "/v1/platform/tasks",
     params(
         ("state" = Option<String>, Query, description = "Filter by state"),
         ("kind" = Option<String>, Query, description = "Filter by kind"),
@@ -136,7 +139,7 @@ pub struct ListTasksQuery {
 /// List background tasks owned by a session.
 #[utoipa::path(
     get,
-    path = "/v1/sessions/{session_id}/tasks",
+    path = "/v1/platform/sessions/{session_id}/tasks",
     params(
         ("session_id" = String, Path, description = "Session ID"),
         ("state" = Option<String>, Query, description = "Filter by state"),
@@ -174,7 +177,7 @@ pub struct GetTaskQuery {
 /// Get one session task with its recent message thread.
 #[utoipa::path(
     get,
-    path = "/v1/sessions/{session_id}/tasks/{task_id}",
+    path = "/v1/platform/sessions/{session_id}/tasks/{task_id}",
     params(
         ("session_id" = String, Path, description = "Session ID"),
         ("task_id" = String, Path, description = "Task ID"),
@@ -222,7 +225,7 @@ pub struct PostTaskMessageBody {
 /// Send an inbound message to a session task.
 #[utoipa::path(
     post,
-    path = "/v1/sessions/{session_id}/tasks/{task_id}/messages",
+    path = "/v1/platform/sessions/{session_id}/tasks/{task_id}/messages",
     params(
         ("session_id" = String, Path, description = "Session ID"),
         ("task_id" = String, Path, description = "Task ID"),
@@ -257,7 +260,7 @@ pub async fn post_task_message(
 /// Request cooperative cancellation of a session task.
 #[utoipa::path(
     post,
-    path = "/v1/sessions/{session_id}/tasks/{task_id}/cancel",
+    path = "/v1/platform/sessions/{session_id}/tasks/{task_id}/cancel",
     params(
         ("session_id" = String, Path, description = "Session ID"),
         ("task_id" = String, Path, description = "Task ID"),
@@ -301,7 +304,7 @@ pub struct CreatePushConfigBody {
 /// List per-task push-notification configs.
 #[utoipa::path(
     get,
-    path = "/v1/sessions/{session_id}/tasks/{task_id}/push-configs",
+    path = "/v1/platform/sessions/{session_id}/tasks/{task_id}/push-configs",
     params(
         ("session_id" = String, Path, description = "Session ID"),
         ("task_id" = String, Path, description = "Task ID"),
@@ -330,7 +333,7 @@ pub async fn list_push_configs(
 /// Create a per-task push-notification config.
 #[utoipa::path(
     post,
-    path = "/v1/sessions/{session_id}/tasks/{task_id}/push-configs",
+    path = "/v1/platform/sessions/{session_id}/tasks/{task_id}/push-configs",
     params(
         ("session_id" = String, Path, description = "Session ID"),
         ("task_id" = String, Path, description = "Task ID"),
@@ -365,7 +368,7 @@ pub async fn create_push_config(
 /// Delete a per-task push-notification config.
 #[utoipa::path(
     delete,
-    path = "/v1/sessions/{session_id}/tasks/{task_id}/push-configs/{config_id}",
+    path = "/v1/platform/sessions/{session_id}/tasks/{task_id}/push-configs/{config_id}",
     params(
         ("session_id" = String, Path, description = "Session ID"),
         ("task_id" = String, Path, description = "Task ID"),

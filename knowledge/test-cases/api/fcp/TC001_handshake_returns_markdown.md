@@ -33,7 +33,7 @@ Markdown handshake describing how to talk to the endpoint.
 
 1. Create an agent backed by `llmsim` (or another active provider/model):
    ```bash
-   curl -s -X POST "http://localhost:9300/api/v1/llm-providers" \
+   curl -s -X POST "http://localhost:9300/api/v1/platform/providers" \
      -H "Content-Type: application/json" \
      -d '{"name":"FCP llmsim","provider_type":"llmsim"}'
    ```
@@ -42,7 +42,7 @@ Markdown handshake describing how to talk to the endpoint.
 
 2. Create the app:
    ```bash
-   curl -s -X POST "http://localhost:9300/api/v1/apps" \
+   curl -s -X POST "http://localhost:9300/api/v1/platform/apps" \
      -H "Content-Type: application/json" \
      -d '{
        "name":"Flights",
@@ -57,7 +57,7 @@ Markdown handshake describing how to talk to the endpoint.
 
 3. Publish the app:
    ```bash
-   curl -s -X POST "http://localhost:9300/api/v1/apps/$APP_ID/publish" \
+   curl -s -X POST "http://localhost:9300/api/v1/platform/apps/$APP_ID/publish" \
      -H "Content-Type: application/json" -d '{}'
    ```
 

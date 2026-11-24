@@ -32,7 +32,7 @@ Verify that a subagent (a session with `parent_session_id` set) cannot spawn ano
 
 1. Create agent:
    ```bash
-   curl -s -X POST "http://localhost:9300/api/v1/agents" \
+   curl -s -X POST "http://localhost:9300/api/v1/platform/agents" \
      -H "Content-Type: application/json" \
      -d '{
        "name": "Nesting Tester",
@@ -44,7 +44,7 @@ Verify that a subagent (a session with `parent_session_id` set) cannot spawn ano
 
 2. Create session:
    ```bash
-   curl -s -X POST "http://localhost:9300/api/v1/sessions" \
+   curl -s -X POST "http://localhost:9300/api/v1/platform/sessions" \
      -H "Content-Type: application/json" \
      -d '{"agent_id": "{agent_id}"}'
    ```
@@ -52,7 +52,7 @@ Verify that a subagent (a session with `parent_session_id` set) cannot spawn ano
 
 3. Send message that triggers a nested spawn attempt:
    ```bash
-   curl -s -X POST "http://localhost:9300/api/v1/sessions/{session_id}/messages" \
+   curl -s -X POST "http://localhost:9300/api/v1/platform/sessions/{session_id}/messages" \
      -H "Content-Type: application/json" \
      -d '{
        "message": {
@@ -67,13 +67,13 @@ Verify that a subagent (a session with `parent_session_id` set) cannot spawn ano
 5. Retrieve events for both parent and child sessions:
    ```bash
    # Parent events
-   curl -s "http://localhost:9300/api/v1/sessions/{session_id}/events"
+   curl -s "http://localhost:9300/api/v1/platform/sessions/{session_id}/events"
 
    # Find child session
-   curl -s "http://localhost:9300/api/v1/sessions" | jq '.data[] | select(.parent_session_id == "{session_id}")'
+   curl -s "http://localhost:9300/api/v1/platform/sessions" | jq '.data[] | select(.parent_session_id == "{session_id}")'
 
    # Child events (using child session_id)
-   curl -s "http://localhost:9300/api/v1/sessions/{child_session_id}/events"
+   curl -s "http://localhost:9300/api/v1/platform/sessions/{child_session_id}/events"
    ```
 
 ## Expected Result

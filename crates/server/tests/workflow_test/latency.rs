@@ -34,7 +34,7 @@ fn event_ts(event: &Value) -> DateTime<Utc> {
 async fn session_events(client: &reqwest::Client, session_id: &str) -> Vec<Value> {
     let body: Value = client
         .get(format!(
-            "{}/v1/sessions/{}/events?limit=1000",
+            "{}/v1/platform/sessions/{}/events?limit=1000",
             API_BASE_URL, session_id
         ))
         .send()
@@ -52,7 +52,7 @@ async fn send_and_measure_pickup(client: &reqwest::Client, session_id: &str) -> 
     let seen = session_events(client, session_id).await.len();
     let response = client
         .post(format!(
-            "{}/v1/sessions/{}/messages",
+            "{}/v1/platform/sessions/{}/messages",
             API_BASE_URL, session_id
         ))
         .json(&json!({"message": {"content": [{"type": "text", "text": "Hello"}]}}))
@@ -91,7 +91,7 @@ async fn test_idle_worker_picks_up_new_message_promptly() {
         .expect("client");
 
     let provider: Provider = client
-        .post(format!("{}/v1/providers", API_BASE_URL))
+        .post(format!("{}/v1/platform/providers", API_BASE_URL))
         .json(&json!({"name": "LlmSim Latency Provider", "provider_type": "llmsim"}))
         .send()
         .await
@@ -101,7 +101,7 @@ async fn test_idle_worker_picks_up_new_message_promptly() {
         .expect("parse provider");
     let model: Model = client
         .post(format!(
-            "{}/v1/providers/{}/models",
+            "{}/v1/platform/providers/{}/models",
             API_BASE_URL, provider.id
         ))
         .json(&json!({
@@ -116,7 +116,7 @@ async fn test_idle_worker_picks_up_new_message_promptly() {
         .await
         .expect("parse model");
     let agent: Agent = client
-        .post(format!("{}/v1/agents", API_BASE_URL))
+        .post(format!("{}/v1/platform/agents", API_BASE_URL))
         .json(&json!({
             "name": "pickup-latency-agent",
             "system_prompt": "Reply briefly.",
@@ -129,7 +129,7 @@ async fn test_idle_worker_picks_up_new_message_promptly() {
         .await
         .expect("parse agent");
     let session: Session = client
-        .post(format!("{}/v1/sessions", API_BASE_URL))
+        .post(format!("{}/v1/platform/sessions", API_BASE_URL))
         .json(&json!({
             "harness_name": SEED_HARNESS_NAME,
             "agent_id": agent.public_id,
@@ -157,20 +157,20 @@ async fn test_idle_worker_picks_up_new_message_promptly() {
     // `sessions.model_id` references the model, so the session goes first.
     cleanup_delete(
         &client,
-        format!("{}/v1/sessions/{}", API_BASE_URL, session_id),
+        format!("{}/v1/platform/sessions/{}", API_BASE_URL, session_id),
         "session",
     )
     .await;
     cleanup_agent(&client, &agent.public_id).await;
     cleanup_delete(
         &client,
-        format!("{}/v1/models/{}", API_BASE_URL, model.id),
+        format!("{}/v1/platform/models/{}", API_BASE_URL, model.id),
         "model",
     )
     .await;
     cleanup_delete(
         &client,
-        format!("{}/v1/providers/{}", API_BASE_URL, provider.id),
+        format!("{}/v1/platform/providers/{}", API_BASE_URL, provider.id),
         "provider",
     )
     .await;

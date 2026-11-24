@@ -341,7 +341,7 @@ async fn session_response_carries_the_counts_and_omits_the_empty_ones() {
     let server = TestServer::in_memory().await;
     let session: serde_json::Value = server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             json!({
                 "harness_id": server.seed_base_harness_id,
                 "title": "tab-counts"
@@ -360,7 +360,7 @@ async fn session_response_carries_the_counts_and_omits_the_empty_ones() {
     // A brand new session has nothing behind any tab, and the payload says so
     // by omission rather than by a run of zeroes.
     let fresh: serde_json::Value = server
-        .get(&format!("/v1/sessions/{session_id}"))
+        .get(&format!("/v1/platform/sessions/{session_id}"))
         .await
         .assert_status(StatusCode::OK)
         .json_value();
@@ -374,7 +374,7 @@ async fn session_response_carries_the_counts_and_omits_the_empty_ones() {
     for path in ["notes/a.txt", "notes/b.txt"] {
         server
             .post(
-                &format!("/v1/workspaces/{workspace_id}/fs/{path}"),
+                &format!("/v1/platform/workspaces/{workspace_id}/fs/{path}"),
                 json!({ "content": "hello", "encoding": "text" }),
             )
             .await
@@ -382,7 +382,7 @@ async fn session_response_carries_the_counts_and_omits_the_empty_ones() {
     }
 
     let after: serde_json::Value = server
-        .get(&format!("/v1/sessions/{session_id}"))
+        .get(&format!("/v1/platform/sessions/{session_id}"))
         .await
         .assert_status(StatusCode::OK)
         .json_value();

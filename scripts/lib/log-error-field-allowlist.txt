@@ -11,8 +11,8 @@
 # entry by hand to admit a new site — use error = %e with a static
 # message instead (EVE-1073).
 crates/durable/src/persistence/postgres.rs
-crates/server/src/api/common.rs
-crates/server/src/api/durable.rs
+crates/server/src/api/common/mod.rs
+crates/server/src/api/durable/mod.rs
 crates/server/src/api/events.rs
 crates/server/src/api/images.rs
 crates/server/src/api/notifications.rs

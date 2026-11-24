@@ -117,11 +117,11 @@ pub async fn run_select(profile: &str) -> Result<()> {
     Ok(())
 }
 
-/// Fetch orgs from /v1/auth/me
+/// Fetch orgs from /v1/platform/auth/me
 async fn fetch_orgs(api_url: &str, api_key: &str) -> Result<Vec<OrgInfo>> {
     let client = reqwest::Client::new();
     let resp = client
-        .get(format!("{}/v1/auth/me", api_url))
+        .get(format!("{}/v1/platform/auth/me", api_url))
         .header("Authorization", api_key)
         .send()
         .await

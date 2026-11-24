@@ -31,8 +31,8 @@ Verify durable schedules require explicit platform-user access rather than organ
 
 ## Steps
 
-1. Execute each row through `/api/v1/durable/schedules` and the disposable schedule's detail, executions, and mutation endpoints.
-2. Inspect `/api/v1/durable/config` for the non-platform and platform fixtures; compare navigation availability to policy results.
+1. Execute each row through `/api/v1/platform/durable/schedules` and the disposable schedule's detail, executions, and mutation endpoints.
+2. Inspect `/api/v1/platform/durable/config` for the non-platform and platform fixtures; compare navigation availability to policy results.
 3. Repeat representative read and mutation operations through the matching command entry points.
 4. Select a different org for the platform user and re-read the schedule. Durable schedules are global platform resources, not tenant session schedules.
 5. Verify denied mutations left the paused schedule and execution count unchanged.

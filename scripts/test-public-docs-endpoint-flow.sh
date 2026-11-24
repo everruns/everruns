@@ -29,7 +29,7 @@ stale_patterns=(
   'click **New App**'
   'Click **Create App**'
   'Publish the App'
-  '/api/v1/apps'
+  '/api/v1/platform/apps'
 )
 
 for pattern in "${stale_patterns[@]}"; do
@@ -46,7 +46,7 @@ for diagram in \
     printf 'Slack diagram does not name Channel as the ingress owner: %s\n' "$diagram" >&2
     exit 1
   fi
-  if grep -Fq '/v1/apps/' "$diagram"; then
+  if grep -Fq '/v1/platform/apps/' "$diagram"; then
     printf 'Slack diagram still uses an App-scoped ingress route: %s\n' "$diagram" >&2
     exit 1
   fi

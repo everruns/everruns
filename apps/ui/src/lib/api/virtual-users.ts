@@ -17,17 +17,19 @@ export async function listVirtualUsers(
   });
   if (options.usage) params.set("usage", options.usage);
   if (options.search) params.set("search", options.search);
-  const response = await api.get<PaginatedResponse<VirtualUser>>(`/v1/virtual-users?${params}`);
+  const response = await api.get<PaginatedResponse<VirtualUser>>(
+    `/v1/platform/virtual-users?${params}`,
+  );
   return response.data;
 }
 
 export async function getVirtualUser(identityId: string): Promise<VirtualUser> {
-  const response = await api.get<VirtualUser>(`/v1/virtual-users/${identityId}`);
+  const response = await api.get<VirtualUser>(`/v1/platform/virtual-users/${identityId}`);
   return response.data;
 }
 
 export async function createVirtualUser(request: CreateVirtualUserRequest): Promise<VirtualUser> {
-  const response = await api.post<VirtualUser>("/v1/virtual-users", request);
+  const response = await api.post<VirtualUser>("/v1/platform/virtual-users", request);
   return response.data;
 }
 
@@ -35,14 +37,17 @@ export async function updateVirtualUser(
   identityId: string,
   request: UpdateVirtualUserRequest,
 ): Promise<VirtualUser> {
-  const response = await api.patch<VirtualUser>(`/v1/virtual-users/${identityId}`, request);
+  const response = await api.patch<VirtualUser>(
+    `/v1/platform/virtual-users/${identityId}`,
+    request,
+  );
   return response.data;
 }
 
 export async function deleteVirtualUser(identityId: string): Promise<void> {
-  await api.delete(`/v1/virtual-users/${identityId}`);
+  await api.delete(`/v1/platform/virtual-users/${identityId}`);
 }
 
 export async function destroyVirtualUser(identityId: string): Promise<void> {
-  await api.post(`/v1/virtual-users/${identityId}/delete`);
+  await api.post(`/v1/platform/virtual-users/${identityId}/delete`);
 }

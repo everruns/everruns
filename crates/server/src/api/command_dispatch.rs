@@ -1,8 +1,8 @@
 // Generic command dispatch over HTTP.
 //
 // Routes:
-//   GET  /v1/commands          the command contract this caller can use
-//   POST /v1/commands/{name}   run one command
+//   GET  /v1/platform/commands          the command contract this caller can use
+//   POST /v1/platform/commands/{name}   run one command
 //
 // Decision: one endpoint instead of one REST route per operation for clients
 // that speak the command contract (`everruns-cli`). The grammar a person types
@@ -52,7 +52,7 @@
 // left out of the idempotency fingerprint so a retry that rewords it is still
 // the same request.
 //
-// Not to be confused with `/v1/sessions/{id}/commands`, which lists a
+// Not to be confused with `/v1/platform/sessions/{id}/commands`, which lists a
 // session's slash commands (`api/commands.rs`).
 
 use std::collections::BTreeMap;
@@ -99,33 +99,36 @@ const MAX_METADATA_LEN: usize = 256;
 
 pub fn routes(state: AppState) -> Router {
     Router::new()
-        .route("/v1/commands", get(list_commands))
-        .route("/v1/commands/{name}", post(execute_command))
-        .route("/v1/history", get(super::history::list_org_history))
+        .route("/v1/platform/commands", get(list_commands))
+        .route("/v1/platform/commands/{name}", post(execute_command))
         .route(
-            "/v1/history/{entity_ref}",
+            "/v1/platform/history",
+            get(super::history::list_org_history),
+        )
+        .route(
+            "/v1/platform/history/{entity_ref}",
             get(super::history::list_entity_history),
         )
         .route(
-            "/v1/history/{entity_ref}/revisions/{revision}",
+            "/v1/platform/history/{entity_ref}/revisions/{revision}",
             get(super::history::show_entity_revision),
         )
         .route(
-            "/v1/history/{entity_ref}/diff",
+            "/v1/platform/history/{entity_ref}/diff",
             get(super::history::diff_entity_revisions),
         )
         .route(
-            "/v1/history/{entity_ref}/restore",
+            "/v1/platform/history/{entity_ref}/restore",
             post(super::history::restore_entity_revision),
         )
         .route(
-            "/v1/context/{entity_ref}",
+            "/v1/platform/context/{entity_ref}",
             get(super::manager_context::get_manager_context)
                 .put(super::manager_context::set_manager_context)
                 .delete(super::manager_context::clear_manager_context),
         )
         .route(
-            "/v1/context/{entity_ref}/append",
+            "/v1/platform/context/{entity_ref}/append",
             post(super::manager_context::append_manager_context),
         )
         .with_state(state)
@@ -214,10 +217,10 @@ pub struct CommandResponse {
     pub warnings: Vec<String>,
 }
 
-/// GET /v1/commands - List the command contract
+/// GET /v1/platform/commands - List the command contract
 #[utoipa::path(
     get,
-    path = "/v1/commands",
+    path = "/v1/platform/commands",
     responses(
         (status = 200, description = "Commands the caller can dispatch", body = CommandCatalog),
         (status = 401, description = "Unauthorized", body = ErrorResponse),
@@ -252,10 +255,10 @@ pub async fn list_commands(
     })
 }
 
-/// POST /v1/commands/{name} - Run one command
+/// POST /v1/platform/commands/{name} - Run one command
 #[utoipa::path(
     post,
-    path = "/v1/commands/{name}",
+    path = "/v1/platform/commands/{name}",
     params(
         ("name" = String, Path, description = "Command wire name, e.g. create_agent"),
         ("Idempotency-Key" = Option<String>, Header, description = "Makes a mutating command safe to retry: a repeat with the same key and request returns the first response (with `Idempotent-Replayed: true`) instead of running again. Up to 255 printable ASCII characters, remembered for 24 hours per caller. Ignored by read-only commands."),

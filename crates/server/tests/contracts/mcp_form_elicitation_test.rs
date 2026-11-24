@@ -187,7 +187,7 @@ async fn poll_status(server: &TestServer, session_id: SessionId, extra: Value) -
 async fn create_agent(server: &TestServer) -> Agent {
     server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": "form-elicitation-test-agent",
                 "display_name": "Form Elicitation Test",
@@ -208,7 +208,7 @@ async fn parked_session_for_agent(server: &TestServer, platform: bool) -> Sessio
     let agent = create_agent(server).await;
     let session: Session = server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             if platform {
                 json!({"agent_name":"platform-chat"})
             } else {
@@ -854,7 +854,7 @@ async fn agent_run_declares_the_ask_user_hint_only_for_a_capable_client() {
             }
         };
         let session: Value = server
-            .get(&format!("/v1/sessions/{session_id}"))
+            .get(&format!("/v1/platform/sessions/{session_id}"))
             .await
             .assert_success()
             .json_value();

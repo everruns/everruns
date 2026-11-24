@@ -22,51 +22,51 @@ pub type AppState = super::agent_triggers::AppState;
 pub fn routes(state: AppState) -> Router {
     Router::new()
         .route(
-            "/v1/agents/{agent_id}/chat-features",
+            "/v1/platform/agents/{agent_id}/chat-features",
             get(get_agent_chat_features),
         )
         .route(
-            "/v1/agents/{agent_id}/channels",
+            "/v1/platform/agents/{agent_id}/channels",
             get(list_agent_channels).post(create_agent_channel),
         )
         .route(
-            "/v1/agents/{agent_id}/endpoints",
+            "/v1/platform/agents/{agent_id}/endpoints",
             get(list_agent_channels).post(create_agent_channel),
         )
         .route(
-            "/v1/agents/{agent_id}/channels/{channel_id}",
+            "/v1/platform/agents/{agent_id}/channels/{channel_id}",
             get(get_agent_channel)
                 .patch(update_agent_channel)
                 .delete(delete_agent_channel),
         )
         .route(
-            "/v1/agents/{agent_id}/endpoints/{channel_id}",
+            "/v1/platform/agents/{agent_id}/endpoints/{channel_id}",
             get(get_agent_channel)
                 .patch(update_agent_channel)
                 .delete(delete_agent_channel),
         )
         .route(
-            "/v1/agents/{agent_id}/channels/{channel_id}/publish",
+            "/v1/platform/agents/{agent_id}/channels/{channel_id}/publish",
             post(publish_agent_channel),
         )
         .route(
-            "/v1/agents/{agent_id}/endpoints/{channel_id}/publish",
+            "/v1/platform/agents/{agent_id}/endpoints/{channel_id}/publish",
             post(publish_agent_channel),
         )
         .route(
-            "/v1/agents/{agent_id}/channels/{channel_id}/unpublish",
+            "/v1/platform/agents/{agent_id}/channels/{channel_id}/unpublish",
             post(unpublish_agent_channel),
         )
         .route(
-            "/v1/agents/{agent_id}/endpoints/{channel_id}/unpublish",
+            "/v1/platform/agents/{agent_id}/endpoints/{channel_id}/unpublish",
             post(unpublish_agent_channel),
         )
         .route(
-            "/v1/agents/{agent_id}/channels/{channel_id}/trigger",
+            "/v1/platform/agents/{agent_id}/channels/{channel_id}/trigger",
             post(trigger_agent_channel),
         )
         .route(
-            "/v1/agents/{agent_id}/endpoints/{channel_id}/trigger",
+            "/v1/platform/agents/{agent_id}/endpoints/{channel_id}/trigger",
             post(trigger_agent_channel),
         )
         .with_state(state.clone())
@@ -76,7 +76,7 @@ pub fn routes(state: AppState) -> Router {
 #[utoipa::path(
     description = "List ingress channels owned by an Agent.",
     get,
-    path = "/v1/agents/{agent_id}/channels",
+    path = "/v1/platform/agents/{agent_id}/channels",
     params(("agent_id" = String, Path, description = "Agent ID or name")),
     responses(
         (status = 200, description = "Agent channels", body = Vec<AgentChannel>),
@@ -96,7 +96,7 @@ pub async fn list_agent_channels(
 #[utoipa::path(
     description = "Create an ingress channel owned by an Agent.",
     post,
-    path = "/v1/agents/{agent_id}/channels",
+    path = "/v1/platform/agents/{agent_id}/channels",
     params(("agent_id" = String, Path, description = "Agent ID or name")),
     request_body = CreateAgentChannelRequest,
     responses(
@@ -121,7 +121,7 @@ pub async fn create_agent_channel(
 #[utoipa::path(
     description = "Get one ingress channel owned by an Agent.",
     get,
-    path = "/v1/agents/{agent_id}/channels/{channel_id}",
+    path = "/v1/platform/agents/{agent_id}/channels/{channel_id}",
     params(
         ("agent_id" = String, Path, description = "Agent ID or name"),
         ("channel_id" = String, Path, description = "Channel ID")
@@ -149,7 +149,7 @@ pub async fn get_agent_channel(
 #[utoipa::path(
     description = "Update an ingress channel owned by an Agent.",
     patch,
-    path = "/v1/agents/{agent_id}/channels/{channel_id}",
+    path = "/v1/platform/agents/{agent_id}/channels/{channel_id}",
     params(
         ("agent_id" = String, Path, description = "Agent ID or name"),
         ("channel_id" = String, Path, description = "Channel ID")
@@ -181,7 +181,7 @@ pub async fn update_agent_channel(
 #[utoipa::path(
     description = "Delete an ingress channel owned by an Agent.",
     delete,
-    path = "/v1/agents/{agent_id}/channels/{channel_id}",
+    path = "/v1/platform/agents/{agent_id}/channels/{channel_id}",
     params(
         ("agent_id" = String, Path, description = "Agent ID or name"),
         ("channel_id" = String, Path, description = "Channel ID")
@@ -209,7 +209,7 @@ pub async fn delete_agent_channel(
 #[utoipa::path(
     description = "Publish an Agent channel so it can accept ingress traffic.",
     post,
-    path = "/v1/agents/{agent_id}/channels/{channel_id}/publish",
+    path = "/v1/platform/agents/{agent_id}/channels/{channel_id}/publish",
     params(
         ("agent_id" = String, Path, description = "Agent ID or name"),
         ("channel_id" = String, Path, description = "Channel ID")
@@ -237,7 +237,7 @@ pub async fn publish_agent_channel(
 #[utoipa::path(
     description = "Unpublish an Agent channel so it no longer accepts ingress traffic.",
     post,
-    path = "/v1/agents/{agent_id}/channels/{channel_id}/unpublish",
+    path = "/v1/platform/agents/{agent_id}/channels/{channel_id}/unpublish",
     params(
         ("agent_id" = String, Path, description = "Agent ID or name"),
         ("channel_id" = String, Path, description = "Channel ID")
@@ -265,7 +265,7 @@ pub async fn unpublish_agent_channel(
 #[utoipa::path(
     description = "Run a published Agent schedule channel now.",
     post,
-    path = "/v1/agents/{agent_id}/channels/{channel_id}/trigger",
+    path = "/v1/platform/agents/{agent_id}/channels/{channel_id}/trigger",
     params(
         ("agent_id" = String, Path, description = "Agent ID or name"),
         ("channel_id" = String, Path, description = "Channel ID")
@@ -292,7 +292,7 @@ pub async fn trigger_agent_channel(
 }
 
 /// Get eligible chat interfaces.
-#[utoipa::path(get,operation_id="get_agent_chat_features",path="/v1/agents/{agent_id}/chat-features",params(("agent_id"=String,Path)),responses((status=200,description="Effective hosted interface features",body=crate::domains::agent_channels::record::work_chat::ChatFeatures)),tag="agent-channels")]
+#[utoipa::path(get,operation_id="get_agent_chat_features",path="/v1/platform/agents/{agent_id}/chat-features",params(("agent_id"=String,Path)),responses((status=200,description="Effective hosted interface features",body=crate::domains::agent_channels::record::work_chat::ChatFeatures)),tag="agent-channels")]
 pub async fn get_agent_chat_features(
     org: ResolvedOrg,
     State(state): State<AppState>,

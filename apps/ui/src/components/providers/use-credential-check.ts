@@ -3,7 +3,7 @@
 // Debounced, button-free credential verification.
 //
 // The provider forms probe a candidate credential against the provider while
-// the user is still in the form (`POST /v1/providers/check-credentials`, which
+// the user is still in the form (`POST /v1/platform/providers/check-credentials`, which
 // stores nothing). Verification that needs a click is verification most people
 // skip, so it runs on input instead: a bad key is caught where it was pasted
 // rather than at the first agent run.

@@ -181,10 +181,13 @@ crate::api::dispatch::impl_dispatchable!(AppState);
 /// Create event routes (nested under sessions)
 pub fn routes(state: AppState) -> Router {
     Router::new()
-        .route("/v1/sessions/{session_id}/sse", get(stream_sse))
-        .route("/v1/sessions/{session_id}/events", get(list_events))
+        .route("/v1/platform/sessions/{session_id}/sse", get(stream_sse))
         .route(
-            "/v1/sessions/{session_id}/events/summary",
+            "/v1/platform/sessions/{session_id}/events",
+            get(list_events),
+        )
+        .route(
+            "/v1/platform/sessions/{session_id}/events/summary",
             get(events_summary),
         )
         .command::<crate::domains::events::GetSessionWork>()
@@ -195,7 +198,7 @@ pub fn routes(state: AppState) -> Router {
 // HTTP Handlers
 // ============================================
 
-/// GET /v1/sessions/{session_id}/sse - Stream events (SSE notifications)
+/// GET /v1/platform/sessions/{session_id}/sse - Stream events (SSE notifications)
 ///
 /// Establishes a Server-Sent Events (SSE) connection for real-time event streaming.
 ///
@@ -236,7 +239,7 @@ pub fn routes(state: AppState) -> Router {
 /// (max 25 per parameter). Unknown types return 400.
 #[utoipa::path(
     get,
-    path = "/v1/sessions/{session_id}/sse",
+    path = "/v1/platform/sessions/{session_id}/sse",
     params(
         ("session_id" = String, Path, description = "Session ID (prefixed, e.g., sess_...)"),
         EventsQuery
@@ -826,7 +829,7 @@ impl<S: Stream> Stream for GuardedStream<S> {
 // List Events (JSON response for polling)
 // ============================================
 
-/// GET /v1/sessions/{session_id}/events - List events (JSON)
+/// GET /v1/platform/sessions/{session_id}/events - List events (JSON)
 ///
 /// Returns events for a session as a JSON array. Supports filtering by event type
 /// via `types` (positive: only these types) and `exclude` (negative: remove these types).
@@ -845,7 +848,7 @@ impl<S: Stream> Stream for GuardedStream<S> {
 /// - Without `limit`, all events are returned (backward compatible)
 #[utoipa::path(
     get,
-    path = "/v1/sessions/{session_id}/events",
+    path = "/v1/platform/sessions/{session_id}/events",
     params(
         ("session_id" = String, Path, description = "Session ID (prefixed, e.g., sess_...)"),
         ListEventsQuery
@@ -910,10 +913,10 @@ pub async fn list_events(
 // Events Summary (debug snapshot)
 // ============================================
 
-/// GET /v1/sessions/{session_id}/events/summary - one-shot debug summary
+/// GET /v1/platform/sessions/{session_id}/events/summary - one-shot debug summary
 #[utoipa::path(
     get,
-    path = "/v1/sessions/{session_id}/events/summary",
+    path = "/v1/platform/sessions/{session_id}/events/summary",
     params(
         ("session_id" = String, Path, description = "Session ID (prefixed, e.g., sess_...)"),
     ),

@@ -199,7 +199,7 @@ setEventStreamFactory(() => {
 // Unscoped factory calls reproduce the pre-sharing control path.
 const control = [];
 for (let index = 0; index < 20; index++) {
-  const url = `/api/v1/sessions/session_${index}/sse`;
+  const url = `/api/v1/platform/sessions/session_${index}/sse`;
   control.push(createEventStream(url + "?after_sequence=0"));
   control.push(createEventStream(url));
 }
@@ -210,7 +210,7 @@ assert.equal(live, 0);
 opened = 0;
 const consumers = [];
 for (let index = 0; index < 20; index++) {
-  const url = `/api/v1/sessions/session_${index}/sse`;
+  const url = `/api/v1/platform/sessions/session_${index}/sse`;
   consumers.push(createEventStream(url + "?after_sequence=0", { shareScope: "benchmark" }));
   consumers.push(createEventStream(url, { shareScope: "benchmark", snapshotOnly: true }));
 }
@@ -227,7 +227,7 @@ assert.equal(live, 0);
 opened = 0;
 const promoted = [];
 for (let index = 0; index < 20; index++) {
-  const url = `/api/v1/sessions/session_${index}/sse`;
+  const url = `/api/v1/platform/sessions/session_${index}/sse`;
   promoted.push(createEventStream(url, { shareScope: "benchmark", snapshotOnly: true }));
   promoted.push(createEventStream(url + "?after_sequence=0", { shareScope: "benchmark" }));
 }

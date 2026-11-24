@@ -227,7 +227,7 @@ pub struct ExportEvalSamples {
     description = "Export an eval's cases as Mira samples, one per case. Settings Mira has no field for ride under metadata.everruns, so the export imports back unchanged.",
     method = "GET",
     cli = CliRoute::new(&["evals", "samples"], "export").with_examples(&[CliExample::new("Save a dataset as a Mira JSONL file", "everruns evals samples export --eval-id eval_01h9 | jq -c '.samples[]' > cases.jsonl")]),
-    path = "/v1/evals/{eval_id}/samples",
+    path = "/v1/platform/evals/{eval_id}/samples",
     policy = crate::domains::evals::EVAL_VIEW,
     http = plain,
 )]
@@ -279,7 +279,7 @@ pub struct ImportEvalSamples {
     description = "Create or update an eval's cases from Mira samples, matched by name. A sample's expected text becomes a contains scorer unless metadata.everruns names the scorers.",
     method = "POST",
     cli = CliRoute::new(&["evals", "samples"], "import").with_examples(&[CliExample::new("Load a Mira JSONL dataset into an eval", "everruns evals samples import --eval-id eval_01h9 --samples \"$(jq -s . cases.jsonl)\" --reason 'Share the Mira regression set'")]),
-    path = "/v1/evals/{eval_id}/samples",
+    path = "/v1/platform/evals/{eval_id}/samples",
     policy = crate::domains::evals::EVAL_MANAGE,
     http = plain,
 )]

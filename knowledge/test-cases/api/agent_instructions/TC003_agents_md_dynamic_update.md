@@ -32,7 +32,7 @@ Verify that changes to AGENTS.md are picked up on the next turn without restarti
 
 2. Write initial AGENTS.md:
    ```bash
-   curl -s -X POST "http://localhost:9000/v1/sessions/{session_id}/fs/AGENTS.md" \
+   curl -s -X POST "http://localhost:9000/v1/platform/sessions/{session_id}/fs/AGENTS.md" \
      -H "Content-Type: application/json" \
      -d '{"content": "Always respond in uppercase."}'
    ```
@@ -43,7 +43,7 @@ Verify that changes to AGENTS.md are picked up on the next turn without restarti
 
 5. Update AGENTS.md:
    ```bash
-   curl -s -X PUT "http://localhost:9000/v1/sessions/{session_id}/fs/AGENTS.md" \
+   curl -s -X PUT "http://localhost:9000/v1/platform/sessions/{session_id}/fs/AGENTS.md" \
      -H "Content-Type: application/json" \
      -d '{"content": "Always respond in French."}'
    ```

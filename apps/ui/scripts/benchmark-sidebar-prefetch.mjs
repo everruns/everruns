@@ -26,14 +26,14 @@ async function mockApi(page) {
     const pathname = new URL(route.request().url()).pathname;
     let json;
 
-    if (pathname === "/api/v1/auth/config") {
+    if (pathname === "/api/v1/platform/auth/config") {
       json = {
         mode: "full",
         password_auth_enabled: true,
         oauth_providers: [],
         signup_enabled: true,
       };
-    } else if (pathname === "/api/v1/auth/me") {
+    } else if (pathname === "/api/v1/platform/auth/me") {
       json = {
         id: "user-1",
         email: "benchmark@example.com",
@@ -42,7 +42,7 @@ async function mockApi(page) {
         email_verified: true,
         organizations: [{ public_id: orgId, name: "Benchmark Org", role: "owner" }],
       };
-    } else if (pathname === `/api/v1/orgs/${orgId}`) {
+    } else if (pathname === `/api/v1/platform/orgs/${orgId}`) {
       json = {
         id: orgId,
         public_id: orgId,
@@ -50,7 +50,7 @@ async function mockApi(page) {
         role: "owner",
         onboarding_completed_at: "2026-07-15T00:00:00Z",
       };
-    } else if (pathname.endsWith("/feature-flags") || pathname === "/api/v1/feature-flags") {
+    } else if (pathname.endsWith("/feature-flags") || pathname === "/api/v1/platform/feature-flags") {
       json = {
         evals: false,
         voice: false,

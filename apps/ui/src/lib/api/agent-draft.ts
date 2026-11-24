@@ -76,7 +76,7 @@ export async function draftAgent(
   messages: DraftTurn[],
   draft: AgentDraft,
 ): Promise<AgentDraftResult> {
-  const response = await api.post<AgentDraftResult>("/v1/agents/draft", {
+  const response = await api.post<AgentDraftResult>("/v1/platform/agents/draft", {
     messages,
     draft,
   });

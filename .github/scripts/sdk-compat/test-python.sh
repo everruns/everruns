@@ -89,7 +89,7 @@ async def main() -> None:
     # 5. Exercise newly generated trigger and participant API surfaces. Raw
     # HTTP keeps older published SDK cohorts compatible with the current API.
     trigger = api_post(
-        f"/v1/agents/{agent.id}/triggers",
+        f"/v1/platform/agents/{agent.id}/triggers",
         {
             "cron_expression": "0 0 * * *",
             "timezone": "UTC",
@@ -107,7 +107,7 @@ async def main() -> None:
         system_prompt="Compatibility guest agent",
     )
     participant = api_post(
-        f"/v1/sessions/{session.id}/participants",
+        f"/v1/platform/sessions/{session.id}/participants",
         {"kind": "agent", "agent_id": guest.id},
     )
     if participant.get("agent_id") != guest.id:

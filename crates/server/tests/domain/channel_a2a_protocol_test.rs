@@ -17,7 +17,7 @@ struct A2aEndpoint {
 async fn create_agent(server: &TestServer) -> String {
     let agent: Value = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": format!("a2a-protocol-{}", uuid::Uuid::new_v4().simple()),
                 "display_name": "A2A protocol agent",
@@ -36,7 +36,7 @@ async fn create_a2a_channel(server: &TestServer, session_mode: &str) -> A2aEndpo
     let api_key = format!("evra2a_{}", uuid::Uuid::new_v4().simple());
     let endpoint: Value = server
         .post(
-            &format!("/v1/agents/{agent_id}/channels"),
+            &format!("/v1/platform/agents/{agent_id}/channels"),
             json!({
                 "channel_type": "a2a",
                 "channel_config": {
@@ -53,7 +53,7 @@ async fn create_a2a_channel(server: &TestServer, session_mode: &str) -> A2aEndpo
     let id = endpoint["id"].as_str().unwrap().to_string();
     server
         .post(
-            &format!("/v1/agents/{agent_id}/channels/{id}/publish"),
+            &format!("/v1/platform/agents/{agent_id}/channels/{id}/publish"),
             json!({}),
         )
         .await
@@ -591,7 +591,7 @@ async fn create_mtls_a2a_channel(server: &TestServer) -> String {
     let agent_id = create_agent(server).await;
     let endpoint: Value = server
         .post(
-            &format!("/v1/agents/{agent_id}/channels"),
+            &format!("/v1/platform/agents/{agent_id}/channels"),
             json!({
                 "channel_type": "a2a",
                 "channel_config": {
@@ -619,7 +619,7 @@ async fn create_mtls_a2a_channel(server: &TestServer) -> String {
     let id = endpoint["id"].as_str().unwrap().to_string();
     server
         .post(
-            &format!("/v1/agents/{agent_id}/channels/{id}/publish"),
+            &format!("/v1/platform/agents/{agent_id}/channels/{id}/publish"),
             json!({}),
         )
         .await

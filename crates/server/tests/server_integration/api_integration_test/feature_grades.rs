@@ -14,13 +14,13 @@ async fn test_agent_view_settings_require_adoption_and_keep_saved_revisions() {
     let server = TestServer::in_memory_with_feature_policy(policy).await;
     let agent: Value = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({"name":"view-agent","system_prompt":"You help."}),
         )
         .await
         .assert_status(StatusCode::CREATED)
         .json();
-    let route = format!("/v1/agents/{}/view", agent["id"].as_str().unwrap());
+    let route = format!("/v1/platform/agents/{}/view", agent["id"].as_str().unwrap());
     let view = json!({
         "title":"Changes",
         "layout":{"format":"html","source":"<h2>Changes</h2>"},
@@ -57,7 +57,7 @@ async fn test_agent_view_settings_require_adoption_and_keep_saved_revisions() {
     assert_eq!(saved, json!({"revision":1,"view":view}));
     let chat: Value = server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             json!({"harness_id":server.seed_base_harness_id}),
         )
         .await
@@ -160,13 +160,13 @@ async fn test_feature_grades_control_http_defaults_mutations_and_route_access() 
         // The agent view route checks the org-effective flag on each request.
         let agent: Value = server
             .post(
-                "/v1/agents",
+                "/v1/platform/agents",
                 json!({"name":"grade-agent","system_prompt":"You help."}),
             )
             .await
             .assert_status(StatusCode::CREATED)
             .json();
-        let view_route = format!("/v1/agents/{}/view", agent["id"].as_str().unwrap());
+        let view_route = format!("/v1/platform/agents/{}/view", agent["id"].as_str().unwrap());
         server
             .get(&view_route)
             .await

@@ -74,7 +74,7 @@ describe("ToolActivityRow generated GIF", () => {
     expect(screen.queryByTestId("tool-result-thumbnails")).not.toBeInTheDocument();
     expect(within(player).getByText("GIF · 9 frames · 1.4 s loop")).toBeInTheDocument();
     const image = within(player).getByAltText("lantern.gif");
-    expect(image.getAttribute("src")).toMatch(/\/v1\/images\/img_01$/);
+    expect(image.getAttribute("src")).toMatch(/\/v1\/platform\/images\/img_01$/);
 
     fireEvent.click(within(player).getByRole("button", { name: /Pause/ }));
     expect(image).toHaveAttribute("src", `data:image/png;base64,${STILL}`);

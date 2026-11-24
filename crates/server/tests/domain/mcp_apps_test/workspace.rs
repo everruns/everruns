@@ -19,13 +19,17 @@ async fn shared_workspace_reads_the_same_resources_and_opens_each_entity() {
     let session = start_session(&server, &agent, "workspace trace").await;
     let collection: Value = server
         .post(
-            "/v1/knowledge",
+            "/v1/platform/knowledge",
             json!({"name":unique("workspace knowledge"),"indexing":"off"}),
         )
         .await
         .assert_success()
         .json();
-    let capabilities: Value = server.get("/v1/capabilities").await.assert_success().json();
+    let capabilities: Value = server
+        .get("/v1/platform/capabilities")
+        .await
+        .assert_success()
+        .json();
     let capability = capabilities["data"][0]["id"].as_str().unwrap();
     for (tool, field, id, kind) in [
         (
@@ -61,28 +65,35 @@ async fn shared_workspace_reads_the_same_resources_and_opens_each_entity() {
     let result = call(
         &server,
         "app_read",
-        json!({"path":format!("/v1/agents/{agent}")}),
+        json!({"path":format!("/v1/platform/agents/{agent}")}),
     )
     .await;
     assert_eq!(api_body(&result)["id"], agent);
+    let legacy = call(
+        &server,
+        "app_read",
+        json!({"path":format!("/v1/agents/{agent}")}),
+    )
+    .await;
+    assert_eq!(api_body(&legacy)["id"], agent);
     for path in [
-        "/v1/providers".to_string(),
-        format!("/v1/agents/{agent}/channels"),
-        format!("/v1/sessions/{session}/trace"),
-        format!("/v1/sessions/{session}/events?after_sequence=0&limit=20"),
-        format!("/v1/sessions/{session}/storage/keys"),
-        format!("/v1/sessions/{session}/storage/secrets"),
+        "/v1/platform/providers".to_string(),
+        format!("/v1/platform/agents/{agent}/channels"),
+        format!("/v1/platform/sessions/{session}/trace"),
+        format!("/v1/platform/sessions/{session}/events?after_sequence=0&limit=20"),
+        format!("/v1/platform/sessions/{session}/storage/keys"),
+        format!("/v1/platform/sessions/{session}/storage/secrets"),
     ] {
         let result = call(&server, "app_read", json!({"path":path})).await;
         api_body(&result);
     }
     let recording: Value = server
-        .get(&format!("/v1/sessions/{session}"))
+        .get(&format!("/v1/platform/sessions/{session}"))
         .await
         .assert_success()
         .json();
     let file_path = format!(
-        "/v1/workspaces/{}/fs/workspace/bridge.txt",
+        "/v1/platform/workspaces/{}/fs/workspace/bridge.txt",
         recording["workspace_id"].as_str().unwrap()
     );
     server
@@ -95,7 +106,7 @@ async fn shared_workspace_reads_the_same_resources_and_opens_each_entity() {
     let file = api_body(&call(&server, "app_read", json!({"path":file_path})).await);
     assert_eq!(file["content"], "Bridge file bytes");
     let download_path = format!(
-        "/v1/workspaces/{}/fs/_/download/workspace/bridge.txt",
+        "/v1/platform/workspaces/{}/fs/_/download/workspace/bridge.txt",
         recording["workspace_id"].as_str().unwrap()
     );
     let downloaded = structured(&call(&server, "app_read", json!({"path":download_path})).await);
@@ -114,15 +125,15 @@ async fn shared_workspace_reads_the_same_resources_and_opens_each_entity() {
         )
         .await
     ));
-    let changed = call(&server, "app_write", json!({"path":format!("/v1/agents/{agent}"),"method":"PATCH","body":{"description":"Changed through the workspace"}})).await;
+    let changed = call(&server, "app_write", json!({"path":format!("/v1/platform/agents/{agent}"),"method":"PATCH","body":{"description":"Changed through the workspace"}})).await;
     assert_eq!(
         api_body(&changed)["description"],
         "Changed through the workspace"
     );
     for path in [
-        "/v1/providers/missing".to_string(),
-        format!("/v1/agents/{agent}/channels/missing"),
-        format!("/v1/agents/{agent}/endpoints/missing"),
+        "/v1/platform/providers/missing".to_string(),
+        format!("/v1/platform/agents/{agent}/channels/missing"),
+        format!("/v1/platform/agents/{agent}/endpoints/missing"),
     ] {
         assert!(
             is_error(
@@ -137,11 +148,11 @@ async fn shared_workspace_reads_the_same_resources_and_opens_each_entity() {
         );
     }
     for path in [
-        "https://example.com/v1/agents",
-        "/v1/auth/me",
-        "/v1/commands/get_agent",
-        "/v1/agents/../auth/me",
-        "/v1/sessions/example/storage/secrets/name",
+        "https://example.com/v1/platform/agents",
+        "/v1/platform/auth/me",
+        "/v1/platform/commands/get_agent",
+        "/v1/platform/agents/../auth/me",
+        "/v1/platform/sessions/example/storage/secrets/name",
     ] {
         assert!(
             is_error(&call(&server, "app_read", json!({"path":path})).await),
@@ -204,15 +215,15 @@ async fn workspace_keeps_pat_scope_and_organization_boundaries() {
     assert_eq!(context["read_only"], true);
     let result = invoke(
         "app_read",
-        json!({"path":format!("/v1/agents/{agent}"),"organization_id":default_org.public_id}),
+        json!({"path":format!("/v1/platform/agents/{agent}"),"organization_id":default_org.public_id}),
     )
     .await;
     assert_eq!(api_body(&result)["id"], agent);
-    assert!(is_error(&invoke("app_write",json!({"path":format!("/v1/agents/{agent}"),"method":"PATCH","body":{"description":"forbidden"}})).await));
+    assert!(is_error(&invoke("app_write",json!({"path":format!("/v1/platform/agents/{agent}"),"method":"PATCH","body":{"description":"forbidden"}})).await));
     let other: Value = server
         .request_raw(
             Method::POST,
-            "/v1/orgs",
+            "/v1/platform/orgs",
             vec![
                 ("content-type", "application/json"),
                 ("authorization", full_authorization.as_str()),
@@ -233,7 +244,7 @@ async fn workspace_keeps_pat_scope_and_organization_boundaries() {
         &full_call("app_bootstrap", json!({"organization_id":other["id"]})).await
     ));
     let result = rpc(
-        &server, "tools/call", json!({"name":"app_read","arguments":{"path":format!("/v1/agents/{agent}"),"organization_id":other["id"]}}), LATEST,
+        &server, "tools/call", json!({"name":"app_read","arguments":{"path":format!("/v1/platform/agents/{agent}"),"organization_id":other["id"]}}), LATEST,
         vec![("authorization",full_authorization.as_str()),("x-org-id",other["id"].as_str().unwrap())],
     ).await;
     assert_eq!(structured(&result)["status"], 404);

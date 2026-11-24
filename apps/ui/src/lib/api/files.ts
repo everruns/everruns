@@ -31,7 +31,7 @@ export async function uploadFile(file: File, sessionId?: string): Promise<FileUp
   formData.append("file", file, file.name);
   const params = sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : "";
   const baseUrl = getApiBaseUrl();
-  const url = `${baseUrl}/v1/files${params}`;
+  const url = `${baseUrl}/v1/platform/files${params}`;
 
   // Raw fetch needed for FormData (no Content-Type header — browser sets multipart boundary)
   const response = await fetch(url, {
@@ -49,7 +49,7 @@ export async function uploadFile(file: File, sessionId?: string): Promise<FileUp
 }
 
 export function getFileUrl(fileId: string): string {
-  return `${getApiBaseUrl()}/v1/files/${encodeURIComponent(fileId)}`;
+  return `${getApiBaseUrl()}/v1/platform/files/${encodeURIComponent(fileId)}`;
 }
 
 export interface PendingFile {

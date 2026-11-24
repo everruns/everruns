@@ -30,7 +30,7 @@ pub(super) struct WorkerLinkDeps {
     pub host_composition: Arc<HostComposition>,
     pub connector_registry: everruns_contracts::connector::ConnectorRegistry,
     pub provider_resolver: Arc<services::ProviderResolverService>,
-    /// The `/v1/providers` service instances, so provider commands a worker
+    /// The `/v1/platform/providers` service instances, so provider commands a worker
     /// dispatches sync models and invalidate the same resolver cache.
     pub provider_services: crate::domains::providers::ProviderServices,
     pub permission_resolver: Arc<dyn PermissionResolver>,

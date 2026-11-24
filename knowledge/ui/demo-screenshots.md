@@ -71,7 +71,7 @@ Seed five idle API sessions so the operational view has a compact, legible cross
 | Customer Signals | Customer Voice | Synthesize customer feedback into themes and actionable insights. |
 | Workflow Tune-up | Workflow Optimizer | Reduce friction in the support-to-engineering handoff. |
 
-Create each session with `POST /api/v1/sessions`, using its agent's registered `agent_name`, the
+Create each session with `POST /api/v1/platform/sessions`, using its agent's registered `agent_name`, the
 table's `title` and `goal`, and `source: "api"`. Do not send a message: the idle state is deliberate
 because it keeps the session list readable. The existing Platform Chat session provides the sixth,
 completed row.

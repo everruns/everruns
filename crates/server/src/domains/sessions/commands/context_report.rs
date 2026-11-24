@@ -13,7 +13,7 @@ pub struct GetSessionContextReport {
 #[command(
     name = "get_session_context_report", category = "sessions",
     description = "Inspect the last main model request, effective compaction policy, and safe checkpoint metadata. Inspection never compacts history or calls a model.",
-    method = "GET", path = "/v1/sessions/{session_id}/context-report",
+    method = "GET", path = "/v1/platform/sessions/{session_id}/context-report",
     policy = super::super::SESSION_VIEW, positional = "session_id",
     cli = CliRoute::new(&["sessions"], "context").with_args(&[CliArg::new("session_id").at(1).long("session")]).with_examples(&[CliExample::new("See what is filling a session's context window", "everruns sessions context session_01h9")]),
 )]

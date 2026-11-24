@@ -24,10 +24,10 @@ export default async function HarnessesPage() {
   if (currentOrgId) {
     await Promise.all([
       seedQueryData(queryClient, [...queryKeys.harnesses.list(false), currentOrgId], () =>
-        serverGetList<Harness>(requestContext, "/v1/harnesses"),
+        serverGetList<Harness>(requestContext, "/v1/platform/harnesses"),
       ),
       seedQueryData(queryClient, ["capabilities", currentOrgId], () =>
-        serverGetList<Capability>(requestContext, "/v1/capabilities"),
+        serverGetList<Capability>(requestContext, "/v1/platform/capabilities"),
       ),
     ]);
   }

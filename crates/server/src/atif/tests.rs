@@ -299,7 +299,7 @@ fn images_export_as_multimodal_content_parts() {
     );
     assert_eq!(
         user_msg[2],
-        json!({"type": "image", "source": {"path": format!("/v1/images/{image_id}")}})
+        json!({"type": "image", "source": {"path": format!("/v1/platform/images/{image_id}")}})
     );
     assert!(steps[0]["extra"].get("omitted_images").is_none());
 
@@ -476,7 +476,7 @@ fn subagent_spawn_attaches_trajectory_ref() {
     let refs = &value["steps"][1]["observation"]["results"][0]["subagent_trajectory_ref"];
     assert_eq!(
         refs[0]["trajectory_path"],
-        json!(format!("/v1/sessions/{child}/export?format=atif"))
+        json!(format!("/v1/platform/sessions/{child}/export?format=atif"))
     );
     assert_eq!(refs[0]["session_id"], json!(child.to_string()));
 }
@@ -796,7 +796,7 @@ fn message_fold_redacts_and_links_subagents() {
     let refs = &doc["steps"][1]["observation"]["results"][0]["subagent_trajectory_ref"];
     assert_eq!(
         refs[0]["trajectory_path"],
-        json!(format!("/v1/sessions/{child}/export?format=atif"))
+        json!(format!("/v1/platform/sessions/{child}/export?format=atif"))
     );
     // Secret scrubbing applies on the model-view path too.
     assert!(
@@ -1053,7 +1053,7 @@ fn v2_event_stream_and_empty_bundle_are_rejected_clearly() {
 // Segmented export
 // ------------------------------------------------------------------
 
-const LINK_BASE: &str = "/v1/sessions/session_x/export";
+const LINK_BASE: &str = "/v1/platform/sessions/session_x/export";
 
 /// A session with `n` distinct user messages → `n` user steps.
 fn many_input_events(session: SessionId, n: usize) -> Vec<Event> {

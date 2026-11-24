@@ -11,7 +11,7 @@ For the design and enforcement semantics, see [Budgets](/advanced/budgets/).
 ## Create a USD budget for a session
 
 ```bash
-curl -X POST http://localhost:9300/api/v1/budgets \
+curl -X POST http://localhost:9300/api/v1/platform/budgets \
   -H "Content-Type: application/json" \
   -d '{
     "scope": "session",
@@ -27,7 +27,7 @@ When session spend exceeds `soft_limit`, the session pauses (status becomes `pau
 ## Token-denominated budget
 
 ```bash
-curl -X POST http://localhost:9300/api/v1/budgets \
+curl -X POST http://localhost:9300/api/v1/platform/budgets \
   -H "Content-Type: application/json" \
   -d '{
     "scope": "agent",
@@ -82,7 +82,7 @@ After a `budget.paused` event, you can:
 - Increase `limit` to give the session more headroom:
 
   ```bash
-  curl -X PATCH http://localhost:9300/api/v1/budgets/$BUDGET_ID \
+  curl -X PATCH http://localhost:9300/api/v1/platform/budgets/$BUDGET_ID \
     -H "Content-Type: application/json" \
     -d '{ "limit": 20.00, "soft_limit": 16.00 }'
   ```

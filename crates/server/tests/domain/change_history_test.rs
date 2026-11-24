@@ -1,5 +1,5 @@
 //! Entity history and manager context end to end, over REST and
-//! `/v1/commands`, on PostgreSQL: the reason header and envelope field reach
+//! `/v1/platform/commands`, on PostgreSQL: the reason header and envelope field reach
 //! history, and context writes hold to their revision.
 //!
 //! Run with: cargo test -p everruns-server --test domain change_history_test::
@@ -35,11 +35,11 @@ async fn send(
 async fn reasons_from_rest_and_commands_land_in_history_and_context_holds_its_revision() {
     let server = TestServer::new().await;
 
-    // /v1/commands: the reason rides in the envelope.
+    // /v1/platform/commands: the reason rides in the envelope.
     // A workspace only comes with its session; renaming it is the first change.
     let session: Value = server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             json!({ "harness_id": server.seed_base_harness_id }),
         )
         .await
@@ -51,7 +51,7 @@ async fn reasons_from_rest_and_commands_land_in_history_and_context_holds_its_re
         .to_string();
     server
         .post(
-            "/v1/commands/update_workspace",
+            "/v1/platform/commands/update_workspace",
             json!({
                 "params": { "workspace_id": id, "name": unique("history") },
                 "reason": "a home for support",
@@ -61,7 +61,7 @@ async fn reasons_from_rest_and_commands_land_in_history_and_context_holds_its_re
         .assert_success();
 
     let history: Value = server
-        .get(&format!("/v1/history/{id}"))
+        .get(&format!("/v1/platform/history/{id}"))
         .await
         .assert_success()
         .json();
@@ -81,7 +81,7 @@ async fn reasons_from_rest_and_commands_land_in_history_and_context_holds_its_re
     let set: Value = send(
         &server,
         Method::PUT,
-        &format!("/v1/context/{id}"),
+        &format!("/v1/platform/context/{id}"),
         vec![("everruns-change-reason", "decided%20in%20review")],
         json!({ "content": "Owned by support.", "expected_revision": 0 }),
     )
@@ -91,7 +91,7 @@ async fn reasons_from_rest_and_commands_land_in_history_and_context_holds_its_re
     assert_eq!(set["revision"], 1);
     let appended: Value = server
         .post(
-            &format!("/v1/context/{id}/append"),
+            &format!("/v1/platform/context/{id}/append"),
             json!({ "text": "Do not rename." }),
         )
         .await
@@ -100,7 +100,7 @@ async fn reasons_from_rest_and_commands_land_in_history_and_context_holds_its_re
     assert_eq!(appended["revision"], 2);
     let stale: Value = server
         .put(
-            &format!("/v1/context/{id}"),
+            &format!("/v1/platform/context/{id}"),
             json!({ "content": "x", "expected_revision": 1 }),
         )
         .await
@@ -108,10 +108,10 @@ async fn reasons_from_rest_and_commands_land_in_history_and_context_holds_its_re
         .json();
     assert_eq!(stale["code"], "manager_context_changed");
 
-    // /v1/commands: a stale acknowledgement is refused, a missing one warns.
+    // /v1/platform/commands: a stale acknowledgement is refused, a missing one warns.
     let refused: Value = server
         .post(
-            "/v1/commands/update_workspace",
+            "/v1/platform/commands/update_workspace",
             json!({
                 "params": { "workspace_id": id, "name": unique("renamed") },
                 "context_revision": 1,
@@ -124,7 +124,7 @@ async fn reasons_from_rest_and_commands_land_in_history_and_context_holds_its_re
     assert_eq!(refused["code"], "manager_context_changed");
     let warned: Value = server
         .post(
-            "/v1/commands/update_workspace",
+            "/v1/platform/commands/update_workspace",
             json!({
                 "params": { "workspace_id": id, "name": unique("renamed") },
                 "reason": "rename as agreed",
@@ -143,7 +143,7 @@ async fn reasons_from_rest_and_commands_land_in_history_and_context_holds_its_re
     );
     server
         .post(
-            "/v1/commands/update_workspace",
+            "/v1/platform/commands/update_workspace",
             json!({
                 "params": { "workspace_id": id, "name": unique("renamed") },
                 "context_revision": 2,
@@ -153,7 +153,7 @@ async fn reasons_from_rest_and_commands_land_in_history_and_context_holds_its_re
         .assert_success();
 
     let history: Value = server
-        .get(&format!("/v1/history/{id}"))
+        .get(&format!("/v1/platform/history/{id}"))
         .await
         .assert_success()
         .json();
@@ -182,13 +182,13 @@ async fn reasons_from_rest_and_commands_land_in_history_and_context_holds_its_re
     // Deleting the entity removes its context; history stays.
     server
         .post(
-            "/v1/commands/delete_workspace",
+            "/v1/platform/commands/delete_workspace",
             json!({ "params": { "workspace_id": id } }),
         )
         .await
         .assert_success();
     let org: Value = server
-        .get("/v1/history?kind=workspace&action=deleted")
+        .get("/v1/platform/history?kind=workspace&action=deleted")
         .await
         .assert_success()
         .json();
@@ -208,7 +208,7 @@ async fn rest_routes_that_skip_commands_still_record_history_and_hold_to_context
     // and archive it write storage directly, and the header reason still lands.
     let session: Value = server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             json!({ "harness_id": server.seed_base_harness_id }),
         )
         .await
@@ -221,7 +221,7 @@ async fn rest_routes_that_skip_commands_still_record_history_and_hold_to_context
 
     server
         .put(
-            &format!("/v1/context/{id}"),
+            &format!("/v1/platform/context/{id}"),
             json!({ "content": "Frozen until review.", "expected_revision": 0 }),
         )
         .await
@@ -231,7 +231,7 @@ async fn rest_routes_that_skip_commands_still_record_history_and_hold_to_context
     let refused: Value = send(
         &server,
         Method::PATCH,
-        &format!("/v1/workspaces/{id}"),
+        &format!("/v1/platform/workspaces/{id}"),
         vec![("everruns-context-revision", "7")],
         json!({ "name": unique("stale") }),
     )
@@ -243,7 +243,7 @@ async fn rest_routes_that_skip_commands_still_record_history_and_hold_to_context
     send(
         &server,
         Method::PATCH,
-        &format!("/v1/workspaces/{id}"),
+        &format!("/v1/platform/workspaces/{id}"),
         vec![
             ("everruns-change-reason", "acked%20rename"),
             ("everruns-context-revision", "1"),
@@ -254,7 +254,7 @@ async fn rest_routes_that_skip_commands_still_record_history_and_hold_to_context
     .assert_success();
 
     let history: Value = server
-        .get(&format!("/v1/history/{id}"))
+        .get(&format!("/v1/platform/history/{id}"))
         .await
         .assert_success()
         .json();
@@ -271,7 +271,7 @@ async fn rest_routes_that_skip_commands_still_record_history_and_hold_to_context
 
     // Archiving drops the workspace's manager context.
     server
-        .delete(&format!("/v1/workspaces/{id}"))
+        .delete(&format!("/v1/platform/workspaces/{id}"))
         .await
         .assert_status(StatusCode::NO_CONTENT);
 }
@@ -281,7 +281,7 @@ async fn an_agent_restored_to_an_earlier_revision_runs_as_a_recorded_change() {
     let server = TestServer::new().await;
     let agent: Value = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({ "name": unique("restore"), "system_prompt": "Answer in English." }),
         )
         .await
@@ -290,14 +290,14 @@ async fn an_agent_restored_to_an_earlier_revision_runs_as_a_recorded_change() {
     let id = agent["id"].as_str().expect("agent id").to_string();
     server
         .patch(
-            &format!("/v1/agents/{id}"),
+            &format!("/v1/platform/agents/{id}"),
             json!({ "system_prompt": "Answer in French.", "description": "Paris office" }),
         )
         .await
         .assert_success();
 
     let diff: Value = server
-        .get(&format!("/v1/history/{id}/diff?from=1"))
+        .get(&format!("/v1/platform/history/{id}/diff?from=1"))
         .await
         .assert_success()
         .json();
@@ -313,7 +313,7 @@ async fn an_agent_restored_to_an_earlier_revision_runs_as_a_recorded_change() {
     let restored: Value = send(
         &server,
         Method::POST,
-        &format!("/v1/history/{id}/restore"),
+        &format!("/v1/platform/history/{id}/restore"),
         vec![("everruns-change-reason", "French%20was%20a%20mistake")],
         json!({ "revision": 1 }),
     )
@@ -330,14 +330,14 @@ async fn an_agent_restored_to_an_earlier_revision_runs_as_a_recorded_change() {
     );
 
     let now: Value = server
-        .get(&format!("/v1/agents/{id}"))
+        .get(&format!("/v1/platform/agents/{id}"))
         .await
         .assert_success()
         .json();
     assert_eq!(now["system_prompt"], "Answer in English.");
 
     let history: Value = server
-        .get(&format!("/v1/history/{id}"))
+        .get(&format!("/v1/platform/history/{id}"))
         .await
         .assert_success()
         .json();
@@ -347,7 +347,7 @@ async fn an_agent_restored_to_an_earlier_revision_runs_as_a_recorded_change() {
     assert_eq!(history[0]["reason"], "French was a mistake");
 
     let shown: Value = server
-        .get(&format!("/v1/history/{id}/revisions/2"))
+        .get(&format!("/v1/platform/history/{id}/revisions/2"))
         .await
         .assert_success()
         .json();

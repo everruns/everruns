@@ -1,5 +1,5 @@
 // LLM Provider API endpoints
-// Routes: /v1/providers/...
+// Routes: /v1/platform/providers/...
 
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::common::{Command, Ctx};
@@ -109,7 +109,7 @@ impl_dispatchable!(AppState);
 /// Create a new LLM provider
 #[utoipa::path(
     post,
-    path = "/v1/providers",
+    path = "/v1/platform/providers",
     request_body = CreateProviderRequest,
     responses(
         (status = 201, description = "Provider created", body = WithUrls<Provider>),
@@ -170,7 +170,7 @@ pub struct CheckCredentialsRequest {
 /// instead of at the first agent run. Nothing is persisted.
 #[utoipa::path(
     post,
-    path = "/v1/providers/check-credentials",
+    path = "/v1/platform/providers/check-credentials",
     request_body = CheckCredentialsRequest,
     responses(
         (status = 200, description = "Check completed", body = CredentialCheckResult),
@@ -238,7 +238,7 @@ fn resolve_credential_document(
 /// List all LLM providers
 #[utoipa::path(
     get,
-    path = "/v1/providers",
+    path = "/v1/platform/providers",
     responses(
         (status = 200, description = "List of providers", body = ListResponse<WithUrls<Provider>>)
     ),
@@ -257,7 +257,7 @@ pub async fn list_providers(
 /// Get a specific LLM provider
 #[utoipa::path(
     get,
-    path = "/v1/providers/{id}",
+    path = "/v1/platform/providers/{id}",
     params(
         ("id" = String, Path, description = "Provider ID (prefixed, e.g., prov_...)")
     ),
@@ -282,7 +282,7 @@ pub async fn get_provider(
 /// Update an LLM provider
 #[utoipa::path(
     patch,
-    path = "/v1/providers/{id}",
+    path = "/v1/platform/providers/{id}",
     params(
         ("id" = String, Path, description = "Provider ID (prefixed, e.g., prov_...)")
     ),
@@ -350,7 +350,7 @@ pub async fn update_provider(
 /// Delete an LLM provider
 #[utoipa::path(
     delete,
-    path = "/v1/providers/{id}",
+    path = "/v1/platform/providers/{id}",
     params(
         ("id" = String, Path, description = "Provider ID (prefixed, e.g., prov_...)")
     ),
@@ -378,7 +378,7 @@ pub async fn delete_provider(
 /// the database. Only works for providers with standard base URLs (not custom).
 #[utoipa::path(
     post,
-    path = "/v1/providers/{id}/sync-models",
+    path = "/v1/platform/providers/{id}/sync-models",
     params(
         ("id" = String, Path, description = "Provider ID (prefixed, e.g., prov_...)")
     ),
@@ -404,7 +404,7 @@ pub async fn sync_models(
 /// discovered after this call, and still disabled, read back as new.
 #[utoipa::path(
     post,
-    path = "/v1/providers/{id}/models/review",
+    path = "/v1/platform/providers/{id}/models/review",
     params(
         ("id" = String, Path, description = "Provider ID (prefixed, e.g., prov_...)")
     ),
@@ -452,10 +452,10 @@ pub struct ProvidersConfigResponse {
     pub drivers: Vec<DriverCredentialInfo>,
 }
 
-/// GET /v1/providers/config
+/// GET /v1/platform/providers/config
 #[utoipa::path(
     get,
-    path = "/v1/providers/config",
+    path = "/v1/platform/providers/config",
     responses(
         (status = 200, description = "Resource config for providers", body = ProvidersConfigResponse),
     ),
@@ -502,30 +502,42 @@ use oauth::{oauth_authorize, oauth_callback};
 
 pub fn routes(state: AppState) -> Router {
     Router::new()
-        .route("/v1/providers/config", get(provider_config))
+        .route("/v1/platform/providers/config", get(provider_config))
         .route(
-            "/v1/providers/{id}/chatgpt",
+            "/v1/platform/providers/{id}/chatgpt",
             get(super::chatgpt::status).delete(super::chatgpt::disconnect),
         )
         .route(
-            "/v1/providers/{id}/chatgpt/login",
+            "/v1/platform/providers/{id}/chatgpt/login",
             post(super::chatgpt::login),
         )
         .route(
-            "/v1/providers/{id}/chatgpt/import",
+            "/v1/platform/providers/{id}/chatgpt/import",
             post(super::chatgpt::import),
         )
-        .route("/v1/providers", post(create_provider).get(list_providers))
         .route(
-            "/v1/providers/{id}",
+            "/v1/platform/providers",
+            post(create_provider).get(list_providers),
+        )
+        .route(
+            "/v1/platform/providers/{id}",
             get(get_provider)
                 .patch(update_provider)
                 .delete(delete_provider),
         )
-        .route("/v1/providers/check-credentials", post(check_credentials))
-        .route("/v1/providers/{id}/sync-models", post(sync_models))
-        .route("/v1/providers/{id}/models/review", post(review_models))
-        .route("/v1/providers/{id}/oauth/authorize", get(oauth_authorize))
+        .route(
+            "/v1/platform/providers/check-credentials",
+            post(check_credentials),
+        )
+        .route("/v1/platform/providers/{id}/sync-models", post(sync_models))
+        .route(
+            "/v1/platform/providers/{id}/models/review",
+            post(review_models),
+        )
+        .route(
+            "/v1/platform/providers/{id}/oauth/authorize",
+            get(oauth_authorize),
+        )
         .route("/v1/providers/{id}/oauth/callback", get(oauth_callback))
         .with_state(state)
 }

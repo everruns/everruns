@@ -1,12 +1,14 @@
 // Session participant API functions
-// Org is sent via everruns_org cookie (set by OrgProvider via /v1/users/me/switch-org)
+// Org is sent via everruns_org cookie (set by OrgProvider via /v1/platform/users/me/switch-org)
 
 import { api } from "./client";
 import type { SessionParticipant, AddSessionParticipantRequest } from "./types";
 
 /** List participants for a session (active and left). */
 export async function listSessionParticipants(sessionId: string): Promise<SessionParticipant[]> {
-  const response = await api.get<SessionParticipant[]>(`/v1/sessions/${sessionId}/participants`);
+  const response = await api.get<SessionParticipant[]>(
+    `/v1/platform/sessions/${sessionId}/participants`,
+  );
   return response.data;
 }
 
@@ -19,7 +21,7 @@ export async function addSessionParticipant(
   body: AddSessionParticipantRequest,
 ): Promise<SessionParticipant> {
   const response = await api.post<SessionParticipant>(
-    `/v1/sessions/${sessionId}/participants`,
+    `/v1/platform/sessions/${sessionId}/participants`,
     body,
   );
   return response.data;
@@ -34,7 +36,7 @@ export async function leaveSessionParticipant(
   participantId: string,
 ): Promise<SessionParticipant> {
   const response = await api.delete<SessionParticipant>(
-    `/v1/sessions/${sessionId}/participants/${participantId}`,
+    `/v1/platform/sessions/${sessionId}/participants/${participantId}`,
   );
   return response.data;
 }

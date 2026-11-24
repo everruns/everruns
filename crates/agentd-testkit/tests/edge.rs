@@ -109,7 +109,7 @@ impl Setup {
     async fn events(&self, credential: &str) -> (StatusCode, Value) {
         self.call(
             Method::GET,
-            &format!("/v1/sessions/{}/events", self.session),
+            &format!("/v1/platform/sessions/{}/events", self.session),
             &[("authorization", credential)],
             None,
         )
@@ -122,13 +122,63 @@ fn from_control_plane(body: &Value) -> bool {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn legacy_platform_session_calls_keep_routing_and_announce_deprecation() {
+    use everruns_contracts::platform_api::LEGACY_DEPRECATION;
+    let s = setup().await;
+    let path = format!("/v1/sessions/{}/messages", s.session);
+    let response = s.fleet.http.post(format!("{}{path}", s.edge))
+        .bearer_auth("user-org-a")
+        .json(&json!({ "message": { "role": "user", "content": [{ "type": "text", "text": "legacy" }] } }))
+        .send().await.unwrap();
+    assert_eq!(response.status(), StatusCode::CREATED);
+    assert_eq!(response.headers()["deprecation"], LEGACY_DEPRECATION);
+    assert!(
+        response.headers()["link"]
+            .to_str()
+            .unwrap()
+            .contains(&format!("/v1/platform/sessions/{}/messages", s.session))
+    );
+    assert_eq!(
+        response.json::<Value>().await.unwrap()["status"],
+        "accepted"
+    );
+    for path in [
+        format!("/v1/sessions/{}/events", s.session),
+        "/v1/commands/list_events".into(),
+    ] {
+        let request = if path.contains("commands") {
+            s.fleet
+                .http
+                .post(format!("{}{path}", s.edge))
+                .json(&json!({"params":{"session_id":s.session}}))
+        } else {
+            s.fleet.http.get(format!("{}{path}", s.edge))
+        };
+        let response = request.bearer_auth("user-org-a").send().await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK, "{path}");
+        assert_eq!(response.headers()["deprecation"], LEGACY_DEPRECATION);
+        let value = response.json::<Value>().await.unwrap();
+        assert!(!from_control_plane(&value), "{value}");
+    }
+    // Published Agent Execution URLs are forwarded without migration headers.
+    let response = s
+        .fleet
+        .http
+        .get(format!("{}/v1/channels/channel_1/sessions", s.edge))
+        .send()
+        .await
+        .unwrap();
+    assert!(!response.headers().contains_key("deprecation"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn a_v2_orgs_session_calls_reach_the_data_plane_and_records_the_control_plane() {
     let s = setup().await;
     let me = [("authorization", "Bearer user-org-a")];
     let (status, sent) = s
         .call(
             Method::POST,
-            &format!("/v1/sessions/{}/messages", s.session),
+            &format!("/v1/platform/sessions/{}/messages", s.session),
             &me,
             Some(json!({ "message": { "role": "user", "content": [{ "type": "text", "text": "hi" }] } })),
         )
@@ -158,7 +208,7 @@ async fn a_v2_orgs_session_calls_reach_the_data_plane_and_records_the_control_pl
     let (status, body) = s
         .call(
             Method::GET,
-            &format!("/v1/sessions/{}/fs/notes.md", s.session),
+            &format!("/v1/platform/sessions/{}/fs/notes.md", s.session),
             &me,
             None,
         )
@@ -175,7 +225,7 @@ async fn a_v2_orgs_session_calls_reach_the_data_plane_and_records_the_control_pl
     let (_, body) = s
         .call(
             Method::GET,
-            &format!("/v1/sessions/{other}/events"),
+            &format!("/v1/platform/sessions/{other}/events"),
             &me,
             None,
         )
@@ -201,7 +251,7 @@ async fn the_clis_commands_for_a_v2_session_reach_the_data_plane() {
     let (status, first) = s
         .call(
             Method::POST,
-            "/v1/commands/create_message",
+            "/v1/platform/commands/create_message",
             &me,
             Some(send.clone()),
         )
@@ -212,13 +262,23 @@ async fn the_clis_commands_for_a_v2_session_reach_the_data_plane() {
     assert_eq!(first["output"]["status"], "accepted", "{first}");
     // A retry with the same key is the same message, admitted once.
     let (_, again) = s
-        .call(Method::POST, "/v1/commands/create_message", &me, Some(send))
+        .call(
+            Method::POST,
+            "/v1/platform/commands/create_message",
+            &me,
+            Some(send),
+        )
         .await;
     assert_eq!(again["output"]["id"], first["output"]["id"]);
 
     let list = json!({ "params": { "session_id": s.session, "limit": 1, "order_desc": true } });
     let (status, listed) = s
-        .call(Method::POST, "/v1/commands/list_events", &me, Some(list))
+        .call(
+            Method::POST,
+            "/v1/platform/commands/list_events",
+            &me,
+            Some(list),
+        )
         .await;
     assert_eq!(status, StatusCode::OK, "{listed}");
     assert_eq!(
@@ -238,7 +298,7 @@ async fn the_clis_commands_for_a_v2_session_reach_the_data_plane() {
         let (_, body) = s
             .call(
                 Method::POST,
-                &format!("/v1/commands/{name}"),
+                &format!("/v1/platform/commands/{name}"),
                 &me,
                 Some(json!({ "params": params })),
             )
@@ -278,7 +338,7 @@ async fn no_token_reaches_another_orgs_session() {
             let (status, body) = s
                 .call(
                     Method::GET,
-                    &format!("/v1/sessions/{}/events", s.session),
+                    &format!("/v1/platform/sessions/{}/events", s.session),
                     &[(header, &value)],
                     None,
                 )
@@ -292,7 +352,7 @@ async fn no_token_reaches_another_orgs_session() {
     let (status, _) = s
         .call(
             Method::GET,
-            &format!("/v1/sessions/{}/events", s.session),
+            &format!("/v1/platform/sessions/{}/events", s.session),
             &[("cookie", &format!("everruns_org_token={mine}"))],
             None,
         )
@@ -328,7 +388,7 @@ async fn with_the_control_plane_down_a_session_keeps_working() {
     let (status, sent) = s
         .call(
             Method::POST,
-            &format!("/v1/sessions/{}/messages", s.session),
+            &format!("/v1/platform/sessions/{}/messages", s.session),
             &[("authorization", "Bearer user-org-a")],
             Some(json!({ "text": "still here" })),
         )

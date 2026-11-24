@@ -18,7 +18,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Step 1: Create an agent
     println!("Creating agent...");
     let create_response = client
-        .post(format!("{}/v1/agents", API_BASE_URL))
+        .post(format!("{}/v1/platform/agents", API_BASE_URL))
         .json(&json!({
             "name": "My First Agent",
             "description": "A helpful AI assistant",
@@ -43,7 +43,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Step 2: Retrieve the agent
     println!("\nRetrieving agent...");
     let get_response = client
-        .get(format!("{}/v1/agents/{}", API_BASE_URL, agent.public_id))
+        .get(format!(
+            "{}/v1/platform/agents/{}",
+            API_BASE_URL, agent.public_id
+        ))
         .send()
         .await?;
 
@@ -59,7 +62,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Step 3: List all agents
     println!("\nListing all agents...");
     let list_response = client
-        .get(format!("{}/v1/agents", API_BASE_URL))
+        .get(format!("{}/v1/platform/agents", API_BASE_URL))
         .send()
         .await?;
 
@@ -72,8 +75,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("\nExample completed successfully!");
     println!("\nNext steps:");
-    println!("   - Create a session: POST /v1/sessions (with agent_id in body)");
-    println!("   - Send a message: POST /v1/sessions/<session_id>/messages");
+    println!("   - Create a session: POST /v1/platform/sessions (with agent_id in body)");
+    println!("   - Send a message: POST /v1/platform/sessions/<session_id>/messages");
     println!("   - View API docs: https://everruns.com/docs");
 
     Ok(())

@@ -17,8 +17,8 @@ bundle of concept documents, confirm entries are created with the correct
 `kind`/`resource`/`tags`, confirm a re-import is idempotent (no duplicates),
 then export and confirm the bundle reproduces the documents.
 
-Exercises `POST /v1/knowledge-bases/{kb_id}/okf_import` and
-`GET /v1/knowledge-bases/{kb_id}/okf_export`. See knowledge/runtime-resources/okf-adoption.md.
+Exercises `POST /v1/platform/knowledge-bases/{kb_id}/okf_import` and
+`GET /v1/platform/knowledge-bases/{kb_id}/okf_export`. See knowledge/runtime-resources/okf-adoption.md.
 
 ## Preconditions
 
@@ -38,7 +38,7 @@ A two-document OKF bundle (a table and a metric):
 
 1. **Create a Knowledge Base:**
    ```bash
-   KB_ID=$(curl -s -X POST "http://localhost:9300/api/v1/knowledge-bases" \
+   KB_ID=$(curl -s -X POST "http://localhost:9300/api/v1/platform/knowledge-bases" \
      -H "Content-Type: application/json" \
      -d '{"name": "OKF Round-Trip"}' | jq -r .id)
    echo "$KB_ID"   # expect kb_...
@@ -46,7 +46,7 @@ A two-document OKF bundle (a table and a metric):
 
 2. **Import the bundle (inline files):**
    ```bash
-   curl -s -X POST "http://localhost:9300/api/v1/knowledge-bases/$KB_ID/okf_import" \
+   curl -s -X POST "http://localhost:9300/api/v1/platform/knowledge-bases/$KB_ID/okf_import" \
      -H "Content-Type: application/json" \
      -d '{
        "files": [
@@ -60,14 +60,14 @@ A two-document OKF bundle (a table and a metric):
 
 3. **List entries:**
    ```bash
-   curl -s "http://localhost:9300/api/v1/knowledge-bases/$KB_ID/entries" | jq '.items[] | {title, kind, resource, tags}'
+   curl -s "http://localhost:9300/api/v1/platform/knowledge-bases/$KB_ID/entries" | jq '.items[] | {title, kind, resource, tags}'
    ```
 
 4. **Re-import the identical bundle** (repeat step 2) and inspect the summary.
 
 5. **Export the bundle:**
    ```bash
-   curl -s "http://localhost:9300/api/v1/knowledge-bases/$KB_ID/okf_export" -o /tmp/okf-export.tar.gz
+   curl -s "http://localhost:9300/api/v1/platform/knowledge-bases/$KB_ID/okf_export" -o /tmp/okf-export.tar.gz
    tar tzf /tmp/okf-export.tar.gz
    tar xzf /tmp/okf-export.tar.gz -O tables/orders.md
    ```

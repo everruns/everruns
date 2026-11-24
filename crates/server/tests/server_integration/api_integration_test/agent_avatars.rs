@@ -37,7 +37,7 @@ async fn upload(
     server
         .request_raw(
             Method::PUT,
-            &format!("/v1/agents/{agent_id}/avatar"),
+            &format!("/v1/platform/agents/{agent_id}/avatar"),
             vec![("content-type", header.as_str())],
             multipart(content_type, data),
         )
@@ -47,7 +47,7 @@ async fn upload(
 async fn create_agent(server: &TestServer, name: &str) -> Value {
     server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({ "name": name, "system_prompt": "You help." }),
         )
         .await
@@ -88,13 +88,13 @@ async fn uploaded_avatar_is_served_as_immutable_square_and_circle_presets() {
 
     // The agent carries it, both alone and in the list.
     let fetched: Value = server
-        .get(&format!("/v1/agents/{agent_id}"))
+        .get(&format!("/v1/platform/agents/{agent_id}"))
         .await
         .assert_status(StatusCode::OK)
         .json();
     assert_eq!(fetched["avatar"], avatar);
     let listed: Value = server
-        .get("/v1/agents")
+        .get("/v1/platform/agents")
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -182,7 +182,7 @@ async fn uploaded_avatar_is_served_as_immutable_square_and_circle_presets() {
     // Editing the agent keeps the avatar.
     let patched: Value = server
         .patch(
-            &format!("/v1/agents/{agent_id}"),
+            &format!("/v1/platform/agents/{agent_id}"),
             json!({ "description": "Still me" }),
         )
         .await
@@ -191,11 +191,11 @@ async fn uploaded_avatar_is_served_as_immutable_square_and_circle_presets() {
     assert_eq!(patched["avatar"]["id"], replaced["id"]);
 
     server
-        .delete(&format!("/v1/agents/{agent_id}/avatar"))
+        .delete(&format!("/v1/platform/agents/{agent_id}/avatar"))
         .await
         .assert_status(StatusCode::NO_CONTENT);
     let fetched: Value = server
-        .get(&format!("/v1/agents/{agent_id}"))
+        .get(&format!("/v1/platform/agents/{agent_id}"))
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -305,7 +305,7 @@ async fn curated_preset_selection_persists_and_shares_upload_pipeline() {
     assert_eq!(catalog.len(), 25);
     let agent = create_agent(&server, "preset-avatar").await;
     let id = agent["id"].as_str().unwrap();
-    let path = format!("/v1/agents/{id}/avatar/preset");
+    let path = format!("/v1/platform/agents/{id}/avatar/preset");
     for bad in [
         "unknown",
         "../watchers-bracket",
@@ -325,7 +325,7 @@ async fn curated_preset_selection_persists_and_shares_upload_pipeline() {
     let current: Value = server.get(&path).await.assert_status(StatusCode::OK).json();
     assert_eq!(current["preset_id"], "familiars-patch");
     let fetched: Value = server
-        .get(&format!("/v1/agents/{id}"))
+        .get(&format!("/v1/platform/agents/{id}"))
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -368,7 +368,7 @@ async fn curated_preset_selection_persists_and_shares_upload_pipeline() {
     // The `set_agent_avatar` command route stores the same preset selection.
     server
         .post(
-            &format!("/v1/agents/{id}/avatar/set"),
+            &format!("/v1/platform/agents/{id}/avatar/set"),
             json!({"preset_id": "bloom-mint"}),
         )
         .await
@@ -376,14 +376,14 @@ async fn curated_preset_selection_persists_and_shares_upload_pipeline() {
     let current: Value = server.get(&path).await.json();
     assert_eq!(current["preset_id"], "bloom-mint");
     server
-        .delete(&format!("/v1/agents/{id}/avatar"))
+        .delete(&format!("/v1/platform/agents/{id}/avatar"))
         .await
         .assert_status(StatusCode::NO_CONTENT);
     let current: Value = server.get(&path).await.json();
     assert!(current["preset_id"].is_null());
     server
         .put(
-            "/v1/agents/agent_01933b5a000070008000000000000099/avatar/preset",
+            "/v1/platform/agents/agent_01933b5a000070008000000000000099/avatar/preset",
             json!({"preset_id":"bloom-mint"}),
         )
         .await
@@ -467,13 +467,13 @@ mod authorization {
         resolver.armed.store(true, Ordering::SeqCst);
         server
             .put(
-                &format!("/v1/agents/{id}/avatar/preset"),
+                &format!("/v1/platform/agents/{id}/avatar/preset"),
                 json!({"preset_id": "bloom-mint"}),
             )
             .await
             .assert_status(StatusCode::FORBIDDEN);
         server
-            .get(&format!("/v1/agents/{id}/avatar/preset"))
+            .get(&format!("/v1/platform/agents/{id}/avatar/preset"))
             .await
             .assert_status(StatusCode::FORBIDDEN);
         upload(&server, id, "image/png", &png(128, 128, [0, 0, 0]))
@@ -481,13 +481,13 @@ mod authorization {
             .assert_status(StatusCode::FORBIDDEN);
         server
             .post(
-                &format!("/v1/agents/{id}/avatar/set"),
+                &format!("/v1/platform/agents/{id}/avatar/set"),
                 json!({"preset_id": "bloom-mint"}),
             )
             .await
             .assert_status(StatusCode::FORBIDDEN);
         server
-            .delete(&format!("/v1/agents/{id}/avatar"))
+            .delete(&format!("/v1/platform/agents/{id}/avatar"))
             .await
             .assert_status(StatusCode::FORBIDDEN);
     }

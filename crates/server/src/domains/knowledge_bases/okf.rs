@@ -544,7 +544,7 @@ pub fn encode_tar_gz(files: &[(String, String)]) -> Result<Vec<u8>> {
 }
 
 // ============================================
-// Import command (HTTP: POST /v1/knowledge-bases/{kb_id}/okf_import)
+// Import command (HTTP: POST /v1/platform/knowledge-bases/{kb_id}/okf_import)
 // ============================================
 
 /// Max files accepted in one bundle, bounding parse/import work.
@@ -612,7 +612,7 @@ impl crate::domains::common::Command for ImportOkfBundle {
             category: "knowledge_bases",
             description: "Import an Open Knowledge Format (OKF) bundle into a knowledge base.",
             method: "POST",
-            path: "/v1/knowledge-bases/{kb_id}/okf_import",
+            path: "/v1/platform/knowledge-bases/{kb_id}/okf_import",
         }
     }
 

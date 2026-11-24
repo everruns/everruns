@@ -25,6 +25,15 @@ pub(super) fn apply_personal_access_token_routes_wrap(
 }
 
 impl ServerAppBuilder {
+    /// Extend the compatibility inventory for embedder-owned namespaces.
+    /// Canonical paths receive legacy aliases; published paths in the same
+    /// namespace are preserved. This does not grant any route permissions.
+    pub fn legacy_api_paths(mut self, paths: &[&str]) -> Self {
+        self.legacy_api_paths
+            .extend(paths.iter().map(|path| (*path).to_owned()));
+        self
+    }
+
     /// Classify embedder routes for personal access token scopes.
     ///
     /// Each row is `(method, path, class)`, with `path` as the route is

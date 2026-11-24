@@ -37,12 +37,12 @@ pub struct ExtractRequest {
 
 pub fn routes(state: ApiState) -> Router {
     Router::new()
-        .route("/v1/extractions", post(extract_typed_fields))
+        .route("/v1/platform/extractions", post(extract_typed_fields))
         .layer(DefaultBodyLimit::max(8 * 1024 * 1024))
         .with_state(state)
 }
 
-#[utoipa::path(post, path = "/v1/extractions", operation_id = "extract_typed_fields",
+#[utoipa::path(post, path = "/v1/platform/extractions", operation_id = "extract_typed_fields",
  summary = "Extract typed fields", request_body = ExtractRequest,
  responses((status = 200, description = "Typed extraction values, evidence and usage", body = ExtractionOutcome),
  (status = 400, description = "Invalid or unsupported extraction request"),

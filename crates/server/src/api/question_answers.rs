@@ -673,7 +673,7 @@ pub struct SubmittedAnswer {
     pub other_text: Option<String>,
     /// Handle to the stored credential, on a `secret` question only — the value
     /// itself is never submitted here. Store it with
-    /// `PUT /v1/sessions/{session_id}/storage/secrets` first, then answer with
+    /// `PUT /v1/platform/sessions/{session_id}/storage/secrets` first, then answer with
     /// `session:{secret_name}`.
     #[serde(default)]
     #[schema(example = "session:STRIPE_API_KEY")]
@@ -709,18 +709,18 @@ pub struct QuestionAnswersResponse {
 /// router because it is the same pause-and-resume surface.
 pub fn routes() -> axum::Router<super::tool_results::AppState> {
     axum::Router::new().route(
-        "/v1/sessions/{session_id}/question-answers",
+        "/v1/platform/sessions/{session_id}/question-answers",
         axum::routing::post(submit_question_answers),
     )
 }
 
-/// POST /v1/sessions/{session_id}/question-answers
+/// POST /v1/platform/sessions/{session_id}/question-answers
 ///
 /// Answers the question set an agent raised with `ask_user`, and resumes the
 /// paused turn.
 #[utoipa::path(
     post,
-    path = "/v1/sessions/{session_id}/question-answers",
+    path = "/v1/platform/sessions/{session_id}/question-answers",
     params(
         ("session_id" = String, Path, description = "Session ID (prefixed, e.g., session_...)")
     ),

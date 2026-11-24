@@ -101,7 +101,7 @@ pub struct UpdateKnowledgeIndexRequest {
     pub embedding_model_id: Option<ModelId>,
 }
 
-/// Query parameters for `GET /v1/knowledge-indexes` — optional name/desc
+/// Query parameters for `GET /v1/platform/knowledge-indexes` — optional name/desc
 /// search plus a flag to include archived indexes.
 #[derive(Debug, Clone, Deserialize, IntoParams, ToSchema)]
 pub struct ListKnowledgeIndexesQuery {

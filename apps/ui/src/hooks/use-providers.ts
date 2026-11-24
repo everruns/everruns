@@ -249,7 +249,8 @@ export function useDefaultModel() {
   const org = currentOrg?.public_id;
   const query = useQuery({
     queryKey: [...queryKeys.models.list(), "default", org],
-    queryFn: async () => (await api.get<ModelWithProvider | null>("/v1/models/default")).data,
+    queryFn: async () =>
+      (await api.get<ModelWithProvider | null>("/v1/platform/models/default")).data,
     enabled: !!org,
     staleTime: 30_000,
   });
@@ -271,7 +272,7 @@ export function useModelProfiles(
       return (
         await api.get<
           import("@/lib/api/types").ListResponse<import("@/lib/api/types").ModelProfileResponse>
-        >(`/v1/model-profiles?${params}`)
+        >(`/v1/platform/model-profiles?${params}`)
       ).data.data;
     },
   });
@@ -283,11 +284,11 @@ export function useDecisionDefault() {
     queryKey: ["decision-default", currentOrg?.public_id],
     enabled: !!currentOrg,
     queryFn: async () =>
-      (await api.get<ModelWithProvider | null>("/v1/models/decision-default")).data,
+      (await api.get<ModelWithProvider | null>("/v1/platform/models/decision-default")).data,
   });
   const mutation = useMutation({
     mutationFn: async (model_id: string | null) =>
-      (await api.put("/v1/models/decision-default", { model_id })).data,
+      (await api.put("/v1/platform/models/decision-default", { model_id })).data,
     onSuccess: () => client.invalidateQueries({ queryKey: ["decision-default"] }),
   });
   return { ...query, setDefault: mutation };
@@ -301,11 +302,11 @@ export function useImageDefault() {
     queryKey: ["images-default", currentOrg?.public_id],
     enabled: !!currentOrg,
     queryFn: async () =>
-      (await api.get<ModelWithProvider | null>("/v1/models/images-default")).data,
+      (await api.get<ModelWithProvider | null>("/v1/platform/models/images-default")).data,
   });
   const mutation = useMutation({
     mutationFn: async (model_id: string | null) =>
-      (await api.put("/v1/models/images-default", { model_id })).data,
+      (await api.put("/v1/platform/models/images-default", { model_id })).data,
     onSuccess: () => client.invalidateQueries({ queryKey: ["images-default"] }),
   });
   return { ...query, setDefault: mutation };

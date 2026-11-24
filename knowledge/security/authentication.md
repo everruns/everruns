@@ -57,10 +57,10 @@ Authorization: Bearer <personal_access_token>
   (read-only). Creation accepts only `[]`, `["*"]` or `["read"]`; anything
   else is `400 unsupported_pat_scopes`. A `read` token reaches only routes
   classified `Read`, in every org the user belongs to, on REST,
-  `/v1/commands`, `/mcp` and as an execution API org member; anything else is
+  `/v1/platform/commands`, `/mcp` and as an execution API org member; anything else is
   `403 insufficient_scope`. It never reaches token management, the auth
   surface, membership, credential minting or the full personal data export
-  (`GET /v1/users/me/export`). `GET /v1/auth/me` reports the request's
+  (`GET /v1/platform/users/me/export`). `GET /v1/platform/auth/me` reports the request's
   `token_scope` (`null` for non-PAT credentials), and the
   `auth.personal_access_token.created` audit event records `scopes`. Design
   and route classification: [Personal Access Token Scopes](pat-scopes.md).
@@ -107,17 +107,17 @@ product, which are org-scoped configuration, not auth principals.
 
 Interactive CLI authentication via `everruns login`. Flow:
 
-1. CLI calls `POST /v1/auth/cli/start` with `redirect_port`
+1. CLI calls `POST /v1/platform/auth/cli/start` with `redirect_port`
 2. Server creates a pending `cli_auth_sessions` row (state + exchange_code, 5-min TTL)
 3. Server returns `auth_url` pointing at the login page with `return_to=<api-prefix>/v1/auth/cli/callback?state=...`, the same `return_to` resume parameter used by every other login flow (see [Login Page Contract](#login-page-contract) below)
 4. CLI opens browser and starts one-shot localhost HTTP server
 5. User logs in; the login page navigates to the `return_to` path, which hits `/v1/auth/cli/callback` on the server (through the frontend's standard API proxy). The server looks up the session by `state`, associates the authenticated user, and redirects to `localhost:{port}/callback?code=...`
 6. CLI receives code, redirects browser to `/cli/login-success` (branded success page)
-7. CLI calls `POST /v1/auth/cli/exchange` with code + hostname + os
+7. CLI calls `POST /v1/platform/auth/cli/exchange` with code + hostname + os
 8. Server creates a personal access token with metadata, returns token + user + orgs
 9. CLI prompts for org selection (if multiple), stores credentials in the platform config file (`~/.config/everruns/credentials.json` on Linux, `~/Library/Application Support/everruns/credentials.json` on macOS)
 
-Endpoints: `POST /v1/auth/cli/start`, `GET /v1/auth/cli/callback`, `POST /v1/auth/cli/exchange`, `GET /cli/login-success`
+Endpoints: `POST /v1/platform/auth/cli/start`, `GET /v1/auth/cli/callback`, `POST /v1/platform/auth/cli/exchange`, `GET /cli/login-success`
 
 The server identifies the CLI session via the opaque `state` token from `cli_auth_sessions`, not via a callback URL embedded in the login-page contract. This keeps the public login-page contract uniform across all auth flows.
 
@@ -131,7 +131,7 @@ See `crates/server/src/auth/cli_auth.rs` for implementation.
 - The browser UI names its organization on every request with `X-Org-Id`, and
   keeps the `everruns_org` cookie in sync only as the fallback for transports
   that cannot set headers (SSE, browser-navigated downloads). The cookie alone
-  is not sufficient: it is set by a separate `POST /v1/users/me/switch-org` that
+  is not sufficient: it is set by a separate `POST /v1/platform/users/me/switch-org` that
   lands after the client has already committed the new organization, so requests
   issued in that window were answered in the previous organization and cached
   under the new one — which is how a user ended up with several precreated
@@ -168,7 +168,7 @@ The login page accepts exactly one public query parameter for auth resume:
 
 - UI middleware / main layout when redirecting unauthenticated users (via `getLoginRedirectPath`).
 - MCP OAuth `GET /oauth/authorize` when the caller has no session.
-- `POST /v1/auth/cli/start` when building the CLI login URL.
+- `POST /v1/platform/auth/cli/start` when building the CLI login URL.
 
 **External auth backends:** External login pages only need to honor `return_to`, no other parameter. There is no need for a separate `redirect_to` path.
 
@@ -177,7 +177,7 @@ trusted remote HTTP(S) origin. When configured, unauthenticated browser flows
 use `{AUTH_LOGIN_ORIGIN}/login`; when absent, they preserve the existing
 same-origin relative `/login` behavior. The configured value is validated at
 startup as an origin only (no credentials, path, query, or fragment), is
-exposed read-only as `login_origin` from `GET /v1/auth/config`, and is never
+exposed read-only as `login_origin` from `GET /v1/platform/auth/config`, and is never
 derived from request or query input. Absolute login URLs use full-page browser
 navigation, never the Next.js client router.
 
@@ -196,7 +196,7 @@ buttons first, email + password as the secondary path behind an email →
 password two-step). Login vs signup is the same action: the UI authenticates,
 and when the server returns 401, signup is enabled, and the password meets the
 registration minimum, it retries the same credentials against
-`POST /v1/auth/register`. Server contracts are unchanged, the unification is
+`POST /v1/platform/auth/register`. Server contracts are unchanged, the unification is
 purely a UI-flow decision.
 
 Enumeration stance: the door never reveals whether an email has an account.
@@ -211,7 +211,7 @@ failures are equally generic). The visible difference between "logged in" and
 
 ### External Mode and OAuth Providers
 
-`AUTH_MODE=external` and the built-in OAuth flow are mutually exclusive. External mode delegates user identity to a third-party provider (PropelAuth, Auth0, Clerk, etc.); the platform's own OAuth handlers (`/v1/auth/oauth/{provider}`, `/v1/auth/callback/{provider}`) are disabled.
+`AUTH_MODE=external` and the built-in OAuth flow are mutually exclusive. External mode delegates user identity to a third-party provider (PropelAuth, Auth0, Clerk, etc.); the platform's own OAuth handlers (`/v1/platform/auth/oauth/{provider}`, `/v1/auth/callback/{provider}`) are disabled.
 
 To prevent silent 401s for hybrid deployments that accidentally configure both at once, `AuthConfig::validate()` runs at startup (inside `AuthConfig::from_env()`) and **panics with a clear message** when `AUTH_MODE=external` and any of the following are set:
 
@@ -220,7 +220,7 @@ To prevent silent 401s for hybrid deployments that accidentally configure both a
 
 The error names both the conflicting mode and the specific env vars, and points operators to remove the OAuth env vars or switch `AUTH_MODE=full`. The repo-access GitHub App config (`GITHUB_APP_ID` / `GITHUB_APP_PRIVATE_KEY`) is **not** affected, it powers per-user repo connections, not the login flow, so External mode + GitHub App is supported.
 
-This is a fail-fast validation: operators see the misconfiguration at deploy time, not during a built-in OAuth login attempt on `/v1/auth/oauth/{provider}` or its callback `/v1/auth/callback/{provider}` after rollout. See `crates/server/src/auth/config.rs::validate` for the implementation and the top-of-file decision comment.
+This is a fail-fast validation: operators see the misconfiguration at deploy time, not during a built-in OAuth login attempt on `/v1/platform/auth/oauth/{provider}` or its callback `/v1/auth/callback/{provider}` after rollout. See `crates/server/src/auth/config.rs::validate` for the implementation and the top-of-file decision comment.
 
 ### OAuth Providers
 
@@ -260,16 +260,16 @@ database even against write paths that bypass the application (EVE-704).
 Off by default (self-host keeps instant-session signup). When enabled,
 email/password signup is an explicit, enumeration-safe two-step flow:
 
-- `POST /v1/auth/register` never creates a session. A fresh address creates
+- `POST /v1/platform/auth/register` never creates a session. A fresh address creates
   an unverified account and emails a confirmation link; an already-registered
   address sends a "you already have an account" email instead. Both cases
   return the same `200 { "ok": true }`, the emailed body is the only place
   the two outcomes diverge.
-- `POST /v1/auth/verify-email` consumes the single-use token and marks the
+- `POST /v1/platform/auth/verify-email` consumes the single-use token and marks the
   email verified. It does not mint a session; after confirmation the user signs
   in explicitly so verification links cannot overwrite another browser's
   existing session.
-- `/v1/auth/config` advertises `signup_email_confirm` so the UI renders the
+- `/v1/platform/auth/config` advertises `signup_email_confirm` so the UI renders the
   "Check your email" landing (identical copy for new and existing addresses)
   instead of expecting tokens.
 - Requires a configured email sender; enabling it without one makes email
@@ -279,8 +279,8 @@ email/password signup is an explicit, enumeration-safe two-step flow:
 
 Self-service recovery for local (password) accounts. Two endpoints:
 
-- `POST /v1/auth/forgot-password` `{ email }`, always returns `200 { "ok": true }` regardless of whether the email exists (account-enumeration safe). For an existing local account it creates a single-use reset token (1-hour TTL) and emails a `{FRONTEND_URL}/reset-password?token=…` link. OAuth-only accounts are skipped silently. Email delivery is best-effort: a disabled/unconfigured sender or a transport failure is logged, never surfaced.
-- `POST /v1/auth/reset-password` `{ token, password }`, consumes the token (atomic single-use), enforces the same 12-character minimum as registration, updates the password hash, and **revokes all of the user's refresh tokens** so any sessions established before the reset are invalidated. Invalid/expired/used tokens return a generic `400`.
+- `POST /v1/platform/auth/forgot-password` `{ email }`, always returns `200 { "ok": true }` regardless of whether the email exists (account-enumeration safe). For an existing local account it creates a single-use reset token (1-hour TTL) and emails a `{FRONTEND_URL}/reset-password?token=…` link. OAuth-only accounts are skipped silently. Email delivery is best-effort: a disabled/unconfigured sender or a transport failure is logged, never surfaced.
+- `POST /v1/platform/auth/reset-password` `{ token, password }`, consumes the token (atomic single-use), enforces the same 12-character minimum as registration, updates the password hash, and **revokes all of the user's refresh tokens** so any sessions established before the reset are invalidated. Invalid/expired/used tokens return a generic `400`.
 
 Token model: the raw token is emailed once and never stored; only its SHA-256 hash is persisted (`password_reset_tokens`, migration 089). Single-use is enforced via `used_at` set in one atomic `UPDATE … WHERE used_at IS NULL AND expires_at > now()`.
 
@@ -292,17 +292,17 @@ it, an OAuth-only user who tried a password and then reset would dead-end on a
 
 ### Email Verification
 
-Confirms a user controls the email they registered with. On successful `POST /v1/auth/register`, a verification token is created and a `{FRONTEND_URL}/verify-email?token=…` link is emailed (best-effort; never fails registration). Endpoints:
+Confirms a user controls the email they registered with. On successful `POST /v1/platform/auth/register`, a verification token is created and a `{FRONTEND_URL}/verify-email?token=…` link is emailed (best-effort; never fails registration). Endpoints:
 
-- `POST /v1/auth/verify-email` `{ token }`, consumes the token and sets `users.email_verified = true`. Invalid/expired/used tokens return a generic `400`.
-- `POST /v1/auth/resend-verification` `{ email }`, account-enumeration safe (`200 { "ok": true }` always); issues a new token only for an existing local account whose email is not yet verified.
+- `POST /v1/platform/auth/verify-email` `{ token }`, consumes the token and sets `users.email_verified = true`. Invalid/expired/used tokens return a generic `400`.
+- `POST /v1/platform/auth/resend-verification` `{ email }`, account-enumeration safe (`200 { "ok": true }` always); issues a new token only for an existing local account whose email is not yet verified.
 
 Token model is identical to password reset (hashed, single-use, short TTL; `email_verification_tokens`, migration 089) but with a 24-hour TTL. Both recovery and verification routes share the registration rate limiter (per client IP).
 
 Login does **not** gate on `email_verified`, so a signed-in user can be
 unverified. To avoid stranding them (the original 24h token may have expired,
 and re-signup sends a "log in" email, not a fresh link), `email_verified` is
-exposed on `GET /v1/auth/me` and drives a persistent in-app **verify-email
+exposed on `GET /v1/platform/auth/me` and drives a persistent in-app **verify-email
 banner** (`components/layout/verify-email-banner.tsx`) with an inline resend,
 the surfaced path a signed-in unverified user needs before they hit the
 invite-accept gate (TM-AUTH-023). The `/verify-email` dead-link state (no
@@ -323,12 +323,12 @@ Beyond the per-IP limiter (TM-AUTH-001), the auth surface enforces:
   sending (the throttle is not an oracle).
 - **OAuth endpoints** share the login-tier per-IP limiter (the callback
   performs an outbound token exchange per hit).
-- **Logout revokes server-side**: `POST /v1/auth/logout` deletes the
+- **Logout revokes server-side**: `POST /v1/platform/auth/logout` deletes the
   refresh-token row (best-effort) in addition to clearing cookies.
 - **Captcha (optional)**: setting `AUTH_TURNSTILE_SITE_KEY` +
   `AUTH_TURNSTILE_SECRET_KEY` requires a Cloudflare Turnstile token
   (`captcha_token`) on register / forgot-password / resend-verification.
-  `/v1/auth/config` advertises `captcha: { provider, site_key }` so the UI
+  `/v1/platform/auth/config` advertises `captcha: { provider, site_key }` so the UI
   renders the widget only when configured. Fail-closed: invalid → generic
   403; siteverify outage → 500-class retryable error.
 
@@ -534,7 +534,7 @@ The admin-bootstrap path (first-admin login in `login`) uses the same safety net
 3. **Personal Access Token Storage**: Only hash is stored, full token shown once at creation
 4. **Password Storage**: Argon2id with secure defaults
 5. **Token Revocation**: Refresh tokens can be revoked by deleting from database
-6. **Token Auto-Refresh**: The UI API client intercepts 401 responses and attempts a silent token refresh before failing (skips `/v1/auth/` endpoints to avoid loops; concurrent 401s are deduplicated into a single refresh request)
+6. **Token Auto-Refresh**: The UI API client intercepts 401 responses and attempts a silent token refresh before failing (skips `/v1/platform/auth/` endpoints to avoid loops; concurrent 401s are deduplicated into a single refresh request)
 
 ### Error Responses
 
@@ -551,7 +551,7 @@ The admin-bootstrap path (first-admin login in `login`) uses the same safety net
 
 ### Configuration Discovery
 
-The UI fetches authentication configuration from `GET /v1/auth/config` on startup (returns mode, password/OAuth/signup status).
+The UI fetches authentication configuration from `GET /v1/platform/auth/config` on startup (returns mode, password/OAuth/signup status).
 
 ### Conditional Rendering
 
@@ -560,7 +560,7 @@ Based on `mode`:
 - **none**: Skip authentication entirely, show app directly
 - **admin/full**: Require login before accessing protected routes
 - **external**: Auth required (like full), but login/signup managed by external provider
-- Protected routes fail closed while auth bootstrap state is unknown: if `/v1/auth/config` fails, or `/v1/auth/me` fails for reasons other than `401 Unauthorized`, the UI shows a blocking auth-unavailable state instead of rendering the app shell or redirecting to login
+- Protected routes fail closed while auth bootstrap state is unknown: if `/v1/platform/auth/config` fails, or `/v1/platform/auth/me` fails for reasons other than `401 Unauthorized`, the UI shows a blocking auth-unavailable state instead of rendering the app shell or redirecting to login
 
 ### UI Components
 
@@ -573,18 +573,18 @@ Based on `mode`:
 
 ### Authentication Flow
 
-1. App loads, fetches `/v1/auth/config`
+1. App loads, fetches `/v1/platform/auth/config`
 2. If `mode === "none"`, render app without auth
-3. Otherwise, check if user is authenticated via `/v1/auth/me`
-4. If auth bootstrap fails (`/v1/auth/config` error or non-401 `/v1/auth/me` error), block protected routes with an auth-unavailable state
-5. If `/v1/auth/me` returns `401 Unauthorized`, redirect to `/login?return_to=<current_path>` or configured `{AUTH_LOGIN_ORIGIN}/login?return_to=<current_path>` (preserving the user's location)
+3. Otherwise, check if user is authenticated via `/v1/platform/auth/me`
+4. If auth bootstrap fails (`/v1/platform/auth/config` error or non-401 `/v1/platform/auth/me` error), block protected routes with an auth-unavailable state
+5. If `/v1/platform/auth/me` returns `401 Unauthorized`, redirect to `/login?return_to=<current_path>` or configured `{AUTH_LOGIN_ORIGIN}/login?return_to=<current_path>` (preserving the user's location)
 6. After login, cookies are set automatically (HTTP-only) and the user is redirected back to `return_to` (default: `/chats`, the landing surface)
 7. Subsequent requests include cookies via `credentials: "include"`
-8. On 401 response, the API client silently attempts `POST /v1/auth/refresh` (using the HttpOnly `refresh_token` cookie) and retries the request
+8. On 401 response, the API client silently attempts `POST /v1/platform/auth/refresh` (using the HttpOnly `refresh_token` cookie) and retries the request
 
 ### Token Refresh
 
-The `POST /v1/auth/refresh` endpoint accepts the refresh token from two sources (checked in order):
+The `POST /v1/platform/auth/refresh` endpoint accepts the refresh token from two sources (checked in order):
 
 1. **JSON body** `{ "refresh_token": "..." }`, for programmatic clients
 2. **HttpOnly cookie** `refresh_token`, primary flow for browser clients (cookie is set at login with `Path=/`)
@@ -604,8 +604,8 @@ bind a sign-in to a device key so stolen cookies stop working
 - Binding turns the refresh-token row into the DBSC session: it stores the public key and a
   single-use refresh challenge, the browser drops the `refresh_token` cookie, and a
   `dbsc_session` cookie names the row for sign-out. The bound credential is the existing
-  `access_token` cookie, renewed through `POST /v1/auth/dbsc/refresh` with a signed proof.
-- `POST /v1/auth/refresh` never consumes a bound row, so a refresh token copied before binding
+  `access_token` cookie, renewed through `POST /v1/platform/auth/dbsc/refresh` with a signed proof.
+- `POST /v1/platform/auth/refresh` never consumes a bound row, so a refresh token copied before binding
   dies with it. Deleting a user's refresh tokens ends their bound sessions at the next renewal.
 - Browsers without DBSC, and programmatic clients, keep the classic refresh flow.
 
@@ -613,7 +613,7 @@ bind a sign-in to a device key so stolen cookies stop working
 
 1. User clicks OAuth button (e.g., "Continue with Google")
 2. If a `return_to` URL is present, the UI persists it in `sessionStorage` (key: `everruns_return_to`) so it survives the redirect chain
-3. Browser redirects to `GET /v1/auth/oauth/{provider}`
+3. Browser redirects to `GET /v1/platform/auth/oauth/{provider}`
 4. API redirects to provider's authorization page
 5. After user authorizes, provider redirects to callback
 6. API handles callback, sets cookies, redirects to `/`
@@ -656,7 +656,7 @@ See `crates/server/src/auth/backend.rs` for the `AuthBackend` trait. Key methods
 
 See `crates/server/src/auth/builtin.rs`. Wraps JWT + password + personal access token logic. Auth route handlers use `BuiltinAuthBackend` as axum state directly with `FromRef<BuiltinAuthBackend> for AuthState`.
 
-Token validation is a fresh-state boundary: `auth_user_from_claims` reloads the subject's DB user row (already required to reject deleted subjects) and derives the resolved identity, `name`, `email`, `roles`, and `is_platform_user`, from that row, not from the JWT claim payload. JWT claims still carry these fields for the token's lifetime, but they never drive request-time authorization or the profile shown by `/v1/auth/me`. So a profile rename (or role/email change) surfaces on the next request within the same access-token session, with no re-login and no token reissue (roles: EVE-703; name/email: EVE-715). The personal-access-token path reads the same DB row per request for the same reason.
+Token validation is a fresh-state boundary: `auth_user_from_claims` reloads the subject's DB user row (already required to reject deleted subjects) and derives the resolved identity, `name`, `email`, `roles`, and `is_platform_user`, from that row, not from the JWT claim payload. JWT claims still carry these fields for the token's lifetime, but they never drive request-time authorization or the profile shown by `/v1/platform/auth/me`. So a profile rename (or role/email change) surfaces on the next request within the same access-token session, with no re-login and no token reissue (roles: EVE-703; name/email: EVE-715). The personal-access-token path reads the same DB row per request for the same reason.
 
 ### AuthState
 

@@ -76,7 +76,7 @@ test.describe("channel budget refusal", () => {
     test.setTimeout(120_000);
     const suffix = randomUUID();
     const provider = await jsonResponse<{ id: string }>(
-      await request.post(`${apiBaseUrl}/api/v1/providers`, {
+      await request.post(`${apiBaseUrl}/api/v1/platform/providers`, {
         data: {
           name: `Channel budget llmsim ${suffix}`,
           provider_type: "llmsim",
@@ -84,7 +84,7 @@ test.describe("channel budget refusal", () => {
       }),
     );
     const model = await jsonResponse<{ id: string }>(
-      await request.post(`${apiBaseUrl}/api/v1/providers/${provider.id}/models`, {
+      await request.post(`${apiBaseUrl}/api/v1/platform/providers/${provider.id}/models`, {
         data: {
           model_id: `channel-budget-${suffix}`,
           display_name: "Channel budget llmsim",
@@ -93,7 +93,7 @@ test.describe("channel budget refusal", () => {
       }),
     );
     const harness = await jsonResponse<{ id: string }>(
-      await request.post(`${apiBaseUrl}/api/v1/harnesses`, {
+      await request.post(`${apiBaseUrl}/api/v1/platform/harnesses`, {
         data: {
           name: `budget-e2e-${suffix}`,
           display_name: "Channel budget E2E",
@@ -102,7 +102,7 @@ test.describe("channel budget refusal", () => {
       }),
     );
     const agent = await jsonResponse<{ id: string }>(
-      await request.post(`${apiBaseUrl}/api/v1/agents`, {
+      await request.post(`${apiBaseUrl}/api/v1/platform/agents`, {
         data: {
           name: `budget-e2e-${suffix}`,
           display_name: "Channel budget refusal",
@@ -114,7 +114,7 @@ test.describe("channel budget refusal", () => {
     );
 
     const bootstrapChannel = await jsonResponse<{ id: string }>(
-      await request.post(`${apiBaseUrl}/api/v1/agents/${agent.id}/channels`, {
+      await request.post(`${apiBaseUrl}/api/v1/platform/agents/${agent.id}/channels`, {
         data: {
           channel_type: "api",
           channel_config: {},
@@ -155,7 +155,7 @@ test.describe("channel budget refusal", () => {
     expect(seededChannel).toBe(channelId);
 
     const budget = await jsonResponse<{ id: string }>(
-      await request.post(`${apiBaseUrl}/api/v1/budgets`, {
+      await request.post(`${apiBaseUrl}/api/v1/platform/budgets`, {
         data: {
           subject_type: "agent_channel",
           subject_id: channelId,
@@ -166,7 +166,7 @@ test.describe("channel budget refusal", () => {
       }),
     );
     const consumed = await jsonResponse<{ session_id: string; created_session: boolean }>(
-      await request.post(`${apiBaseUrl}/api/v1/agents/${agent.id}/channels/${channelId}/trigger`),
+      await request.post(`${apiBaseUrl}/api/v1/platform/agents/${agent.id}/channels/${channelId}/trigger`),
     );
     expect(consumed.created_session).toBe(true);
     expect(
@@ -182,7 +182,7 @@ test.describe("channel budget refusal", () => {
     const exhausted = await pollFor(
       async () =>
         jsonResponse<{ balance: number; status: string }>(
-          await request.get(`${apiBaseUrl}/api/v1/budgets/${budget.id}`),
+          await request.get(`${apiBaseUrl}/api/v1/platform/budgets/${budget.id}`),
         ),
       (current) => current.status === "exhausted",
       "the production budget listener to exhaust the channel budget",
@@ -195,7 +195,7 @@ test.describe("channel budget refusal", () => {
         ref_type: string;
         session_id: string;
       }>
-    >(await request.get(`${apiBaseUrl}/api/v1/budgets/${budget.id}/ledger`));
+    >(await request.get(`${apiBaseUrl}/api/v1/platform/budgets/${budget.id}/ledger`));
     // The model also reads the platform's "Scheduled run ... Not written by
     // the person." header, so one generation spends at least the limit
     // rather than exactly it. Assert against what the ledger recorded.
@@ -212,7 +212,7 @@ test.describe("channel budget refusal", () => {
     ]);
 
     const refused = await jsonResponse<{ session_id: string; created_session: boolean }>(
-      await request.post(`${apiBaseUrl}/api/v1/agents/${agent.id}/channels/${channelId}/trigger`),
+      await request.post(`${apiBaseUrl}/api/v1/platform/agents/${agent.id}/channels/${channelId}/trigger`),
     );
     expect(refused.created_session).toBe(true);
     expect(refused.session_id).not.toBe(consumed.session_id);
@@ -231,7 +231,7 @@ test.describe("channel budget refusal", () => {
       budget_id: string;
       error_code: string;
       error_fields: Record<string, unknown>;
-    }>(await request.get(`${apiBaseUrl}/api/v1/sessions/${refused.session_id}/budget-check`));
+    }>(await request.get(`${apiBaseUrl}/api/v1/platform/sessions/${refused.session_id}/budget-check`));
     expect(refusal).toMatchObject({
       action: "stop",
       budget_id: budget.id,

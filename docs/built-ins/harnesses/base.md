@@ -30,7 +30,7 @@ safe work; turn it off per agent with `{"mode": "off"}`.
 Assign the Base harness when creating an agent or session:
 
 ```bash
-curl -X POST http://localhost:9300/api/v1/agents \
+curl -X POST http://localhost:9300/api/v1/platform/agents \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Minimal Agent",
@@ -58,6 +58,6 @@ Compaction uses automatic strategy selection with proactive reduction and a
 64,000-token working-history target. Child harnesses inherit it, including
 Conversation and the Worker variants. Inspect the effective policy and saved
 checkpoint through the session's **Context** button or
-`GET /v1/sessions/{id}/context-report`. Framework sessions expose the same
+`GET /v1/platform/sessions/{id}/context-report`. Framework sessions expose the same
 metadata through `session.inspect().await?.compaction`. See
 [compaction](/advanced/compaction/) for configuration and storage guarantees.

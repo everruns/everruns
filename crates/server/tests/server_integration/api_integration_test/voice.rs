@@ -92,11 +92,11 @@ async fn foreign_state(server: &TestServer, session_id: SessionId) -> (Vec<Strin
 fn voice_requests(session_id: &str) -> Vec<(String, Value)> {
     vec![
         (
-            format!("/v1/sessions/{session_id}/voice/calls"),
+            format!("/v1/platform/sessions/{session_id}/voice/calls"),
             json!({ "sdp": "v=0" }),
         ),
         (
-            format!("/v1/sessions/{session_id}/voice/{VOICE_CONNECTION_ID}/end"),
+            format!("/v1/platform/sessions/{session_id}/voice/{VOICE_CONNECTION_ID}/end"),
             json!({ "reason": "hangup" }),
         ),
     ]
@@ -149,7 +149,7 @@ async fn test_voice_end_releases_lease_in_owning_org() {
     let server = TestServer::in_memory().await;
     let session: Value = server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             json!({ "harness_id": server.seed_generic_harness_id, "title": "Voice owner" }),
         )
         .await
@@ -182,7 +182,7 @@ async fn test_voice_end_releases_lease_in_owning_org() {
 
     let resp: Value = server
         .post(
-            &format!("/v1/sessions/{session_id}/voice/{VOICE_CONNECTION_ID}/end"),
+            &format!("/v1/platform/sessions/{session_id}/voice/{VOICE_CONNECTION_ID}/end"),
             json!({ "reason": "hangup" }),
         )
         .await
@@ -203,7 +203,7 @@ async fn test_voice_end_releases_lease_in_owning_org() {
 async fn create_voice_agent(server: &TestServer) -> Value {
     let provider: Value = server
         .post(
-            "/v1/providers",
+            "/v1/platform/providers",
             json!({ "name": "voice-sim", "provider_type": "llmsim", "api_key": "sim-key" }),
         )
         .await
@@ -211,7 +211,10 @@ async fn create_voice_agent(server: &TestServer) -> Value {
         .json();
     let model: Value = server
         .post(
-            &format!("/v1/providers/{}/models", provider["id"].as_str().unwrap()),
+            &format!(
+                "/v1/platform/providers/{}/models",
+                provider["id"].as_str().unwrap()
+            ),
             json!({ "model_id": "voice-sim-model", "display_name": "Voice sim", "enabled": true }),
         )
         .await
@@ -219,7 +222,7 @@ async fn create_voice_agent(server: &TestServer) -> Value {
         .json();
     server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": "voice-agent",
                 "system_prompt": "You are a concise test agent.",
@@ -235,7 +238,10 @@ async fn create_voice_agent(server: &TestServer) -> Value {
 async fn test_voice_channel_config_is_validated_and_normalized() {
     let server = TestServer::in_memory().await;
     let agent = create_voice_agent(&server).await;
-    let channels = format!("/v1/agents/{}/channels", agent["id"].as_str().unwrap());
+    let channels = format!(
+        "/v1/platform/agents/{}/channels",
+        agent["id"].as_str().unwrap()
+    );
 
     let bad = server
         .post(
@@ -286,7 +292,7 @@ async fn test_voice_channel_call_speaks_greeting_sends_utterances_and_speaks_ans
     let agent_id = agent["id"].as_str().unwrap();
     let channel: Value = server
         .post(
-            &format!("/v1/agents/{agent_id}/channels"),
+            &format!("/v1/platform/agents/{agent_id}/channels"),
             json!({
                 "channel_type": "voice",
                 "channel_config": {
@@ -303,7 +309,7 @@ async fn test_voice_channel_call_speaks_greeting_sends_utterances_and_speaks_ans
 
     let started: Value = server
         .post(
-            &format!("/v1/agents/{agent_id}/channels/{channel_id}/voice/calls"),
+            &format!("/v1/platform/agents/{agent_id}/channels/{channel_id}/voice/calls"),
             json!({ "sdp": "v=0" }),
         )
         .await
@@ -337,7 +343,7 @@ async fn test_voice_channel_call_speaks_greeting_sends_utterances_and_speaks_ans
     let mut found = false;
     for _ in 0..100 {
         let messages: Value = server
-            .get(&format!("/v1/sessions/{session_id}/messages"))
+            .get(&format!("/v1/platform/sessions/{session_id}/messages"))
             .await
             .assert_status(StatusCode::OK)
             .json();
@@ -376,7 +382,7 @@ async fn test_voice_channel_call_speaks_greeting_sends_utterances_and_speaks_ans
     let voice_connection_id = started["voice"]["voice_connection_id"].as_str().unwrap();
     server
         .post(
-            &format!("/v1/sessions/{session_id}/voice/{voice_connection_id}/end"),
+            &format!("/v1/platform/sessions/{session_id}/voice/{voice_connection_id}/end"),
             json!({ "reason": "done" }),
         )
         .await
@@ -413,7 +419,7 @@ async fn test_session_voice_call_uses_the_agents_voice_channel() {
     let agent_id = agent["id"].as_str().unwrap();
     let channel: Value = server
         .post(
-            &format!("/v1/agents/{agent_id}/channels"),
+            &format!("/v1/platform/agents/{agent_id}/channels"),
             json!({ "channel_type": "voice", "channel_config": { "voice": "cedar" } }),
         )
         .await
@@ -421,7 +427,7 @@ async fn test_session_voice_call_uses_the_agents_voice_channel() {
         .json();
     let session: Value = server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             json!({ "harness_id": server.seed_base_harness_id, "agent_id": agent_id }),
         )
         .await
@@ -430,7 +436,7 @@ async fn test_session_voice_call_uses_the_agents_voice_channel() {
     let started: Value = server
         .post(
             &format!(
-                "/v1/sessions/{}/voice/calls",
+                "/v1/platform/sessions/{}/voice/calls",
                 session["id"].as_str().unwrap()
             ),
             json!({ "sdp": "v=0" }),
@@ -447,7 +453,7 @@ async fn test_session_voice_call_uses_the_agents_voice_channel() {
     // A channel of another type cannot be used for a voice call.
     let webhook: Value = server
         .post(
-            &format!("/v1/agents/{agent_id}/channels"),
+            &format!("/v1/platform/agents/{agent_id}/channels"),
             json!({ "channel_type": "webhook", "channel_config": { "token": "webhook-token", "message": "{{payload}}" } }),
         )
         .await
@@ -456,7 +462,7 @@ async fn test_session_voice_call_uses_the_agents_voice_channel() {
     let wrong = server
         .post(
             &format!(
-                "/v1/agents/{agent_id}/channels/{}/voice/calls",
+                "/v1/platform/agents/{agent_id}/channels/{}/voice/calls",
                 webhook["id"].as_str().unwrap()
             ),
             json!({ "sdp": "v=0" }),

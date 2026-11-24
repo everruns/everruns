@@ -12,7 +12,7 @@ const ORIGIN = "https://app.example.com";
 
 describe("integration snippets", () => {
   it("derives REST and OpenAPI URLs from the origin", () => {
-    expect(apiBaseUrl(ORIGIN)).toBe("https://app.example.com/api/v1");
+    expect(apiBaseUrl(ORIGIN)).toBe("https://app.example.com/api/v1/platform");
     expect(openApiUrl(ORIGIN)).toBe("https://app.example.com/api-doc/openapi.json");
   });
 
@@ -25,6 +25,7 @@ describe("integration snippets", () => {
     expect(samples.map((s) => s.label)).toEqual(["curl", "TypeScript", "Python", "Rust"]);
     for (const sample of samples) {
       expect(sample.code).toContain("agent_123");
+      expect(sample.code).toContain(`${ORIGIN}/api/v1/platform`);
       expect(sample.code).not.toContain("harness_id");
     }
   });

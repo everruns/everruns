@@ -121,7 +121,7 @@ const delay = (ms) => new Promise((res) => setTimeout(res, ms));
 async function api(path, method = "GET", data) {
   let response;
   try {
-    response = await context.request.fetch(`${report.base_url}/api/v1${path}`, {
+    response = await context.request.fetch(`${report.base_url}/api/v1/platform${path}`, {
       method,
       data,
       timeout: 30_000,
@@ -178,8 +178,8 @@ async function send(text) {
     const path = new URL(r.url()).pathname;
     return (
       r.request().method() === "POST" &&
-      (/\/api\/v1\/sessions\/[^/]+\/messages$/.test(path) ||
-        path === "/api/v1/commands/create_message")
+      (/\/api\/v1\/platform\/sessions\/[^/]+\/messages$/.test(path) ||
+        path === "/api/v1/platform/commands/create_message")
     );
   });
   await input.fill(text);
@@ -188,7 +188,7 @@ async function send(text) {
   assert(response.ok(), `Sending chat message: HTTP ${response.status()}`);
   const path = new URL(response.url()).pathname;
   sessionId =
-    path === "/api/v1/commands/create_message"
+    path === "/api/v1/platform/commands/create_message"
       ? response.request().postDataJSON()?.params?.session_id
       : path.split("/").at(-2);
   assert(typeof sessionId === "string" && sessionId, "Chat send did not identify a session");

@@ -126,4 +126,4 @@ This skill is published in [everruns/everruns](https://github.com/everruns/everr
 installable with `npx skills add everruns/everruns`, bundled in the
 [Everruns plugin](https://github.com/everruns/plugins), served by every
 Everruns MCP server as `skill://everruns/SKILL.md`, and written into a project
-by `everruns skill install`.
+by `everruns agent-skill install`.

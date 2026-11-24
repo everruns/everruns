@@ -60,7 +60,7 @@ reconnect immediately using `since_id`.
 
 ## Event-type catalog
 
-### `GET /v1/sessions/{session_id}/sse`
+### `GET /v1/platform/sessions/{session_id}/sse`
 
 The body schema is the **`Event`** ToSchema (see `crates/contracts/src/runtime/events/mod.rs`).
 Each `data:` line is a serialized `Event`, whose `type` field matches
@@ -132,7 +132,7 @@ The set is exhaustive: events whose type is not in `EventData` are
 filtered out before transmission. Clients must treat any unknown
 `event:` value as informational only.
 
-### `GET /v1/durable/sse` and `GET /v1/durable/workflows/{id}/sse`
+### `GET /v1/platform/durable/sse` and `GET /v1/platform/durable/workflows/{id}/sse`
 
 These streams emit **snapshots**, not `Event`s. The closed `event:`
 vocabulary is `{connected, snapshot, disconnecting}`:
@@ -147,7 +147,7 @@ vocabulary is `{connected, snapshot, disconnecting}`:
 The snapshot endpoints poll the durable store at a fixed interval
 and re-emit whenever the snapshot hash changes. They don't fan out
 domain `Event`s, for the per-workflow domain event stream, use the
-JSON polling endpoint `GET /v1/durable/workflows/{id}/events`.
+JSON polling endpoint `GET /v1/platform/durable/workflows/{id}/events`.
 
 ## Adding new SSE endpoints
 

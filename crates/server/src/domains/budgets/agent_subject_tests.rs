@@ -119,7 +119,7 @@ async fn agent_budget_keyed_by_public_id_binds_to_the_agents_sessions() {
     let budget = db
         .create_budget(CreateBudgetRow {
             org_id: 1,
-            // Exactly what POST /v1/budgets stores: the agent's API-facing id.
+            // Exactly what POST /v1/platform/budgets stores: the agent's API-facing id.
             subject_id: agent.public_id.clone(),
             subject_type: "agent".into(),
             currency: "tokens".into(),

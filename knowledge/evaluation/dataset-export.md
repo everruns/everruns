@@ -62,7 +62,7 @@ exact per-run compaction config is a follow-up (see Follow-ups).
 
 ## API
 
-`POST /v1/evals/{eval_id}/runs/{run_id}/dataset`
+`POST /v1/platform/evals/{eval_id}/runs/{run_id}/dataset`
 
 Body:
 
@@ -82,7 +82,7 @@ runner) and returns `202 Accepted` with a dataset handle:
 { "id": "evaldataset_…", "eval_run_id": "evalrun_…", "status": "pending", "created_at": "…", "updated_at": "…" }
 ```
 
-`GET /v1/evals/{eval_id}/runs/{run_id}/dataset/{dataset_id}` returns the handle
+`GET /v1/platform/evals/{eval_id}/runs/{run_id}/dataset/{dataset_id}` returns the handle
 with its current `status` (`pending` → `running` → `completed`/`failed`) and,
 once `completed`, the produced NDJSON in `body` plus a `record_count` (one record
 per surviving case). Both endpoints are gated by `DATASET_EXPORT` and org-scoped

@@ -123,15 +123,15 @@ marked stale rather than appearing healthy.
 
 ## API
 
-Use `GET /api/v1/monitoring` for the selected organization's summary and
-`GET /api/v1/durable/monitoring` for platform-wide monitoring. Both are read-only.
+Use `GET /api/v1/platform/monitoring` for the selected organization's summary and
+`GET /api/v1/platform/durable/monitoring` for platform-wide monitoring. Both are read-only.
 Use browser credentials or a full-access personal token; scoped personal tokens
 remain denied. Organization monitoring requires session-read permission, and
 fleet access requires platform authority. The adjacent `/actors` endpoints provide
 bounded, filtered pages and actor detail, and `/timeline` returns recorded
 history in buckets (`range` or `from`/`to`, optional `bucket` seconds) with
 `/timeline/window` for a selection's busiest agents, failure causes, and failed
-tools. `GET /api/v1/durable/monitoring/shards` lists shards with their history. The [API reference](/api/) owns the request and response contracts.
+tools. `GET /api/v1/platform/durable/monitoring/shards` lists shards with their history. The [API reference](/api/) owns the request and response contracts.
 
 Monitoring complements [OpenTelemetry](/observability/opentelemetry/) and
 [Braintrust](/observability/braintrust/), which provide trace exports and

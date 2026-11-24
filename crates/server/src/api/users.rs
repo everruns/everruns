@@ -172,20 +172,23 @@ pub struct ExportUserDataResponse {
 /// Create users routes
 pub fn routes(state: ApiState) -> Router {
     Router::new()
-        .route("/v1/users", get(list_users))
-        .route("/v1/users/me", patch(update_profile).delete(delete_account))
-        .route("/v1/users/me/export", get(export_user_data))
-        .route("/v1/users/me/switch-org", post(switch_org))
+        .route("/v1/platform/users", get(list_users))
+        .route(
+            "/v1/platform/users/me",
+            patch(update_profile).delete(delete_account),
+        )
+        .route("/v1/platform/users/me/export", get(export_user_data))
+        .route("/v1/platform/users/me/switch-org", post(switch_org))
         .with_state(state)
 }
 
-/// GET /v1/users - List users in current organization
+/// GET /v1/platform/users - List users in current organization
 ///
 /// Lists users that belong to the current organization with optional search filtering.
 /// TM-TENANT-008: Enforces org isolation to prevent cross-tenant user enumeration.
 #[utoipa::path(
     get,
-    path = "/v1/users",
+    path = "/v1/platform/users",
     params(
         ("search" = Option<String>, Query, description = "Search by name or email")
     ),
@@ -230,10 +233,10 @@ pub async fn list_users(
     Ok(Json(ListResponse::new(users)))
 }
 
-/// PATCH /v1/users/me - Update current user's profile
+/// PATCH /v1/platform/users/me - Update current user's profile
 #[utoipa::path(
     patch,
-    path = "/v1/users/me",
+    path = "/v1/platform/users/me",
     request_body = UpdateProfileRequest,
     responses(
         (status = 200, description = "Profile updated", body = ProfileResponse),
@@ -282,14 +285,14 @@ pub async fn update_profile(
     }))
 }
 
-/// POST /v1/users/me/switch-org - Switch current organization
+/// POST /v1/platform/users/me/switch-org - Switch current organization
 ///
 /// Sets a cookie with the selected organization. This org will be used for all
 /// subsequent requests (including SSE connections via EventSource).
 /// The user must be a member of the requested organization.
 #[utoipa::path(
     post,
-    path = "/v1/users/me/switch-org",
+    path = "/v1/platform/users/me/switch-org",
     request_body = SwitchOrgRequest,
     responses(
         (status = 200, description = "Organization switched successfully", body = SwitchOrgResponse),
@@ -358,13 +361,13 @@ pub async fn switch_org(
     ))
 }
 
-/// DELETE /v1/users/me - Delete current user's account
+/// DELETE /v1/platform/users/me - Delete current user's account
 ///
 /// Hard-deletes the user and all associated data (API keys, memberships, tokens).
 /// This action is irreversible.
 #[utoipa::path(
     delete,
-    path = "/v1/users/me",
+    path = "/v1/platform/users/me",
     extensions(
         ("x-side-effect" = json!("irreversible")),
     ),
@@ -394,12 +397,12 @@ pub async fn delete_account(
     Ok(Json(DeleteAccountResponse { deleted: true }))
 }
 
-/// GET /v1/users/me/export - Export current user's data
+/// GET /v1/platform/users/me/export - Export current user's data
 ///
 /// Returns all user-owned data in a structured JSON format for GDPR compliance.
 #[utoipa::path(
     get,
-    path = "/v1/users/me/export",
+    path = "/v1/platform/users/me/export",
     responses(
         (status = 200, description = "User data export", body = ExportUserDataResponse),
         (status = 401, description = "Unauthorized"),

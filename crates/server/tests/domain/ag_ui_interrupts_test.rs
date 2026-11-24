@@ -73,7 +73,7 @@ async fn fixture(channel_config: Value) -> Fixture {
     .await;
     let agent: Value = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({ "name": format!("ag-ui-interrupts-{}", uuid::Uuid::new_v4().simple()), "system_prompt": "Test" }),
         )
         .await
@@ -82,7 +82,7 @@ async fn fixture(channel_config: Value) -> Fixture {
     let agent_id = agent["id"].as_str().unwrap();
     let endpoint: Value = server
         .post(
-            &format!("/v1/agents/{agent_id}/channels"),
+            &format!("/v1/platform/agents/{agent_id}/channels"),
             json!({ "channel_type": "ag_ui", "channel_config": channel_config }),
         )
         .await
@@ -91,7 +91,7 @@ async fn fixture(channel_config: Value) -> Fixture {
     let channel_id = endpoint["id"].as_str().unwrap().to_string();
     server
         .post(
-            &format!("/v1/agents/{agent_id}/channels/{channel_id}/publish"),
+            &format!("/v1/platform/agents/{agent_id}/channels/{channel_id}/publish"),
             json!({}),
         )
         .await
@@ -144,7 +144,12 @@ async fn park(f: &Fixture, tool_calls: Value) -> SessionId {
     post_run(f, &start, false)
         .await
         .assert_status(StatusCode::OK);
-    let sessions: Value = f.server.get("/v1/sessions").await.assert_success().json();
+    let sessions: Value = f
+        .server
+        .get("/v1/platform/sessions")
+        .await
+        .assert_success()
+        .json();
     // The thread is the channel's only conversation here.
     let tag = format!("app_channel:{}", f.channel_id);
     let session_id: SessionId = sessions["data"]
@@ -534,7 +539,7 @@ async fn frontend_tool_results_resume_the_parked_turn() {
     assert_eq!(f.resumes.load(Ordering::SeqCst), 1);
     let session: Value = f
         .server
-        .get(&format!("/v1/sessions/{session_id}"))
+        .get(&format!("/v1/platform/sessions/{session_id}"))
         .await
         .assert_success()
         .json();

@@ -76,7 +76,7 @@ Memory later does not change what a running session mounted.
 ## Managing Memories
 
 Create Memories and edit their files in the **Memory** page of the UI or
-through the `/v1/memories` API. The [API reference](/api/) has the request
+through the `/v1/platform/memories` API. The [API reference](/api/) has the request
 shapes.
 
 ## See also

@@ -41,7 +41,7 @@ pub struct ErrorResponse {
     pub detail: Option<String>,
     /// Request URI for this occurrence.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[schema(example = "/v1/sessions/session_01933b5a000070008000000000000001")]
+    #[schema(example = "/v1/platform/sessions/session_01933b5a000070008000000000000001")]
     pub instance: Option<String>,
     /// Stable, machine-readable error code (snake_case).
     #[serde(skip_serializing_if = "Option::is_none")]

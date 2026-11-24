@@ -38,7 +38,7 @@ async fn test_agent_attaches_unregistered_oauth_preset_and_offers_authorize() {
 
     let created: Value = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": "visti-agent",
                 "system_prompt": "Post updates",
@@ -55,7 +55,7 @@ async fn test_agent_attaches_unregistered_oauth_preset_and_offers_authorize() {
     // Updating keeps working, including switching the identity it acts as.
     server
         .patch(
-            &format!("/v1/agents/{agent_id}"),
+            &format!("/v1/platform/agents/{agent_id}"),
             json!({
                 "mcpServers": {
                     "visti": { "use": "catalog:visti", "actsAs": "user_or_service" }
@@ -66,7 +66,7 @@ async fn test_agent_attaches_unregistered_oauth_preset_and_offers_authorize() {
         .assert_status(StatusCode::OK);
     server
         .patch(
-            &format!("/v1/agents/{agent_id}"),
+            &format!("/v1/platform/agents/{agent_id}"),
             json!({
                 "mcpServers": {
                     "visti": { "use": "catalog:visti", "actsAs": "service" }
@@ -77,7 +77,7 @@ async fn test_agent_attaches_unregistered_oauth_preset_and_offers_authorize() {
         .assert_status(StatusCode::OK);
 
     let attachments: Value = server
-        .get(&format!("/v1/agents/{agent_id}/mcp-attachments"))
+        .get(&format!("/v1/platform/agents/{agent_id}/mcp-attachments"))
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -100,7 +100,7 @@ async fn test_agent_attaches_unregistered_oauth_preset_and_offers_authorize() {
     // A preset that does not use OAuth still cannot carry an identity.
     let error: Value = server
         .patch(
-            &format!("/v1/agents/{agent_id}"),
+            &format!("/v1/platform/agents/{agent_id}"),
             json!({
                 "mcpServers": {
                     "plain": { "use": "catalog:plain-catalog", "actsAs": "service" }

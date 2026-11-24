@@ -107,7 +107,7 @@ fn request(method: &str, path: &str) -> Request<Body> {
     Request::builder()
         .method(method)
         .uri(format!(
-            "/v1/orgs/{DEFAULT_ORG_PUBLIC_ID}/github/everruns-app{path}"
+            "/v1/platform/orgs/{DEFAULT_ORG_PUBLIC_ID}/github/everruns-app{path}"
         ))
         .header("Authorization", "Bearer test-token")
         .body(Body::empty())

@@ -372,10 +372,10 @@ indexes.
 REST endpoints (conventions in `knowledge/execution/apis.md`), shipped with the management
 slice:
 
-* `GET/POST /v1/knowledge-indexes`
-* `GET/PATCH/DELETE /v1/knowledge-indexes/{index_id}`, DELETE archives per lifecycle
-* `POST /v1/knowledge-indexes/{index_id}/sync`, enqueue a manual sync
-* `GET /v1/knowledge-indexes/{index_id}/documents`
+* `GET/POST /v1/platform/knowledge-indexes`
+* `GET/PATCH/DELETE /v1/platform/knowledge-indexes/{index_id}`, DELETE archives per lifecycle
+* `POST /v1/platform/knowledge-indexes/{index_id}/sync`, enqueue a manual sync
+* `GET /v1/platform/knowledge-indexes/{index_id}/documents`
 
 List supports `?search=` and `?include_archived=`.
 

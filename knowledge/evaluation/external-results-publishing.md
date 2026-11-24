@@ -161,7 +161,7 @@ one `Eval`. So:
 
 **API**
 
-- `POST /v1/evals/import` (run-group ingest): one call accepts a whole external
+- `POST /v1/platform/evals/import` (run-group ingest): one call accepts a whole external
   run, run meta + attribution, and per eval the cases + results + scores +
   normalized transcripts. Server upserts evals/cases by slug, creates the
   `EvalRun`(s) under one `source_run_id`, writes results. **Idempotent** on
@@ -169,7 +169,7 @@ one `Eval`. So:
 - **Preflight**: a capability/permission check the client calls *first*,
   reports whether `evals` is enabled and whether the caller holds `eval.import`.
   Lets optional-feature clients degrade gracefully. (Can reuse / extend an
-  existing capabilities or `GET /v1/auth/me` style endpoint.)
+  existing capabilities or `GET /v1/platform/auth/me` style endpoint.)
 
 **Auth & permissions**
 
@@ -226,7 +226,7 @@ eval-results pages** in SaaS, reusing the isolated support-app pattern
 
 1. **Backend ingest** (a): `source`/attribution + `source_run_id` columns,
    `External` target, extensible scoring + metrics bag, normalized transcript
-   storage, `/v1/evals/import`, preflight, `eval.import` policy + PAT. Unblocks
+   storage, `/v1/platform/evals/import`, preflight, `eval.import` policy + PAT. Unblocks
    Mira.
 2. **Mira sink** (c): `mira-publish-everruns` + CLI + auth pass-through +
    preflight. End-to-end publish; results visible in the existing single-run UI.

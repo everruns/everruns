@@ -108,7 +108,7 @@ fn stderr(output: &Output) -> String {
 #[test]
 fn whoami_shows_a_full_tokens_access_and_keeps_the_field_in_json() {
     let url = serve(|line| match line {
-        l if l.starts_with("GET /v1/auth/me ") => (200, me(r#""*""#)),
+        l if l.starts_with("GET /v1/platform/auth/me ") => (200, me(r#""*""#)),
         _ => (404, "{}".into()),
     });
     let output = everruns(&url, "evr_pat_full", &["whoami"]);
@@ -124,11 +124,11 @@ fn whoami_shows_a_full_tokens_access_and_keeps_the_field_in_json() {
 #[test]
 fn a_read_token_lists_agents_and_is_refused_agents_create() {
     let url = serve(|line| match line {
-        l if l.starts_with("POST /v1/commands/list_agents ") => (
+        l if l.starts_with("POST /v1/platform/commands/list_agents ") => (
             200,
             r#"{"output":{"data":[{"id":"agent_1","name":"Helper"}],"total":1}}"#.into(),
         ),
-        l if l.starts_with("POST /v1/commands/create_agent ") => (403, REFUSAL.into()),
+        l if l.starts_with("POST /v1/platform/commands/create_agent ") => (403, REFUSAL.into()),
         _ => (404, "{}".into()),
     });
 
@@ -160,7 +160,7 @@ fn a_read_token_lists_agents_and_is_refused_agents_create() {
 #[test]
 fn a_refusal_on_a_rest_route_gets_the_same_message() {
     let url = serve(|line| match line {
-        l if l.starts_with("POST /v1/user/connections/") => (403, REFUSAL.into()),
+        l if l.starts_with("POST /v1/platform/user/connections/") => (403, REFUSAL.into()),
         _ => (404, "{}".into()),
     });
     let output = everruns_with_stdin(
@@ -181,7 +181,7 @@ fn a_refusal_on_a_rest_route_gets_the_same_message() {
 #[test]
 fn a_different_forbidden_is_not_rewritten() {
     let url = serve(|line| match line {
-        l if l.starts_with("POST /v1/commands/create_agent ") => {
+        l if l.starts_with("POST /v1/platform/commands/create_agent ") => {
             (403, r#"{"status":403,"code":"forbidden"}"#.into())
         }
         _ => (404, "{}".into()),

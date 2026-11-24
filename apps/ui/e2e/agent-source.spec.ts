@@ -19,7 +19,7 @@ test("reviews a GitHub package, locks editing, and disconnects without losing th
   let failSync = true;
   await page.route("**/api/v1/**", async (route) => {
     const request = route.request();
-    const p = new URL(request.url()).pathname.replace("/api/v1", "");
+    const p = new URL(request.url()).pathname.replace("/api/v1/platform", "");
     let json: unknown = { data: [], total: 0, has_more: false };
     if (p === "/auth/config")
       json = {

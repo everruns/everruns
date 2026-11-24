@@ -30,7 +30,7 @@ Verify that `everruns files ls` lists files in a session's workspace and support
 
 1. Create an agent:
    ```bash
-   curl -s -X POST "http://localhost:9300/api/v1/agents" \
+   curl -s -X POST "http://localhost:9300/api/v1/platform/agents" \
      -H "Content-Type: application/json" \
      -d '{"name": "Test Agent", "system_prompt": "Test"}' | jq -r '.id'
    ```
@@ -38,7 +38,7 @@ Verify that `everruns files ls` lists files in a session's workspace and support
 
 2. Create a session:
    ```bash
-   curl -s -X POST "http://localhost:9300/api/v1/sessions" \
+   curl -s -X POST "http://localhost:9300/api/v1/platform/sessions" \
      -H "Content-Type: application/json" \
      -d "{\"agent_id\": \"$AGENT_ID\"}" | jq -r '.id'
    ```
@@ -46,10 +46,10 @@ Verify that `everruns files ls` lists files in a session's workspace and support
 
 3. Create test files:
    ```bash
-   curl -s -X POST "http://localhost:9300/api/v1/sessions/$SESSION_ID/fs/hello.txt" \
+   curl -s -X POST "http://localhost:9300/api/v1/platform/sessions/$SESSION_ID/fs/hello.txt" \
      -H "Content-Type: application/json" \
      -d '{"content": "Hello, World!", "encoding": "text"}'
-   curl -s -X POST "http://localhost:9300/api/v1/sessions/$SESSION_ID/fs/src/main.rs" \
+   curl -s -X POST "http://localhost:9300/api/v1/platform/sessions/$SESSION_ID/fs/src/main.rs" \
      -H "Content-Type: application/json" \
      -d '{"content": "fn main() {}", "encoding": "text"}'
    ```

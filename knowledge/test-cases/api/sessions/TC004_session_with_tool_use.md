@@ -34,7 +34,7 @@ Verify that an agent with capabilities uses tools during a session and produces 
 
 1. Create agent with `current_time` capability:
    ```bash
-   curl -s -X POST "${BASE_URL}/api/v1/agents" \
+   curl -s -X POST "${BASE_URL}/api/v1/platform/agents" \
      -H "Content-Type: application/json" \
      -d '{
        "name": "tool-agent",
@@ -46,7 +46,7 @@ Verify that an agent with capabilities uses tools during a session and produces 
 
 2. Create session:
    ```bash
-   curl -s -X POST "${BASE_URL}/api/v1/sessions" \
+   curl -s -X POST "${BASE_URL}/api/v1/platform/sessions" \
      -H "Content-Type: application/json" \
      -d '{"agent_id": "{agent_id}"}'
    ```
@@ -54,7 +54,7 @@ Verify that an agent with capabilities uses tools during a session and produces 
 
 3. Send message requesting time:
    ```bash
-   curl -s -X POST "${BASE_URL}/api/v1/sessions/{session_id}/messages" \
+   curl -s -X POST "${BASE_URL}/api/v1/platform/sessions/{session_id}/messages" \
      -H "Content-Type: application/json" \
      -d '{
        "message": {
@@ -68,7 +68,7 @@ Verify that an agent with capabilities uses tools during a session and produces 
 
 5. Get events:
    ```bash
-   curl -s "${BASE_URL}/api/v1/sessions/{session_id}/events"
+   curl -s "${BASE_URL}/api/v1/platform/sessions/{session_id}/events"
    ```
 
 ## Expected Result

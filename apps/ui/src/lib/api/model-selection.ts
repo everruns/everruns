@@ -4,8 +4,9 @@ import { recordModelSelection, type ModelSelectionReceipt } from "./write-observ
 export async function applyModelSelection(
   changes: { id: string; provider_id: string; expected_enabled: boolean; enabled: boolean }[],
 ) {
-  const result = (await api.post<ModelSelectionReceipt[]>("/v1/models/selection", { changes }))
-    .data;
+  const result = (
+    await api.post<ModelSelectionReceipt[]>("/v1/platform/models/selection", { changes })
+  ).data;
   recordModelSelection(result);
   return result;
 }
@@ -14,7 +15,7 @@ export async function undoModelSelection(
 ) {
   return (
     await api.post<ModelSelectionReceipt[]>(
-      "/v1/models/selection/undo",
+      "/v1/platform/models/selection/undo",
       { changes },
       changeReasonOptions("Undo reviewed model selection"),
     )

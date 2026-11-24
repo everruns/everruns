@@ -6,7 +6,7 @@
 //! standalone worker in process (`WorkerAppBuilder`, connected to that gRPC
 //! port the way the `everruns-worker` binary is). It then creates an llmsim
 //! provider with an instant model, an agent and sessions over HTTP, and sends
-//! messages: each turn is `POST /v1/sessions/{id}/messages`, the server
+//! messages: each turn is `POST /v1/platform/sessions/{id}/messages`, the server
 //! enqueues the turn on the durable queue, the worker claims its steps over
 //! gRPC and runs them, and the turn ends with `turn.completed`.
 //!
@@ -521,7 +521,7 @@ async fn post(client: &reqwest::Client, url: String, body: Value) -> Value {
 async fn create_agent(client: &reqwest::Client, base: &str, opts: &Options) -> String {
     let provider = post(
         client,
-        format!("{base}/v1/providers"),
+        format!("{base}/v1/platform/providers"),
         json!({"name": format!("Turn latency bench {}", uuid::Uuid::now_v7()), "provider_type": "llmsim"}),
     )
     .await;
@@ -529,7 +529,7 @@ async fn create_agent(client: &reqwest::Client, base: &str, opts: &Options) -> S
     // No `-latency` in the id: llmsim streams instantly.
     let model = post(
         client,
-        format!("{base}/v1/providers/{provider_id}/models"),
+        format!("{base}/v1/platform/providers/{provider_id}/models"),
         json!({
             "model_id": opts.model.clone().unwrap_or_else(|| format!("llmsim-bench-{}", uuid::Uuid::now_v7().simple())),
             "display_name": "Turn latency bench",
@@ -539,7 +539,7 @@ async fn create_agent(client: &reqwest::Client, base: &str, opts: &Options) -> S
     .await;
     let agent = post(
         client,
-        format!("{base}/v1/agents"),
+        format!("{base}/v1/platform/agents"),
         json!({
             "name": format!("turn-latency-bench-{}", uuid::Uuid::now_v7().simple()),
             "system_prompt": "Reply briefly.",
@@ -579,7 +579,7 @@ impl SseReader {
         // Its own client: the request client's 30 s timeout would cut the
         // stream.
         let response = reqwest::Client::new()
-            .get(format!("{base}/v1/sessions/{session_id}/sse"))
+            .get(format!("{base}/v1/platform/sessions/{session_id}/sse"))
             .header("accept", "text/event-stream")
             .send()
             .await
@@ -641,7 +641,7 @@ async fn create_session(
 ) -> Session {
     let session = post(
         client,
-        format!("{base}/v1/sessions"),
+        format!("{base}/v1/platform/sessions"),
         json!({"harness_name": "base", "agent_id": agent, "title": "Turn latency bench"}),
     )
     .await;
@@ -659,7 +659,7 @@ async fn send_turn(client: &reqwest::Client, base: &str, session: &mut Session) 
     let sent = Instant::now();
     post(
         client,
-        format!("{base}/v1/sessions/{}/messages", session.id),
+        format!("{base}/v1/platform/sessions/{}/messages", session.id),
         json!({"message": {"content": [{"type": "text", "text": "Hello"}]}, "controls": {"hints": session.output_streaming.map(|live| json!({"output_streaming":live}))}}),
     )
     .await;

@@ -526,7 +526,7 @@ protocol does have: a task state, and typed parts on `TaskStatus.message`.
 
 **Inbound.** A caller answers with `message/send` on the same `taskId`,
 carrying a data part whose `data` holds `everruns/ask_user_answer`. That
-payload is the `POST /v1/sessions/{session_id}/question-answers` request body
+payload is the `POST /v1/platform/sessions/{session_id}/question-answers` request body
 verbatim, and it resolves through the same surface-agnostic operation the
 browser card and `/mcp` use — validation against what was actually asked,
 attribution, and first-writer-wins idempotency are not re-implemented per

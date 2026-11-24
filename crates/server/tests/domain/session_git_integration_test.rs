@@ -18,7 +18,7 @@ use everruns_server::domains::sessions::record::Session;
 async fn setup_session_with_files(server: &TestServer) -> String {
     let agent: Agent = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({"name": "git-test-agent", "display_name": "Git Test Agent", "system_prompt": "Test"}),
         )
         .await
@@ -27,14 +27,14 @@ async fn setup_session_with_files(server: &TestServer) -> String {
 
     let session: Session = server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             json!({"harness_id": server.seed_base_harness_id, "agent_id": agent.public_id}),
         )
         .await
         .assert_status(StatusCode::CREATED)
         .json();
 
-    let fs_url = format!("/v1/sessions/{}/fs", session.id);
+    let fs_url = format!("/v1/platform/sessions/{}/fs", session.id);
 
     // Create files
     server
@@ -64,7 +64,7 @@ async fn setup_session_with_files(server: &TestServer) -> String {
 async fn test_git_commit_and_log_in_memory() {
     let server = TestServer::in_memory().await;
     let session_id = setup_session_with_files(&server).await;
-    let git_url = format!("/v1/sessions/{session_id}/git");
+    let git_url = format!("/v1/platform/sessions/{session_id}/git");
 
     // First commit
     let commit: Value = server
@@ -101,7 +101,7 @@ async fn test_git_commit_and_log_in_memory() {
 async fn test_git_diff_in_memory() {
     let server = TestServer::in_memory().await;
     let session_id = setup_session_with_files(&server).await;
-    let git_url = format!("/v1/sessions/{session_id}/git");
+    let git_url = format!("/v1/platform/sessions/{session_id}/git");
 
     // Commit
     let commit: Value = server
@@ -130,7 +130,7 @@ async fn test_git_diff_in_memory() {
 async fn test_git_refs_and_branches_in_memory() {
     let server = TestServer::in_memory().await;
     let session_id = setup_session_with_files(&server).await;
-    let git_url = format!("/v1/sessions/{session_id}/git");
+    let git_url = format!("/v1/platform/sessions/{session_id}/git");
 
     // Commit
     let commit: Value = server
@@ -191,7 +191,7 @@ async fn test_git_refs_and_branches_in_memory() {
 async fn test_git_log_no_commits_returns_404() {
     let server = TestServer::in_memory().await;
     let session_id = setup_session_with_files(&server).await;
-    let git_url = format!("/v1/sessions/{session_id}/git");
+    let git_url = format!("/v1/platform/sessions/{session_id}/git");
 
     // Log with no commits should return 404 (ref not found)
     server
@@ -204,8 +204,8 @@ async fn test_git_log_no_commits_returns_404() {
 async fn test_git_multiple_commits_in_memory() {
     let server = TestServer::in_memory().await;
     let session_id = setup_session_with_files(&server).await;
-    let git_url = format!("/v1/sessions/{session_id}/git");
-    let fs_url = format!("/v1/sessions/{session_id}/fs");
+    let git_url = format!("/v1/platform/sessions/{session_id}/git");
+    let fs_url = format!("/v1/platform/sessions/{session_id}/fs");
 
     // Commit v1
     let c1: Value = server
@@ -264,7 +264,7 @@ async fn test_git_multiple_commits_in_memory() {
 async fn test_git_short_branch_name_in_memory() {
     let server = TestServer::in_memory().await;
     let session_id = setup_session_with_files(&server).await;
-    let git_url = format!("/v1/sessions/{session_id}/git");
+    let git_url = format!("/v1/platform/sessions/{session_id}/git");
 
     // Commit with short branch name
     let commit: Value = server
@@ -314,7 +314,7 @@ async fn test_git_empty_file_committed_in_memory() {
 
     let agent: Agent = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({"name": "empty-file-agent", "display_name": "Empty File Agent", "system_prompt": "T"}),
         )
         .await
@@ -323,15 +323,15 @@ async fn test_git_empty_file_committed_in_memory() {
 
     let session: Session = server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             json!({"harness_id": server.seed_base_harness_id, "agent_id": agent.public_id}),
         )
         .await
         .assert_status(StatusCode::CREATED)
         .json();
 
-    let fs_url = format!("/v1/sessions/{}/fs", session.id);
-    let git_url = format!("/v1/sessions/{}/git", session.id);
+    let fs_url = format!("/v1/platform/sessions/{}/fs", session.id);
+    let git_url = format!("/v1/platform/sessions/{}/git", session.id);
 
     // Create an empty file
     server
@@ -381,7 +381,7 @@ async fn test_git_binary_roundtrip_in_memory() {
 
     let agent: Agent = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({"name": "binary-agent", "display_name": "Binary Agent", "system_prompt": "T"}),
         )
         .await
@@ -390,15 +390,15 @@ async fn test_git_binary_roundtrip_in_memory() {
 
     let session: Session = server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             json!({"harness_id": server.seed_base_harness_id, "agent_id": agent.public_id}),
         )
         .await
         .assert_status(StatusCode::CREATED)
         .json();
 
-    let fs_url = format!("/v1/sessions/{}/fs", session.id);
-    let git_url = format!("/v1/sessions/{}/git", session.id);
+    let fs_url = format!("/v1/platform/sessions/{}/fs", session.id);
+    let git_url = format!("/v1/platform/sessions/{}/git", session.id);
 
     // Create a binary file using base64 encoding
     use base64::Engine;

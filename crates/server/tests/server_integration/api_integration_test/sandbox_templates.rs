@@ -9,7 +9,7 @@ async fn raw_sandbox_bindings_are_rejected_on_agent_harness_and_session_writes()
     let server = TestServer::in_memory().await;
     let agent: Value = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": "sandbox-boundary", "system_prompt": "Test",
             }),
@@ -19,7 +19,7 @@ async fn raw_sandbox_bindings_are_rejected_on_agent_harness_and_session_writes()
         .json();
     let harness: Value = server
         .post(
-            "/v1/harnesses",
+            "/v1/platform/harnesses",
             json!({
                 "name": "sandbox-boundary", "system_prompt": "Test",
             }),
@@ -38,7 +38,7 @@ async fn raw_sandbox_bindings_are_rejected_on_agent_harness_and_session_writes()
         let capabilities = json!([{"ref": "session_sandbox", "config": config}]);
         server
             .post(
-                "/v1/agents",
+                "/v1/platform/agents",
                 json!({
                     "name": "forged", "system_prompt": "Test", "capabilities": capabilities,
                 }),
@@ -47,7 +47,7 @@ async fn raw_sandbox_bindings_are_rejected_on_agent_harness_and_session_writes()
             .assert_status(StatusCode::BAD_REQUEST);
         server
             .patch(
-                &format!("/v1/agents/{}", agent["id"].as_str().unwrap()),
+                &format!("/v1/platform/agents/{}", agent["id"].as_str().unwrap()),
                 json!({
                     "capabilities": capabilities,
                 }),
@@ -56,7 +56,7 @@ async fn raw_sandbox_bindings_are_rejected_on_agent_harness_and_session_writes()
             .assert_status(StatusCode::BAD_REQUEST);
         server
             .post(
-                "/v1/harnesses",
+                "/v1/platform/harnesses",
                 json!({
                     "name": "forged", "system_prompt": "Test", "capabilities": capabilities,
                 }),
@@ -65,7 +65,7 @@ async fn raw_sandbox_bindings_are_rejected_on_agent_harness_and_session_writes()
             .assert_status(StatusCode::BAD_REQUEST);
         server
             .patch(
-                &format!("/v1/harnesses/{}", harness["id"].as_str().unwrap()),
+                &format!("/v1/platform/harnesses/{}", harness["id"].as_str().unwrap()),
                 json!({
                     "capabilities": capabilities,
                 }),
@@ -74,7 +74,7 @@ async fn raw_sandbox_bindings_are_rejected_on_agent_harness_and_session_writes()
             .assert_status(StatusCode::BAD_REQUEST);
         server
             .post(
-                "/v1/sessions",
+                "/v1/platform/sessions",
                 json!({
                     "harness_id": server.seed_base_harness_id,
                     "agent_id": agent["id"], "capabilities": capabilities,
@@ -90,7 +90,7 @@ async fn selected_template_is_pinned_and_reported() {
     let server = TestServer::in_memory().await;
     let agent: Value = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": "sandbox-template-agent",
                 "system_prompt": "Test Sandbox Templates.",
@@ -109,7 +109,7 @@ async fn selected_template_is_pinned_and_reported() {
         .json();
     let inherited: Value = server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             json!({
                 "harness_id": server.seed_generic_harness_id,
                 "agent_id": agent["id"],
@@ -121,7 +121,7 @@ async fn selected_template_is_pinned_and_reported() {
         .json();
     let inherited_id = inherited["id"].as_str().expect("session id");
     let sandbox: Value = server
-        .get(&format!("/v1/sessions/{inherited_id}/sandbox"))
+        .get(&format!("/v1/platform/sessions/{inherited_id}/sandbox"))
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -143,7 +143,7 @@ async fn selected_template_is_pinned_and_reported() {
     // its immutable snapshot rather than following the editable Agent head.
     server
         .patch(
-            &format!("/v1/agents/{}", agent["id"].as_str().unwrap()),
+            &format!("/v1/platform/agents/{}", agent["id"].as_str().unwrap()),
             json!({
                 "sandbox_policy": {
                     "mode": "fixed",
@@ -157,7 +157,7 @@ async fn selected_template_is_pinned_and_reported() {
         .await
         .assert_status(StatusCode::OK);
     let still_pinned: Value = server
-        .get(&format!("/v1/sessions/{inherited_id}/sandbox"))
+        .get(&format!("/v1/platform/sessions/{inherited_id}/sandbox"))
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -166,7 +166,7 @@ async fn selected_template_is_pinned_and_reported() {
 
     server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             json!({
                 "harness_id": server.seed_generic_harness_id,
                 "agent_id": agent["id"],
@@ -184,7 +184,7 @@ async fn execution_harness_pins_managed_bashkit_sandbox() {
 
     let session: Value = server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             json!({
                 "harness_id": server.seed_generic_harness_id,
                 "title": "Sandbox smoke",
@@ -196,7 +196,7 @@ async fn execution_harness_pins_managed_bashkit_sandbox() {
     let session_id = session["id"].as_str().expect("session id");
 
     let sandbox: Value = server
-        .get(&format!("/v1/sessions/{session_id}/sandbox"))
+        .get(&format!("/v1/platform/sessions/{session_id}/sandbox"))
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -244,7 +244,7 @@ async fn worker_harnesses_enforce_their_execution_rule() {
         let server = &server;
         async move {
             let harness: Value = server
-                .get(&format!("/v1/harnesses/{name}"))
+                .get(&format!("/v1/platform/harnesses/{name}"))
                 .await
                 .assert_status(StatusCode::OK)
                 .json();
@@ -279,13 +279,13 @@ async fn worker_harnesses_enforce_their_execution_rule() {
 
     // Worker: no shell and no primary sandbox by default.
     let plain: Value = server
-        .post("/v1/sessions", session(&worker, None))
+        .post("/v1/platform/sessions", session(&worker, None))
         .await
         .assert_status(StatusCode::CREATED)
         .json();
     let sandbox: Value = server
         .get(&format!(
-            "/v1/sessions/{}/sandbox",
+            "/v1/platform/sessions/{}/sandbox",
             plain["id"].as_str().unwrap()
         ))
         .await
@@ -299,7 +299,7 @@ async fn worker_harnesses_enforce_their_execution_rule() {
     // Bashkit Worker: sealed, so an Agent policy is rejected.
     server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             agent("sealed", &bashkit_worker, Some(daytona.clone())),
         )
         .await
@@ -308,20 +308,23 @@ async fn worker_harnesses_enforce_their_execution_rule() {
     // Sandbox Worker: a Bashkit-only policy cannot satisfy it.
     server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             agent("bashkit-on-sandbox", &sandbox_worker, Some(bashkit_only)),
         )
         .await
         .assert_status(StatusCode::UNPROCESSABLE_ENTITY);
     // No policy is accepted on the Agent, but a Session cannot start on it.
     let unconfigured: Value = server
-        .post("/v1/agents", agent("unconfigured", &sandbox_worker, None))
+        .post(
+            "/v1/platform/agents",
+            agent("unconfigured", &sandbox_worker, None),
+        )
         .await
         .assert_status(StatusCode::CREATED)
         .json();
     server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             session(&sandbox_worker, Some(&unconfigured)),
         )
         .await
@@ -329,20 +332,23 @@ async fn worker_harnesses_enforce_their_execution_rule() {
     // A full sandbox policy pins that sandbox.
     let builder: Value = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             agent("builder", &sandbox_worker, Some(daytona)),
         )
         .await
         .assert_status(StatusCode::CREATED)
         .json();
     let built: Value = server
-        .post("/v1/sessions", session(&sandbox_worker, Some(&builder)))
+        .post(
+            "/v1/platform/sessions",
+            session(&sandbox_worker, Some(&builder)),
+        )
         .await
         .assert_status(StatusCode::CREATED)
         .json();
     let sandbox: Value = server
         .get(&format!(
-            "/v1/sessions/{}/sandbox",
+            "/v1/platform/sessions/{}/sandbox",
             built["id"].as_str().unwrap()
         ))
         .await
@@ -357,7 +363,7 @@ async fn legacy_environment_authoring_is_accepted_but_response_is_canonical() {
 
     let template: Value = server
         .post(
-            "/v1/environments",
+            "/v1/platform/environments",
             json!({
                 "name": "legacy-bashkit",
                 "display_name": "Legacy Bashkit",
@@ -386,7 +392,7 @@ async fn sandbox_fleet_lists_rolls_up_and_shows_history() {
     let server = TestServer::new().await;
     let agent: Value = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": "fleet-agent",
                 "system_prompt": "Test the Sandbox fleet.",
@@ -405,7 +411,7 @@ async fn sandbox_fleet_lists_rolls_up_and_shows_history() {
     let title = format!("Fleet {}", uuid::Uuid::now_v7());
     let session: Value = server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             json!({
                 "harness_id": server.seed_generic_harness_id,
                 "agent_id": agent["id"],
@@ -417,7 +423,7 @@ async fn sandbox_fleet_lists_rolls_up_and_shows_history() {
         .json();
     let pinned: Value = server
         .get(&format!(
-            "/v1/sessions/{}/sandbox",
+            "/v1/platform/sessions/{}/sandbox",
             session["id"].as_str().unwrap()
         ))
         .await
@@ -427,7 +433,7 @@ async fn sandbox_fleet_lists_rolls_up_and_shows_history() {
 
     let page: Value = server
         .get(&format!(
-            "/v1/sandboxes?search={}",
+            "/v1/platform/sandboxes?search={}",
             title.replace(' ', "%20")
         ))
         .await
@@ -444,7 +450,7 @@ async fn sandbox_fleet_lists_rolls_up_and_shows_history() {
 
     let stats: Value = server
         .get(&format!(
-            "/v1/sandboxes/stats?search={}",
+            "/v1/platform/sandboxes/stats?search={}",
             title.replace(' ', "%20")
         ))
         .await
@@ -458,7 +464,7 @@ async fn sandbox_fleet_lists_rolls_up_and_shows_history() {
     assert_eq!(stats["created_in_window"], 1);
 
     let detail: Value = server
-        .get(&format!("/v1/sandboxes/{sandbox_id}"))
+        .get(&format!("/v1/platform/sandboxes/{sandbox_id}"))
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -469,7 +475,7 @@ async fn sandbox_fleet_lists_rolls_up_and_shows_history() {
     // Never started, so nothing to draw.
     let timeline: Value = server
         .get(&format!(
-            "/v1/sandboxes/timeline?search={}",
+            "/v1/platform/sandboxes/timeline?search={}",
             title.replace(' ', "%20")
         ))
         .await
@@ -478,11 +484,11 @@ async fn sandbox_fleet_lists_rolls_up_and_shows_history() {
     assert_eq!(timeline["lanes"], json!([]));
 
     server
-        .get("/v1/sandboxes?state=runing")
+        .get("/v1/platform/sandboxes?state=runing")
         .await
         .assert_status(StatusCode::BAD_REQUEST);
     server
-        .get("/v1/sandboxes/sandbox_01933b5a000070008000000000000099")
+        .get("/v1/platform/sandboxes/sandbox_01933b5a000070008000000000000099")
         .await
         .assert_status(StatusCode::NOT_FOUND);
 }

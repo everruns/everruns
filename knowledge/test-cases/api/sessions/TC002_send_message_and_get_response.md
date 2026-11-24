@@ -33,7 +33,7 @@ Verify that sending a user message to a session triggers a turn, the agent respo
 
 1. Create agent:
    ```bash
-   curl -s -X POST "${BASE_URL}/api/v1/agents" \
+   curl -s -X POST "${BASE_URL}/api/v1/platform/agents" \
      -H "Content-Type: application/json" \
      -d '{
        "name": "simple-chat-agent",
@@ -44,7 +44,7 @@ Verify that sending a user message to a session triggers a turn, the agent respo
 
 2. Create session:
    ```bash
-   curl -s -X POST "${BASE_URL}/api/v1/sessions" \
+   curl -s -X POST "${BASE_URL}/api/v1/platform/sessions" \
      -H "Content-Type: application/json" \
      -d '{"agent_id": "{agent_id}"}'
    ```
@@ -52,7 +52,7 @@ Verify that sending a user message to a session triggers a turn, the agent respo
 
 3. Send user message:
    ```bash
-   curl -s -X POST "${BASE_URL}/api/v1/sessions/{session_id}/messages" \
+   curl -s -X POST "${BASE_URL}/api/v1/platform/sessions/{session_id}/messages" \
      -H "Content-Type: application/json" \
      -d '{
        "message": {
@@ -66,22 +66,22 @@ Verify that sending a user message to a session triggers a turn, the agent respo
 
 5. Get session events:
    ```bash
-   curl -s "${BASE_URL}/api/v1/sessions/{session_id}/events"
+   curl -s "${BASE_URL}/api/v1/platform/sessions/{session_id}/events"
    ```
 
 6. Get messages:
    ```bash
-   curl -s "${BASE_URL}/api/v1/sessions/{session_id}/messages"
+   curl -s "${BASE_URL}/api/v1/platform/sessions/{session_id}/messages"
    ```
 
 7. Check session status:
    ```bash
-   curl -s "${BASE_URL}/api/v1/sessions/{session_id}"
+   curl -s "${BASE_URL}/api/v1/platform/sessions/{session_id}"
    ```
 
 8. List sessions and find `session_id` in the response:
    ```bash
-   curl -s "${BASE_URL}/api/v1/sessions"
+   curl -s "${BASE_URL}/api/v1/platform/sessions"
    ```
 
 ## Expected Result

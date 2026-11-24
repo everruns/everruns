@@ -71,7 +71,7 @@ sign_in() {
   echo
   curl -fsS -o /dev/null http://127.0.0.1:19300/ || fail "the UI did not answer through the proxy"
   password="$(kubectl -n "$NS" get secret "$SECRET" -o jsonpath='{.data.AUTH_ADMIN_PASSWORD}' | base64 -d)"
-  curl -fsS -X POST http://127.0.0.1:19300/api/v1/auth/login -H 'content-type: application/json' \
+  curl -fsS -X POST http://127.0.0.1:19300/api/v1/platform/auth/login -H 'content-type: application/json' \
     -d "{\"email\":\"$EMAIL\",\"password\":\"$password\"}" | grep -q access_token || fail "admin sign-in failed"
   kill "$pf_pid"; pf_pid=""
 }

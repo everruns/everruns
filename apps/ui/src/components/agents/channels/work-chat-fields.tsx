@@ -91,7 +91,7 @@ function WorkChatFields({
     queryFn: async () =>
       (
         await api.get<{ threads: boolean; files: boolean }>(
-          `/v1/agents/${encodeURIComponent(agentId)}/chat-features`,
+          `/v1/platform/agents/${encodeURIComponent(agentId)}/chat-features`,
         )
       ).data,
   });

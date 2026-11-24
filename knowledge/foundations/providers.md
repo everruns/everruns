@@ -137,12 +137,12 @@ row `managed = true` (written directly through storage, e.g. from an
 `OrgInitializer`; never settable through the OSS create/update API). The OSS
 providers service then enforces:
 
-- `PATCH /v1/providers/{id}` and `DELETE /v1/providers/{id}` return `403` (a
+- `PATCH /v1/platform/providers/{id}` and `DELETE /v1/platform/providers/{id}` return `403` (a
   `PolicyError`) for a managed row, so a user with `provider.manage` cannot edit
   its credentials, repoint its `base_url`, or delete it.
 - `GET`/`list` continue to work and expose the `managed` flag (credentials are
   never returned regardless).
-- Model sync (`POST /v1/providers/{id}/sync-models`) stays allowed: it is
+- Model sync (`POST /v1/platform/providers/{id}/sync-models`) stays allowed: it is
   host-triggered and does not mutate provider configuration.
 - Per-org model enablement (enable/disable, favorite) stays tenant-editable: the
   catalog is the host's, but which models an org turns on is a tenant preference.
@@ -294,7 +294,7 @@ resolve_service(org, ServiceKind, binding) -> (ProviderConnection, service clien
 
 Selection: explicit `provider_id` on the consumer's binding (e.g. the voice connection's `provider_id` field) wins; otherwise an org-level default provider per service; otherwise the single active provider whose driver declares the service. "First active provider matching a type string", the old voice behavior, is removed. Resolution failures surface structured "no provider configured for {service}" errors, fail-closed.
 
-All three tiers are implemented. The org-default-per-service tier reads an org-settings map (`organization_settings.default_provider_per_service`, `ServiceKind` → provider id) set via `PATCH /v1/orgs/{org}` (`default_provider_per_service`). It is consulted only when no explicit binding is supplied, and it is fail-closed: a configured default that is missing, inactive, or whose driver does not declare the service errors rather than falling through to the active-provider scan. An unset default for a service falls through to that scan as before. Voice realtime plumbs the per-connection binding: the create/attach request bodies carry an optional `provider_id` (the realtime provider connection's public id), passed straight through as `resolve_service(org, Realtime, provider_id)`. When omitted it falls back to the org default (or the single realtime-capable provider); an unknown binding or one whose driver does not declare the realtime service is rejected with `400` rather than the generic provider `502`. The resolved provider id is persisted on the voice connection's leased-resource metadata.
+All three tiers are implemented. The org-default-per-service tier reads an org-settings map (`organization_settings.default_provider_per_service`, `ServiceKind` → provider id) set via `PATCH /v1/platform/orgs/{org}` (`default_provider_per_service`). It is consulted only when no explicit binding is supplied, and it is fail-closed: a configured default that is missing, inactive, or whose driver does not declare the service errors rather than falling through to the active-provider scan. An unset default for a service falls through to that scan as before. Voice realtime plumbs the per-connection binding: the create/attach request bodies carry an optional `provider_id` (the realtime provider connection's public id), passed straight through as `resolve_service(org, Realtime, provider_id)`. When omitted it falls back to the org default (or the single realtime-capable provider); an unknown binding or one whose driver does not declare the realtime service is rejected with `400` rather than the generic provider `502`. The resolved provider id is persisted on the voice connection's leased-resource metadata.
 
 Consumers and their paths:
 
@@ -331,7 +331,7 @@ blind, it is encrypted into the org and only surfaces at the first agent run,
 far from where the user entered it, which is exactly what org setup (a new
 user's first key) can least afford.
 
-`POST /v1/providers/check-credentials` probes a *candidate* credential with a
+`POST /v1/platform/providers/check-credentials` probes a *candidate* credential with a
 read-only `list_models` call and persists nothing, so a rejected key never
 reaches storage. It takes the credential inline rather than a provider id
 precisely because the interesting moment is before any provider row exists.
@@ -363,7 +363,7 @@ A driver may additionally declare an **interactive OAuth connect flow** so an or
 The capability is declared, not special-cased, mirroring services and credential schema:
 
 - `DriverDescriptor::oauth: Option<DriverOAuthConfig>` (`crates/contracts/src/driver_registry.rs`). `Some` makes "Connect with {provider}" available; `None` means manual entry only. `DriverOAuthConfig` carries the authorize/token endpoints and a `DriverOAuthFlow` wire-flavor discriminator. Adding OAuth to another driver is filling in this field plus a `DriverOAuthFlow` variant, **no new endpoints**.
-- Two org-scoped endpoints under the existing provider resource drive every OAuth driver: `GET /v1/providers/{id}/oauth/authorize` (redirects to the provider with PKCE) and `GET /v1/providers/{id}/oauth/callback` (exchanges the code, stores the credential, redirects to Models → Providers). Both require `provider.manage`.
+- Two org-scoped endpoints under the existing provider resource drive every OAuth driver: `GET /v1/platform/providers/{id}/oauth/authorize` (redirects to the provider with PKCE) and `GET /v1/providers/{id}/oauth/callback` (exchanges the code, stores the credential, redirects to Models → Providers). Both require `provider.manage`.
 
 **OpenRouter** is the first driver to declare it (`DriverOAuthFlow::OpenRouterPkce`). OpenRouter's one-click PKCE flow returns a *user-controlled API key*; the admin authorizes once and the key is stored org-wide. The authorize redirect sets `key_label` to `Everruns <org name>` (capped at OpenRouter's 100-character limit) so the consent screen and the created key are named for this organization. PKCE uses a public client (no client id/secret or app registration). Note OpenRouter's callback URL must be HTTPS on port 443 or 3000 for non-localhost deployments.
 
@@ -392,14 +392,14 @@ Renames, no compatibility aliases:
 
 | Old | New |
 |---|---|
-| `GET/POST /v1/llm-providers` | `GET/POST /v1/providers` |
-| `GET/PATCH/DELETE /v1/llm-providers/{id}` | `GET/PATCH/DELETE /v1/providers/{id}` |
-| `POST /v1/llm-providers/{id}/sync-models` | `POST /v1/providers/{id}/sync-models` |
-| `GET /v1/llm-providers/config` | `GET /v1/providers/config` |
-| `GET/POST /v1/llm-providers/{id}/models` | `GET/POST /v1/providers/{id}/models` |
-| `GET /v1/llm-models`, `/v1/llm-models/{id}` | `GET /v1/models`, `/v1/models/{id}` |
-|, | `GET /v1/model-profiles`, `GET /v1/model-profiles/{vendor}/{model}` (read-only catalog; the key's two segments map to two path segments, so the embedded `/` never needs URL-encoding) |
-|, | `GET /v1/models/{id}/siblings` (models sharing the profile, powers "rebind via another provider") |
+| `GET/POST /v1/llm-providers` | `GET/POST /v1/platform/providers` |
+| `GET/PATCH/DELETE /v1/llm-providers/{id}` | `GET/PATCH/DELETE /v1/platform/providers/{id}` |
+| `POST /v1/llm-providers/{id}/sync-models` | `POST /v1/platform/providers/{id}/sync-models` |
+| `GET /v1/llm-providers/config` | `GET /v1/platform/providers/config` |
+| `GET/POST /v1/llm-providers/{id}/models` | `GET/POST /v1/platform/providers/{id}/models` |
+| `GET /v1/llm-models`, `/v1/llm-models/{id}` | `GET /v1/platform/models`, `/v1/platform/models/{id}` |
+|, | `GET /v1/platform/model-profiles`, `GET /v1/platform/model-profiles/{vendor}/{model}` (read-only catalog; the key's two segments map to two path segments, so the embedded `/` never needs URL-encoding) |
+|, | `GET /v1/platform/models/{id}/siblings` (models sharing the profile, powers "rebind via another provider") |
 
 Request/response field renames follow: `provider_type` → `driver`, `api_key` → typed credential fields per schema, `api_key_set` → `credentials_set`. Model responses gain `profile_key` and embed the profile (as `LlmModelWithProvider.profile` does today).
 

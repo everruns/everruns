@@ -153,7 +153,7 @@ When `controls.reasoning.effort` is set, reasoning models generate chain-of-thou
 6. Organization agents/sessions default - fallback if no model is configured above
 
 `session.model_id` holds only a model someone chose for the session (at create,
-or later through `PATCH /v1/sessions/{id}`; `null` clears it). It never copies
+or later through `PATCH /v1/platform/sessions/{id}`; `null` clears it). It never copies
 the agent or harness default: the fallback is resolved per turn, so changing the
 agent's default model reaches existing sessions, which is how an operator moves
 a run off a model whose provider is limiting it.
@@ -223,7 +223,7 @@ Messages reconstructed from events: `input.message`, `output.message.completed`,
 ```
 User sends: "How much is 2+2?"
 
-1. POST /v1/sessions/{id}/messages
+1. POST /v1/platform/sessions/{id}/messages
    → Creates Message(role=user) → Emits input.message → Triggers workflow
 
 2. Workflow starts → Session(status=active) → session.started
@@ -317,7 +317,7 @@ its seed id is retired, never reused.
 Automatic discovery of available models from provider APIs (OpenAI, OpenRouter via the OpenAI-compatible driver, Anthropic).
 
 - **Background Sync**: Every 24 hours (configurable via `MODEL_SYNC_INTERVAL_HOURS`, 0 to disable)
-- **Manual Sync**: `POST /v1/providers/:id/sync-models`
+- **Manual Sync**: `POST /v1/platform/providers/:id/sync-models`
 - Only providers with standard base URLs or driver-recognized model-listing URLs synced (for example OpenRouter's OpenAI-compatible endpoint); unsupported custom URLs are skipped
 - New models added as `discovered`; existing models have `last_seen_at` updated
 

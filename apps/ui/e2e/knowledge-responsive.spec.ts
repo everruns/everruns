@@ -8,14 +8,14 @@ async function mockAppApi(page: Page) {
     const pathname = new URL(route.request().url()).pathname;
     let json: unknown;
 
-    if (pathname === "/api/v1/auth/config") {
+    if (pathname === "/api/v1/platform/auth/config") {
       json = {
         mode: "none",
         password_auth_enabled: false,
         oauth_providers: [],
         signup_enabled: false,
       };
-    } else if (pathname === "/api/v1/auth/me") {
+    } else if (pathname === "/api/v1/platform/auth/me") {
       json = {
         id: "user-1",
         email: "dev@example.com",
@@ -36,7 +36,7 @@ async function mockAppApi(page: Page) {
       json = { success: true, org_id: DEFAULT_ORG_ID };
     } else if (pathname === "/api/v1/virtual-users/me/connections") {
       json = [];
-    } else if (pathname === "/api/v1/models") {
+    } else if (pathname === "/api/v1/platform/models") {
       json = {
         data: [
           {
@@ -66,7 +66,7 @@ async function mockAppApi(page: Page) {
       json = { data: [], has_more: false, total: 0 };
     }
 
-    if (pathname === "/api/v1/knowledge") {
+    if (pathname === "/api/v1/platform/knowledge") {
       json = {
         data: [
           {
@@ -148,7 +148,7 @@ test.describe("Developer showcase containment", () => {
 
 test.describe("Auth page containment", () => {
   test.beforeEach(async ({ page }) => {
-    await page.route("**/v1/auth/config", (route) =>
+    await page.route("**/v1/platform/auth/config", (route) =>
       route.fulfill({
         json: {
           mode: "full",

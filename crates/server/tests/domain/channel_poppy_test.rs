@@ -124,7 +124,7 @@ fn url(channel: &str, path: &str) -> String {
 pub(crate) async fn create_channel(server: &TestServer, config: Value) -> TestResponse {
     let agent: Value = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": format!("poppy-{}", uuid::Uuid::new_v4().simple()),
                 "display_name": "Support agent",
@@ -138,7 +138,7 @@ pub(crate) async fn create_channel(server: &TestServer, config: Value) -> TestRe
     let agent_id = agent["id"].as_str().unwrap().to_string();
     let response = server
         .post(
-            &format!("/v1/agents/{agent_id}/channels"),
+            &format!("/v1/platform/agents/{agent_id}/channels"),
             json!({ "channel_type": "poppy", "channel_config": config }),
         )
         .await;
@@ -148,7 +148,7 @@ pub(crate) async fn create_channel(server: &TestServer, config: Value) -> TestRe
     let id = response.json::<Value>()["id"].as_str().unwrap().to_string();
     server
         .post(
-            &format!("/v1/agents/{agent_id}/channels/{id}/publish"),
+            &format!("/v1/platform/agents/{agent_id}/channels/{id}/publish"),
             json!({}),
         )
         .await

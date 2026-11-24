@@ -23,7 +23,7 @@ const NO_AUTH_CONFIG = {
 };
 
 async function mockAuthConfig(page: Page, config: Record<string, unknown> = AUTH_CONFIG) {
-  await page.route("**/v1/auth/config", (route) => route.fulfill({ json: config }));
+  await page.route("**/v1/platform/auth/config", (route) => route.fulfill({ json: config }));
 }
 
 test("no-auth login reaches the application instead of a blank redirect loop", async ({ page }) => {
@@ -59,11 +59,11 @@ test("no-auth login reaches the application instead of a blank redirect loop", a
   await page.route("**/api/v1/**", async (route) => {
     const path = new URL(route.request().url()).pathname;
     let json: unknown = { data: [], has_more: false, total: 0 };
-    if (path === "/api/v1/sessions/platform-chat" || path === `/api/v1/sessions/${session.id}`) {
+    if (path === "/api/v1/platform/sessions/platform-chat" || path === `/api/v1/platform/sessions/${session.id}`) {
       json = session;
-    } else if (path === `/api/v1/agents/${agent.id}` || path === "/api/v1/agents/platform-chat") {
+    } else if (path === `/api/v1/platform/agents/${agent.id}` || path === "/api/v1/platform/agents/platform-chat") {
       json = agent;
-    } else if (path === "/api/v1/agents") {
+    } else if (path === "/api/v1/platform/agents") {
       json = { data: [agent], has_more: false, total: 1 };
     } else if (path.endsWith("/participants") || path.endsWith("/tasks")) {
       json = [];
@@ -77,7 +77,7 @@ test("no-auth login reaches the application instead of a blank redirect loop", a
     await route.fulfill({ json });
   });
   await mockAuthConfig(page, NO_AUTH_CONFIG);
-  await page.route("**/v1/auth/me", (route) =>
+  await page.route("**/v1/platform/auth/me", (route) =>
     route.fulfill({
       json: {
         id: "anonymous",
@@ -161,7 +161,7 @@ test.describe("Unified auth door", () => {
   });
 
   test("bad credentials render the calm generic error with a reset path", async ({ page }) => {
-    await page.route("**/v1/auth/login", (route) =>
+    await page.route("**/v1/platform/auth/login", (route) =>
       route.fulfill({ status: 401, json: { error: "Invalid email or password" } }),
     );
     await page.goto("/login");
@@ -188,7 +188,7 @@ test.describe("Unified auth door", () => {
     page,
   }) => {
     let registered = false;
-    await page.route("**/v1/auth/register", (route) => {
+    await page.route("**/v1/platform/auth/register", (route) => {
       registered = true;
       return route.fulfill({ status: 200, json: { ok: true } });
     });
@@ -220,7 +220,7 @@ test.describe("Unified auth door", () => {
   test("signup with an existing email shows the identical confirmation", async ({ page }) => {
     // Confirm-mode backend answers 200 {ok:true} for taken addresses too;
     // the UI must not diverge.
-    await page.route("**/v1/auth/register", (route) =>
+    await page.route("**/v1/platform/auth/register", (route) =>
       route.fulfill({ status: 200, json: { ok: true } }),
     );
     await page.goto("/signup");
@@ -247,7 +247,7 @@ test.describe("Unified auth door", () => {
   });
 
   test("credential failure points OAuth users back to their provider", async ({ page }) => {
-    await page.route("**/v1/auth/login", (route) =>
+    await page.route("**/v1/platform/auth/login", (route) =>
       route.fulfill({ status: 401, json: { error: "Invalid email or password" } }),
     );
     await page.goto("/login");
@@ -274,7 +274,7 @@ test.describe("Unified auth door", () => {
 
   test("verify-email dead link lets the user request a fresh one in place", async ({ page }) => {
     let resendEmail: string | null = null;
-    await page.route("**/v1/auth/resend-verification", (route, request) => {
+    await page.route("**/v1/platform/auth/resend-verification", (route, request) => {
       resendEmail = (request.postDataJSON() as { email: string }).email;
       return route.fulfill({ json: { ok: true } });
     });
@@ -305,7 +305,7 @@ test.describe("Password recovery pages", () => {
   });
 
   test("forgot-password confirms without revealing account existence", async ({ page }) => {
-    await page.route("**/v1/auth/forgot-password", (route) =>
+    await page.route("**/v1/platform/auth/forgot-password", (route) =>
       route.fulfill({ json: { ok: true } }),
     );
     await page.goto("/forgot-password");
@@ -327,7 +327,7 @@ test.describe("Password recovery pages", () => {
   test("reset-password with an expired token swaps to the request-a-new-link state", async ({
     page,
   }) => {
-    await page.route("**/v1/auth/reset-password", (route) =>
+    await page.route("**/v1/platform/auth/reset-password", (route) =>
       route.fulfill({ status: 400, json: { error: "Invalid or expired reset token" } }),
     );
     await page.goto("/reset-password?token=stale");
@@ -339,7 +339,7 @@ test.describe("Password recovery pages", () => {
 
   test("verify-email pending state offers resend with a cooldown", async ({ page }) => {
     let resendCalls = 0;
-    await page.route("**/v1/auth/resend-verification", (route) => {
+    await page.route("**/v1/platform/auth/resend-verification", (route) => {
       resendCalls += 1;
       return route.fulfill({ json: { ok: true } });
     });

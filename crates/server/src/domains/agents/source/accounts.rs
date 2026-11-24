@@ -59,7 +59,7 @@ pub struct AgentSourceAccounts {
 pub struct ListAgentSourceAccounts {
     pub agent_id: String,
 }
-#[command(name="list_agent_source_accounts",summary="List GitHub accounts for Agent source sync",category="agents",description="Show the caller's own GitHub sign-in and the organization's linked GitHub accounts that source sync can read through, with their repositories. Never the Agent's runtime GitHub identity.",method="GET",path="/v1/agents/{agent_id}/source/accounts",policy=AGENT_VIEW,http=plain,cli=CliRoute::new(&["agents", "source", "accounts"], "list").with_examples(&[CliExample::new("See which GitHub accounts and repositories can back this Agent's source", "everruns agents source accounts list --agent-id agent_01h9")]))]
+#[command(name="list_agent_source_accounts",summary="List GitHub accounts for Agent source sync",category="agents",description="Show the caller's own GitHub sign-in and the organization's linked GitHub accounts that source sync can read through, with their repositories. Never the Agent's runtime GitHub identity.",method="GET",path="/v1/platform/agents/{agent_id}/source/accounts",policy=AGENT_VIEW,http=plain,cli=CliRoute::new(&["agents", "source", "accounts"], "list").with_examples(&[CliExample::new("See which GitHub accounts and repositories can back this Agent's source", "everruns agents source accounts list --agent-id agent_01h9")]))]
 impl Command for ListAgentSourceAccounts {
     type Output = AgentSourceAccounts;
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {

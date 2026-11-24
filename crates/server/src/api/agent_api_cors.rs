@@ -71,7 +71,7 @@ mod tests {
             Some("appchan_1")
         );
         assert_eq!(channel_id("/v1/channels/"), None);
-        assert_eq!(channel_id("/v1/agents/a/channels/appchan_1"), None);
-        assert_eq!(channel_id("/v1/sessions"), None);
+        assert_eq!(channel_id("/v1/platform/agents/a/channels/appchan_1"), None);
+        assert_eq!(channel_id("/v1/platform/sessions"), None);
     }
 }

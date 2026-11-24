@@ -163,7 +163,7 @@ async fn duplicate_platform_chat_starter_is_409_without_warning() {
         "tags": ["chat", "platform-chat-starter"],
     });
     // The test caller's starter may already exist from an earlier test.
-    let first = server.post("/v1/sessions", request.clone()).await;
+    let first = server.post("/v1/platform/sessions", request.clone()).await;
     assert!(
         matches!(first.status(), StatusCode::CREATED | StatusCode::CONFLICT),
         "unexpected first create: {} {}",
@@ -181,7 +181,7 @@ async fn duplicate_platform_chat_starter_is_409_without_warning() {
     // Thread-local: the in-process router runs on this current-thread runtime.
     let second = {
         let _guard = tracing::subscriber::set_default(subscriber);
-        server.post("/v1/sessions", request).await
+        server.post("/v1/platform/sessions", request).await
     };
 
     let second = second.assert_status(StatusCode::CONFLICT);
@@ -200,18 +200,18 @@ async fn duplicate_platform_chat_starter_is_409_without_warning() {
 async fn platform_chat_history_pages_only_side_conversations() {
     let server = TestServer::new().await;
     server
-        .post("/v1/sessions/platform-chat", json!({}))
+        .post("/v1/platform/sessions/platform-chat", json!({}))
         .await
         .assert_status(StatusCode::OK);
     server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             json!({"source":"chat", "agent_name":"platform-chat", "tags":["chat"]}),
         )
         .await
         .assert_status(StatusCode::CREATED);
     let query = format!(
-        "/v1/sessions?source=chat&agent_id={}&mine=true&limit=1",
+        "/v1/platform/sessions?source=chat&agent_id={}&mine=true&limit=1",
         server.seed_chat_agent_id
     );
     let all = server

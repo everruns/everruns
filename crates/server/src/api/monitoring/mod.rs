@@ -522,44 +522,47 @@ pub struct ActorQuery {
 
 pub fn routes(state: AppState) -> Router {
     Router::new()
-        .route("/v1/monitoring/config", get(monitoring_config))
-        .route("/v1/monitoring", get(get_monitoring))
+        .route("/v1/platform/monitoring/config", get(monitoring_config))
+        .route("/v1/platform/monitoring", get(get_monitoring))
         .route(
-            "/v1/monitoring/timeline",
+            "/v1/platform/monitoring/timeline",
             get(timeline::get_monitoring_timeline),
         )
         .route(
-            "/v1/monitoring/timeline/window",
+            "/v1/platform/monitoring/timeline/window",
             get(timeline::get_monitoring_timeline_window),
         )
-        .route("/v1/monitoring/actors", get(list_monitoring_actors))
         .route(
-            "/v1/monitoring/actors/{session_id}",
+            "/v1/platform/monitoring/actors",
+            get(list_monitoring_actors),
+        )
+        .route(
+            "/v1/platform/monitoring/actors/{session_id}",
             get(get_monitoring_actor),
         )
-        .route("/v1/durable/monitoring", get(get_fleet_monitoring))
+        .route("/v1/platform/durable/monitoring", get(get_fleet_monitoring))
         .route(
-            "/v1/durable/monitoring/timeline",
+            "/v1/platform/durable/monitoring/timeline",
             get(timeline::get_fleet_monitoring_timeline),
         )
         .route(
-            "/v1/durable/monitoring/timeline/window",
+            "/v1/platform/durable/monitoring/timeline/window",
             get(timeline::get_fleet_monitoring_timeline_window),
         )
         .route(
-            "/v1/durable/monitoring/shards",
+            "/v1/platform/durable/monitoring/shards",
             get(timeline::get_fleet_monitoring_shards),
         )
         .route(
-            "/v1/durable/monitoring/shards/{shard}/detail",
+            "/v1/platform/durable/monitoring/shards/{shard}/detail",
             get(shard_detail::get_fleet_monitoring_shard_detail),
         )
         .route(
-            "/v1/durable/monitoring/actors",
+            "/v1/platform/durable/monitoring/actors",
             get(list_fleet_monitoring_actors),
         )
         .route(
-            "/v1/durable/monitoring/actors/{session_id}",
+            "/v1/platform/durable/monitoring/actors/{session_id}",
             get(get_fleet_monitoring_actor),
         )
         .with_state(state)
@@ -576,7 +579,7 @@ fn authorize_org(
 }
 
 /// Resolve organization monitoring read authority.
-#[utoipa::path(get, path = "/v1/monitoring/config", tag = "monitoring",
+#[utoipa::path(get, path = "/v1/platform/monitoring/config", tag = "monitoring",
     responses((status = 200, description = "Monitoring authorization", body = ResourceConfigResponse)))]
 pub async fn monitoring_config(
     org: ResolvedOrg,
@@ -591,7 +594,7 @@ pub async fn monitoring_config(
 }
 
 /// Get organization execution monitoring.
-#[utoipa::path(get, path = "/v1/monitoring", tag = "monitoring",
+#[utoipa::path(get, path = "/v1/platform/monitoring", tag = "monitoring",
     responses((status = 200, description = "Organization execution monitoring", body = MonitoringSnapshot),
         (status = 403, description = "Forbidden", body = ErrorResponse), (status = 404, description = "Not enrolled", body = ErrorResponse)))]
 pub async fn get_monitoring(
@@ -608,7 +611,7 @@ pub async fn get_monitoring(
 }
 
 /// Get platform-wide execution monitoring. Requires platform-user access.
-#[utoipa::path(get, path = "/v1/durable/monitoring", tag = "durable",
+#[utoipa::path(get, path = "/v1/platform/durable/monitoring", tag = "durable",
     responses((status = 200, description = "Platform-wide execution monitoring", body = MonitoringSnapshot),
         (status = 403, description = "Platform access required", body = ErrorResponse)))]
 pub async fn get_fleet_monitoring(
@@ -668,7 +671,7 @@ async fn actor_page(
 }
 
 /// List organization session actors.
-#[utoipa::path(get, path = "/v1/monitoring/actors", tag = "monitoring", params(ActorQuery),
+#[utoipa::path(get, path = "/v1/platform/monitoring/actors", tag = "monitoring", params(ActorQuery),
     responses((status = 200, description = "Organization actor page", body = MonitoringActorPage)))]
 pub async fn list_monitoring_actors(
     org: ResolvedOrg,
@@ -680,7 +683,7 @@ pub async fn list_monitoring_actors(
 }
 
 /// List a bounded platform-wide page of session actors.
-#[utoipa::path(get, path = "/v1/durable/monitoring/actors", tag = "durable", params(ActorQuery),
+#[utoipa::path(get, path = "/v1/platform/durable/monitoring/actors", tag = "durable", params(ActorQuery),
     responses((status = 200, description = "Platform actor page", body = MonitoringActorPage)))]
 pub async fn list_fleet_monitoring_actors(
     _platform: PlatformUser,
@@ -748,7 +751,7 @@ async fn actor_detail(
 }
 
 /// Inspect an organization actor and its lease history.
-#[utoipa::path(get, path = "/v1/monitoring/actors/{session_id}", tag = "monitoring",
+#[utoipa::path(get, path = "/v1/platform/monitoring/actors/{session_id}", tag = "monitoring",
     params(("session_id" = String, Path, description = "Session identifier")),
     responses((status = 200, description = "Organization actor diagnostics", body = MonitoringActorDetail), (status = 404, description = "Actor not found", body = ErrorResponse)))]
 pub async fn get_monitoring_actor(
@@ -761,7 +764,7 @@ pub async fn get_monitoring_actor(
 }
 
 /// Inspect a session actor across organizations. Requires platform-user access.
-#[utoipa::path(get, path = "/v1/durable/monitoring/actors/{session_id}", tag = "durable",
+#[utoipa::path(get, path = "/v1/platform/durable/monitoring/actors/{session_id}", tag = "durable",
     params(("session_id" = String, Path, description = "Session identifier")),
     responses((status = 200, description = "Platform actor diagnostics", body = MonitoringActorDetail), (status = 404, description = "Actor not found", body = ErrorResponse)))]
 pub async fn get_fleet_monitoring_actor(

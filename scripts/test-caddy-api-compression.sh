@@ -37,7 +37,7 @@ class ApiFixture(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
     def do_GET(self) -> None:
-        if self.path == "/api/v1/capabilities":
+        if self.path == "/api/v1/platform/capabilities":
             self._send(200, "application/json", CAPABILITIES_BODY)
         elif self.path == "/api/v1/small":
             self._send(200, "application/json", b'{"ok":true}')
@@ -136,7 +136,7 @@ try:
                 raise AssertionError("caddy did not become ready")
             time.sleep(0.05)
 
-    status, headers, compressed_body = request(proxy_port, "/api/v1/capabilities")
+    status, headers, compressed_body = request(proxy_port, "/api/v1/platform/capabilities")
     assert status == 200
     assert headers.get("content-encoding") == "gzip", headers
     assert "accept-encoding" in headers.get("vary", "").lower(), headers

@@ -5,7 +5,7 @@
 //! shell) resolves the words here and gets the same answer: a wire name and a
 //! JSON params object, help text, or an error with guidance. What happens
 //! next differs only in transport: an in-process dispatch, a gRPC call, or
-//! `POST /v1/commands/{name}`.
+//! `POST /v1/platform/commands/{name}`.
 
 use std::collections::BTreeMap;
 use std::sync::OnceLock;

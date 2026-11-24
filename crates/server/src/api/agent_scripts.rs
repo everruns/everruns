@@ -1,6 +1,6 @@
 // Agent-script HTTP routes.
 //
-// Sub-resource of an agent: `/v1/agents/{agent_id}/scripts`. Policy enforcement
+// Sub-resource of an agent: `/v1/platform/agents/{agent_id}/scripts`. Policy enforcement
 // happens inside the domain commands (AGENT_VIEW / AGENT_MANAGE). Scripts need
 // only storage, so the router reuses the agent-trigger state for its context.
 
@@ -27,11 +27,11 @@ use super::common::{ApiResult, ErrorResponse};
 pub fn routes(state: AppState) -> Router {
     Router::new()
         .route(
-            "/v1/agents/{agent_id}/scripts",
+            "/v1/platform/agents/{agent_id}/scripts",
             get(list_agent_scripts).post(create_agent_script),
         )
         .route(
-            "/v1/agents/{agent_id}/scripts/{script_id}",
+            "/v1/platform/agents/{agent_id}/scripts/{script_id}",
             get(get_agent_script)
                 .patch(update_agent_script)
                 .delete(delete_agent_script),
@@ -48,7 +48,7 @@ pub struct ListAgentScriptsQuery {
 
 #[utoipa::path(
     get,
-    path = "/v1/agents/{agent_id}/scripts",
+    path = "/v1/platform/agents/{agent_id}/scripts",
     description = "List an agent's saved scripts with their bodies. Set include_archived=true to also return archived scripts.",
     params(
         ("agent_id" = String, Path, description = "Agent ID (prefixed)"),
@@ -77,7 +77,7 @@ pub async fn list_agent_scripts(
 
 #[utoipa::path(
     post,
-    path = "/v1/agents/{agent_id}/scripts",
+    path = "/v1/platform/agents/{agent_id}/scripts",
     description = "Save a new script for an agent. The name must be unique among the agent's active scripts.",
     params(("agent_id" = String, Path, description = "Agent ID (prefixed)")),
     request_body = CreateAgentScriptRequest,
@@ -103,7 +103,7 @@ pub async fn create_agent_script(
 
 #[utoipa::path(
     get,
-    path = "/v1/agents/{agent_id}/scripts/{script_id}",
+    path = "/v1/platform/agents/{agent_id}/scripts/{script_id}",
     description = "Get one saved script, including its body and input schema.",
     params(
         ("agent_id" = String, Path, description = "Agent ID (prefixed)"),
@@ -131,7 +131,7 @@ pub async fn get_agent_script(
 
 #[utoipa::path(
     patch,
-    path = "/v1/agents/{agent_id}/scripts/{script_id}",
+    path = "/v1/platform/agents/{agent_id}/scripts/{script_id}",
     description = "Update a saved script's description, input schema or body. Omitted fields stay unchanged.",
     params(
         ("agent_id" = String, Path, description = "Agent ID (prefixed)"),
@@ -163,7 +163,7 @@ pub async fn update_agent_script(
 
 #[utoipa::path(
     delete,
-    path = "/v1/agents/{agent_id}/scripts/{script_id}",
+    path = "/v1/platform/agents/{agent_id}/scripts/{script_id}",
     description = "Archive a saved script. It is hidden from the agent and its name becomes free again.",
     params(
         ("agent_id" = String, Path, description = "Agent ID (prefixed)"),

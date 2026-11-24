@@ -1,8 +1,8 @@
 //! Harness examples — adoptable templates analogous to agent examples.
 //!
 //! Decision: Examples live in code, not in DB. Mirrors `seed::SEED_AGENTS`.
-//! Decision: Listed via `GET /v1/harness-examples`; adopted via
-//!   `POST /v1/harnesses/import?from-example={name}` which creates a normal
+//! Decision: Listed via `GET /v1/platform/harness-examples`; adopted via
+//!   `POST /v1/platform/harnesses/import?from-example={name}` which creates a normal
 //!   org-owned harness (`is_built_in = false`) inheriting from a built-in
 //!   worker by name: Coding needs a full sandbox, Data Analyst runs on Bashkit.
 //! Decision: Examples are filtered at runtime by capability registration —

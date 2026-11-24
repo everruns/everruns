@@ -25,15 +25,15 @@ pub type AppState = super::agent_triggers::AppState;
 pub fn routes(state: AppState) -> Router {
     Router::new()
         .route(
-            "/v1/agents/{agent_id}/channels/{channel_id}/keys",
+            "/v1/platform/agents/{agent_id}/channels/{channel_id}/keys",
             get(list_agent_keys).post(create_agent_key),
         )
         .route(
-            "/v1/agents/{agent_id}/channels/{channel_id}/keys/{key_id}/rotate",
+            "/v1/platform/agents/{agent_id}/channels/{channel_id}/keys/{key_id}/rotate",
             post(rotate_agent_key),
         )
         .route(
-            "/v1/agents/{agent_id}/channels/{channel_id}/keys/{key_id}/revoke",
+            "/v1/platform/agents/{agent_id}/channels/{channel_id}/keys/{key_id}/revoke",
             post(revoke_agent_key),
         )
         .with_state(state)
@@ -65,7 +65,7 @@ pub struct RotateAgentKeyRequest {
 #[utoipa::path(
     description = "List the agent keys of an agent's API channel. Secrets are never returned.",
     get,
-    path = "/v1/agents/{agent_id}/channels/{channel_id}/keys",
+    path = "/v1/platform/agents/{agent_id}/channels/{channel_id}/keys",
     params(
         ("agent_id" = String, Path, description = "Agent ID or name"),
         ("channel_id" = String, Path, description = "API channel ID")
@@ -93,7 +93,7 @@ pub async fn list_agent_keys(
 #[utoipa::path(
     description = "Create an agent key for an agent's API channel. The secret is in this response only.",
     post,
-    path = "/v1/agents/{agent_id}/channels/{channel_id}/keys",
+    path = "/v1/platform/agents/{agent_id}/channels/{channel_id}/keys",
     params(
         ("agent_id" = String, Path, description = "Agent ID or name"),
         ("channel_id" = String, Path, description = "API channel ID")
@@ -127,7 +127,7 @@ pub async fn create_agent_key(
 #[utoipa::path(
     description = "Replace an agent key's secret, keeping its id. The new secret is in this response only; the old one keeps working for the overlap.",
     post,
-    path = "/v1/agents/{agent_id}/channels/{channel_id}/keys/{key_id}/rotate",
+    path = "/v1/platform/agents/{agent_id}/channels/{channel_id}/keys/{key_id}/rotate",
     params(
         ("agent_id" = String, Path, description = "Agent ID or name"),
         ("channel_id" = String, Path, description = "API channel ID"),
@@ -162,7 +162,7 @@ pub async fn rotate_agent_key(
 #[utoipa::path(
     description = "Revoke an agent key. It never works again, including a secret still in its rotation overlap.",
     post,
-    path = "/v1/agents/{agent_id}/channels/{channel_id}/keys/{key_id}/revoke",
+    path = "/v1/platform/agents/{agent_id}/channels/{channel_id}/keys/{key_id}/revoke",
     params(
         ("agent_id" = String, Path, description = "Agent ID or name"),
         ("channel_id" = String, Path, description = "API channel ID"),

@@ -1,8 +1,8 @@
 // Session Files (Virtual Filesystem) HTTP routes — DEPRECATED.
 //
-// These `/v1/sessions/{session_id}/fs/*` routes are retained as aliases for
+// These `/v1/platform/sessions/{session_id}/fs/*` routes are retained as aliases for
 // backwards compatibility. New clients should use the equivalent
-// `/v1/workspaces/{workspace_id}/fs/*` endpoints instead. The routes are
+// `/v1/platform/workspaces/{workspace_id}/fs/*` endpoints instead. The routes are
 // intentionally delisted from the published OpenAPI surface (see
 // `crates/server/src/openapi/mod.rs`) so they do not appear in `docs/api/openapi.json`.
 //
@@ -339,22 +339,37 @@ pub(crate) fn sandboxed_html_response(file: SessionFile) -> Result<Response, (St
 pub fn routes(state: AppState) -> Router {
     Router::new()
         // Actions (must be before wildcard to take precedence)
-        .route("/v1/sessions/{session_id}/fs/_/move", post(move_file))
-        .route("/v1/sessions/{session_id}/fs/_/copy", post(copy_file))
-        .route("/v1/sessions/{session_id}/fs/_/grep", post(grep_files))
-        .route("/v1/sessions/{session_id}/fs/_/search", post(search_files))
-        .route("/v1/sessions/{session_id}/fs/_/stat", post(stat_file))
         .route(
-            "/v1/sessions/{session_id}/fs/_/download/{*path}",
+            "/v1/platform/sessions/{session_id}/fs/_/move",
+            post(move_file),
+        )
+        .route(
+            "/v1/platform/sessions/{session_id}/fs/_/copy",
+            post(copy_file),
+        )
+        .route(
+            "/v1/platform/sessions/{session_id}/fs/_/grep",
+            post(grep_files),
+        )
+        .route(
+            "/v1/platform/sessions/{session_id}/fs/_/search",
+            post(search_files),
+        )
+        .route(
+            "/v1/platform/sessions/{session_id}/fs/_/stat",
+            post(stat_file),
+        )
+        .route(
+            "/v1/platform/sessions/{session_id}/fs/_/download/{*path}",
             get(download_path),
         )
         // File operations with path
         .route(
-            "/v1/sessions/{session_id}/fs",
+            "/v1/platform/sessions/{session_id}/fs",
             get(get_root).post(create_root).delete(delete_root),
         )
         .route(
-            "/v1/sessions/{session_id}/fs/{*path}",
+            "/v1/platform/sessions/{session_id}/fs/{*path}",
             get(get_path)
                 .post(create_path)
                 .put(update_path)
@@ -367,7 +382,7 @@ pub fn routes(state: AppState) -> Router {
 /// GET /fs - Get root directory listing
 #[utoipa::path(
     get,
-    path = "/v1/sessions/{session_id}/fs",
+    path = "/v1/platform/sessions/{session_id}/fs",
     params(
         ("session_id" = String, Path, description = "Session ID (prefixed, e.g., sess_...)"),
         ("recursive" = Option<bool>, Query, description = "List recursively")
@@ -398,7 +413,7 @@ pub async fn get_root(
 /// GET /fs/*path - Get file content or directory listing
 #[utoipa::path(
     get,
-    path = "/v1/sessions/{session_id}/fs/{path}",
+    path = "/v1/platform/sessions/{session_id}/fs/{path}",
     params(
         ("session_id" = String, Path, description = "Session ID (prefixed, e.g., sess_...)"),
         ("path" = String, Path, description = "File or directory path"),
@@ -478,7 +493,7 @@ async fn stream_session_file(
 /// GET /fs/_/download/*path - Download raw file bytes
 #[utoipa::path(
     get,
-    path = "/v1/sessions/{session_id}/fs/_/download/{path}",
+    path = "/v1/platform/sessions/{session_id}/fs/_/download/{path}",
     params(
         ("session_id" = String, Path, description = "Session ID (prefixed, e.g., sess_...)"),
         ("path" = String, Path, description = "File path")
@@ -513,7 +528,7 @@ pub async fn create_root(_org: ResolvedOrg) -> (StatusCode, String) {
 /// POST /fs/*path - Create file or directory
 #[utoipa::path(
     post,
-    path = "/v1/sessions/{session_id}/fs/{path}",
+    path = "/v1/platform/sessions/{session_id}/fs/{path}",
     params(
         ("session_id" = String, Path, description = "Session ID (prefixed, e.g., sess_...)"),
         ("path" = String, Path, description = "File or directory path")
@@ -547,7 +562,7 @@ pub async fn create_path(
 /// PUT /fs/*path - Update file content
 #[utoipa::path(
     put,
-    path = "/v1/sessions/{session_id}/fs/{path}",
+    path = "/v1/platform/sessions/{session_id}/fs/{path}",
     params(
         ("session_id" = String, Path, description = "Session ID (prefixed, e.g., sess_...)"),
         ("path" = String, Path, description = "File path")
@@ -589,7 +604,7 @@ pub async fn delete_root(_org: ResolvedOrg) -> (StatusCode, String) {
 /// DELETE /fs/*path - Delete file or directory
 #[utoipa::path(
     delete,
-    path = "/v1/sessions/{session_id}/fs/{path}",
+    path = "/v1/platform/sessions/{session_id}/fs/{path}",
     params(
         ("session_id" = String, Path, description = "Session ID (prefixed, e.g., sess_...)"),
         ("path" = String, Path, description = "File or directory path"),
@@ -623,7 +638,7 @@ pub async fn delete_path(
 /// POST /fs/_/move - Move/rename file
 #[utoipa::path(
     post,
-    path = "/v1/sessions/{session_id}/fs/_/move",
+    path = "/v1/platform/sessions/{session_id}/fs/_/move",
     params(
         ("session_id" = String, Path, description = "Session ID (prefixed, e.g., sess_...)")
     ),
@@ -653,7 +668,7 @@ pub async fn move_file(
 /// POST /fs/_/copy - Copy file
 #[utoipa::path(
     post,
-    path = "/v1/sessions/{session_id}/fs/_/copy",
+    path = "/v1/platform/sessions/{session_id}/fs/_/copy",
     params(
         ("session_id" = String, Path, description = "Session ID (prefixed, e.g., sess_...)")
     ),
@@ -683,7 +698,7 @@ pub async fn copy_file(
 /// POST /fs/_/grep - Search files
 #[utoipa::path(
     post,
-    path = "/v1/sessions/{session_id}/fs/_/grep",
+    path = "/v1/platform/sessions/{session_id}/fs/_/grep",
     params(
         ("session_id" = String, Path, description = "Session ID (prefixed, e.g., sess_...)")
     ),
@@ -711,7 +726,7 @@ pub async fn grep_files(
 /// POST /fs/_/search - Search files with context and paging
 ///
 /// Deliberately carries no utoipa path annotation. This whole
-/// `/v1/sessions/{session_id}/fs/*` family is delisted from the published spec
+/// `/v1/platform/sessions/{session_id}/fs/*` family is delisted from the published spec
 /// so the annotation would describe an
 /// operation `ApiDoc` never registers — which
 /// `openapi_coverage_test::every_utoipa_handler_is_registered_in_apidoc`
@@ -743,7 +758,7 @@ pub async fn search_files(
 /// POST /fs/_/stat - Get file or directory stat
 #[utoipa::path(
     post,
-    path = "/v1/sessions/{session_id}/fs/_/stat",
+    path = "/v1/platform/sessions/{session_id}/fs/_/stat",
     params(
         ("session_id" = String, Path, description = "Session ID (prefixed, e.g., sess_...)")
     ),

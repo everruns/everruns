@@ -10,7 +10,7 @@ async fn test_mcp_resources_read_cannot_escape_org_scope() {
 
     let org2: Value = server
         .post(
-            "/v1/orgs",
+            "/v1/platform/orgs",
             json!({ "name": format!("MCP Resource Target {}", unique_suffix()) }),
         )
         .await
@@ -19,7 +19,10 @@ async fn test_mcp_resources_read_cannot_escape_org_scope() {
     let org2_id = org2["id"].as_str().expect("org2 id").to_string();
 
     let switch_resp = server
-        .post("/v1/users/me/switch-org", json!({ "org_id": org2_id }))
+        .post(
+            "/v1/platform/users/me/switch-org",
+            json!({ "org_id": org2_id }),
+        )
         .await
         .assert_status(StatusCode::OK);
     let org2_cookie = extract_cookie(switch_resp.headers(), "everruns_org");

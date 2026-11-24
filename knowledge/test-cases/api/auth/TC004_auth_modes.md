@@ -34,7 +34,7 @@ Verify none, admin, full, and external deployments expose the intended sign-in p
 
 ## Steps
 
-1. Verify `/health` and `/api/v1/auth/config` for each supported fixture; record the actual mode and configured flags without secrets.
+1. Verify `/health` and `/api/v1/platform/auth/config` for each supported fixture; record the actual mode and configured flags without secrets.
 2. In a clean browser without access/refresh cookies, open `/agents`, then the appropriate login path. Complete sign-in for each authenticated fixture.
 3. Compare visible signup/password/OAuth affordances against the config, and try disabled signup/password endpoints with disposable inputs; they must not authenticate or create an account.
 4. For external mode, verify login delegation and the configured backend credential, then repeat with an invalid credential.

@@ -212,7 +212,7 @@ SELECT * FROM durable_dead_letter_queue ORDER BY dead_at DESC;
 ```
 
 To retry after addressing the cause, use the platform-admin endpoint
-`POST /v1/durable/dlq/{dlq_id}/retry` (under your configured API prefix).
+`POST /v1/platform/durable/dlq/{dlq_id}/retry` (under your configured API prefix).
 It creates a new queued task and records the requeue in one transaction.
 Updating `requeued_at` alone does not enqueue any work. Inspect the task's
 external effects before retrying it; a retry can repeat them.

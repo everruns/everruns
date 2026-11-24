@@ -1,5 +1,5 @@
 // Session Schedule HTTP routes
-// Routes nested under /v1/sessions/{session_id}/schedules
+// Routes nested under /v1/platform/sessions/{session_id}/schedules
 
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::session_schedules::{ScheduleChange, SessionScheduleService};
@@ -82,15 +82,18 @@ where
 
 pub fn routes(state: AppState) -> Router {
     Router::new()
-        .route("/v1/sessions/{session_id}/schedules", get(list_schedules))
         .route(
-            "/v1/sessions/{session_id}/schedules/{schedule_id}",
+            "/v1/platform/sessions/{session_id}/schedules",
+            get(list_schedules),
+        )
+        .route(
+            "/v1/platform/sessions/{session_id}/schedules/{schedule_id}",
             get(get_schedule)
                 .patch(update_schedule)
                 .delete(delete_schedule),
         )
         .route(
-            "/v1/sessions/{session_id}/schedules/{schedule_id}/trigger",
+            "/v1/platform/sessions/{session_id}/schedules/{schedule_id}/trigger",
             post(trigger_schedule),
         )
         .with_state(state)
@@ -103,7 +106,7 @@ pub fn routes(state: AppState) -> Router {
 /// List all schedules for a session.
 #[utoipa::path(
     get,
-    path = "/v1/sessions/{session_id}/schedules",
+    path = "/v1/platform/sessions/{session_id}/schedules",
     responses(
         (status = 200, description = "List of schedules", body = [WithUrls<SessionSchedule>]),
         (status = 403, description = "Caller may not view this session"),
@@ -129,7 +132,7 @@ pub async fn list_schedules(
 /// Get a specific schedule.
 #[utoipa::path(
     get,
-    path = "/v1/sessions/{session_id}/schedules/{schedule_id}",
+    path = "/v1/platform/sessions/{session_id}/schedules/{schedule_id}",
     responses(
         (status = 200, description = "Schedule details", body = WithUrls<SessionSchedule>),
         (status = 403, description = "Caller may not view this session"),
@@ -154,7 +157,7 @@ pub async fn get_schedule(
 /// Update a schedule (enable/disable).
 #[utoipa::path(
     patch,
-    path = "/v1/sessions/{session_id}/schedules/{schedule_id}",
+    path = "/v1/platform/sessions/{session_id}/schedules/{schedule_id}",
     request_body = UpdateScheduleRequest,
     responses(
         (status = 200, description = "Updated schedule", body = WithUrls<SessionSchedule>),
@@ -218,7 +221,7 @@ pub async fn update_schedule(
 /// Delete a schedule.
 #[utoipa::path(
     delete,
-    path = "/v1/sessions/{session_id}/schedules/{schedule_id}",
+    path = "/v1/platform/sessions/{session_id}/schedules/{schedule_id}",
     responses(
         (status = 204, description = "Schedule deleted"),
         (status = 403, description = "Caller may not manage this session"),
@@ -259,7 +262,7 @@ pub async fn delete_schedule(
 /// Manually trigger a schedule (fire it now).
 #[utoipa::path(
     post,
-    path = "/v1/sessions/{session_id}/schedules/{schedule_id}/trigger",
+    path = "/v1/platform/sessions/{session_id}/schedules/{schedule_id}/trigger",
     responses(
         (status = 200, description = "Schedule triggered", body = WithUrls<SessionSchedule>),
         (status = 403, description = "Caller may not manage this session"),

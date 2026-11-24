@@ -100,7 +100,7 @@ async fn the_daily_limit_must_be_positive() {
     let server = TestServer::in_memory().await;
     let agent: Value = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({ "name": "api-agent-spend", "system_prompt": "Test" }),
         )
         .await
@@ -109,7 +109,7 @@ async fn the_daily_limit_must_be_positive() {
     for limit in [json!(0), json!(-1), json!(2_000_000)] {
         server
             .post(
-                &format!("/v1/agents/{}/channels", agent["id"].as_str().unwrap()),
+                &format!("/v1/platform/agents/{}/channels", agent["id"].as_str().unwrap()),
                 json!({ "channel_type": "api", "channel_config": { "daily_spend_limit_usd": limit } }),
             )
             .await

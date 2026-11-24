@@ -33,7 +33,7 @@ fail() { printf "\033[1;31mERROR: %s\033[0m\n" "$1" >&2; exit 1; }
 
 log "Step 1: Creating agent with client-side tool"
 
-AGENT_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "${BASE_URL}/v1/agents" \
+AGENT_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "${BASE_URL}/v1/platform/agents" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "crm-assistant",
@@ -72,7 +72,7 @@ info "Agent created: $AGENT_ID"
 
 log "Step 2: Creating session"
 
-SESSION_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "${BASE_URL}/v1/sessions" \
+SESSION_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "${BASE_URL}/v1/platform/sessions" \
   -H "Content-Type: application/json" \
   -d "{
     \"agent_id\": \"${AGENT_ID}\"
@@ -93,7 +93,7 @@ info "Session created: $SESSION_ID"
 log "Step 3: Sending message to trigger client-side tool"
 
 MSG_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
-  "${BASE_URL}/v1/sessions/${SESSION_ID}/messages" \
+  "${BASE_URL}/v1/platform/sessions/${SESSION_ID}/messages" \
   -H "Content-Type: application/json" \
   -d '{
     "message": {
@@ -120,7 +120,7 @@ TOOL_CALL_DATA=""
 TIMEOUT=60  # seconds
 for _ in $(seq 1 "$TIMEOUT"); do
   TOOL_CALL_DATA=$(curl -fsS \
-    "${BASE_URL}/v1/sessions/${SESSION_ID}/events?types=tool.call_requested&limit=1" | \
+    "${BASE_URL}/v1/platform/sessions/${SESSION_ID}/events?types=tool.call_requested&limit=1" | \
     jq -c '.data[-1] // empty') || true
   [ -n "$TOOL_CALL_DATA" ] && break
   sleep 1
@@ -150,7 +150,7 @@ CUSTOMER_ID=$(echo "$TOOL_ARGS" | jq -r '.customer_id')
 info "Simulating CRM lookup for: $CUSTOMER_ID"
 
 RESULT_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
-  "${BASE_URL}/v1/sessions/${SESSION_ID}/tool-results" \
+  "${BASE_URL}/v1/platform/sessions/${SESSION_ID}/tool-results" \
   -H "Content-Type: application/json" \
   -d "{
     \"tool_results\": [
@@ -185,7 +185,7 @@ FINAL_RESPONSE=""
 
 for _ in $(seq 1 "$TIMEOUT"); do
   FINAL_RESPONSE=$(curl -fsS \
-    "${BASE_URL}/v1/sessions/${SESSION_ID}/events?types=output.message.completed&limit=1" | \
+    "${BASE_URL}/v1/platform/sessions/${SESSION_ID}/events?types=output.message.completed&limit=1" | \
     jq -c '.data[-1] // empty') || true
   [ -n "$FINAL_RESPONSE" ] && break
   sleep 1
@@ -208,6 +208,6 @@ info "Agent ID:   $AGENT_ID"
 info "Session ID: $SESSION_ID"
 info ""
 info "You can continue the conversation:"
-info "  curl -X POST ${BASE_URL}/v1/sessions/${SESSION_ID}/messages \\"
+info "  curl -X POST ${BASE_URL}/v1/platform/sessions/${SESSION_ID}/messages \\"
 info "    -H 'Content-Type: application/json' \\"
 info "    -d '{\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"What plan is this customer on?\"}]}}'"

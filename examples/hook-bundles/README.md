@@ -19,7 +19,7 @@ Add the `user_hooks` capability to your agent with the corresponding
 JSON as its `config` field:
 
 ```bash
-curl -X POST http://localhost:9301/v1/agents \
+curl -X POST http://localhost:9301/v1/platform/agents \
   -H "Content-Type: application/json" \
   -d '{
     "name": "safer-coder",

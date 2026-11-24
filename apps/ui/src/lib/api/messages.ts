@@ -1,5 +1,5 @@
 // Message API functions
-// Org is sent via everruns_org cookie (set by OrgProvider via /v1/users/me/switch-org)
+// Org is sent via everruns_org cookie (set by OrgProvider via /v1/platform/users/me/switch-org)
 
 import { withSessionActivity } from "../session-activity";
 import { api, type RequestOptions } from "./client";
@@ -25,7 +25,7 @@ export async function createMessage(
       // The legacy REST handler only looks up recent messages before insertion.
       // Commands atomically admit concurrent retries under one retained key.
       const response = await api.post<{ output: CreatedMessage }>(
-        "/v1/commands/create_message",
+        "/v1/platform/commands/create_message",
         { params: { session_id: sessionId, ...request } },
         {
           ...options,
@@ -35,7 +35,7 @@ export async function createMessage(
       return response.data.output;
     }
     const response = await api.post<CreatedMessage>(
-      `/v1/sessions/${sessionId}/messages`,
+      `/v1/platform/sessions/${sessionId}/messages`,
       request,
       options,
     );
@@ -44,7 +44,9 @@ export async function createMessage(
 }
 
 export async function listMessages(sessionId: string): Promise<Message[]> {
-  const response = await api.get<ListResponse<Message>>(`/v1/sessions/${sessionId}/messages`);
+  const response = await api.get<ListResponse<Message>>(
+    `/v1/platform/sessions/${sessionId}/messages`,
+  );
   return response.data.data;
 }
 

@@ -5,10 +5,10 @@
 //! in-memory `StorageBackend` — no TCP listener, no external server.
 //!
 //! Covers:
-//! - POST /v1/auth/cli/start creates a pending session and returns a URL
-//! - POST /v1/auth/cli/start issues a unique session/state each call
+//! - POST /v1/platform/auth/cli/start creates a pending session and returns a URL
+//! - POST /v1/platform/auth/cli/start issues a unique session/state each call
 //! - GET /v1/auth/cli/callback rejects an unknown/invalid `state`
-//! - POST /v1/auth/cli/exchange rejects an unknown/invalid `code`
+//! - POST /v1/platform/auth/cli/exchange rejects an unknown/invalid `code`
 //!
 //! Run with: cargo test -p everruns-server --test domain cli_auth_test:: -- --test-threads=1
 
@@ -31,8 +31,8 @@ use everruns_server::storage::StorageBackend;
 const FRONTEND_URL: &str = "http://localhost:3000";
 const BASE_URL: &str = "http://localhost:9000/api";
 
-/// Build the CLI auth router (protected `/v1/auth/cli/*` + public
-/// `/cli/login-success`) merged with the standard `/v1/auth/*` router, so
+/// Build the CLI auth router (protected `/v1/platform/auth/cli/*` + public
+/// `/cli/login-success`) merged with the standard `/v1/platform/auth/*` router, so
 /// tests can both drive CLI auth and log a real user in for it.
 async fn build_router() -> (Router, Arc<StorageBackend>) {
     let db = Arc::new(StorageBackend::test_database());
@@ -70,13 +70,13 @@ async fn build_router() -> (Router, Arc<StorageBackend>) {
     (router, db)
 }
 
-/// Register a user via the real `/v1/auth/register` endpoint and return the
+/// Register a user via the real `/v1/platform/auth/register` endpoint and return the
 /// bearer access token, so protected CLI routes (e.g. the callback) can be
 /// exercised as a real logged-in user rather than faked.
 async fn register_and_get_access_token(router: &Router, email: &str) -> String {
     let request = Request::builder()
         .method("POST")
-        .uri("/v1/auth/register")
+        .uri("/v1/platform/auth/register")
         .header("content-type", "application/json")
         .body(Body::from(
             serde_json::to_string(&json!({
@@ -105,7 +105,7 @@ async fn test_cli_auth_start() {
 
     let request = Request::builder()
         .method("POST")
-        .uri("/v1/auth/cli/start")
+        .uri("/v1/platform/auth/cli/start")
         .header("content-type", "application/json")
         .body(Body::from(
             serde_json::to_string(&json!({"redirect_port": 12345})).unwrap(),
@@ -166,7 +166,7 @@ async fn test_cli_auth_start_creates_unique_sessions() {
     let start = |port: u16, router: Router| async move {
         let request = Request::builder()
             .method("POST")
-            .uri("/v1/auth/cli/start")
+            .uri("/v1/platform/auth/cli/start")
             .header("content-type", "application/json")
             .body(Body::from(
                 serde_json::to_string(&json!({"redirect_port": port})).unwrap(),
@@ -241,7 +241,7 @@ async fn test_cli_exchange_invalid_code() {
 
     let request = Request::builder()
         .method("POST")
-        .uri("/v1/auth/cli/exchange")
+        .uri("/v1/platform/auth/cli/exchange")
         .header("content-type", "application/json")
         .body(Body::from(
             serde_json::to_string(&json!({

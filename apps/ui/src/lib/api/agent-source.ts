@@ -59,7 +59,7 @@ export interface AgentSourceAccounts {
     error: string | null;
   };
 }
-const route = (id: string) => `/v1/agents/${encodeURIComponent(id)}/source`;
+const route = (id: string) => `/v1/platform/agents/${encodeURIComponent(id)}/source`;
 export async function getAgentSource(id: string): Promise<AgentSource | null> {
   return (await api.get<AgentSource | null>(route(id))).data;
 }
@@ -68,10 +68,10 @@ export async function listAgentSourceAccounts(id: string): Promise<AgentSourceAc
 }
 /** Browser targets that connect a development account in a popup. */
 export function personalGitHubSignInUrl(returnTo: string): string {
-  return `${getBackendUrl()}/v1/user/connections/github/authorize?popup=true&return_to=${encodeURIComponent(returnTo)}`;
+  return `${getBackendUrl()}/v1/platform/user/connections/github/authorize?popup=true&return_to=${encodeURIComponent(returnTo)}`;
 }
 export function organizationGitHubLinkUrl(org: string, returnTo: string): string {
-  return `${getBackendUrl()}/v1/orgs/${encodeURIComponent(org)}/github/everruns-app/authorize?popup=true&return_to=${encodeURIComponent(returnTo)}`;
+  return `${getBackendUrl()}/v1/platform/orgs/${encodeURIComponent(org)}/github/everruns-app/authorize?popup=true&return_to=${encodeURIComponent(returnTo)}`;
 }
 export async function getAgentSourceOptions(
   id: string,

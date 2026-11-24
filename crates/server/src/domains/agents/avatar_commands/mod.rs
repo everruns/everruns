@@ -11,7 +11,7 @@
 // - The CLI and MCP carry JSON arguments only, so `set_agent_avatar` takes an
 //   uploaded picture inline as base64. The decoded cap (`MAX_INLINE_AVATAR_BYTES`,
 //   1 MiB) keeps the base64 request (~1.4 MB) under the 2 MB default body
-//   limit that `/v1/commands`, the MCP endpoint and the command's own route
+//   limit that `/v1/platform/commands`, the MCP endpoint and the command's own route
 //   share. Larger images take the multipart route, which accepts 10 MB.
 // - The commands are not transactional (`change_history::registry::transactional`):
 //   decoding and resizing an image is CPU work, and generating one is a
@@ -177,7 +177,7 @@ fn decode_inline_image(
     let too_large = || {
         CommandError::bad_request(format!(
             "image_base64 must decode to at most {} MB. Shrink the image, or upload it as \
-             multipart field `file` to PUT /v1/agents/{{agent_id}}/avatar (up to 10 MB).",
+             multipart field `file` to PUT /v1/platform/agents/{{agent_id}}/avatar (up to 10 MB).",
             MAX_INLINE_AVATAR_BYTES / (1024 * 1024)
         ))
     };
@@ -245,7 +245,7 @@ pub struct SetAgentAvatarRequest {
     description = "Set an agent's avatar from a curated preset (preset_id, see list_avatar_presets) or an image (image_base64: PNG, JPEG, GIF or WebP, at least 64x64, at most 1 MB). Replaces the previous avatar and updates the icon of the agent's one-click Slack apps.",
     summary = "Set an agent's avatar from a preset or an image",
     method = "POST",
-    path = "/v1/agents/{agent_id}/avatar/set",
+    path = "/v1/platform/agents/{agent_id}/avatar/set",
     policy = AGENT_MANAGE,
     positional = "agent_id",
     http = plain,
@@ -410,7 +410,7 @@ pub struct GeneratedAgentAvatar {
     description = "Generate an agent's avatar with the organization's default image model and set it, in one step. Describe it in prompt, or omit prompt to draw one from the agent's name and description. Replaces the previous avatar and updates the icon of the agent's one-click Slack apps. Calls the image provider (billed like any image generation) and can take up to a minute.",
     summary = "Generate an agent's avatar with the org's image model",
     method = "POST",
-    path = "/v1/agents/{agent_id}/avatar/generate",
+    path = "/v1/platform/agents/{agent_id}/avatar/generate",
     policy = AGENT_MANAGE,
     positional = "agent_id",
     http = plain,

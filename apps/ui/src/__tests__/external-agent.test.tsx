@@ -21,7 +21,7 @@ jest.mock("@/lib/api/client", () => ({
 }));
 
 const endpoint = "https://agent.example/";
-const path = "/v1/agents/agent_fixture/external-worker";
+const path = "/v1/platform/agents/agent_fixture/external-worker";
 const connected = {
   endpoint_url: endpoint,
   enabled: true,

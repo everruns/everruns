@@ -63,7 +63,7 @@ export interface CreateRoomRequest {
   members?: RoomMemberInput[];
 }
 
-const base = (roomId: string) => `/v1/rooms/${encodeURIComponent(roomId)}`;
+const base = (roomId: string) => `/v1/platform/rooms/${encodeURIComponent(roomId)}`;
 
 export async function listRooms(
   options: { includeArchived?: boolean; mine?: boolean; limit?: number } = {},
@@ -71,7 +71,7 @@ export async function listRooms(
   const params = new URLSearchParams({ limit: String(options.limit ?? 200) });
   if (options.includeArchived) params.set("include_archived", "true");
   if (options.mine) params.set("mine", "true");
-  const response = await api.get<RoomListResponse>(`/v1/rooms?${params}`);
+  const response = await api.get<RoomListResponse>(`/v1/platform/rooms?${params}`);
   return response.data.data;
 }
 
@@ -80,7 +80,7 @@ export async function getRoom(roomId: string): Promise<Room> {
 }
 
 export async function createRoom(request: CreateRoomRequest): Promise<Room> {
-  return (await api.post<Room>("/v1/rooms", request)).data;
+  return (await api.post<Room>("/v1/platform/rooms", request)).data;
 }
 
 export async function archiveRoom(roomId: string, archived: boolean): Promise<Room> {

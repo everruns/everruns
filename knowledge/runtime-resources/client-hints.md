@@ -31,9 +31,9 @@ Per-message hints override session hints key-by-key. See `Controls::resolve_hint
 
 ### API surface
 
-- `POST /v1/sessions`, `CreateSessionRequest.hints` sets session-level defaults.
-- `POST /v1/sessions/{id}/messages`, `CreateMessageRequest.controls.hints` sets per-message overrides.
-- `GET /v1/sessions/{id}`, `Session.hints` in response.
+- `POST /v1/platform/sessions`, `CreateSessionRequest.hints` sets session-level defaults.
+- `POST /v1/platform/sessions/{id}/messages`, `CreateMessageRequest.controls.hints` sets per-message overrides.
+- `GET /v1/platform/sessions/{id}`, `Session.hints` in response.
 
 ### No server-side validation
 
@@ -65,7 +65,7 @@ elicitation (`knowledge/integrations/mcp-servers.md`), the act sets
 tool call:
 
 - **Hint `true`:** the turn pauses and the client renders the consent card,
-  which answers through `POST /v1/sessions/{id}/mcp-elicitation-consent`.
+  which answers through `POST /v1/platform/sessions/{id}/mcp-elicitation-consent`.
 - **Hint absent/`false`:** the turn continues. The tool result already carries
   `code: "url_elicitation_required"` with the URL and the server's reason, so
   the model can hand the user the link and they re-run the tool themselves.

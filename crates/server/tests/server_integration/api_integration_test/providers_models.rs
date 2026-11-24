@@ -17,14 +17,14 @@ async fn test_knowledge_create_enqueues_source_and_rejects_chat_model() {
     // a chat model.
     let provider: Value = server
         .post(
-            "/v1/providers",
+            "/v1/platform/providers",
             json!({"name": "knowledge-test-provider", "provider_type": "llmsim"}),
         )
         .await
         .assert_status(StatusCode::CREATED)
         .json();
     let models_path = format!(
-        "/v1/providers/{}/models",
+        "/v1/platform/providers/{}/models",
         provider["id"].as_str().expect("provider id")
     );
     let embedding_model: Value = server
@@ -44,7 +44,7 @@ async fn test_knowledge_create_enqueues_source_and_rejects_chat_model() {
 
     let created: Value = server
         .post(
-            "/v1/knowledge",
+            "/v1/platform/knowledge",
             json!({
                 "name":"Bashkit knowledge test", "indexing":"hybrid",
                 "embedding_model_id":embedding_model["id"]
@@ -56,7 +56,7 @@ async fn test_knowledge_create_enqueues_source_and_rejects_chat_model() {
     let id = created["id"].as_str().expect("collection ID");
     let source: Value = server
         .post(
-            &format!("/v1/knowledge/{id}/sources"),
+            &format!("/v1/platform/knowledge/{id}/sources"),
             json!({
                 "kind":"github","root_path":"repository",
                 "config":{"repository":"everruns/bashkit","branch":"main","root_folder":"knowledge"}
@@ -67,11 +67,11 @@ async fn test_knowledge_create_enqueues_source_and_rejects_chat_model() {
         .json();
     assert_eq!(source["sync_status"], "pending");
     server
-        .get("/v1/knowledge-indexes")
+        .get("/v1/platform/knowledge-indexes")
         .await
         .assert_status(StatusCode::NOT_FOUND);
     server
-        .get("/v1/knowledge-bases")
+        .get("/v1/platform/knowledge-bases")
         .await
         .assert_status(StatusCode::NOT_FOUND);
 
@@ -90,7 +90,7 @@ async fn test_knowledge_create_enqueues_source_and_rejects_chat_model() {
         .json();
     let rejected: Value = server
         .post(
-            "/v1/knowledge",
+            "/v1/platform/knowledge",
             json!({
                 "name": "Invalid embedding model",
                 "indexing":"hybrid",
@@ -123,7 +123,9 @@ async fn test_org_feature_flags_opt_in() {
     let org_id = "org_00000000000000000000000000000001";
 
     let settings: serde_json::Value = server
-        .get(&format!("/v1/orgs/{org_id}/feature-flags/settings"))
+        .get(&format!(
+            "/v1/platform/orgs/{org_id}/feature-flags/settings"
+        ))
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -141,7 +143,7 @@ async fn test_org_feature_flags_opt_in() {
         assert!(flags.iter().all(|flag| flag["name"] != name));
         server
             .patch(
-                &format!("/v1/orgs/{org_id}/feature-flags"),
+                &format!("/v1/platform/orgs/{org_id}/feature-flags"),
                 json!({ "flags": { (name): false } }),
             )
             .await
@@ -158,7 +160,7 @@ async fn test_org_feature_flags_opt_in() {
 
     let patched: serde_json::Value = server
         .patch(
-            &format!("/v1/orgs/{org_id}/feature-flags"),
+            &format!("/v1/platform/orgs/{org_id}/feature-flags"),
             serde_json::json!({ "flags": { "extractions": true } }),
         )
         .await
@@ -167,7 +169,7 @@ async fn test_org_feature_flags_opt_in() {
     assert_eq!(patched["extractions"], true);
 
     let effective: serde_json::Value = server
-        .get(&format!("/v1/orgs/{org_id}/feature-flags"))
+        .get(&format!("/v1/platform/orgs/{org_id}/feature-flags"))
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -177,13 +179,13 @@ async fn test_org_feature_flags_opt_in() {
 
     server
         .patch(
-            &format!("/v1/orgs/{org_id}/feature-flags"),
+            &format!("/v1/platform/orgs/{org_id}/feature-flags"),
             json!({ "flags": { "extractions": false } }),
         )
         .await
         .assert_status(StatusCode::OK);
     let disabled: Value = server
-        .get(&format!("/v1/orgs/{org_id}/feature-flags"))
+        .get(&format!("/v1/platform/orgs/{org_id}/feature-flags"))
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -191,7 +193,7 @@ async fn test_org_feature_flags_opt_in() {
 
     server
         .patch(
-            &format!("/v1/orgs/{org_id}/feature-flags"),
+            &format!("/v1/platform/orgs/{org_id}/feature-flags"),
             serde_json::json!({ "flags": { "mcp_endpoint": true } }),
         )
         .await
@@ -204,7 +206,7 @@ async fn test_notifications_routes_always_mounted() {
 
     // Notifications are not feature-flagged: the inbox exists for every org.
     server
-        .get("/v1/notifications")
+        .get("/v1/platform/notifications")
         .await
         .assert_status(StatusCode::OK);
 }
@@ -220,7 +222,7 @@ async fn test_list_messages() {
     // Create agent and session
     let agent: Agent = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": "list-messages-test-agent",
                 "display_name": "List Messages Test Agent",
@@ -233,7 +235,7 @@ async fn test_list_messages() {
 
     let session: Session = server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             json!({
                 "harness_id": server.seed_base_harness_id,
                 "agent_id": agent.public_id
@@ -246,7 +248,7 @@ async fn test_list_messages() {
     // Create a message
     let _: Value = server
         .post(
-            &format!("/v1/sessions/{}/messages", session.id),
+            &format!("/v1/platform/sessions/{}/messages", session.id),
             json!({
                 "message": {
                     "role": "user",
@@ -260,7 +262,7 @@ async fn test_list_messages() {
 
     // List messages
     let data: Value = server
-        .get(&format!("/v1/sessions/{}/messages", session.id))
+        .get(&format!("/v1/platform/sessions/{}/messages", session.id))
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -282,7 +284,7 @@ async fn test_list_events_limit_one_returns_last_event() {
     // Create agent and session
     let agent: Agent = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": "events-limit-test-agent",
                 "display_name": "Events Limit Test Agent",
@@ -295,7 +297,7 @@ async fn test_list_events_limit_one_returns_last_event() {
 
     let session: Session = server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             json!({
                 "harness_id": server.seed_base_harness_id,
                 "agent_id": agent.public_id
@@ -308,7 +310,7 @@ async fn test_list_events_limit_one_returns_last_event() {
     // Create a message to generate events
     let _: Value = server
         .post(
-            &format!("/v1/sessions/{}/messages", session.id),
+            &format!("/v1/platform/sessions/{}/messages", session.id),
             json!({
                 "message": {
                     "role": "user",
@@ -322,7 +324,7 @@ async fn test_list_events_limit_one_returns_last_event() {
 
     // Get all events
     let all_events: Value = server
-        .get(&format!("/v1/sessions/{}/events", session.id))
+        .get(&format!("/v1/platform/sessions/{}/events", session.id))
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -335,7 +337,10 @@ async fn test_list_events_limit_one_returns_last_event() {
 
     // Get events with limit=1 — should return only the last event
     let limited: Value = server
-        .get(&format!("/v1/sessions/{}/events?limit=1", session.id))
+        .get(&format!(
+            "/v1/platform/sessions/{}/events?limit=1",
+            session.id
+        ))
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -361,7 +366,7 @@ async fn test_list_events_since_id_filters_old_events() {
     // Create agent and session
     let agent: Agent = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": "events-sinceid-test-agent",
                 "display_name": "Events SinceId Test Agent",
@@ -374,7 +379,7 @@ async fn test_list_events_since_id_filters_old_events() {
 
     let session: Session = server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             json!({
                 "harness_id": server.seed_base_harness_id,
                 "agent_id": agent.public_id
@@ -387,7 +392,7 @@ async fn test_list_events_since_id_filters_old_events() {
     // Create first message
     let _: Value = server
         .post(
-            &format!("/v1/sessions/{}/messages", session.id),
+            &format!("/v1/platform/sessions/{}/messages", session.id),
             json!({
                 "message": {
                     "role": "user",
@@ -401,7 +406,10 @@ async fn test_list_events_since_id_filters_old_events() {
 
     // Snapshot the last event ID
     let events_after_first: Value = server
-        .get(&format!("/v1/sessions/{}/events?limit=1", session.id))
+        .get(&format!(
+            "/v1/platform/sessions/{}/events?limit=1",
+            session.id
+        ))
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -409,7 +417,7 @@ async fn test_list_events_since_id_filters_old_events() {
 
     // Get count of events before second message
     let all_before: Value = server
-        .get(&format!("/v1/sessions/{}/events", session.id))
+        .get(&format!("/v1/platform/sessions/{}/events", session.id))
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -418,7 +426,7 @@ async fn test_list_events_since_id_filters_old_events() {
     // Create second message
     let _: Value = server
         .post(
-            &format!("/v1/sessions/{}/messages", session.id),
+            &format!("/v1/platform/sessions/{}/messages", session.id),
             json!({
                 "message": {
                     "role": "user",
@@ -433,7 +441,7 @@ async fn test_list_events_since_id_filters_old_events() {
     // Get events since snapshot — should NOT include events from the first message
     let events_since: Value = server
         .get(&format!(
-            "/v1/sessions/{}/events?since_id={}",
+            "/v1/platform/sessions/{}/events?since_id={}",
             session.id, snapshot_id
         ))
         .await
@@ -464,7 +472,7 @@ async fn test_list_events_since_id_filters_old_events() {
 
     // Total events should be: before + new since events
     let all_after: Value = server
-        .get(&format!("/v1/sessions/{}/events", session.id))
+        .get(&format!("/v1/platform/sessions/{}/events", session.id))
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -488,7 +496,7 @@ async fn test_provider_endpoints_reject_public_http_base_urls() {
 
     server
         .post(
-            "/v1/providers",
+            "/v1/platform/providers",
             json!({
                 "name": "Insecure OpenAI Provider",
                 "provider_type": "openai",
@@ -500,7 +508,7 @@ async fn test_provider_endpoints_reject_public_http_base_urls() {
 
     let provider: Provider = server
         .post(
-            "/v1/providers",
+            "/v1/platform/providers",
             json!({
                 "name": "Secure OpenAI Provider",
                 "provider_type": "openai",
@@ -513,7 +521,7 @@ async fn test_provider_endpoints_reject_public_http_base_urls() {
 
     server
         .patch(
-            &format!("/v1/providers/{}", provider.id),
+            &format!("/v1/platform/providers/{}", provider.id),
             json!({"base_url": "http://api.openai.com/v1"}),
         )
         .await
@@ -521,7 +529,7 @@ async fn test_provider_endpoints_reject_public_http_base_urls() {
 
     server
         .post(
-            "/v1/providers/check-credentials",
+            "/v1/platform/providers/check-credentials",
             json!({
                 "provider_type": "openai",
                 "api_key": "sk-test",
@@ -540,13 +548,13 @@ async fn test_check_credentials_validates_input_without_persisting() {
 
     // Seeded catalog providers exist from startup; the check must not add to
     // them, so compare against the baseline rather than zero.
-    let before: serde_json::Value = server.get("/v1/providers").await.json();
+    let before: serde_json::Value = server.get("/v1/platform/providers").await.json();
     let baseline = before["data"].as_array().map(Vec::len);
 
     // Empty key: rejected up front, no provider row created.
     server
         .post(
-            "/v1/providers/check-credentials",
+            "/v1/platform/providers/check-credentials",
             json!({"provider_type": "openai", "api_key": "   "}),
         )
         .await
@@ -556,7 +564,7 @@ async fn test_check_credentials_validates_input_without_persisting() {
     // check issues a real outbound request.
     server
         .post(
-            "/v1/providers/check-credentials",
+            "/v1/platform/providers/check-credentials",
             json!({
                 "provider_type": "openai",
                 "api_key": "sk-test",
@@ -570,7 +578,7 @@ async fn test_check_credentials_validates_input_without_persisting() {
     // failing the user's key.
     let body: serde_json::Value = server
         .post(
-            "/v1/providers/check-credentials",
+            "/v1/platform/providers/check-credentials",
             json!({"provider_type": "llmsim", "api_key": "sk-test"}),
         )
         .await
@@ -579,7 +587,7 @@ async fn test_check_credentials_validates_input_without_persisting() {
     assert_eq!(body["status"], "unsupported");
 
     // Nothing was stored by any of the above.
-    let after: serde_json::Value = server.get("/v1/providers").await.json();
+    let after: serde_json::Value = server.get("/v1/platform/providers").await.json();
     assert_eq!(after["data"].as_array().map(Vec::len), baseline);
 }
 
@@ -591,7 +599,7 @@ async fn test_provider_request_options_round_trip_and_validation() {
 
     let provider: Provider = server
         .post(
-            "/v1/providers",
+            "/v1/platform/providers",
             json!({
                 "name": "Gateway Anthropic",
                 "provider_type": "anthropic",
@@ -617,7 +625,7 @@ async fn test_provider_request_options_round_trip_and_validation() {
 
     // Read back through GET: the options are stored, not just echoed.
     let fetched: Provider = server
-        .get(&format!("/v1/providers/{}", provider.id))
+        .get(&format!("/v1/platform/providers/{}", provider.id))
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -625,7 +633,7 @@ async fn test_provider_request_options_round_trip_and_validation() {
 
     // List responses use the same redaction boundary.
     let listed: serde_json::Value = server
-        .get("/v1/providers")
+        .get("/v1/platform/providers")
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -643,7 +651,7 @@ async fn test_provider_request_options_round_trip_and_validation() {
     // A transport-owned header is refused with a message naming it.
     let rejected = server
         .patch(
-            &format!("/v1/providers/{}", provider.id),
+            &format!("/v1/platform/providers/{}", provider.id),
             json!({
                 "request_options": {
                     "headers": [{"name": "Host", "value": "evil.example"}]
@@ -658,7 +666,7 @@ async fn test_provider_request_options_round_trip_and_validation() {
     // the point is that the round trip a UI actually performs is not lossy.
     let resaved: Provider = server
         .patch(
-            &format!("/v1/providers/{}", provider.id),
+            &format!("/v1/platform/providers/{}", provider.id),
             json!({
                 "request_options": {
                     "headers": [{"name": "x-gateway-tenant", "value": ""}],
@@ -682,7 +690,7 @@ async fn test_provider_request_options_round_trip_and_validation() {
     // Update replaces the options wholesale, including clearing them.
     let cleared: Provider = server
         .patch(
-            &format!("/v1/providers/{}", provider.id),
+            &format!("/v1/platform/providers/{}", provider.id),
             json!({ "request_options": { "headers": [], "cache_diagnostics": false } }),
         )
         .await
@@ -696,7 +704,7 @@ async fn test_provider_chat_api_rest_round_trip_and_validation() {
     let server = TestServer::in_memory().await;
     let provider: Provider = server
         .post(
-            "/v1/providers",
+            "/v1/platform/providers",
             json!({
                 "name":"OpenAI compatibility", "provider_type":"openai", "api":"chat_completions"
             }),
@@ -705,7 +713,7 @@ async fn test_provider_chat_api_rest_round_trip_and_validation() {
         .assert_status(StatusCode::CREATED)
         .json();
     assert_eq!(provider.api.as_deref(), Some("chat_completions"));
-    let url = format!("/v1/providers/{}", provider.id);
+    let url = format!("/v1/platform/providers/{}", provider.id);
     let fetched: Provider = server.get(&url).await.assert_status(StatusCode::OK).json();
     assert_eq!(fetched.api, provider.api);
     server
@@ -725,7 +733,7 @@ async fn test_provider_chat_api_rest_round_trip_and_validation() {
         .json();
     assert_eq!(reset.api.as_deref(), Some("default"));
     let catalog: Value = server
-        .get("/v1/providers/config")
+        .get("/v1/platform/providers/config")
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -744,7 +752,7 @@ async fn test_create_model_missing_provider_returns_not_found() {
 
     server
         .post(
-            "/v1/providers/provider_019563a3000070008000000000000001/models",
+            "/v1/platform/providers/provider_019563a3000070008000000000000001/models",
             json!({
                 "model_id": "missing-provider-model",
                 "display_name": "Missing Provider Model",
@@ -769,7 +777,7 @@ async fn test_post_message_wait_times_out_without_worker() {
     let agent = create_llmsim_agent(&server, "msg-wait").await;
     let session: Session = server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             json!({
                 "harness_id": server.seed_base_harness_id,
                 "agent_id": agent.public_id
@@ -782,7 +790,7 @@ async fn test_post_message_wait_times_out_without_worker() {
     let result: Value = server
         .post(
             &format!(
-                "/v1/sessions/{}/messages?wait=true&timeout_ms=1500",
+                "/v1/platform/sessions/{}/messages?wait=true&timeout_ms=1500",
                 session.id
             ),
             json!({

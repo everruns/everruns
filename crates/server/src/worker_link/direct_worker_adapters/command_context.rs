@@ -1,7 +1,7 @@
 use super::*;
 
 impl DirectWorkerAdapters {
-    /// Share the `/v1/providers` service instances with platform-tool commands,
+    /// Share the `/v1/platform/providers` service instances with platform-tool commands,
     /// so a provider write invalidates the resolver cache the runtime reads.
     pub fn with_provider_services(
         mut self,

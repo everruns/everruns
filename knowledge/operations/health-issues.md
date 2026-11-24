@@ -87,7 +87,7 @@ installed app. Slack may require a workspace administrator to approve the change
 A fixer is a repair the server declares on an issue: it resolves the condition, or
 prepares the change and sends the person to the one step only they can take
 (approving it in the provider). Issues carry `fixers`, and
-`POST /v1/health-issues/{id}/fix` runs one by kind. The server runs only the fixers it
+`POST /v1/platform/health-issues/{id}/fix` runs one by kind. The server runs only the fixers it
 offers for that issue now; a request names a kind, never a URL or command. A consent
 URL is built on the provider's fixed origin and checked again in the browser against
 an allowlist. A fixer never resolves an issue: only a fresh check does. Each run is

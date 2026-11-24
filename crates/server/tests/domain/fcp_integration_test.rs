@@ -42,7 +42,7 @@ fn unique_slug(prefix: &str) -> String {
 async fn create_llmsim_agent(server: &TestServer) -> String {
     let provider: Value = server
         .post(
-            "/v1/providers",
+            "/v1/platform/providers",
             json!({
                 "name": unique_id("FCP Test Provider"),
                 "provider_type": "llmsim"
@@ -54,7 +54,10 @@ async fn create_llmsim_agent(server: &TestServer) -> String {
 
     let model: Value = server
         .post(
-            &format!("/v1/providers/{}/models", provider["id"].as_str().unwrap()),
+            &format!(
+                "/v1/platform/providers/{}/models",
+                provider["id"].as_str().unwrap()
+            ),
             json!({
                 "model_id": unique_id("llmsim-fcp"),
                 "display_name": unique_id("FCP Test Model"),
@@ -67,7 +70,7 @@ async fn create_llmsim_agent(server: &TestServer) -> String {
 
     let agent: Value = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": unique_slug("fcp-test-agent"),
                 "display_name": unique_id("FCP Test Agent"),
@@ -109,7 +112,7 @@ async fn create_published_native_fcp_channel(server: &TestServer, channel_config
     let agent_id = create_llmsim_agent(server).await;
     let endpoint: Value = server
         .post(
-            &format!("/v1/agents/{agent_id}/channels"),
+            &format!("/v1/platform/agents/{agent_id}/channels"),
             json!({
                 "channel_type": "fcp",
                 "channel_config": channel_config
@@ -121,7 +124,7 @@ async fn create_published_native_fcp_channel(server: &TestServer, channel_config
     let channel_id = endpoint["id"].as_str().unwrap();
     server
         .post(
-            &format!("/v1/agents/{agent_id}/channels/{channel_id}/publish"),
+            &format!("/v1/platform/agents/{agent_id}/channels/{channel_id}/publish"),
             json!({}),
         )
         .await
@@ -189,7 +192,11 @@ fn assert_accepted_or_timeout(status: StatusCode) {
 }
 
 async fn count_sessions_with_tag(server: &TestServer, tag: &str) -> usize {
-    let sessions: Value = server.get("/v1/sessions").await.assert_success().json();
+    let sessions: Value = server
+        .get("/v1/platform/sessions")
+        .await
+        .assert_success()
+        .json();
     sessions["data"]
         .as_array()
         .map(|arr| {
@@ -817,7 +824,7 @@ async fn fcp_token_is_redacted_in_app_reads() {
     let app = create_published_fcp_app(&server, json!({"token": "fcp-secret-12345"})).await;
 
     let response: Value = server
-        .get(&format!("/v1/apps/{}", app.public_id))
+        .get(&format!("/v1/platform/apps/{}", app.public_id))
         .await
         .assert_success()
         .json();

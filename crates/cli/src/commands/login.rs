@@ -15,13 +15,13 @@ use crate::auth::{CredentialStore, Profile};
 
 const DEFAULT_API_URL: &str = "https://app.everruns.com/api";
 
-/// POST /v1/auth/cli/start request
+/// POST /v1/platform/auth/cli/start request
 #[derive(Serialize)]
 struct CliStartRequest {
     redirect_port: u16,
 }
 
-/// POST /v1/auth/cli/start response
+/// POST /v1/platform/auth/cli/start response
 #[derive(Deserialize)]
 struct CliStartResponse {
     auth_url: String,
@@ -30,7 +30,7 @@ struct CliStartResponse {
     state: String,
 }
 
-/// POST /v1/auth/cli/exchange request
+/// POST /v1/platform/auth/cli/exchange request
 #[derive(Serialize)]
 struct CliExchangeRequest {
     code: String,
@@ -38,7 +38,7 @@ struct CliExchangeRequest {
     os: Option<String>,
 }
 
-/// POST /v1/auth/cli/exchange response
+/// POST /v1/platform/auth/cli/exchange response
 #[derive(Deserialize)]
 struct CliExchangeResponse {
     personal_access_token: String,
@@ -123,10 +123,10 @@ async fn run_oauth_login(api_url: &str, profile: &str) -> Result<()> {
     let port = listener.local_addr()?.port();
     drop(listener); // Release so our HTTP server can bind it
 
-    // 2. Call POST /v1/auth/cli/start to get the auth URL
+    // 2. Call POST /v1/platform/auth/cli/start to get the auth URL
     let client = reqwest::Client::new();
     let start_resp = client
-        .post(format!("{}/v1/auth/cli/start", api_url))
+        .post(format!("{}/v1/platform/auth/cli/start", api_url))
         .json(&CliStartRequest {
             redirect_port: port,
         })
@@ -228,7 +228,7 @@ async fn run_oauth_login(api_url: &str, profile: &str) -> Result<()> {
     let hostname = hostname::get().ok().and_then(|h| h.into_string().ok());
 
     let exchange_resp = client
-        .post(format!("{}/v1/auth/cli/exchange", api_url))
+        .post(format!("{}/v1/platform/auth/cli/exchange", api_url))
         .json(&CliExchangeRequest {
             code,
             hostname: hostname.clone(),
@@ -303,10 +303,10 @@ async fn run_token_login(api_url: &str, profile: &str) -> Result<()> {
         .interact_text()
         .context("Failed to read personal access token")?;
 
-    // Validate the token by calling /v1/auth/me
+    // Validate the token by calling /v1/platform/auth/me
     let client = reqwest::Client::new();
     let me_resp = client
-        .get(format!("{}/v1/auth/me", api_url))
+        .get(format!("{}/v1/platform/auth/me", api_url))
         .header("Authorization", &api_key)
         .send()
         .await
@@ -332,7 +332,7 @@ async fn run_token_login(api_url: &str, profile: &str) -> Result<()> {
     let me: MeResponse = me_resp
         .json()
         .await
-        .context("Failed to parse /v1/auth/me")?;
+        .context("Failed to parse /v1/platform/auth/me")?;
     let orgs = me.organizations.unwrap_or_default();
     let org_id = select_org(&orgs)?;
 

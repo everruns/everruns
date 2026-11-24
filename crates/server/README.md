@@ -100,10 +100,10 @@ See the [REST API reference](https://everruns.com/docs/api/) for endpoints and s
 
 ### Core Resources
 
-- **Agents** - `/v1/agents` - Create, list, get, update, delete agents
-- **Sessions** - `/v1/sessions` - Manage chat sessions
-- **Messages** - `/v1/sessions/:id/messages` - Send/receive messages
-- **Events** - `/v1/sessions/:id/events` - SSE stream for real-time updates
+- **Agents** - `/v1/platform/agents` - Create, list, get, update, delete agents
+- **Sessions** - `/v1/platform/sessions` - Manage chat sessions
+- **Messages** - `/v1/platform/sessions/:id/messages` - Send/receive messages
+- **Events** - `/v1/platform/sessions/:id/events` - SSE stream for real-time updates
 
 ### System
 
@@ -160,7 +160,7 @@ Default: `postgres://everruns:everruns@localhost:5432/everruns`
 ### Create an Agent
 
 ```bash
-curl -X POST http://localhost:9301/api/v1/agents \
+curl -X POST http://localhost:9301/api/v1/platform/agents \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Test Agent",
@@ -171,7 +171,7 @@ curl -X POST http://localhost:9301/api/v1/agents \
 ### List Agents
 
 ```bash
-curl http://localhost:9301/api/v1/agents | jq
+curl http://localhost:9301/api/v1/platform/agents | jq
 ```
 
 ## Troubleshooting

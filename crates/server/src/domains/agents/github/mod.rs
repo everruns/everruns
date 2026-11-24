@@ -1,10 +1,10 @@
 // An agent's own GitHub App, as commands: status, connect, disconnect.
 //
 // Decision: one implementation for every surface. The agent page's REST routes
-// (`/v1/agents/{agent_id}/github`, `.../github/connect`) are these commands
+// (`/v1/platform/agents/{agent_id}/github`, `.../github/connect`) are these commands
 // served by the generic HTTP adapter, the `everruns agents github` CLI and MCP
 // `execute` run the same commands, and the identity-scoped routes in
-// `api::github_apps` (`/v1/virtual-users/{id}/connections/github/app`) call the
+// `api::github_apps` (`/v1/platform/virtual-users/{id}/connections/github/app`) call the
 // functions below. Only the GitHub redirects (manifest and setup callbacks)
 // stay hand-written: they are browser redirects that carry none of our auth.
 //
@@ -476,7 +476,7 @@ pub struct GetAgentGitHub {
     description = "Show an agent's own GitHub App: whether it exists, whether it is installed, on which account, and which permissions it lacks.",
     summary = "Get an agent's GitHub App status",
     method = "GET",
-    path = "/v1/agents/{agent_id}/github",
+    path = "/v1/platform/agents/{agent_id}/github",
     policy = AGENT_VIEW,
     cli = CliRoute::new(&["agents", "github"], "get").with_examples(&[CliExample::new("Check whether an agent's GitHub App is installed and on which account", "everruns agents github get --agent-id agent_01h9")]),
     http = plain,
@@ -510,7 +510,7 @@ pub struct ConnectAgentGitHub {
     description = "Start connecting an agent to GitHub through its own GitHub App. Returns `install` with a URL to open in a browser when the App exists, or `create_app` when GitHub must first create it, which needs the web UI (Agent > Integrations > Connect GitHub).",
     summary = "Connect an agent to GitHub through its own App",
     method = "POST",
-    path = "/v1/agents/{agent_id}/github/connect",
+    path = "/v1/platform/agents/{agent_id}/github/connect",
     policy = VIRTUAL_USER_MANAGE,
     cli = CliRoute::new(&["agents", "github"], "connect").with_examples(&[CliExample::new("Get the link that installs an agent's GitHub App on more repositories", "everruns agents github connect --agent-id agent_01h9 --reason 'Let the reviewer reach the API repo'")]),
     http = plain,
@@ -559,7 +559,7 @@ pub struct DisconnectAgentGitHub {
     description = "Disconnect an agent from GitHub: uninstall its GitHub App and remove the connection, keeping the App for a later reconnect. When the App was never installed, forget it instead, so the next connect creates a new one (for example in a GitHub organization).",
     summary = "Disconnect an agent from GitHub",
     method = "DELETE",
-    path = "/v1/agents/{agent_id}/github",
+    path = "/v1/platform/agents/{agent_id}/github",
     policy = VIRTUAL_USER_MANAGE,
     cli = CliRoute::new(&["agents", "github"], "disconnect").with_examples(&[
         CliExample::new("Uninstall an agent's GitHub App and remove its connection", "everruns agents github disconnect --agent-id agent_01h9 --reason 'Reviewer retired'"),

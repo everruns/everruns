@@ -33,7 +33,7 @@ Verify that `everruns files sync` correctly detects and resolves conflicts when 
 3. Modify both local and remote:
    ```bash
    echo "local version 2" > "$TMPDIR/conflict.txt"
-   curl -s -X PUT "http://localhost:9300/api/v1/sessions/$SESSION_ID/fs/conflict.txt" \
+   curl -s -X PUT "http://localhost:9300/api/v1/platform/sessions/$SESSION_ID/fs/conflict.txt" \
      -H "Content-Type: application/json" \
      -d '{"content": "remote version 2", "encoding": "text"}'
    ```
@@ -49,7 +49,7 @@ Verify that `everruns files sync` correctly detects and resolves conflicts when 
 
 5. Check remote file:
    ```bash
-   curl -s "http://localhost:9300/api/v1/sessions/$SESSION_ID/fs/conflict.txt" | jq '.content'
+   curl -s "http://localhost:9300/api/v1/platform/sessions/$SESSION_ID/fs/conflict.txt" | jq '.content'
    ```
 
 6. Repeat steps 2-4 with `--conflict remote-wins`:

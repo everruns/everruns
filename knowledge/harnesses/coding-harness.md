@@ -118,7 +118,7 @@ Three surfaces, all reading the same `repositories` config:
 - Session Changes tab: per repository, branch, commits ahead, uncommitted
   files, pushed or not, changed files and a capped diff against the base
   branch. Read from the running sandbox on demand
-  (`GET /v1/sessions/{id}/repositories`), never stored, and reading never
+  (`GET /v1/platform/sessions/{id}/repositories`), never stored, and reading never
   starts a sandbox: a stopped sandbox reports its state instead. No merge, push
   or discard actions; the agent acts and the person reviews. The pull request
   link is found in the session's tool results, so nothing new is persisted.

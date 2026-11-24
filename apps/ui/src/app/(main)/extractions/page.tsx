@@ -42,7 +42,7 @@ function ExtractionForm() {
     try {
       const parsed: unknown = JSON.parse(fields);
       if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error();
-      const response = await api.post<unknown>("/v1/extractions", {
+      const response = await api.post<unknown>("/v1/platform/extractions", {
         model_id: model,
         input: { state, fields: parsed },
       });

@@ -1,9 +1,9 @@
 // Organization invitation API functions (EVE-602).
 // Routes:
-//   GET/POST   /v1/orgs/{org}/invites
-//   DELETE     /v1/orgs/{org}/invites/{inviteId}
-//   GET        /v1/me/invitations
-//   POST       /v1/me/invitations/{inviteId}/accept
+//   GET/POST   /v1/platform/orgs/{org}/invites
+//   DELETE     /v1/platform/orgs/{org}/invites/{inviteId}
+//   GET        /v1/platform/me/invitations
+//   POST       /v1/platform/me/invitations/{inviteId}/accept
 //   POST       /v1/invites/{token}/accept
 
 import { api } from "./client";
@@ -50,7 +50,7 @@ interface PendingInvitationsListResponse {
 }
 
 export async function listInvites(org: string): Promise<Invitation[]> {
-  const response = await api.get<InvitationsListResponse>(`/v1/orgs/${org}/invites`);
+  const response = await api.get<InvitationsListResponse>(`/v1/platform/orgs/${org}/invites`);
   return response.data.data;
 }
 
@@ -59,7 +59,7 @@ export async function createInvite(
   email: string,
   role: OrgRole = "member",
 ): Promise<CreatedInvitation> {
-  const response = await api.post<CreatedInvitation>(`/v1/orgs/${org}/invites`, {
+  const response = await api.post<CreatedInvitation>(`/v1/platform/orgs/${org}/invites`, {
     email,
     role,
   });
@@ -67,7 +67,7 @@ export async function createInvite(
 }
 
 export async function revokeInvite(org: string, inviteId: string): Promise<void> {
-  await api.delete(`/v1/orgs/${org}/invites/${inviteId}`);
+  await api.delete(`/v1/platform/orgs/${org}/invites/${inviteId}`);
 }
 
 export async function acceptInvite(token: string): Promise<AcceptedInvitation> {
@@ -78,13 +78,13 @@ export async function acceptInvite(token: string): Promise<AcceptedInvitation> {
 }
 
 export async function listPendingInvitations(): Promise<PendingInvitation[]> {
-  const response = await api.get<PendingInvitationsListResponse>("/v1/me/invitations");
+  const response = await api.get<PendingInvitationsListResponse>("/v1/platform/me/invitations");
   return response.data.data;
 }
 
 export async function acceptPendingInvitation(inviteId: string): Promise<AcceptedInvitation> {
   const response = await api.post<AcceptedInvitation>(
-    `/v1/me/invitations/${encodeURIComponent(inviteId)}/accept`,
+    `/v1/platform/me/invitations/${encodeURIComponent(inviteId)}/accept`,
   );
   return response.data;
 }

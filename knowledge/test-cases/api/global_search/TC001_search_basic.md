@@ -23,27 +23,27 @@ Verify that the `?search=` parameter on entity list endpoints performs case-inse
 
 1. Create two agents:
    ```bash
-   curl -s -X POST http://localhost:9000/v1/agents \
+   curl -s -X POST http://localhost:9000/v1/platform/agents \
      -H "Content-Type: application/json" \
      -d '{"name": "Customer Support Bot", "system_prompt": "help"}'
-   curl -s -X POST http://localhost:9000/v1/agents \
+   curl -s -X POST http://localhost:9000/v1/platform/agents \
      -H "Content-Type: application/json" \
      -d '{"name": "Code Reviewer", "system_prompt": "review"}'
    ```
 
 2. Search for "customer":
    ```bash
-   curl -s "http://localhost:9000/v1/agents?search=customer"
+   curl -s "http://localhost:9000/v1/platform/agents?search=customer"
    ```
 
 3. Search for "CUSTOMER" (uppercase):
    ```bash
-   curl -s "http://localhost:9000/v1/agents?search=CUSTOMER"
+   curl -s "http://localhost:9000/v1/platform/agents?search=CUSTOMER"
    ```
 
 4. Search with empty string:
    ```bash
-   curl -s "http://localhost:9000/v1/agents?search="
+   curl -s "http://localhost:9000/v1/platform/agents?search="
    ```
 
 ## Expected Results

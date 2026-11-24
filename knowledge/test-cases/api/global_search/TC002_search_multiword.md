@@ -23,27 +23,27 @@ Verify that multi-word search requires all tokens to match (AND semantics) and m
 
 1. Create agents:
    ```bash
-   curl -s -X POST http://localhost:9000/v1/agents \
+   curl -s -X POST http://localhost:9000/v1/platform/agents \
      -H "Content-Type: application/json" \
      -d '{"name": "Customer Support Bot", "description": "Handles billing inquiries", "system_prompt": "help"}'
-   curl -s -X POST http://localhost:9000/v1/agents \
+   curl -s -X POST http://localhost:9000/v1/platform/agents \
      -H "Content-Type: application/json" \
      -d '{"name": "Customer Feedback Analyzer", "description": "Analyzes NPS scores", "system_prompt": "analyze"}'
    ```
 
 2. Multi-word search "customer bot":
    ```bash
-   curl -s "http://localhost:9000/v1/agents?search=customer+bot"
+   curl -s "http://localhost:9000/v1/platform/agents?search=customer+bot"
    ```
 
 3. Cross-field search "customer billing":
    ```bash
-   curl -s "http://localhost:9000/v1/agents?search=customer+billing"
+   curl -s "http://localhost:9000/v1/platform/agents?search=customer+billing"
    ```
 
 4. No-match multi-word "customer missing":
    ```bash
-   curl -s "http://localhost:9000/v1/agents?search=customer+missing"
+   curl -s "http://localhost:9000/v1/platform/agents?search=customer+missing"
    ```
 
 ## Expected Results

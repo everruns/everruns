@@ -26,7 +26,7 @@ Verify that attempting to get a non-existent MCP server returns 404.
 
 ## Steps
 
-1. Make GET request to `/api/v1/mcp-servers/mcp_00000000-0000-0000-0000-000000000000`
+1. Make GET request to `/api/v1/platform/mcp-servers/mcp_00000000-0000-0000-0000-000000000000`
 
 ## Expected Result
 

@@ -577,13 +577,13 @@ Mockups: `/mnt/project-files/web-search/` in the project thread.
 
 ## API
 
-- `GET /v1/search-providers`: the catalog for the org: built-ins, which model
+- `GET /v1/platform/search-providers`: the catalog for the org: built-ins, which model
   providers offer native search, connectors with `web_search`, and connected
   accounts with status and their place in Automatic.
-- Accounts reuse `/v1/orgs/{org}/organization-connections`, which accepts
+- Accounts reuse `/v1/platform/orgs/{org}/organization-connections`, which accepts
   connectors declaring `web_search` as well as `sandbox_provisioning`.
-- `PATCH /v1/orgs/{org}` takes `web_search_defaults`.
-- `POST /v1/search-providers/preview`: resolves an agent's setting and model to
+- `PATCH /v1/platform/orgs/{org}` takes `web_search_defaults`.
+- `POST /v1/platform/search-providers/preview`: resolves an agent's setting and model to
   a plan, for the agent editor's "How this agent will search" box, and runs an
   optional test query against one provider for the cards' test button (an
   organization admin only, since it spends the account's quota).

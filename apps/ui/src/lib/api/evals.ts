@@ -1,5 +1,5 @@
 // Eval API functions
-// Org is sent via everruns_org cookie (set by OrgProvider via /v1/users/me/switch-org)
+// Org is sent via everruns_org cookie (set by OrgProvider via /v1/platform/users/me/switch-org)
 
 import { api } from "./client";
 import { createCrudApi } from "./crud";
@@ -26,7 +26,9 @@ import type {
 } from "./types";
 import { changeReasonOptions } from "./change-history";
 
-export const evalsCrudApi = createCrudApi<Eval, CreateEvalRequest, UpdateEvalRequest>("/v1/evals");
+export const evalsCrudApi = createCrudApi<Eval, CreateEvalRequest, UpdateEvalRequest>(
+  "/v1/platform/evals",
+);
 
 export const createEval = evalsCrudApi.create;
 export const listEvals = evalsCrudApi.list;
@@ -36,7 +38,7 @@ export const deleteEval = evalsCrudApi.delete;
 export const destroyEval = evalsCrudApi.destroy;
 
 function evalPath(evalId: string): string {
-  return `/v1/evals/${encodeURIComponent(evalId)}`;
+  return `/v1/platform/evals/${encodeURIComponent(evalId)}`;
 }
 
 function evalRunPath(evalId: string, runId: string): string {
@@ -134,7 +136,7 @@ export async function listEvalExperiments(evalId: string): Promise<EvalExperimen
 }
 
 export async function listAllEvalExperiments(): Promise<EvalExperiment[]> {
-  const response = await api.get<{ data: EvalExperiment[] }>(`/v1/evals/experiments`);
+  const response = await api.get<{ data: EvalExperiment[] }>(`/v1/platform/evals/experiments`);
   return response.data.data;
 }
 
@@ -159,7 +161,7 @@ export async function createEvalExperiment(
 // Eval Builder (Evals rebuild step 8): proposed cases for an agent's
 // datasets. Nothing becomes a case until a person accepts it.
 function proposalsPath(agentId: string): string {
-  return `/v1/agents/${encodeURIComponent(agentId)}/eval-proposals`;
+  return `/v1/platform/agents/${encodeURIComponent(agentId)}/eval-proposals`;
 }
 
 export async function listEvalProposals(agentId: string): Promise<EvalProposalList> {
@@ -178,7 +180,7 @@ export async function acceptEvalProposal(
   reason?: string,
 ): Promise<EvalCase> {
   const response = await api.post<EvalCase>(
-    `/v1/eval-proposals/${encodeURIComponent(proposalId)}/accept`,
+    `/v1/platform/eval-proposals/${encodeURIComponent(proposalId)}/accept`,
     { eval_id: evalId },
     changeReasonOptions(reason),
   );
@@ -190,7 +192,7 @@ export async function dismissEvalProposal(
   note?: string,
 ): Promise<EvalCaseProposal> {
   const response = await api.post<EvalCaseProposal>(
-    `/v1/eval-proposals/${encodeURIComponent(proposalId)}/dismiss`,
+    `/v1/platform/eval-proposals/${encodeURIComponent(proposalId)}/dismiss`,
     note?.trim() ? { note: note.trim() } : {},
   );
   return response.data;
@@ -199,12 +201,12 @@ export async function dismissEvalProposal(
 // Suggested fixes for findings (knowledge/evaluation/suggested-fixes.md).
 export async function getFindingFix(issueId: string): Promise<FindingFix | null> {
   const response = await api.get<FindingFixList>(
-    `/v1/evals/fixes?issue_id=${encodeURIComponent(issueId)}`,
+    `/v1/platform/evals/fixes?issue_id=${encodeURIComponent(issueId)}`,
   );
   return response.data.fixes[0] ?? null;
 }
 
-const fixPath = (fixId: string) => `/v1/evals/fixes/${encodeURIComponent(fixId)}`;
+const fixPath = (fixId: string) => `/v1/platform/evals/fixes/${encodeURIComponent(fixId)}`;
 
 export async function checkFindingFix(fixId: string): Promise<FindingFix> {
   return (await api.post<FindingFix>(`${fixPath(fixId)}/check`, {})).data;
@@ -224,7 +226,8 @@ export async function rejectFindingFix(fixId: string, note: string): Promise<Fin
 }
 
 // What was done about a finding, and undo (knowledge/evaluation/self-healing.md).
-const actionsPath = (issueId: string) => `/v1/health-issues/${encodeURIComponent(issueId)}/actions`;
+const actionsPath = (issueId: string) =>
+  `/v1/platform/health-issues/${encodeURIComponent(issueId)}/actions`;
 
 export async function getFindingActions(issueId: string): Promise<FindingActions> {
   return (await api.get<FindingActions>(actionsPath(issueId))).data;

@@ -8,7 +8,7 @@
 //!   than any token it signed lives.
 //! - A token lives ten minutes. A caller (the console, the CLI, an API key
 //!   at the edge) exchanges its own credential for one at
-//!   `POST /v1/auth/token` and refreshes it before it ends, so a revoked
+//!   `POST /v1/platform/auth/token` and refreshes it before it ends, so a revoked
 //!   user or key stops within ten minutes.
 //! - The scope is `sessions:write`: the org's members drive the org's
 //!   sessions. A data plane's `admin` scope is for operators and is never

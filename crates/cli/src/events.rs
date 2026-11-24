@@ -1,6 +1,6 @@
 //! A session's event stream over SSE, with reconnection.
 //!
-//! Decision: the CLI reads `GET /v1/sessions/{id}/sse` itself instead of
+//! Decision: the CLI reads `GET /v1/platform/sessions/{id}/sse` itself instead of
 //! through the SDK, so the binary depends on the API contract alone. The
 //! behaviour is the one the server's stream is designed for:
 //!
@@ -174,7 +174,10 @@ impl<'a> EventStream<'a> {
         for event_type in &self.exclude {
             query.push(("exclude", event_type));
         }
-        let path = format!("/v1/sessions/{}/sse", urlencoding::encode(&self.session_id));
+        let path = format!(
+            "/v1/platform/sessions/{}/sse",
+            urlencoding::encode(&self.session_id)
+        );
         let response = self
             .client
             .request(reqwest::Method::GET, &with_query(&path, &query))

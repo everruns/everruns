@@ -22,7 +22,7 @@ Use a channel when an external peer sends a request and waits for a reply. Use a
 | FCP | `fcp` | Any HTTP client, text in and text out | `/v1/channels/{channel_id}/fcp` | [FCP](#fcp) |
 | Work Chat | `work_chat` | Signed-in consumers using a dedicated work interface | `/v1/channels/{channel_id}` | [Work Chat](#work-chat) |
 | Public Chat | `public_chat` | Visitors to a hosted chat website for one Agent | `/v1/channels/{channel_id}/public-chat` | [Public Chat](#public-chat) |
-| Voice | `voice` | People talking from a browser or app, over WebRTC | `/v1/agents/{agent_id}/channels/{channel_id}/voice/calls` | [Voice](/features/voice/) |
+| Voice | `voice` | People talking from a browser or app, over WebRTC | `/v1/platform/agents/{agent_id}/channels/{channel_id}/voice/calls` | [Voice](/features/voice/) |
 | Agent API | `api` | Your own code, with an agent key | `/v1/channels/{channel_id}` | [Agent API](/features/agent-api/) |
 | Poppy | `poppy` | People's own agents, over the Personal Agent Protocol | `/v1/channels/{channel_id}/poppy` | [Poppy](/features/poppy/) |
 
@@ -31,7 +31,7 @@ Routes are relative to the API base, for example `https://your-everruns-host/api
 ## Download received files
 
 Files received through Slack, AG-UI and A2A remain available to the Agent in
-its session. Opening a stored file's `/v1/files/{file_id}` URL downloads its
+its session. Opening a stored file's `/v1/platform/files/{file_id}` URL downloads its
 bytes instead of rendering it on the application's origin. This endpoint uses
 `Content-Disposition: attachment`, `Content-Type: application/octet-stream`
 and `X-Content-Type-Options: nosniff` for every stored file, including PDFs and
@@ -45,7 +45,7 @@ authentication and membership in the file's organization.
 3. Configure the type-specific fields and select **Create channel**.
 4. Select **Publish** to make the channel live.
 
-The same operations are available over the API under `/v1/agents/{agent_id}/channels`, with `publish` and `unpublish` actions per channel. Every channel runs the Agent's current configuration.
+The same operations are available over the API under `/v1/platform/agents/{agent_id}/channels`, with `publish` and `unpublish` actions per channel. Every channel runs the Agent's current configuration.
 
 ## Channel lifecycle
 
@@ -171,13 +171,13 @@ The same channel model also carries transports that do not need a reply channel:
 
 ## Existing integrations
 
-Channels replace the former **Agent Endpoint** name. Existing channel IDs and configuration stay the same. CLI commands now use `everruns agents channels`; the management API uses `/v1/agents/{agent_id}/channels`. The former `/v1/agents/{agent_id}/endpoints` routes remain aliases, and console bookmarks under `/agents/{agent_id}/endpoints` redirect to the channel pages.
+Channels replace the former **Agent Endpoint** name. Existing channel IDs and configuration stay the same. CLI commands now use `everruns agents channels`; the management API uses `/v1/platform/agents/{agent_id}/channels`. The former `/v1/platform/agents/{agent_id}/endpoints` routes remain aliases, and console bookmarks under `/agents/{agent_id}/endpoints` redirect to the channel pages.
 
 ## Retired Apps
 
 Apps are retired from Everruns management. Everruns keeps existing App records for historical attribution and compatibility, and existing installs continue to serve traffic, but the App list, detail page, create flow, and management API are retired.
 
-The old `/v1/e/{channel_id}/…` and `/v1/apps/{app_id}/…` ingress paths remain permanent aliases. They resolve to the migrated channel and continue to work. Do not rewrite a working existing installation only to change its URL. New integrations use the channel-scoped canonical routes above.
+The old `/v1/e/{channel_id}/…` and `/v1/platform/apps/{app_id}/…` ingress paths remain permanent aliases. They resolve to the migrated channel and continue to work. Do not rewrite a working existing installation only to change its URL. New integrations use the channel-scoped canonical routes above.
 
 ## See also
 

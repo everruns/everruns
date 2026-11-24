@@ -128,7 +128,7 @@ Example: `skill:01933b5a-0000-7000-8000-000000000601`
 
 ### Progressive Disclosure in Capability System
 
-1. **Listing** (GET /v1/capabilities): Returns skill name + description only (metadata for discovery)
+1. **Listing** (GET /v1/platform/capabilities): Returns skill name + description only (metadata for discovery)
 2. **Agent Assignment**: Skill capability ID stored in `agent_capabilities` junction table
 3. **Session Runtime**: When an agent with skill capabilities starts a session:
    - Skill names and descriptions disclosed as cache-stable user-role inventory updates

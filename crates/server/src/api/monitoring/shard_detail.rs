@@ -115,7 +115,7 @@ fn points(series: NodeSeries) -> Vec<ShardNodePoint> {
 }
 
 /// Read one shard's per-node detail for the last hour. Requires platform-user access.
-#[utoipa::path(get, path = "/v1/durable/monitoring/shards/{shard}/detail", tag = "durable",
+#[utoipa::path(get, path = "/v1/platform/durable/monitoring/shards/{shard}/detail", tag = "durable",
     params(("shard" = String, Path, description = "Shard name"), ShardDetailQuery),
     responses((status = 200, description = "Per-node detail, or why there is none", body = MonitoringShardDetail),
         (status = 400, description = "Invalid shard name or minutes", body = ErrorResponse),

@@ -42,7 +42,7 @@ pub async fn exercise_new_surfaces(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let http = reqwest::Client::new();
     let trigger: serde_json::Value = http
-        .post(format!("{}/v1/agents/{agent_id}/triggers", base_url.trim_end_matches('/')))
+        .post(format!("{}/v1/platform/agents/{agent_id}/triggers", base_url.trim_end_matches('/')))
         .bearer_auth(api_key)
         .json(&serde_json::json!({
             "cron_expression": "0 0 * * *",
@@ -68,7 +68,7 @@ pub async fn exercise_new_surfaces(
         .await?;
     let participant: serde_json::Value = http
         .post(format!(
-            "{}/v1/sessions/{session_id}/participants",
+            "{}/v1/platform/sessions/{session_id}/participants",
             base_url.trim_end_matches('/')
         ))
         .bearer_auth(api_key)

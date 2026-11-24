@@ -41,15 +41,19 @@ export interface GitHubRepository {
 }
 
 export async function getAgentGitHub(agentId: string): Promise<AgentGitHubStatus> {
-  return (await api.get<AgentGitHubStatus>(`/v1/agents/${agentId}/github`)).data;
+  return (await api.get<AgentGitHubStatus>(`/v1/platform/agents/${agentId}/github`)).data;
 }
 
 export async function connectAgentGitHub(
   agentId: string,
   body: { return_to?: string; owner_org?: string },
 ): Promise<AgentGitHubConnectResponse> {
-  return (await api.post<AgentGitHubConnectResponse>(`/v1/agents/${agentId}/github/connect`, body))
-    .data;
+  return (
+    await api.post<AgentGitHubConnectResponse>(
+      `/v1/platform/agents/${agentId}/github/connect`,
+      body,
+    )
+  ).data;
 }
 
 /** Make the agent act as the shared Everruns App through an org-linked installation. */
@@ -58,20 +62,20 @@ export async function chooseAgentEverrunsApp(
   connectionId: string,
 ): Promise<AgentGitHubStatus> {
   return (
-    await api.post<AgentGitHubStatus>(`/v1/agents/${agentId}/github/everruns-app`, {
+    await api.post<AgentGitHubStatus>(`/v1/platform/agents/${agentId}/github/everruns-app`, {
       connection_id: connectionId,
     })
   ).data;
 }
 
 export async function disconnectAgentGitHub(identityId: string): Promise<void> {
-  await api.delete(`/v1/virtual-users/${identityId}/connections/github/app`);
+  await api.delete(`/v1/platform/virtual-users/${identityId}/connections/github/app`);
 }
 
 export async function listGitHubRepositories(identityId: string): Promise<GitHubRepository[]> {
   return (
     await api.get<GitHubRepository[]>(
-      `/v1/virtual-users/${identityId}/connections/github/repositories`,
+      `/v1/platform/virtual-users/${identityId}/connections/github/repositories`,
     )
   ).data;
 }

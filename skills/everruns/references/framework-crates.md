@@ -25,7 +25,7 @@ All built-in vendor configurations are available through facade features;
 use provider-owned types and `.api(...)` selectors for OpenAI and Mistral.
 Reserve `everruns-drivers` for custom transports or direct driver implementation.
 Hosted provider create/update requests select the protocol with `api`; discover
-valid choices through `/v1/providers/config`. Omitted PATCH fields retain the
+valid choices through `/v1/platform/providers/config`. Omitted PATCH fields retain the
 choice, and `"api": "default"` resets it. See the
 [provider comparison](https://everruns.com/docs/framework/models-and-providers/).
 

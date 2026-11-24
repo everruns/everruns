@@ -94,7 +94,7 @@ export default function OrganizationPage() {
   const { data: harnesses = [] } = useHarnesses();
   const updateOrganization = useUpdateOrganization();
   const createOrganization = useCreateOrganization();
-  // Backend gate: PATCH /v1/orgs/:org is admin-only
+  // Backend gate: PATCH /v1/platform/orgs/:org is admin-only
   // (`is_org_admin_of_public_db`, crates/server/src/api/organizations/mod.rs). Members
   // used to get editable controls that always failed with 403, so the UI mirrors
   // that check and renders read-only instead.

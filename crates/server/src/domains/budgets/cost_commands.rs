@@ -92,7 +92,7 @@ pub struct ListCostRates {}
     category = "budgets",
     description = "List the organization's price list, history included.",
     method = "GET",
-    path = "/v1/cost-rates",
+    path = "/v1/platform/cost-rates",
     policy = BUDGET_VIEW,
     http = plain,
     params(ListCostRates),
@@ -169,7 +169,7 @@ fn validate_match(meter: &str, value: &serde_json::Value) -> Result<(), CommandE
     category = "budgets",
     description = "Add a rate to the organization's price list. A rate is a fixed price per unit or a multiple of the list price; rates are never edited, a change is a new rate from a later date.",
     method = "POST",
-    path = "/v1/cost-rates",
+    path = "/v1/platform/cost-rates",
     policy = BUDGET_MANAGE,
     http = created,
     request_body(CreateCostRate),
@@ -234,7 +234,7 @@ pub struct RetireCostRate {
     category = "budgets",
     description = "End a rate from a date. Past costs keep the rate they used; usage after the date falls back to the provider's or catalog price.",
     method = "POST",
-    path = "/v1/cost-rates/{rate_id}/retire",
+    path = "/v1/platform/cost-rates/{rate_id}/retire",
     policy = BUDGET_MANAGE,
     http = created,
     responses((status = 404, description = "Rate not found")),
@@ -444,7 +444,7 @@ pub(crate) fn month_start(now: DateTime<Utc>, tz: chrono_tz::Tz) -> DateTime<Utc
     category = "budgets",
     description = "Summarize what usage cost the organization.",
     method = "GET",
-    path = "/v1/costs/summary",
+    path = "/v1/platform/costs/summary",
     policy = BUDGET_VIEW,
     http = plain,
     params(GetCostSummary),
@@ -464,7 +464,7 @@ impl Command for GetCostSummary {
         }
         if self.agent_id.is_some() {
             return Err(CommandError::bad_request(
-                "agent_id filtering is served by GET /v1/agents/{agent_id}/costs",
+                "agent_id filtering is served by GET /v1/platform/agents/{agent_id}/costs",
             ));
         }
         let tz_name = tz.name().to_string();
@@ -529,7 +529,7 @@ pub struct GetAgentCost {
     category = "budgets",
     description = "What one agent cost the organization this month.",
     method = "GET",
-    path = "/v1/agents/{agent_id}/costs",
+    path = "/v1/platform/agents/{agent_id}/costs",
     policy = BUDGET_VIEW,
     positional = "agent_id",
     http = plain,
@@ -579,7 +579,7 @@ pub struct GetCostSettings {}
     category = "budgets",
     description = "Read the organization's cost settings.",
     method = "GET",
-    path = "/v1/costs/settings",
+    path = "/v1/platform/costs/settings",
     policy = BUDGET_VIEW,
     http = plain,
     params(GetCostSettings),
@@ -605,7 +605,7 @@ pub struct UpdateCostSettings {
     category = "budgets",
     description = "Set the timezone usage policy windows reset in. Windows already running keep their start; the next boundary uses the new timezone.",
     method = "PATCH",
-    path = "/v1/costs/settings",
+    path = "/v1/platform/costs/settings",
     policy = BUDGET_MANAGE,
     http = plain,
     request_body(UpdateCostSettings),

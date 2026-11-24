@@ -105,7 +105,7 @@ everruns observers backfill --observer-id observer_01h9 --since-hours 24 \
   --reason 'Baseline the new rubric'
 ```
 
-**Live quality.** `GET /v1/observers/summary` (`everruns observers summary`) returns the pass rate of completed scores over the last `days`, in total and by agent, observer and day.
+**Live quality.** `GET /v1/platform/observers/summary` (`everruns observers summary`) returns the pass rate of completed scores over the last `days`, in total and by agent, observer and day.
 
 ## Findings
 

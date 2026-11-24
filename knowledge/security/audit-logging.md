@@ -72,7 +72,7 @@ Configurable auto-purge via `AUDIT_LOG_RETENTION_DAYS` env var (default: 90 days
 
 ## API
 
-### `GET /v1/orgs/{org}/audit-logs`
+### `GET /v1/platform/orgs/{org}/audit-logs`
 
 Paginated, filterable. Requires `OrgAuditLogsView` permission (Owner/Admin only).
 

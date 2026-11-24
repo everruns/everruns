@@ -123,7 +123,7 @@ pub enum SessionSource {
     Chat,
     /// Organisation-shared agent testing conversation.
     Playground,
-    /// Direct `POST /v1/sessions` from the API, CLI, or an SDK.
+    /// Direct `POST /v1/platform/sessions` from the API, CLI, or an SDK.
     Api,
     /// Slack channel ingress.
     Slack,
@@ -194,7 +194,7 @@ impl SessionSource {
         matches!(self, SessionSource::Schedule | SessionSource::Webhook)
     }
 
-    /// Whether a client may declare this source on `POST /v1/sessions`.
+    /// Whether a client may declare this source on `POST /v1/platform/sessions`.
     /// Everything else is server-owned so facets cannot be spoofed.
     pub fn is_client_declarable(self) -> bool {
         matches!(

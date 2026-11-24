@@ -123,7 +123,7 @@ page stays a read-only debugging view and never asks.
   of its run (`root_session_id`) and reads each one's last
   `tool.call_requested`. Nothing is mirrored into the first session's events,
   where the runtime would read a copy as its own pending batch.
-- `GET /v1/sessions/{id}/run-requests` lists them with the asking agent and
+- `GET /v1/platform/sessions/{id}/run-requests` lists them with the asking agent and
   session. Chat and Playground render the usual cards from it, headed with the
   agent's name; a card answers on the asking session.
 - `POST …/tool-approvals` and `POST …/question-answers` on the first session
@@ -206,7 +206,7 @@ Code: `crates/capabilities/src/capabilities/run_conversation.rs`.
 ## Whole run
 
 A run is the first session and every session started under it
-(`root_session_id`). `GET /v1/sessions/{id}/run` answers for any session of the
+(`root_session_id`). `GET /v1/platform/sessions/{id}/run` answers for any session of the
 run: each agent session with its agent, status, turns (from the trace index)
 and spend, the run's total, the first session's share, and how many requests
 wait on the person. It is computed on read; there is no new storage
@@ -224,7 +224,7 @@ wait on the person. It is computed on read; there is no new storage
 - **Cost "Whole run".** The same switch on the Cost tab shows the run's spend
   split by agent session.
 - **Costs "Runs that use other agents".** A card under By agent on the
-  organization's Costs page (`runs_with_agents` on `GET /v1/costs/summary`):
+  organization's Costs page (`runs_with_agents` on `GET /v1/platform/costs/summary`):
   for each agent that started runs where it handed work to others, the whole
   cost of those runs and who spent it, marked "Created here" (an agent owned by
   the lead) or "Linked". Each usage record counts once, under the run its

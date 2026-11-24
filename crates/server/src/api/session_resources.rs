@@ -22,13 +22,16 @@ use super::common::{ApiResult, ErrorResponse};
 
 pub fn routes(state: ApiState) -> Router {
     Router::new()
-        .route("/v1/sessions/{session_id}/resources", get(list_resources))
         .route(
-            "/v1/sessions/{session_id}/mcp-servers",
+            "/v1/platform/sessions/{session_id}/resources",
+            get(list_resources),
+        )
+        .route(
+            "/v1/platform/sessions/{session_id}/mcp-servers",
             get(list_chat_mcp_servers),
         )
         .route(
-            "/v1/sessions/{session_id}/mcp-servers/{name}",
+            "/v1/platform/sessions/{session_id}/mcp-servers/{name}",
             delete(remove_chat_mcp_server),
         )
         .with_state(state)
@@ -39,7 +42,7 @@ pub fn routes(state: ApiState) -> Router {
 /// List all resources registered in the session resource registry.
 #[utoipa::path(
     get,
-    path = "/v1/sessions/{session_id}/resources",
+    path = "/v1/platform/sessions/{session_id}/resources",
     responses(
         (status = 200, description = "Session resources", body = Vec<SessionResourceEntry>),
         (status = 404, description = "Session not found"),
@@ -66,7 +69,7 @@ pub async fn list_resources(
 /// session and no other. Sign-in state is the viewer's own.
 #[utoipa::path(
     get,
-    path = "/v1/sessions/{session_id}/mcp-servers",
+    path = "/v1/platform/sessions/{session_id}/mcp-servers",
     params(("session_id" = String, Path, description = "Session ID")),
     responses(
         (status = 200, description = "Chat-only MCP servers", body = Vec<ChatMcpServer>),
@@ -89,7 +92,7 @@ pub async fn list_chat_mcp_servers(
 /// Remove an MCP server added to this chat only. Its tools leave from the next turn.
 #[utoipa::path(
     delete,
-    path = "/v1/sessions/{session_id}/mcp-servers/{name}",
+    path = "/v1/platform/sessions/{session_id}/mcp-servers/{name}",
     params(
         ("session_id" = String, Path, description = "Session ID"),
         ("name" = String, Path, description = "Server name")

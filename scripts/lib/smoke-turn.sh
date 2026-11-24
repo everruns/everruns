@@ -22,11 +22,11 @@ smoke_data_plane() {
 # $2 email, $3 password.
 smoke_token() {
   local base="$1" email="$2" password="$3" access token
-  access="$(curl -fsS -X POST "$base/api/v1/auth/login" -H "Content-Type: application/json" \
+  access="$(curl -fsS -X POST "$base/api/v1/platform/auth/login" -H "Content-Type: application/json" \
     -d "{\"email\":\"$email\",\"password\":\"$password\"}" | jq -r .access_token)" \
     || fail "sign-in failed"
   [ -n "$access" ] && [ "$access" != null ] || fail "login returned no access_token"
-  token="$(curl -fsS -X POST "$base/api/v1/auth/personal-access-tokens" \
+  token="$(curl -fsS -X POST "$base/api/v1/platform/auth/personal-access-tokens" \
     -H "Authorization: Bearer $access" -H "Content-Type: application/json" \
     -d '{"name":"smoke"}' | jq -r .token)" || fail "could not create a personal access token"
   case "$token" in evr_pat_*) ;; *) fail "PAT does not start with evr_pat_" ;; esac
@@ -43,40 +43,40 @@ smoke_turn() {
   local model_name="llmsim-default"
   local provider_id model agent_id session_id events=""
 
-  provider_id="$(curl -fsS "$base/api/v1/providers" "${auth[@]}" \
+  provider_id="$(curl -fsS "$base/api/v1/platform/providers" "${auth[@]}" \
     | jq -r '[.data[] | select(.provider_type == "llmsim")][0].id // empty')" \
     || fail "could not list providers"
   if [ -z "$provider_id" ]; then
-    provider_id="$(curl -fsS -X POST "$base/api/v1/providers" "${auth[@]}" \
+    provider_id="$(curl -fsS -X POST "$base/api/v1/platform/providers" "${auth[@]}" \
       -d '{"name":"LlmSim","provider_type":"llmsim"}' | jq -r .id)" \
       || fail "could not connect the LlmSim provider"
   fi
   case "$provider_id" in provider_*) ;; *) fail "LlmSim provider id is '$provider_id'" ;; esac
-  model="$(curl -fsS "$base/api/v1/models?limit=500" "${auth[@]}" \
+  model="$(curl -fsS "$base/api/v1/platform/models?limit=500" "${auth[@]}" \
     | jq -r --arg p "$provider_id" --arg m "$model_name" \
       '[.data[] | select(.provider_id == $p and .model_id == $m)][0].id // empty')" \
     || fail "could not list models"
   if [ -z "$model" ]; then
-    model="$(curl -fsS -X POST "$base/api/v1/providers/$provider_id/models" "${auth[@]}" \
+    model="$(curl -fsS -X POST "$base/api/v1/platform/providers/$provider_id/models" "${auth[@]}" \
       -d "{\"model_id\":\"$model_name\",\"display_name\":\"LlmSim Default\",\"capabilities\":[\"chat\",\"tools\"],\"enabled\":true}" \
       | jq -r .id)" || fail "could not create the LlmSim model"
   fi
   case "$model" in model_*) ;; *) fail "LlmSim model id is '$model'" ;; esac
-  curl -fsS -X PATCH "$base/api/v1/models/$model" "${auth[@]}" -d '{"enabled":true}' >/dev/null \
+  curl -fsS -X PATCH "$base/api/v1/platform/models/$model" "${auth[@]}" -d '{"enabled":true}' >/dev/null \
     || fail "could not enable the LlmSim model"
-  agent_id="$(curl -fsS -X POST "$base/api/v1/agents" "${auth[@]}" \
+  agent_id="$(curl -fsS -X POST "$base/api/v1/platform/agents" "${auth[@]}" \
     -d "{\"name\":\"$name\",\"system_prompt\":\"You are helpful.\",\"default_model_id\":\"$model\"}" | jq -r .id)"
   case "$agent_id" in agent_*) ;; *) fail "agent create returned '$agent_id'" ;; esac
 
-  session_id="$(curl -fsS -X POST "$base/api/v1/sessions" "${auth[@]}" \
+  session_id="$(curl -fsS -X POST "$base/api/v1/platform/sessions" "${auth[@]}" \
     -d "{\"agent_id\": \"$agent_id\"}" | jq -r .id)"
   case "$session_id" in session_*) ;; *) fail "session create returned '$session_id'" ;; esac
-  curl -fsS -X POST "$base/api/v1/sessions/$session_id/messages" "${auth[@]}" \
+  curl -fsS -X POST "$base/api/v1/platform/sessions/$session_id/messages" "${auth[@]}" \
     -d '{"message": {"role": "user", "content": [{"type": "text", "text": "Hello!"}]}}' >/dev/null \
     || fail "send message failed"
 
   for _ in $(seq 1 60); do
-    events="$(curl -fsS "$base/api/v1/sessions/$session_id/events?limit=100" "${auth[@]}" | jq -r '.data[].type')"
+    events="$(curl -fsS "$base/api/v1/platform/sessions/$session_id/events?limit=100" "${auth[@]}" | jq -r '.data[].type')"
     grep -qx turn.completed <<<"$events" && break
     grep -qx turn.failed <<<"$events" && fail "turn failed: $(tr '\n' ' ' <<<"$events")"
     sleep 2

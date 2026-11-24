@@ -36,13 +36,13 @@ Requirements from the ask: a full session API plus a simpler task style API, tok
 | serve | `crates/serve`, [`crates/serve/docs/wire-api.md`](../../crates/serve/docs/wire-api.md) | A declared subset of server `/v1` sessions with the same JSON; several agents per app; AG-UI and A2A already at `/v1/channels/{agent}/ag-ui` and `/a2a` | No auth at all; shapes are ad hoc `json!`, not shared types |
 | SDK | `everruns/sdk` (`everruns-sdk` on crates.io/PyPI, `@everruns/sdk`) | Org-wide management client plus a basic session loop | PAT only (`Authorization: <token>`, no Bearer), no OAuth/token refresh, no notion of "one agent" |
 
-So the building blocks are almost all here. The one honest gap is that the native API door was frozen after Apps were retired, and nothing replaced it. A previous option, letting a scoped key into `/v1/sessions`, was dismissed for blast radius (`knowledge/project/dismissed-options.md`, "App API key: project through the global /v1/sessions surface"). This design keeps that decision: execution credentials never reach the management routes; instead the execution routes get the full surface.
+So the building blocks are almost all here. The one honest gap is that the native API door was frozen after Apps were retired, and nothing replaced it. A previous option, letting a scoped key into `/v1/platform/sessions`, was dismissed for blast radius (`knowledge/project/dismissed-options.md`, "App API key: project through the global /v1/platform/sessions surface"). This design keeps that decision: execution credentials never reach the management routes; instead the execution routes get the full surface.
 
 ## The core idea
 
 **Two APIs, one contract each.**
 
-- **Management API**: everything under `/api/v1/*` you use to build and operate agents (agents, harnesses, channels, keys, budgets, workspaces, `/v1/commands`, MCP `execute`). Authenticated as an Everruns user (cookie, JWT, PAT). Served only by the Everruns server. Client: today's `everruns-sdk` and the CLI.
+- **Platform API**: everything under `/api/v1/platform/*` you use to build and operate agents (agents, harnesses, channels, keys, budgets, workspaces, `/v1/platform/commands`, MCP `execute`). Authenticated as an Everruns user (cookie, JWT, PAT). Served only by the Everruns server. Client: today's `everruns-sdk` and the CLI.
 - **Execution API**: everything a caller needs to *talk to one agent*: its card, sessions, messages, events, answers to questions and approvals. Authenticated as a caller of that agent (agent key, the customer's OAuth token, or a short-lived runtime token). Never reaches management. Served by the Everruns server **and** by `serve` (and therefore AgentCore and celld) with the same wire shapes. Client: a new agent client.
 
 The execution API is rooted at an **agent base URL**, and every route is relative to it:
@@ -103,7 +103,7 @@ All paths are relative to the agent base URL. JSON shapes are the server's exist
 | POST | `/sessions` | `{title?, metadata?, hints?, idempotency_key?}`. No `agent_id`, no `harness_id`: the URL is the agent. |
 | GET | `/sessions` | This caller's sessions only, paginated. |
 | GET | `/sessions/{id}` | Status (`idle`, `running`, `waiting_for_input`, `failed`), pending questions and approvals. |
-| POST | `/sessions/{id}/messages` | Same body as `/v1/sessions/{id}/messages` (content parts). Starts a turn if idle, steers if running. Returns the message and the `turn_id`. |
+| POST | `/sessions/{id}/messages` | Same body as `/v1/platform/sessions/{id}/messages` (content parts). Starts a turn if idle, steers if running. Returns the message and the `turn_id`. |
 | GET | `/sessions/{id}/messages` | Conversation as the channel's `visibility` allows. |
 | GET | `/sessions/{id}/sse` | Live events, filtered by `visibility`, resumable. |
 | GET | `/sessions/{id}/events` | Paged events, same filter. |
@@ -174,7 +174,7 @@ A PAT is not accepted on the execution API by default. A channel may opt in to "
 - `End-User` only honoured from a key with `end_user`; the binding realm is the key, so two applications cannot collide on "customer 42", and an OAuth caller cannot assert anyone.
 - `visibility` and `errors` decide what leaves the platform; anything reachable by end-user or anonymous callers is forced to `public` errors (`knowledge/execution/public-endpoints.md`).
 - Budgets: the `agent_channel` subject already caps spend per door; add an optional per-caller daily cap so one leaked key or one noisy customer cannot drain the agent.
-- Idempotency on `POST /sessions` and `POST /sessions/{id}/messages` (the `/v1/commands` Idempotency-Key machinery, encrypted stored responses).
+- Idempotency on `POST /sessions` and `POST /sessions/{id}/messages` (the `/v1/platform/commands` Idempotency-Key machinery, encrypted stored responses).
 - Audit: key create/rotate/revoke, auth failures (rate-limited logging), end-user bindings created.
 - Threat model entries to add: leaked agent key, end-user assertion spoofing, cross-caller session probing, CORS misuse with runtime tokens.
 
@@ -186,7 +186,7 @@ If it comes back, the cheap shape is still available without a new entity: let a
 
 ## Alignment with serve
 
-- **One contract, two hosts.** The execution API becomes the contract `serve` implements per agent at `/v1/channels/{agent}/…` (card and sessions). serve's root `/v1/sessions` (pick agent by `agent_name`) stays as its dev/whole-app surface; it is the serve equivalent of the management session routes.
+- **One contract, two hosts.** The execution API becomes the contract `serve` implements per agent at `/v1/channels/{agent}/…` (card and sessions). serve's root `/v1/platform/sessions` (pick agent by `agent_name`) stays as its dev/whole-app surface; it is the serve equivalent of the management session routes.
 - **Shared wire types.** Move the execution API request/response types out of serve's ad hoc `json!` and the server's handler structs into `everruns-contracts` (module `execution_api`, no new crate). Server, serve and the Rust agent client all use them, so drift becomes a compile error.
 - **One conformance suite.** Like the durable backend conformance suite: a set of tests that drive "an agent base URL" and run against both a server API channel and a serve app. The existing `the_everruns_sdk_drives_a_serve_app` test is the seed.
 - **Auth in serve.** serve gets an auth hook on `ServerBuilder` that takes the same method list: static keys from config or env, and OIDC/JWKS. To avoid two verifiers, the token-verification half of `channel_auth.rs` (JWT/JWKS/introspection/requirements, no database) moves into `everruns-core` behind a feature; the server keeps the parts that read channel rows. No new crate.
@@ -239,14 +239,14 @@ What it has that the management client does not:
 - The SSE reconnect rules already specified in `sdk/specs/sse-streaming.md`.
 - Works unchanged against a serve app URL (`Agent(url="http://localhost:3000/v1/channels/support")`).
 
-Packaging (decided 2026-10-08): the `Agent` client goes into the existing `everruns-sdk` / `@everruns/sdk` packages and becomes what the SDK is for. The SDK's management clients (agents, harnesses, capabilities, workspaces, memories, budgets and the rest of `Everruns`) are deprecated: they stay for one release with deprecation warnings, then are removed. Management from code goes through the CLI and `/v1/commands` (the command contract the CLI already uses), and the SDK specs (`specs/api-surface.md`, `specs/auth.md`) are rewritten around the execution API.
+Packaging (decided 2026-10-08): the `Agent` client goes into the existing `everruns-sdk` / `@everruns/sdk` packages and becomes what the SDK is for. The SDK's management clients (agents, harnesses, capabilities, workspaces, memories, budgets and the rest of `Everruns`) are deprecated: they stay for one release with deprecation warnings, then are removed. Management from code goes through the CLI and `/v1/platform/commands` (the command contract the CLI already uses), and the SDK specs (`specs/api-surface.md`, `specs/auth.md`) are rewritten around the execution API.
 
 Framework protocols remain available for people who already speak them: CopilotKit and other AG-UI front ends use the agent's AG-UI channel, other agents use A2A. The agent card links them.
 
 ## Management side
 
-- Channels: `POST /v1/agents/{agent_id}/channels` with `type: "api"`, publish/unpublish as today.
-- Keys: `GET|POST /v1/agents/{agent_id}/keys`, `POST …/keys/{key_id}/rotate`, `DELETE …/keys/{key_id}`. Org-wide read in the existing Credentials view. Command contract entries (`everruns agents keys create`) come for free from `/v1/commands`.
+- Channels: `POST /v1/platform/agents/{agent_id}/channels` with `type: "api"`, publish/unpublish as today.
+- Keys: `GET|POST /v1/platform/agents/{agent_id}/keys`, `POST …/keys/{key_id}/rotate`, `DELETE …/keys/{key_id}`. Org-wide read in the existing Credentials view. Command contract entries (`everruns agents keys create`) come for free from `/v1/platform/commands`.
 - UI: Agent → Integrations → "API" channel with three panels: base URL and copyable snippets (curl, Python, TypeScript), keys, sign-in methods (keys, OAuth issuer, members). The Exposures view lists API channels like any other door.
 
 ## Phases

@@ -43,7 +43,7 @@ Goals:
   enforced by the existing org/workspace authorization layer.
 - **Proxy, not redirect.** Everruns fetches bytes and serves them. No S3
   presigned URLs are handed to browsers or workers; the existing
-  `/v1/images/*` proxy and the worker byte paths (signed by the control
+  `/v1/platform/images/*` proxy and the worker byte paths (signed by the control
   plane, served on the worker endpoint) are untouched.
 - **Optional and reversible.** A deployment can run on PostgreSQL only, or
   enable S3 without reshaping the data model.
@@ -127,7 +127,7 @@ bucket to host multiple isolated Everruns deployments.
 
 Workers have no object-store credentials. They read and write workspace files
 through the control plane (gRPC), which performs the offload transparently.
-Images keep their existing flow: `GET /v1/images/{id}` streams bytes the server
+Images keep their existing flow: `GET /v1/platform/images/{id}` streams bytes the server
 fetched from PostgreSQL or the blob store, and workers fetch via the
 HMAC-signed `/internal/images/{id}` endpoint, both proxy through Everruns, so
 no S3 URL ever leaves the control plane.

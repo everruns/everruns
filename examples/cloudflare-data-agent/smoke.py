@@ -40,7 +40,7 @@ def main():
     secret = os.environ["EVERRUNS_ENDPOINT_SECRET"]
 
     def api(method, path, body=None):
-        request = urllib.request.Request(args.cp.rstrip("/") + "/api/v1" + path,
+        request = urllib.request.Request(args.cp.rstrip("/") + "/api/v1/platform" + path,
             data=None if body is None else json.dumps(body).encode(), method=method,
             headers={"Content-Type": "application/json", "User-Agent": "everruns-cloudflare-smoke/1.0", **({"Authorization": "Bearer " + token} if token else {}), **({"X-Org-Id": args.org} if args.org else {})})
         try:
@@ -89,7 +89,7 @@ def main():
         if args.org:
             headers["X-Org-Id"] = args.org
         config = "".join("header = " + json.dumps(k + ": " + v) + "\n" for k, v in headers.items())
-        sse = subprocess.Popen(["curl", "--config", "-", "--silent", "--show-error", "--no-buffer", "--max-time", "300", args.cp.rstrip("/") + "/api/v1/sessions/" + session_id + "/sse?after_sequence=0"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+        sse = subprocess.Popen(["curl", "--config", "-", "--silent", "--show-error", "--no-buffer", "--max-time", "300", args.cp.rstrip("/") + "/api/v1/platform/sessions/" + session_id + "/sse?after_sequence=0"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
         sse.stdin.write(config)
         sse.stdin.close()
         def collect():

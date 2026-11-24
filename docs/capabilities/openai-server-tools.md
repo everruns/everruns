@@ -120,7 +120,7 @@ with an approval card in the chat that shows the server, the tool, and the
 exact arguments; **Approve** runs the call and **Deny** lets the model answer
 without it. API clients see the request as a `tool.call_requested` event with
 an `openai_mcp_approval` call and answer it through
-`POST /v1/sessions/{id}/tool-results` with `{"approve": true}` or
+`POST /v1/platform/sessions/{id}/tool-results` with `{"approve": true}` or
 `{"approve": false}`. Any other result, an error included, denies.
 
 A server can skip approval with `"require_approval": "never"`, but only for an

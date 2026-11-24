@@ -89,6 +89,37 @@ impl ServerConfig {
     }
 }
 
+/// Share canonical handlers with legacy management URLs and announce deprecation.
+pub fn with_platform_api_compatibility(
+    router: Router,
+    api_prefix: &str,
+    extra: &crate::auth::pat_scope::ExtraRouteClasses,
+    extra_paths: impl IntoIterator<Item = String>,
+) -> Router {
+    use utoipa::OpenApi;
+    let mut paths: Vec<String> = crate::openapi::ApiDoc::openapi()
+        .paths
+        .paths
+        .into_keys()
+        .collect();
+    paths.extend(
+        crate::auth::pat_scope::routes::ROUTES
+            .iter()
+            .chain(crate::auth::pat_scope::routes::UNDOCUMENTED_ROUTES)
+            .map(|(_, path, _)| (*path).to_owned()),
+    );
+    paths.extend(extra.paths().map(str::to_owned));
+    paths.extend(extra_paths);
+    paths.extend(
+        inventory::iter::<crate::domains::common::CommandDescriptor>
+            .into_iter()
+            .map(|command| (command.meta)().path.to_owned()),
+    );
+    paths.sort_unstable();
+    paths.dedup();
+    crate::platform_compat::with_legacy_routes(router, paths, api_prefix)
+}
+
 /// Build router with optional API prefix
 pub(crate) fn build_router_with_prefix<S: Clone + Send + Sync + 'static>(
     api_routes: Router<S>,

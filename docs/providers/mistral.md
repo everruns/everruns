@@ -106,7 +106,7 @@ Configure credentials through the normal provider credential fields. `api` may b
 `responses`, `chat_completions`, or `default`. Omitting it on create preserves the
 existing default; omitting it on PATCH preserves the stored selection. PATCH
 `"api": "default"` restores the default. The server validates choices against the
-driver catalog. API reads return the stored selection, and `/v1/providers/config`
+driver catalog. API reads return the stored selection, and `/v1/platform/providers/config`
 returns supported choices in each driver's `apis` field. Server and worker must
 both run a version supporting this field. The Settings UI has no selector yet.
 

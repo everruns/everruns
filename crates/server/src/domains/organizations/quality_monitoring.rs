@@ -31,7 +31,7 @@ pub struct GetOrgQualityMonitoring {
     pub org: String,
 }
 
-#[command(name = "get_org_quality_monitoring", summary = "Get compaction monitoring", cli = CliRoute::new(&["orgs", "quality-monitoring"], "get").with_examples(&[CliExample::new("Inspect compaction monitoring consent, coverage and allowance", "everruns orgs quality-monitoring get --org org_01h9")]), category = "organizations", description = "Read organization compaction monitoring policy, coverage and budget reservations.", method = "GET", path = "/v1/orgs/{org}/quality-monitoring", policy = super::settings::ORGANIZATION_VIEW, http = plain, tag = "Organizations")]
+#[command(name = "get_org_quality_monitoring", summary = "Get compaction monitoring", cli = CliRoute::new(&["orgs", "quality-monitoring"], "get").with_examples(&[CliExample::new("Inspect compaction monitoring consent, coverage and allowance", "everruns orgs quality-monitoring get --org org_01h9")]), category = "organizations", description = "Read organization compaction monitoring policy, coverage and budget reservations.", method = "GET", path = "/v1/platform/orgs/{org}/quality-monitoring", policy = super::settings::ORGANIZATION_VIEW, http = plain, tag = "Organizations")]
 impl Command for GetOrgQualityMonitoring {
     type Output = QualityMonitoringReport;
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
@@ -58,7 +58,7 @@ pub struct ListOrgQualityMonitoringScores {
     pub org: String,
 }
 
-#[command(name = "list_org_quality_monitoring_scores", summary = "List compaction findings", cli = CliRoute::new(&["orgs", "quality-monitoring", "scores"], "list").with_examples(&[CliExample::new("Read recent compaction assessments and their trace references", "everruns orgs quality-monitoring scores list --org org_01h9")]), category = "organizations", description = "Read the newest fifty compaction monitoring findings with source trace references.", method = "GET", path = "/v1/orgs/{org}/quality-monitoring/scores", policy = OBSERVER_VIEW, http = plain, tag = "Organizations")]
+#[command(name = "list_org_quality_monitoring_scores", summary = "List compaction findings", cli = CliRoute::new(&["orgs", "quality-monitoring", "scores"], "list").with_examples(&[CliExample::new("Read recent compaction assessments and their trace references", "everruns orgs quality-monitoring scores list --org org_01h9")]), category = "organizations", description = "Read the newest fifty compaction monitoring findings with source trace references.", method = "GET", path = "/v1/platform/orgs/{org}/quality-monitoring/scores", policy = OBSERVER_VIEW, http = plain, tag = "Organizations")]
 impl Command for ListOrgQualityMonitoringScores {
     type Output = Vec<TraceScore>;
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
@@ -99,7 +99,7 @@ pub struct ReviewOrgQualityMonitoringScore {
     pub review: crate::domains::observers::types::ReviewScoreRequest,
 }
 
-#[command(name = "review_org_quality_monitoring_score", summary = "Review a compaction finding", cli = CliRoute::new(&["orgs", "quality-monitoring", "scores"], "review").with_examples(&[CliExample::new("Record a suspected continuity issue as a grader mistake", "everruns orgs quality-monitoring scores review --org org_01h9 --score score_01h9 --agrees false --note 'A later user correction explains the answer' --reason 'Calibrate compaction monitoring'")]), category = "organizations", description = "Record a person's agreement with a compaction assessment, without starting model work.", method = "PUT", path = "/v1/orgs/{org}/quality-monitoring/scores/{score}/review", policy = OBSERVER_VIEW, http = plain, tag = "Organizations")]
+#[command(name = "review_org_quality_monitoring_score", summary = "Review a compaction finding", cli = CliRoute::new(&["orgs", "quality-monitoring", "scores"], "review").with_examples(&[CliExample::new("Record a suspected continuity issue as a grader mistake", "everruns orgs quality-monitoring scores review --org org_01h9 --score score_01h9 --agrees false --note 'A later user correction explains the answer' --reason 'Calibrate compaction monitoring'")]), category = "organizations", description = "Record a person's agreement with a compaction assessment, without starting model work.", method = "PUT", path = "/v1/platform/orgs/{org}/quality-monitoring/scores/{score}/review", policy = OBSERVER_VIEW, http = plain, tag = "Organizations")]
 impl Command for ReviewOrgQualityMonitoringScore {
     type Output = Option<TraceScore>;
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {

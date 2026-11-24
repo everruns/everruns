@@ -167,7 +167,7 @@ async fn a_failed_request_frees_its_key() {
 async fn create_channel(server: &TestServer, config: Value) -> test_harness::TestResponse {
     let agent: Value = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": format!("api-cors-{}", uuid::Uuid::new_v4().simple()),
                 "system_prompt": "Test",
@@ -178,7 +178,10 @@ async fn create_channel(server: &TestServer, config: Value) -> test_harness::Tes
         .json();
     server
         .post(
-            &format!("/v1/agents/{}/channels", agent["id"].as_str().unwrap()),
+            &format!(
+                "/v1/platform/agents/{}/channels",
+                agent["id"].as_str().unwrap()
+            ),
             json!({ "channel_type": "api", "channel_config": config }),
         )
         .await
@@ -246,12 +249,12 @@ async fn a_channel_origin_reaches_only_that_channel() {
             .allows(&format!("/v1/channels/{}", other.channel_id), &listed)
             .await
     );
-    assert!(!origins.allows("/v1/agents", &listed).await);
+    assert!(!origins.allows("/v1/platform/agents", &listed).await);
     assert!(
         !origins
             .allows(
                 &format!(
-                    "/v1/agents/{}/channels/{}",
+                    "/v1/platform/agents/{}/channels/{}",
                     channel.agent_id, channel.channel_id
                 ),
                 &listed

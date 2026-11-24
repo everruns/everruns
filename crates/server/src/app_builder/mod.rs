@@ -144,6 +144,7 @@ pub struct ServerAppBuilder {
     org_create_policy: Option<Arc<dyn api::organizations::OrgCreatePolicy>>,
     org_initializers: Vec<Arc<dyn org_init::OrgInitializer>>,
     pat_route_classes: crate::auth::pat_scope::ExtraRouteClasses,
+    legacy_api_paths: Vec<String>,
 }
 
 impl ServerAppBuilder {
@@ -168,6 +169,7 @@ impl ServerAppBuilder {
             org_create_policy: None,
             org_initializers: Vec::new(),
             pat_route_classes: Default::default(),
+            legacy_api_paths: Vec::new(),
         }
     }
 
@@ -274,7 +276,7 @@ impl ServerAppBuilder {
     }
 
     /// Wrap the auto-mounted personal access token CRUD router
-    /// (`/v1/auth/personal-access-tokens*`) before it is merged into the main API surface.
+    /// (`/v1/platform/auth/personal-access-tokens*`) before it is merged into the main API surface.
     ///
     /// Lets embedders apply route-specific layers — for example, a stricter rate
     /// limiter — without re-mounting the same paths and duplicating routes.
@@ -289,7 +291,7 @@ impl ServerAppBuilder {
     }
 
     /// Register a pre-create policy for organization creation (EVE-607). It runs in the
-    /// OSS `POST /v1/orgs` handler before any row is written, sees the user and requested
+    /// OSS `POST /v1/platform/orgs` handler before any row is written, sees the user and requested
     /// name, and a rejection fails creation closed with a UI-facing status/body. Lets
     /// wrappers (e.g. SaaS) gate creation on product policy (verified email, limits)
     /// without forking the handler. Unset keeps OSS behavior.
@@ -302,7 +304,7 @@ impl ServerAppBuilder {
     }
 
     /// Register a post-create organization initializer (EVE-811). It runs in the OSS
-    /// `POST /v1/orgs` handler after built-in harnesses and the default marketplace are
+    /// `POST /v1/platform/orgs` handler after built-in harnesses and the default marketplace are
     /// provisioned, so a wrapper provisions per-org resources (managed provider, budget,
     /// tenant record) in creation rather than via a reconciler. Initializers run in
     /// registration order; a required one that fails rolls the org back, an optional one
@@ -1238,28 +1240,17 @@ impl ServerAppBuilder {
             api_routes = api_routes.merge(routes);
         }
 
-        let api_routes = http_layers::decorate_api_routes(api_routes, &auth_state.config);
-        // PAT scopes: tag each matched route with its declared access class.
-        let api_routes = crate::auth::pat_scope::classify_api_routes(
+        let (app_router, api_routes, api_rate_limiter) = http_layers::api_routers(
             api_routes,
+            &auth_state.config,
             &self.config.api_prefix,
-            self.pat_route_classes,
+            &self.pat_route_classes,
+            valkey_for_api_rate_limits,
         );
-        // Internal app calls keep route authorization, but are already throttled
-        // at the outer MCP boundary. Do not charge a second, peerless localhost bucket.
-        let app_router = api_routes.clone();
-        // TM-DOS: Global per-IP API rate limiting (applied to API routes only,
-        // not /health or /metrics). Set RATE_LIMIT_API_REQUESTS_PER_MINUTE=0 to disable.
-        let api_rate_limiter = http_layers::api_rate_limiter(valkey_for_api_rate_limits);
-        let api_routes = http_layers::rate_limit(api_routes, api_rate_limiter.as_ref());
 
-        // The authenticated MCP product surface is always mounted. Access is
-        // enforced per request by MCP-specific auth, org resolution, policy,
-        // and the root-route rate limiter below (TM-MCP-001, TM-MCP-006).
-        // Pages that complete a URL mode elicitation started over `/mcp`. They
-        // are browser surfaces (cookie session), not MCP surfaces, which is why
-        // they authenticate through the ordinary AuthUser extractor rather than
-        // the MCP token path.
+        // MCP stays mounted; per-request auth, org policy and root rate limits
+        // enforce access (TM-MCP-001, TM-MCP-006). Elicitation pages use browser
+        // cookie auth through AuthUser rather than MCP credentials.
         let mcp_elicitation_state = api::mcp_elicitation::AppState::new(
             db.clone(),
             encryption.clone(),
@@ -1321,6 +1312,14 @@ impl ServerAppBuilder {
             api::agent_api_cors::ApiChannelOrigins::new(db.clone(), encryption.clone()),
             &feature_flags,
             prometheus_handle.is_some(),
+        );
+        // Rewrite before the real router and its layers so MatchedPath,
+        // metrics, permissions and throttles all see the canonical route.
+        let app = crate::server::with_platform_api_compatibility(
+            app,
+            &self.config.api_prefix,
+            &self.pat_route_classes,
+            self.legacy_api_paths,
         );
 
         // =====================================================================

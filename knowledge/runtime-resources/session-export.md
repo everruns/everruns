@@ -13,7 +13,7 @@ Export session messages as a JSONL file for offline analysis, backup, or integra
 ## API
 
 ```
-GET /v1/sessions/{session_id}/export
+GET /v1/platform/sessions/{session_id}/export
 ```
 
 Returns `application/x-ndjson` with `Content-Disposition: attachment` header.
@@ -24,7 +24,7 @@ Delta events are excluded, only materialized messages are exported.
 
 ### `?format=atif`
 
-`GET /v1/sessions/{session_id}/export?format=atif` returns a single ATIF-v1.7
+`GET /v1/platform/sessions/{session_id}/export?format=atif` returns a single ATIF-v1.7
 trajectory JSON document instead (Content-Type `application/json`, filename
 `{session_id}.atif.json`), folded from the session's event log with always-on
 secret scrubbing. See `knowledge/evaluation/atif-adoption.md`. The default (`jsonl`) behavior
@@ -68,7 +68,7 @@ Fields `controls`, `metadata`, `external_actor` are included when present.
 
 ### Auth & Policy
 
-Same as `GET /v1/sessions/{session_id}`, requires `SESSION_VIEW`.
+Same as `GET /v1/platform/sessions/{session_id}`, requires `SESSION_VIEW`.
 
 ## UI
 

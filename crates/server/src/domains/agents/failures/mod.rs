@@ -67,7 +67,7 @@ fn failure_window(
     category = "agents",
     description = "List sessions with failed turns. Filters by failure time and includes older, recovered, and archived sessions, matching agent activity. Returns the latest matching failure per session.",
     method = "GET",
-    path = "/v1/agents/{agent_id}/failures",
+    path = "/v1/platform/agents/{agent_id}/failures",
     policy = SESSION_VIEW,
     http = plain,
     params(ListAgentFailures),

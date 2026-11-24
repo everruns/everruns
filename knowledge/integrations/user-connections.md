@@ -54,14 +54,14 @@ API-key providers register themselves via `ConnectorPlugin` (parallel to `Integr
 - `form_schema`, fields and instructions for the UI dialog
 - `validate()`, async validation of credential before saving
 
-Registration uses `inventory::submit!`. Server discovers providers at runtime via `GET /v1/user/connections/providers`.
+Registration uses `inventory::submit!`. Server discovers providers at runtime via `GET /v1/platform/user/connections/providers`.
 
 ### API Key Connection Flow
 
 1. User clicks "Connect" for an API-key provider in Settings > Connections
 2. Dialog renders the provider's `form_schema` (fields + instructions)
 3. User enters API key and submits
-4. `POST /v1/user/connections/{provider}` with `{ api_key: "..." }`
+4. `POST /v1/platform/user/connections/{provider}` with `{ api_key: "..." }`
 5. Server validates key via `provider.validate()`
 6. Key encrypted and upserted into `user_connections` with `connection_type = 'api_key'`
 
@@ -86,7 +86,7 @@ A **GitHub App** (not an OAuth App) provides granular, per-repo permissions with
 
 **Flow:**
 1. User clicks "Install" in Settings > Connections
-2. `GET /v1/user/connections/github/authorize` → redirect to GitHub App installation page
+2. `GET /v1/platform/user/connections/github/authorize` → redirect to GitHub App installation page
 3. User selects which repos to grant access to
 4. GitHub redirects back → `GET /v1/user/connections/github/callback?installation_id=...&setup_action=install`
 5. Server verifies installation via GitHub API (`GET /app/installations/{id}`)
@@ -108,7 +108,7 @@ A **GitHub App** (not an OAuth App) provides granular, per-repo permissions with
 
 Connections are **user-scoped**. The installation represents the user's/org's grant of access. It's usable in any Everruns org the user belongs to.
 
-**Visibility:** Connections are private to the user who created them. Other org members cannot list, view, or manage another user's connections via the API. The `GET /v1/user/connections` endpoint only returns the authenticated user's own connections.
+**Visibility:** Connections are private to the user who created them. Other org members cannot list, view, or manage another user's connections via the API. The `GET /v1/platform/user/connections` endpoint only returns the authenticated user's own connections.
 
 **Token resolution:** Although connections are private, the lazy token resolver (`UserConnectionResolver`) may use a connection for tool execution without exposing the connection object through the API, but it is scoped to the session's resolved owner. A session can use:
 - an `virtual_user_connection` attached to that session's `virtual_user_id`, or
@@ -143,7 +143,7 @@ The token value never appears in tool arguments, tool results, or message histor
 
 ### API Endpoints
 
-#### GET /v1/user/connections/providers
+#### GET /v1/platform/user/connections/providers
 
 List available connection providers. Includes hardcoded OAuth providers and plugin-registered API-key providers.
 
@@ -174,7 +174,7 @@ List available connection providers. Includes hardcoded OAuth providers and plug
 }
 ```
 
-#### GET /v1/user/connections
+#### GET /v1/platform/user/connections
 
 List user's connected accounts. Token values never returned.
 
@@ -193,7 +193,7 @@ List user's connected accounts. Token values never returned.
 }
 ```
 
-#### POST /v1/user/connections/{provider}
+#### POST /v1/platform/user/connections/{provider}
 
 Create an API-key connection. Validates the key, encrypts, and stores.
 
@@ -208,7 +208,7 @@ Create an API-key connection. Validates the key, encrypts, and stores.
 - `404`, Unknown provider
 - `400`, Provider uses OAuth (not API key), or validation failed
 
-#### POST /v1/user/connections/{provider}/verify
+#### POST /v1/platform/user/connections/{provider}/verify
 
 Verify a stored API key still works. Decrypts the stored credential and calls the provider's `validate()` method. Generic, works for any API-key provider.
 
@@ -225,13 +225,13 @@ or
 - `404`, No connection found or unknown provider
 - `400`, Provider is not API-key type
 
-#### DELETE /v1/user/connections/{provider}
+#### DELETE /v1/platform/user/connections/{provider}
 
 Disconnect. Deletes the stored installation_id/token.
 
 **Response:** `204 No Content`
 
-#### GET /v1/user/connections/github/authorize
+#### GET /v1/platform/user/connections/github/authorize
 
 Start GitHub App installation flow. Redirects to `https://github.com/apps/{slug}/installations/new`.
 
@@ -327,8 +327,8 @@ Pre-configured for local development: <https://github.com/settings/apps/everruns
 
 #### MCP OAuth connect failures return to the page
 
-A browser connect for an MCP OAuth provider (`GET /v1/user/connections/{provider}/authorize`,
-`GET /v1/virtual-users/{id}/connections/{provider}/authorize`, and the shared callback) that
+A browser connect for an MCP OAuth provider (`GET /v1/platform/user/connections/{provider}/authorize`,
+`GET /v1/platform/virtual-users/{id}/connections/{provider}/authorize`, and the shared callback) that
 fails goes back to the page it started from as
 `<return_to>?connect_error=<code>&provider=<provider>`, the same target the success redirect uses
 with `connected=`. Popup flows go through `/connection-complete?status=error&connect_error=<code>`.

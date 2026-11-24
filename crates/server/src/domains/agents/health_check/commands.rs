@@ -70,7 +70,7 @@ impl AgentHealthCheckService {
         )
         .map_err(CommandError::bad_request)?;
         // THREAT[TM-DOS-055]: admission lives here, not in one transport, so
-        // REST, `POST /v1/commands/...`, MCP execute and the Platform shell
+        // REST, `POST /v1/platform/commands/...`, MCP execute and the Platform shell
         // all share one per-org / per-caller window and a global concurrency
         // slot, held by the background run until it ends.
         let permit = crate::domains::agents::analysis::acquire_health_check_permit(caller)
@@ -256,7 +256,7 @@ pub struct TriggerAgentHealthCheck {
     category = "agents",
     description = "Run a behavioral health check (generated smoke tests) against an agent.",
     method = "POST",
-    path = "/v1/agents/{agent_id}/health-checks",
+    path = "/v1/platform/agents/{agent_id}/health-checks",
     policy = crate::domains::agents::AGENT_HEALTH_CHECK_RUN,
     read_only = false,
     cli = CliRoute::new(&["agents", "health-checks"], "trigger").with_examples(&[CliExample::new("Smoke-test an agent's behavior after changing its prompt", "everruns agents health-checks trigger --agent-id agent_01h9 --reason 'Verify the prompt rewrite'",)]),
@@ -283,7 +283,7 @@ pub struct GetAgentHealthCheckRun {
     category = "agents",
     description = "Get a single agent health check run with its results.",
     method = "GET",
-    path = "/v1/agents/{agent_id}/health-checks/{run_id}",
+    path = "/v1/platform/agents/{agent_id}/health-checks/{run_id}",
     policy = crate::domains::agents::AGENT_VIEW,
     cli = CliRoute::new(&["agents", "health-checks"], "get").with_examples(&[CliExample::new("Read the results of one health check run", "everruns agents health-checks get --agent-id agent_01h9 --run-id healthcheck_01h9",)]),
 )]
@@ -309,7 +309,7 @@ pub struct ListAgentHealthCheckRuns {
     category = "agents",
     description = "List recent health check runs for an agent.",
     method = "GET",
-    path = "/v1/agents/{agent_id}/health-checks",
+    path = "/v1/platform/agents/{agent_id}/health-checks",
     policy = crate::domains::agents::AGENT_VIEW,
     cli = CliRoute::new(&["agents", "health-checks"], "list").with_examples(&[CliExample::new("Review recent health check runs and their outcomes", "everruns agents health-checks list --agent-id agent_01h9",)]),
 )]
@@ -333,7 +333,7 @@ pub struct GetLatestAgentHealthCheckRun {
     category = "agents",
     description = "Get the latest health check run for an agent, with a stale-config flag.",
     method = "GET",
-    path = "/v1/agents/{agent_id}/health-checks/latest",
+    path = "/v1/platform/agents/{agent_id}/health-checks/latest",
     policy = crate::domains::agents::AGENT_VIEW,
     cli = CliRoute::new(&["agents", "health-checks", "latest"], "get").with_examples(&[CliExample::new("See the newest run and whether the agent changed since it", "everruns agents health-checks latest get --agent-id agent_01h9",)]),
 )]

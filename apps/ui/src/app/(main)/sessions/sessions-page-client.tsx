@@ -16,7 +16,7 @@ import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
  *
  * The whole filter set lives in the URL. That is what makes a saved view just a
  * link, and it keeps three things — the rows, the facet counts, and the address
- * bar — describing one population. Counts come from `GET /v1/sessions/facets`,
+ * bar — describing one population. Counts come from `GET /v1/platform/sessions/facets`,
  * never from the rows on screen.
  */
 

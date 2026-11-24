@@ -95,7 +95,7 @@ model (Claude Fable 5.2) when an Anthropic provider is connected, else OpenAI's
 (GPT-6.2 Astra), else another connected provider's recommendation, else the
 default model. The row shows what Automatic picks today.
 
-Use `PATCH /v1/orgs/{org_id}` to set `research_model_id`, or `null` to return
+Use `PATCH /v1/platform/orgs/{org_id}` to set `research_model_id`, or `null` to return
 to Automatic. The response's `effective_research_model_id` is the model it
 resolves to now. An agent follows it with `model_role: "research"`, which
 replaces `default_model_id`:
@@ -108,7 +108,7 @@ everruns agents update agent_01h9 --name researcher --instructions "Research and
 
 Under **Models → Defaults**, the **Coding model** row picks the model for
 agents on the Coding harness that set no model of their own. Left unset, they
-use the default model. Use `PATCH /v1/orgs/{org_id}` with `coding_model_id`, or
+use the default model. Use `PATCH /v1/platform/orgs/{org_id}` with `coding_model_id`, or
 `null` to clear it.
 
 ## Model presets
@@ -154,7 +154,7 @@ setting by default. Individual capabilities can select another model or always
 inherit the session model. Leaving or clearing Small model means title generation
 inherits the session model. Setting a default does not enable any capability.
 
-Use `PATCH /v1/orgs/{org_id}` to set `small_model_id` to a model's public ID, or
+Use `PATCH /v1/platform/orgs/{org_id}` to set `small_model_id` to a model's public ID, or
 `null` to clear it. Omitted fields remain unchanged. A disabled or unavailable
 selection stays selected and skips generation without electing a replacement;
 deleting its model clears the selection. Requests use the selected provider's

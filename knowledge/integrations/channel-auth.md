@@ -141,7 +141,7 @@ Each agent channel has a stable channel ID. Canonical ingress routes use
   subroutes.
 - Public Chat: `GET /public-chat/config` and `POST /public-chat`.
 
-Existing `/v1/apps/{app_id}/...` routes are permanent aliases. They resolve
+Existing `/v1/platform/apps/{app_id}/...` routes are permanent aliases. They resolve
 from channel-owned `legacy_alias_id` and never read `apps` or
 `app_channels`. Channel-less aliases resolve the only live channel of the
 requested type. They return `409 Conflict` when multiple live channels match,

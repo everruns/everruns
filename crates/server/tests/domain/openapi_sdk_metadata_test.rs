@@ -31,31 +31,31 @@ fn app_openapi_surface_is_read_only_and_deprecated() {
 
     assert_eq!(
         paths
-            .get("/v1/apps")
+            .get("/v1/platform/apps")
             .and_then(|item| item.pointer("/get/deprecated"))
             .and_then(Value::as_bool),
         Some(true)
     );
     assert_eq!(
         paths
-            .get("/v1/apps/{app_id}")
+            .get("/v1/platform/apps/{app_id}")
             .and_then(|item| item.pointer("/get/deprecated"))
             .and_then(Value::as_bool),
         Some(true)
     );
 
-    for path in ["/v1/apps", "/v1/apps/{app_id}"] {
+    for path in ["/v1/platform/apps", "/v1/platform/apps/{app_id}"] {
         let operations = paths[path].as_object().expect("path item is an object");
         assert_eq!(operations.len(), 1, "{path} has only one operation");
         assert!(operations.contains_key("get"), "{path} is read-only");
     }
     for retired in [
-        "/v1/apps/{app_id}/publish",
-        "/v1/apps/{app_id}/unpublish",
-        "/v1/apps/{app_id}/run",
-        "/v1/apps/{app_id}/runs",
-        "/v1/apps/{app_id}/channels",
-        "/v1/apps/{app_id}/channels/{channel_id}",
+        "/v1/platform/apps/{app_id}/publish",
+        "/v1/platform/apps/{app_id}/unpublish",
+        "/v1/platform/apps/{app_id}/run",
+        "/v1/platform/apps/{app_id}/runs",
+        "/v1/platform/apps/{app_id}/channels",
+        "/v1/platform/apps/{app_id}/channels/{channel_id}",
     ] {
         assert!(
             !paths.contains_key(retired),
@@ -188,13 +188,13 @@ fn channels_keep_deprecated_route_and_schema_aliases() {
     let spec = spec_value();
     for (canonical, legacy, method) in [
         (
-            "/v1/agents/{agent_id}/channels",
-            "/v1/agents/{agent_id}/endpoints",
+            "/v1/platform/agents/{agent_id}/channels",
+            "/v1/platform/agents/{agent_id}/endpoints",
             "post",
         ),
         (
-            "/v1/agents/{agent_id}/channels/{channel_id}",
-            "/v1/agents/{agent_id}/endpoints/{endpoint_id}",
+            "/v1/platform/agents/{agent_id}/channels/{channel_id}",
+            "/v1/platform/agents/{agent_id}/endpoints/{endpoint_id}",
             "get",
         ),
         (

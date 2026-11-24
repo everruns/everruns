@@ -79,7 +79,7 @@ Hosted provider create/update requests use the same connection setting:
 ```
 
 Supply credentials through the normal `api_key` or `credentials` fields.
-`GET /v1/providers/config` advertises each driver's supported `apis`; unsupported
+`GET /v1/platform/providers/config` advertises each driver's supported `apis`; unsupported
 choices return a validation error. Omit `api` on creation to use the driver
 default, omit it on PATCH to keep the current choice, or PATCH `"api": "default"`
 to reset it. The setting follows the connection through hosted workers and does
@@ -218,7 +218,7 @@ retrieval alongside its chat models.
 
 **Realtime voice (WebRTC + WebSocket).** A realtime voice session is negotiated
 by the platform server, not the Framework. The browser posts its SDP offer to
-`POST /v1/sessions/{session_id}/voice/calls` and the server answers it; a
+`POST /v1/platform/sessions/{session_id}/voice/calls` and the server answers it; a
 separate route mints a short-lived client secret from the vendor. The
 organization's own API key is used only server-side and never reaches the
 browser. The server then opens a WebSocket sideband

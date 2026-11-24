@@ -46,7 +46,7 @@ turn. Raw audio is never stored; transcripts are kept like chat messages.
 Over the API, create it like any channel:
 
 ```bash
-curl -X POST "$EVERRUNS_API/v1/agents/$AGENT_ID/channels" \
+curl -X POST "$EVERRUNS_API/v1/platform/agents/$AGENT_ID/channels" \
   -H "Authorization: Bearer $EVERRUNS_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -84,9 +84,9 @@ Everruns, and applies the SDP answer it gets back.
 
 | Method | Route | Use |
 |---|---|---|
-| `POST` | `/v1/agents/{agent_id}/channels/{channel_id}/voice/calls` | Call a voice channel. Starts a new session unless `session_id` is given. |
-| `POST` | `/v1/sessions/{session_id}/voice/calls` | Talk on an existing session. Uses the Agent's voice channel, or `channel_id` if given. |
-| `POST` | `/v1/sessions/{session_id}/voice/{voice_connection_id}/end` | Hang up. |
+| `POST` | `/v1/platform/agents/{agent_id}/channels/{channel_id}/voice/calls` | Call a voice channel. Starts a new session unless `session_id` is given. |
+| `POST` | `/v1/platform/sessions/{session_id}/voice/calls` | Talk on an existing session. Uses the Agent's voice channel, or `channel_id` if given. |
+| `POST` | `/v1/platform/sessions/{session_id}/voice/{voice_connection_id}/end` | Hang up. |
 
 ```js
 const pc = new RTCPeerConnection();
@@ -100,7 +100,7 @@ pc.createDataChannel("oai-events");
 const offer = await pc.createOffer();
 await pc.setLocalDescription(offer);
 const response = await fetch(
-  `${api}/v1/agents/${agentId}/channels/${channelId}/voice/calls`,
+  `${api}/v1/platform/agents/${agentId}/channels/${channelId}/voice/calls`,
   {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },

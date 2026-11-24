@@ -9,7 +9,7 @@ export const CHAT_THREAD_TAG = "chat";
  *  database enforces uniqueness for this tag, including archived sessions. */
 export const PLATFORM_CHAT_STARTER_TAG = "platform-chat-starter";
 
-/** Tag written by the retired `POST /v1/sessions/chat` singleton. Threads that
+/** Tag written by the retired `POST /v1/platform/sessions/chat` singleton. Threads that
  *  predate the Chats surface still carry it, so they stay visible. */
 export const LEGACY_GLOBAL_CHAT_TAG = "global-chat";
 

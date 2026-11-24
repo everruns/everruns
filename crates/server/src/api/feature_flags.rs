@@ -1,6 +1,6 @@
 // Feature flags API endpoint
 //
-// Decision: GET /v1/feature-flags is public (no auth required).
+// Decision: GET /v1/platform/feature-flags is public (no auth required).
 //   Feature flags are non-sensitive system config needed before auth completes.
 // Decision: Flags computed once at startup and served from memory (no DB query).
 
@@ -14,7 +14,7 @@ pub struct AppState {
 
 pub fn routes(state: AppState) -> Router {
     Router::new().route(
-        "/v1/feature-flags",
+        "/v1/platform/feature-flags",
         get(get_feature_flags).with_state(state),
     )
 }

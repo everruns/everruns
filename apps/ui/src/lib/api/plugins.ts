@@ -1,6 +1,6 @@
 // Plugin Marketplaces and Installed Plugins API
 // All endpoints follow knowledge/integrations/plugins.md § "API sketch".
-// Org is sent via everruns_org cookie (set by OrgProvider via /v1/users/me/switch-org).
+// Org is sent via everruns_org cookie (set by OrgProvider via /v1/platform/users/me/switch-org).
 //
 // Centralising endpoint paths and request/response types here means a rename
 // of any URL or field is a single-file change.
@@ -23,8 +23,8 @@ import type {
 // Endpoint constants
 // ============================================
 
-export const PLUGIN_MARKETPLACES_BASE = "/v1/plugin_marketplaces";
-export const PLUGINS_BASE = "/v1/plugins";
+export const PLUGIN_MARKETPLACES_BASE = "/v1/platform/plugin_marketplaces";
+export const PLUGINS_BASE = "/v1/platform/plugins";
 
 // ============================================
 // Marketplace CRUD (list/create/patch/delete)
@@ -46,7 +46,7 @@ export const deleteMarketplace = marketplacesCrudApi.delete;
 // Marketplace sync
 // ============================================
 
-/** POST /v1/plugin_marketplaces/{id}/sync — trigger explicit re-sync */
+/** POST /v1/platform/plugin_marketplaces/{id}/sync — trigger explicit re-sync */
 export async function syncMarketplace(id: string): Promise<Marketplace> {
   const response = await api.post<Marketplace>(`${PLUGIN_MARKETPLACES_BASE}/${id}/sync`);
   return response.data;
@@ -56,7 +56,7 @@ export async function syncMarketplace(id: string): Promise<Marketplace> {
 // Marketplace catalog
 // ============================================
 
-/** GET /v1/plugin_marketplaces/{id}/plugins — list synced catalog entries */
+/** GET /v1/platform/plugin_marketplaces/{id}/plugins — list synced catalog entries */
 export async function getMarketplaceCatalog(
   marketplaceId: string,
 ): Promise<MarketplaceCatalogEntry[]> {
@@ -80,13 +80,13 @@ export const getInstalledPlugins = installedPluginsCrudApi.list;
 export const getInstalledPlugin = installedPluginsCrudApi.get;
 export const deleteInstalledPlugin = installedPluginsCrudApi.delete;
 
-/** POST /v1/plugins — install a plugin from a marketplace catalog entry */
+/** POST /v1/platform/plugins — install a plugin from a marketplace catalog entry */
 export async function installPlugin(request: InstallPluginRequest): Promise<InstalledPlugin> {
   const response = await api.post<InstalledPlugin>(PLUGINS_BASE, request);
   return response.data;
 }
 
-/** PATCH /v1/plugins/{id} — enable/disable an installed plugin */
+/** PATCH /v1/platform/plugins/{id} — enable/disable an installed plugin */
 export async function patchInstalledPlugin(
   id: string,
   request: UpdateInstalledPluginRequest,
@@ -95,7 +95,7 @@ export async function patchInstalledPlugin(
   return response.data;
 }
 
-/** POST /v1/plugins/{id}/update — re-install at newest catalog version */
+/** POST /v1/platform/plugins/{id}/update — re-install at newest catalog version */
 export async function updateInstalledPlugin(id: string): Promise<InstalledPlugin> {
   const response = await api.post<InstalledPlugin>(`${PLUGINS_BASE}/${id}/update`);
   return response.data;

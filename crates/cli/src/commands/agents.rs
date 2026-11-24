@@ -408,7 +408,7 @@ async fn import_from_file(
             }
         }
         let response = client
-            .post_with_reason("/v1/agents/import", Some(&payload), reason)
+            .post_with_reason("/v1/platform/agents/import", Some(&payload), reason)
             .await?;
         print_package_report(output, &response);
         return Ok(());
@@ -459,7 +459,7 @@ async fn import_from_file(
     };
 
     let resp = super::api::with_change_reason(
-        client.request(reqwest::Method::POST, "/v1/agents/import"),
+        client.request(reqwest::Method::POST, "/v1/platform/agents/import"),
         reason,
     )
     .header("Content-Type", content_type)

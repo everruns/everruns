@@ -15,7 +15,7 @@ pub struct ListOrgs {}
     description = "List organizations for the current user.",
     method = "GET",
     cli = CliRoute::new(&["orgs"], "list").with_examples(&[CliExample::new("See which organizations you belong to and their ids", "everruns orgs list")]),
-    path = "/v1/orgs"
+    path = "/v1/platform/orgs"
 )]
 impl Command for ListOrgs {
     type Output = ListOrganizationsResponse;
@@ -46,7 +46,7 @@ pub struct GetOrg {
     description = "Get organization details.",
     method = "GET",
     cli = CliRoute::new(&["orgs"], "get").with_args(&[CliArg::new("org").at(1)]).with_examples(&[CliExample::new("Show an organization's details", "everruns orgs get org_01h9")]),
-    path = "/v1/orgs/{org}",
+    path = "/v1/platform/orgs/{org}",
     positional = "org"
 )]
 impl Command for GetOrg {
@@ -85,7 +85,7 @@ pub struct ResolveOrg {
     category = "organizations",
     description = "Resolve the owning organization for a prefixed entity id (agent, session, harness, app, skill, mcp server, identity, eval). Requires an authenticated user; returns NotFound when the caller is not a member of the owning org or the id does not resolve.",
     method = "GET",
-    path = "/v1/resolve-org",
+    path = "/v1/platform/resolve-org",
     positional = "id",
     cli = CliRoute::new(&["orgs"], "resolve").with_examples(&[CliExample::new("Look up an organization by its identifier", "everruns orgs resolve --id org_01h9",)]),
 )]

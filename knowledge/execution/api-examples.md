@@ -37,7 +37,7 @@ responses:
         schema:
           $ref: "#/components/schemas/WithUrls_Session"
         example:
-          self_url: https://api.example/v1/sessions/session_…
+          self_url: https://api.example/v1/platform/sessions/session_…
           view_url: https://app.example/sessions/session_…/chat
           id: session_…
           status: started
@@ -59,7 +59,7 @@ non-deterministic `examples` map ordering (same caveat as
 ```rust
 #[utoipa::path(
     post,
-    path = "/v1/sessions",
+    path = "/v1/platform/sessions",
     request_body(
         content = CreateSessionRequest,
         example = json!({
@@ -74,7 +74,7 @@ non-deterministic `examples` map ordering (same caveat as
             description = "Session created successfully",
             body = WithUrls<Session>,
             example = json!({
-                "self_url": "https://api.example/v1/sessions/session_01933…",
+                "self_url": "https://api.example/v1/platform/sessions/session_01933…",
                 "view_url": "https://app.example/sessions/session_01933…/chat",
                 "ui_link":  "https://app.example/sessions/session_01933…/chat",
                 "id": "session_01933b5a00007000800000000000001",

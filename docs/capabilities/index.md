@@ -213,9 +213,9 @@ delegation to an external guardrail over scoped MCP. Each check binds a rule to
 a stage (`output`, `tool_use`, `tool_output`) with an `on_fail` of `block` or
 `log`; model-backed and MCP checks send a bounded excerpt off the sync path and
 fail open. Use advisory mode and the
-`POST /v1/capabilities/guardrails/dry-run` endpoint to tune against false
+`POST /v1/platform/capabilities/guardrails/dry-run` endpoint to tune against false
 positives before enforcing. For ready-made starting points, list the gallery at
-`GET /v1/capabilities/guardrails/examples`, each preset carries a `data_egress`
+`GET /v1/platform/capabilities/guardrails/examples`, each preset carries a `data_egress`
 signal (`none` vs. `utility_llm`), and drop a preset's `config` into the
 agent's `guardrails` capability config.
 
@@ -238,7 +238,7 @@ Distillation. The canonical [harness levels](/features/harnesses/) and
 ### Enable via API
 
 ```bash
-curl -X POST http://localhost:9300/api/v1/agents \
+curl -X POST http://localhost:9300/api/v1/platform/agents \
   -H "Content-Type: application/json" \
   -d '{
     "name": "My Agent",
@@ -258,7 +258,7 @@ curl -X POST http://localhost:9300/api/v1/agents \
 ### List available capabilities
 
 ```bash
-curl http://localhost:9300/api/v1/capabilities
+curl http://localhost:9300/api/v1/platform/capabilities
 ```
 
 ### Create a declarative capability
@@ -269,7 +269,7 @@ They use a public resource ID like `cap_...` and a stable capability reference
 like `declarative:research_pack`.
 
 ```bash
-curl -X POST http://localhost:9300/api/v1/capabilities \
+curl -X POST http://localhost:9300/api/v1/platform/capabilities \
   -H "Content-Type: application/json" \
   -d '{
     "definition": {

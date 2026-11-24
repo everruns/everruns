@@ -70,7 +70,7 @@ the existing dataset formats), plus case identity (`source_key`, `eval_run_id`,
 
 ## Surfaces
 
-- **Session export** (✅ shipped): `GET /v1/sessions/{id}/export?format=atif`
+- **Session export** (✅ shipped): `GET /v1/platform/sessions/{id}/export?format=atif`
   returns one ATIF JSON document; `&segmented=true` returns a forward-linked
   chain of byte-bounded segments for sessions over the size cap (see
   `knowledge/runtime-resources/session-export.md` and the Limits section; default JSONL unchanged).
@@ -87,7 +87,7 @@ the existing dataset formats), plus case identity (`source_key`, `eval_run_id`,
   (messages lack per-step usage). This differs from the whole-session export
   below, which folds the raw event log. Same policy gate, filters, and
   redaction controls.
-- **Import** (✅ shipped): `POST /v1/evals/{eval_id}/atif_import` accepts
+- **Import** (✅ shipped): `POST /v1/platform/evals/{eval_id}/atif_import` accepts
   NDJSON or JSON (array, single object, or `{ "trajectories": [...] }`) and
   upserts eval cases: user steps → the case `conversation` (multi-turn
   preserved), the final agent message → a reference excerpt in the case
@@ -110,7 +110,7 @@ ContentPart with a `source`, choosing the leanest faithful representation:
 
 - `Image { url }` → `source.path` = the URL.
 - `ImageFile { image_id }` → `source.path` = the org-scoped file-serving route
-  `/v1/images/{image_id}` (a consumer with the same auth fetches the bytes),
+  `/v1/platform/images/{image_id}` (a consumer with the same auth fetches the bytes),
   keeping documents small.
 - `Image { base64 }` with no URL → an inline `data:` URI in `source.path`. This
   is the only self-contained option but bloats the document and counts toward
@@ -133,7 +133,7 @@ everruns sessions can spawn subagents (`knowledge/runtime-resources/subagents.md
 sees a `spawn_agent` tool result carrying a `subagent_id` (the child session
 id), it attaches a `subagent_trajectory_ref` (Harbor RFC 0001) to that
 `observation.results[]` entry: `trajectory_path` points at the child's own ATIF
-export (`/v1/sessions/{child}/export?format=atif`, a resolvable location per the
+export (`/v1/platform/sessions/{child}/export?format=atif`, a resolvable location per the
 RFC's ref rules), plus the informational `session_id`. This is **ref-only**,
 the child trajectory is not embedded as `subagent_trajectories[]`, because this
 fold sees only one session's event log and has no access to child-session
@@ -202,7 +202,7 @@ reflects what has shipped on `main`.
 1. ✅ **Serializer + session export**: `crates/server/src/atif/mod.rs` fold,
    `?format=atif` on session export, this spec, index/cross-link updates.
 2. ✅ **Dataset export + import**: `format: "atif"` on the eval dataset
-   export, `POST /v1/evals/{eval_id}/atif_import`, and the related spec
+   export, `POST /v1/platform/evals/{eval_id}/atif_import`, and the related spec
    updates (`knowledge/evaluation/dataset-export.md`, `knowledge/evaluation/evals.md`).
 3. ✅ **Segmented session export**: `?format=atif&segmented=true` with
    `continued_trajectory_ref` linking + opaque cursor, for sessions over the

@@ -1,7 +1,7 @@
 // Harness Examples API — read-only catalogue of adoptable harness templates.
 //
 // Decision: Examples live in code (see `crate::harnesses::examples`), not in DB.
-// Decision: Adoption is handled by `POST /v1/harnesses/import?from-example={name}`
+// Decision: Adoption is handled by `POST /v1/platform/harnesses/import?from-example={name}`
 // Decision: Examples are identified by their `name` (slug).
 // Decision: the catalogue, its filter and adoption live in
 // `domains::harnesses::examples` as commands, so the CLI and MCP see the same
@@ -29,14 +29,14 @@ impl_auth_state!(AppState);
 /// Create harness example routes.
 pub fn routes(state: AppState) -> Router {
     Router::new()
-        .route("/v1/harness-examples", get(list_examples))
+        .route("/v1/platform/harness-examples", get(list_examples))
         .with_state(state)
 }
 
-/// GET /v1/harness-examples — list all available harness examples.
+/// GET /v1/platform/harness-examples — list all available harness examples.
 #[utoipa::path(
     get,
-    path = "/v1/harness-examples",
+    path = "/v1/platform/harness-examples",
     responses(
         (status = 200, description = "List of harness examples", body = Vec<HarnessExample>),
     ),

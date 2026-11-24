@@ -622,7 +622,7 @@ pub struct SegmentedTrajectory {
 /// exceeds `max_bytes` is returned alone as its segment (and may exceed the cap
 /// — the only way to make progress without dropping data). `link_base` is the
 /// absolute request path used to build `continued_trajectory_ref`
-/// (e.g. `/v1/sessions/{id}/export`); the query is appended by this function.
+/// (e.g. `/v1/platform/sessions/{id}/export`); the query is appended by this function.
 ///
 /// Errors only on a bad `cursor` (→ HTTP 400).
 pub fn build_segment(
@@ -1342,7 +1342,7 @@ fn build_content_value(
 /// base64). Prefers a lean reference over inlined bytes:
 /// - `Image { url }` → `source.path = url`.
 /// - `ImageFile { image_id }` → `source.path` = the org-scoped file-serving
-///   route (`/v1/images/{image_id}`); a consumer with the same auth fetches the
+///   route (`/v1/platform/images/{image_id}`); a consumer with the same auth fetches the
 ///   bytes. Keeps documents small and within the export size cap.
 /// - `Image { base64 }` (no URL) → an inline `data:` URI in `source.path`. This
 ///   is the only self-contained representation, but it bloats the document and
@@ -1376,7 +1376,7 @@ fn image_source(part: &ContentPart, redact: bool) -> Option<Value> {
             let path = if redact {
                 REDACTED.to_string()
             } else {
-                format!("/v1/images/{}", file.image_id)
+                format!("/v1/platform/images/{}", file.image_id)
             };
             source.insert("path".to_string(), json!(path));
         }
@@ -1400,7 +1400,7 @@ fn file_source(part: &ContentPart, redact: bool) -> Option<Value> {
             let mut source = Map::new();
             source.insert(
                 "path".to_string(),
-                json!(format!("/v1/files/{}", f.file_id)),
+                json!(format!("/v1/platform/files/{}", f.file_id)),
             );
             if let Some(filename) = &f.filename {
                 source.insert("filename".to_string(), json!(redacted(filename)));
@@ -1441,7 +1441,7 @@ fn subagent_child_session(data: &everruns_core::events::ToolCompletedData) -> Op
 /// handler).
 fn subagent_trajectory_ref(child_session_id: &str) -> Value {
     json!([{
-        "trajectory_path": format!("/v1/sessions/{child_session_id}/export?format=atif"),
+        "trajectory_path": format!("/v1/platform/sessions/{child_session_id}/export?format=atif"),
         "session_id": child_session_id,
     }])
 }

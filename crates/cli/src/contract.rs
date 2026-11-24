@@ -3,7 +3,7 @@
 //! Decision: every contract command runs through one generic path. The words
 //! are resolved by the same mapper every other surface uses
 //! (`everruns_cli_contract::Mapper`), and the command is sent to
-//! `POST /v1/commands/{wire_name}`, which runs it through the same pipeline as
+//! `POST /v1/platform/commands/{wire_name}`, which runs it through the same pipeline as
 //! MCP `execute` and the Platform capability. No command needs a hand-written
 //! client, an HTTP method or a path template here, so `everruns history
 //! restore` exists for a person for the same reason it exists for an agent,
@@ -136,7 +136,7 @@ pub fn selected(matches: &ArgMatches) -> Option<(&'static ContractCommand, &ArgM
     Some((contract, leaf))
 }
 
-/// Run a mounted contract command through `POST /v1/commands/{wire_name}`.
+/// Run a mounted contract command through `POST /v1/platform/commands/{wire_name}`.
 pub async fn dispatch(
     contract: &ContractCommand,
     matches: &ArgMatches,
@@ -195,7 +195,7 @@ pub async fn execute(client: &ApiClient<'_>, wire_name: &str, mut params: Value)
     }
     let response = client
         .post_command(
-            &format!("/v1/commands/{wire_name}"),
+            &format!("/v1/platform/commands/{wire_name}"),
             &body,
             &idempotency_key(),
         )

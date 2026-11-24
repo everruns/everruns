@@ -362,7 +362,7 @@ and recorded in the generic change history
 
 - **Resource.** The storage half exists as the
   [agent script](../runtime-resources/agent-scripts.md) resource (CRUD under
-  `/v1/agents/{agent_id}/scripts`); the shell surface builds on it.
+  `/v1/platform/agents/{agent_id}/scripts`); the shell surface builds on it.
 - **Calling.** `tools scripts <name> '{...}'` runs it in a nested shell over
   the same session filesystem with the same `tools` command. Its input arrives
   on stdin as JSON; its stdout is the result.

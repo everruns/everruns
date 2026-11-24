@@ -1,5 +1,5 @@
 // LLM Model API endpoints
-// Routes: /v1/providers/:provider_id/models/... and /v1/models/...
+// Routes: /v1/platform/providers/:provider_id/models/... and /v1/platform/models/...
 
 use crate::api::command_http::CommandRouterExt;
 use crate::api::common::{
@@ -73,7 +73,7 @@ impl_dispatchable!(AppState);
 /// Create a new model for a provider
 #[utoipa::path(
     post,
-    path = "/v1/providers/{provider_id}/models",
+    path = "/v1/platform/providers/{provider_id}/models",
     params(
         ("provider_id" = String, Path, description = "Provider ID (prefixed, e.g., prov_...)")
     ),
@@ -110,7 +110,7 @@ pub async fn create_model(
 /// List models for a specific provider
 #[utoipa::path(
     get,
-    path = "/v1/providers/{provider_id}/models",
+    path = "/v1/platform/providers/{provider_id}/models",
     params(
         ("provider_id" = String, Path, description = "Provider ID (prefixed, e.g., prov_...)")
     ),
@@ -141,7 +141,7 @@ pub async fn list_provider_models(
 /// List all models across all providers
 #[utoipa::path(
     get,
-    path = "/v1/models",
+    path = "/v1/platform/models",
     params(
         ListModelsQuery
     ),
@@ -171,7 +171,7 @@ pub async fn list_all_models(
 /// Get a specific model with provider info and profile
 #[utoipa::path(
     get,
-    path = "/v1/models/{id}",
+    path = "/v1/platform/models/{id}",
     params(
         ("id" = String, Path, description = "Model ID (prefixed, e.g., mod_...)")
     ),
@@ -193,7 +193,7 @@ pub async fn get_model(
 /// Update a model
 #[utoipa::path(
     patch,
-    path = "/v1/models/{id}",
+    path = "/v1/platform/models/{id}",
     params(
         ("id" = String, Path, description = "Model ID (prefixed, e.g., mod_...)")
     ),
@@ -230,7 +230,7 @@ pub async fn update_model(
 /// Delete a model
 #[utoipa::path(
     delete,
-    path = "/v1/models/{id}",
+    path = "/v1/platform/models/{id}",
     params(
         ("id" = String, Path, description = "Model ID (prefixed, e.g., mod_...)")
     ),
@@ -252,10 +252,10 @@ pub async fn delete_model(
         .await
 }
 
-/// GET /v1/models/config
+/// GET /v1/platform/models/config
 #[utoipa::path(
     get,
-    path = "/v1/models/config",
+    path = "/v1/platform/models/config",
     responses(
         (status = 200, description = "Resource config for LLM models", body = ResourceConfigResponse),
     ),
@@ -277,7 +277,7 @@ pub async fn model_config(
 /// Get the default model for a new draft
 ///
 /// Resolve the default for empty drafts without persisting a session.
-#[utoipa::path(get, path = "/v1/models/default", responses(
+#[utoipa::path(get, path = "/v1/platform/models/default", responses(
     (status = 200, description = "Effective organization default, or null when unavailable", body = Option<ModelWithProvider>),
     (status = 403, description = "Forbidden", body = ErrorResponse)
 ), tag = "models")]
@@ -292,25 +292,25 @@ pub fn routes(state: AppState) -> Router {
     Router::new()
         .command::<ApplyModelSelection>()
         .command::<UndoModelSelection>()
-        .route("/v1/model-profiles", get(list_model_profiles))
-        .route("/v1/model-profiles/{*key}", get(get_model_profile))
-        .route("/v1/models/config", get(model_config))
-        .route("/v1/models/default", get(get_default_model))
+        .route("/v1/platform/model-profiles", get(list_model_profiles))
+        .route("/v1/platform/model-profiles/{*key}", get(get_model_profile))
+        .route("/v1/platform/models/config", get(model_config))
+        .route("/v1/platform/models/default", get(get_default_model))
         .route(
-            "/v1/models/decision-default",
+            "/v1/platform/models/decision-default",
             get(get_default_decision_model).put(set_default_decision_model),
         )
         .route(
-            "/v1/models/images-default",
+            "/v1/platform/models/images-default",
             get(get_default_image_model).put(set_default_image_model),
         )
         .route(
-            "/v1/providers/{provider_id}/models",
+            "/v1/platform/providers/{provider_id}/models",
             post(create_model).get(list_provider_models),
         )
-        .route("/v1/models", get(list_all_models))
+        .route("/v1/platform/models", get(list_all_models))
         .route(
-            "/v1/models/{id}",
+            "/v1/platform/models/{id}",
             get(get_model).patch(update_model).delete(delete_model),
         )
         .with_state(state)
@@ -438,7 +438,7 @@ async fn profiles_for_caller(
     Ok(Json(profiles))
 }
 
-#[utoipa::path(get, path = "/v1/model-profiles", description = "List curated and account-scoped profiles visible to the caller, optionally filtered by service or provider.", params(ProfileQuery), responses((status = 200, description = "Authorized model profiles", body = ListResponse<ModelProfileResponse>)), tag = "models")]
+#[utoipa::path(get, path = "/v1/platform/model-profiles", description = "List curated and account-scoped profiles visible to the caller, optionally filtered by service or provider.", params(ProfileQuery), responses((status = 200, description = "Authorized model profiles", body = ListResponse<ModelProfileResponse>)), tag = "models")]
 pub async fn list_model_profiles(
     org: ResolvedOrg,
     State(state): State<AppState>,
@@ -448,7 +448,7 @@ pub async fn list_model_profiles(
     Ok(Json(ListResponse::new(profiles)))
 }
 
-#[utoipa::path(get, path = "/v1/model-profiles/{key}", description = "Read a stable model profile visible to the caller. Profiles describe behavior independently from provider authentication.", params(("key" = String, Path)), responses((status = 200, description = "Model profile", body = ModelProfileResponse), (status = 404, description = "Unknown profile")), tag = "models")]
+#[utoipa::path(get, path = "/v1/platform/model-profiles/{key}", description = "Read a stable model profile visible to the caller. Profiles describe behavior independently from provider authentication.", params(("key" = String, Path)), responses((status = 200, description = "Model profile", body = ModelProfileResponse), (status = 404, description = "Unknown profile")), tag = "models")]
 pub async fn get_model_profile(
     org: ResolvedOrg,
     State(state): State<AppState>,
@@ -463,7 +463,7 @@ pub async fn get_model_profile(
     }
 }
 
-#[utoipa::path(get, path = "/v1/models/decision-default", description = "Get the organization decision default. An unavailable selection remains visible for repair; no selection returns null.", responses((status = 200, description = "Selected decision model", body = Option<ModelWithProvider>)), tag = "models")]
+#[utoipa::path(get, path = "/v1/platform/models/decision-default", description = "Get the organization decision default. An unavailable selection remains visible for repair; no selection returns null.", responses((status = 200, description = "Selected decision model", body = Option<ModelWithProvider>)), tag = "models")]
 pub async fn get_default_decision_model(
     org: ResolvedOrg,
     State(state): State<AppState>,
@@ -474,7 +474,7 @@ pub async fn get_default_decision_model(
             .await?,
     ))
 }
-#[utoipa::path(put, path = "/v1/models/decision-default", description = "Select an enabled, healthy model supporting calibrated noul, choice and score decisions. Omit model_id or set it to null to clear the default.", request_body = crate::domains::models::commands::SetDefaultDecisionModel, responses((status = 200, description = "Selected decision model", body = Option<ModelWithProvider>)), tag = "models")]
+#[utoipa::path(put, path = "/v1/platform/models/decision-default", description = "Select an enabled, healthy model supporting calibrated noul, choice and score decisions. Omit model_id or set it to null to clear the default.", request_body = crate::domains::models::commands::SetDefaultDecisionModel, responses((status = 200, description = "Selected decision model", body = Option<ModelWithProvider>)), tag = "models")]
 pub async fn set_default_decision_model(
     org: ResolvedOrg,
     State(state): State<AppState>,
@@ -483,7 +483,7 @@ pub async fn set_default_decision_model(
     Ok(Json(req.run(&state.ctx(&org)).await?))
 }
 
-#[utoipa::path(get, path = "/v1/models/images-default", description = "Get the organization's default image model. Agents whose Image Generation capability names no model use it; no selection returns null and agents use GPT Image 2.6 Flare.", responses((status = 200, description = "Selected image model", body = Option<ModelWithProvider>)), tag = "models")]
+#[utoipa::path(get, path = "/v1/platform/models/images-default", description = "Get the organization's default image model. Agents whose Image Generation capability names no model use it; no selection returns null and agents use GPT Image 2.6 Flare.", responses((status = 200, description = "Selected image model", body = Option<ModelWithProvider>)), tag = "models")]
 pub async fn get_default_image_model(
     org: ResolvedOrg,
     State(state): State<AppState>,
@@ -495,7 +495,7 @@ pub async fn get_default_image_model(
     ))
 }
 
-#[utoipa::path(put, path = "/v1/models/images-default", description = "Select an enabled image model as the organization default. Omit model_id or set it to null to clear the default.", request_body = crate::domains::models::commands::SetDefaultImageModel, responses((status = 200, description = "Selected image model", body = Option<ModelWithProvider>)), tag = "models")]
+#[utoipa::path(put, path = "/v1/platform/models/images-default", description = "Select an enabled image model as the organization default. Omit model_id or set it to null to clear the default.", request_body = crate::domains::models::commands::SetDefaultImageModel, responses((status = 200, description = "Selected image model", body = Option<ModelWithProvider>)), tag = "models")]
 pub async fn set_default_image_model(
     org: ResolvedOrg,
     State(state): State<AppState>,

@@ -4,7 +4,7 @@
 // resolver here so the UI can auto-switch the caller's active org when they
 // follow a direct link to a resource owned by a different (but still member)
 // org. The API keeps returning 404 for cross-org access — only the UI calls
-// the gated /v1/resolve-org endpoint to recover. See
+// the gated /v1/platform/resolve-org endpoint to recover. See
 // knowledge/security/multitenancy.md (Cross-Org Resource Resolution).
 //
 // Adding a new top entity: implement a storage method
@@ -86,7 +86,7 @@ pub async fn resolve_resource_org(db: &StorageBackend, id: &str) -> Result<Optio
 /// preserving the org-enumeration guarantee.
 ///
 /// Returns `(org_public_id, org_name)` on success, `None` otherwise.
-/// Used by both `GET /v1/resolve-org` and the `resolve_org` domain command.
+/// Used by both `GET /v1/platform/resolve-org` and the `resolve_org` domain command.
 pub async fn resolve_owning_org_for_user(
     db: &StorageBackend,
     user_id: Uuid,

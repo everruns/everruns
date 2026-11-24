@@ -53,7 +53,7 @@ async fn command(
     server
         .request_raw(
             Method::POST,
-            &format!("/v1/commands/{name}"),
+            &format!("/v1/platform/commands/{name}"),
             headers,
             serde_json::to_vec(&body).unwrap(),
         )
@@ -119,7 +119,7 @@ async fn workspace_name(server: &TestServer, public_id: &str) -> Option<String> 
 async fn create_workspace(server: &TestServer, name: &str) -> String {
     let session: Value = server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             json!({ "harness_id": server.seed_base_harness_id }),
         )
         .await
@@ -128,7 +128,7 @@ async fn create_workspace(server: &TestServer, name: &str) -> String {
     let id = session["workspace_id"].as_str().unwrap().to_string();
     server
         .post(
-            "/v1/commands/update_workspace",
+            "/v1/platform/commands/update_workspace",
             json!({ "params": { "workspace_id": id, "name": name }, "reason": "a place to test in" }),
         )
         .await
@@ -150,7 +150,7 @@ async fn a_change_and_its_history_entry_commit_in_one_transaction() {
     .await;
     server
         .post(
-            "/v1/commands/update_workspace",
+            "/v1/platform/commands/update_workspace",
             json!({ "params": { "workspace_id": id, "name": unique("renamed") }, "reason": "rename" }),
         )
         .await
@@ -296,7 +296,7 @@ async fn an_event_of_a_rolled_back_command_is_never_stored() {
     let marker = fail_history_for_marker(&server).await;
     let session: Value = server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             json!({ "harness_id": server.seed_base_harness_id, "title": "before" }),
         )
         .await
@@ -333,7 +333,7 @@ async fn an_event_of_a_rolled_back_command_is_never_stored() {
     // Without the failure the same change commits its event.
     server
         .post(
-            "/v1/commands/update_session",
+            "/v1/platform/commands/update_session",
             json!({ "params": { "session_id": session_id, "title": "after" }, "reason": "ok" }),
         )
         .await

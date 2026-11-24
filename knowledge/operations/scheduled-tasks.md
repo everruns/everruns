@@ -35,7 +35,7 @@ See `knowledge/operations/localization.md` for how schedule timezone interacts w
 │                     Control Plane                                    │
 │  ┌─────────────────┐    ┌──────────────────────────────────────┐   │
 │  │  HTTP API       │    │  DurableScheduler                     │   │
-│  │  /v1/durable/   │    │  - Polls durable_schedules table      │   │
+│  │  /v1/platform/durable/   │    │  - Polls durable_schedules table      │   │
 │  │  schedules/*    │    │  - Claims due schedules (SKIP LOCKED) │   │
 │  └────────┬────────┘    │  - Creates workflow/activity          │   │
 │           │             │  - Updates next_trigger_at            │   │
@@ -97,21 +97,21 @@ for schedules the server declares itself.
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/v1/durable/schedules` | Create schedule |
-| GET | `/v1/durable/schedules` | List schedules |
-| GET | `/v1/durable/schedules/{id}` | Get schedule details |
-| PATCH | `/v1/durable/schedules/{id}` | Update schedule |
-| DELETE | `/v1/durable/schedules/{id}` | Delete schedule |
-| POST | `/v1/durable/schedules/{id}/trigger` | Manual trigger |
-| POST | `/v1/durable/schedules/{id}/pause` | Pause schedule |
-| POST | `/v1/durable/schedules/{id}/resume` | Resume schedule |
+| POST | `/v1/platform/durable/schedules` | Create schedule |
+| GET | `/v1/platform/durable/schedules` | List schedules |
+| GET | `/v1/platform/durable/schedules/{id}` | Get schedule details |
+| PATCH | `/v1/platform/durable/schedules/{id}` | Update schedule |
+| DELETE | `/v1/platform/durable/schedules/{id}` | Delete schedule |
+| POST | `/v1/platform/durable/schedules/{id}/trigger` | Manual trigger |
+| POST | `/v1/platform/durable/schedules/{id}/pause` | Pause schedule |
+| POST | `/v1/platform/durable/schedules/{id}/resume` | Resume schedule |
 
 ### Executions
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/v1/durable/schedules/{id}/executions` | List executions for schedule |
-| GET | `/v1/durable/executions/{id}` | Get execution details |
+| GET | `/v1/platform/durable/schedules/{id}/executions` | List executions for schedule |
+| GET | `/v1/platform/durable/executions/{id}` | Get execution details |
 
 ### Request/Response Types
 

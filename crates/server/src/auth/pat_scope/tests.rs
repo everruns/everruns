@@ -72,28 +72,31 @@ fn permits_follows_the_class_table() {
 #[test]
 fn normalize_template_erases_parameter_names() {
     assert_eq!(
-        normalize_template("/v1/agents/{agent_id}/endpoints/{channel_id}"),
-        "/v1/agents/{}/endpoints/{}"
+        normalize_template("/v1/platform/agents/{agent_id}/endpoints/{channel_id}"),
+        "/v1/platform/agents/{}/endpoints/{}"
     );
     assert_eq!(
-        normalize_template("/v1/memories/{memory_id}/fs/{*path}"),
-        normalize_template("/v1/memories/{memory_id}/fs/{path}")
+        normalize_template("/v1/platform/memories/{memory_id}/fs/{*path}"),
+        normalize_template("/v1/platform/memories/{memory_id}/fs/{path}")
     );
-    assert_eq!(normalize_template("/v1/agents"), "/v1/agents");
+    assert_eq!(
+        normalize_template("/v1/platform/agents"),
+        "/v1/platform/agents"
+    );
 }
 
 #[test]
 fn monitoring_preserves_scoped_token_denial() {
     for path in [
-        "/v1/monitoring",
-        "/v1/monitoring/config",
-        "/v1/monitoring/actors",
-        "/v1/monitoring/actors/{session_id}",
-        "/v1/durable/monitoring",
-        "/v1/durable/monitoring/actors",
-        "/v1/durable/monitoring/actors/{session_id}",
-        "/v1/durable/monitoring/shards",
-        "/v1/durable/monitoring/shards/{shard}/detail",
+        "/v1/platform/monitoring",
+        "/v1/platform/monitoring/config",
+        "/v1/platform/monitoring/actors",
+        "/v1/platform/monitoring/actors/{session_id}",
+        "/v1/platform/durable/monitoring",
+        "/v1/platform/durable/monitoring/actors",
+        "/v1/platform/durable/monitoring/actors/{session_id}",
+        "/v1/platform/durable/monitoring/shards",
+        "/v1/platform/durable/monitoring/shards/{shard}/detail",
     ] {
         let access = classify(&Method::GET, path).unwrap();
         assert_eq!(access, RouteAccess::Never);
@@ -105,7 +108,7 @@ fn monitoring_preserves_scoped_token_denial() {
 
 #[test]
 fn extractions_requires_write_scope() {
-    let access = classify(&Method::POST, "/v1/extractions");
+    let access = classify(&Method::POST, "/v1/platform/extractions");
     assert_eq!(access, Some(RouteAccess::Write));
     assert!(!PatScope::Read.permits(access));
     assert!(PatScope::Full.permits(access));
@@ -114,26 +117,32 @@ fn extractions_requires_write_scope() {
 #[test]
 fn decision_4_routes_are_never() {
     let never = [
-        ("GET", "/v1/users/me/export"),
-        ("GET", "/v1/auth/personal-access-tokens"),
-        ("POST", "/v1/auth/personal-access-tokens"),
-        ("DELETE", "/v1/auth/personal-access-tokens/{token_id}"),
-        ("POST", "/v1/auth/login"),
+        ("GET", "/v1/platform/users/me/export"),
+        ("GET", "/v1/platform/auth/personal-access-tokens"),
+        ("POST", "/v1/platform/auth/personal-access-tokens"),
+        (
+            "DELETE",
+            "/v1/platform/auth/personal-access-tokens/{token_id}",
+        ),
+        ("POST", "/v1/platform/auth/login"),
         ("GET", "/v1/auth/cli/callback"),
-        ("POST", "/v1/users/me/switch-org"),
-        ("DELETE", "/v1/users/me"),
-        ("POST", "/v1/orgs"),
-        ("POST", "/v1/me/invitations/{public_id}/accept"),
-        ("POST", "/v1/agents/{agent_id}/channels/{channel_id}/keys"),
+        ("POST", "/v1/platform/users/me/switch-org"),
+        ("DELETE", "/v1/platform/users/me"),
+        ("POST", "/v1/platform/orgs"),
+        ("POST", "/v1/platform/me/invitations/{public_id}/accept"),
         (
             "POST",
-            "/v1/agents/{agent_id}/channels/{channel_id}/keys/{key_id}/rotate",
+            "/v1/platform/agents/{agent_id}/channels/{channel_id}/keys",
         ),
-        ("POST", "/v1/evals/{eval_id}/runs/{run_id}/share"),
-        ("GET", "/v1/providers/{id}/oauth/authorize"),
-        ("GET", "/v1/slack/install"),
-        ("DELETE", "/v1/user/connected-clients/{grant_id}"),
-        ("PUT", "/v1/sessions/{session_id}/storage/secrets"),
+        (
+            "POST",
+            "/v1/platform/agents/{agent_id}/channels/{channel_id}/keys/{key_id}/rotate",
+        ),
+        ("POST", "/v1/platform/evals/{eval_id}/runs/{run_id}/share"),
+        ("GET", "/v1/platform/providers/{id}/oauth/authorize"),
+        ("GET", "/v1/platform/slack/install"),
+        ("DELETE", "/v1/platform/user/connected-clients/{grant_id}"),
+        ("PUT", "/v1/platform/sessions/{session_id}/storage/secrets"),
     ];
     for (method, path) in never {
         assert_eq!(
@@ -147,20 +156,20 @@ fn decision_4_routes_are_never() {
 #[test]
 fn auth_me_is_read_and_commands_route_is_per_command() {
     assert_eq!(
-        classify(&Method::GET, "/v1/auth/me"),
+        classify(&Method::GET, "/v1/platform/auth/me"),
         Some(RouteAccess::Read)
     );
     assert_eq!(
-        classify(&Method::HEAD, "/v1/auth/me"),
+        classify(&Method::HEAD, "/v1/platform/auth/me"),
         Some(RouteAccess::Read),
         "HEAD is served by the GET handler"
     );
     assert_eq!(
-        classify(&Method::POST, "/v1/commands/{name}"),
+        classify(&Method::POST, "/v1/platform/commands/{name}"),
         Some(RouteAccess::PerCommand)
     );
     assert_eq!(
-        classify(&Method::GET, "/v1/commands"),
+        classify(&Method::GET, "/v1/platform/commands"),
         Some(RouteAccess::Read)
     );
 }
@@ -174,18 +183,24 @@ fn unknown_routes_are_unclassified() {
 #[test]
 fn github_status_and_credential_binding_keep_their_classes() {
     assert_eq!(
-        classify(&Method::GET, "/v1/agents/{agent_id}/github"),
+        classify(&Method::GET, "/v1/platform/agents/{agent_id}/github"),
         Some(RouteAccess::Read)
     );
     assert_eq!(
-        classify(&Method::POST, "/v1/agents/{agent_id}/github/connect"),
+        classify(
+            &Method::POST,
+            "/v1/platform/agents/{agent_id}/github/connect"
+        ),
         Some(RouteAccess::Never)
     );
 }
 
 #[test]
 fn scoped_credential_metadata_is_readable_but_management_requires_full_scope() {
-    for path in ["/v1/credential-bindings", "/v1/resources/{id}/grants"] {
+    for path in [
+        "/v1/platform/credential-bindings",
+        "/v1/platform/resources/{id}/grants",
+    ] {
         assert_eq!(
             classify(&Method::GET, path),
             Some(RouteAccess::Read),
@@ -193,11 +208,14 @@ fn scoped_credential_metadata_is_readable_but_management_requires_full_scope() {
         );
     }
     for (method, path) in [
-        (Method::POST, "/v1/credential-bindings"),
-        (Method::PUT, "/v1/credential-bindings/{id}"),
-        (Method::DELETE, "/v1/credential-bindings/{id}"),
-        (Method::POST, "/v1/resources/{id}/grants"),
-        (Method::DELETE, "/v1/resources/{id}/grants/{grant_id}"),
+        (Method::POST, "/v1/platform/credential-bindings"),
+        (Method::PUT, "/v1/platform/credential-bindings/{id}"),
+        (Method::DELETE, "/v1/platform/credential-bindings/{id}"),
+        (Method::POST, "/v1/platform/resources/{id}/grants"),
+        (
+            Method::DELETE,
+            "/v1/platform/resources/{id}/grants/{grant_id}",
+        ),
     ] {
         assert_eq!(
             classify(&method, path),
@@ -285,9 +303,9 @@ fn echo_routes() -> Router {
         format!("{:?}", access.map(|axum::Extension(access)| access))
     }
     Router::new()
-        .route("/v1/auth/me", get(echo))
-        .route("/v1/users/me/export", get(echo))
-        .route("/v1/commands/{name}", post(echo))
+        .route("/v1/platform/auth/me", get(echo))
+        .route("/v1/platform/users/me/export", get(echo))
+        .route("/v1/platform/commands/{name}", post(echo))
         .route("/v1/unlisted", get(echo))
 }
 
@@ -297,9 +315,13 @@ async fn layer_inserts_the_class_of_the_matched_route() {
         let routes = classify_api_routes(echo_routes(), prefix, ExtraRouteClasses::default());
         let app = crate::server::build_router_with_prefix(routes, prefix);
         let cases = [
-            ("GET", "/v1/auth/me", "Some(Read)"),
-            ("GET", "/v1/users/me/export", "Some(Never)"),
-            ("POST", "/v1/commands/list_agents", "Some(PerCommand)"),
+            ("GET", "/v1/platform/auth/me", "Some(Read)"),
+            ("GET", "/v1/platform/users/me/export", "Some(Never)"),
+            (
+                "POST",
+                "/v1/platform/commands/list_agents",
+                "Some(PerCommand)",
+            ),
             ("GET", "/v1/unlisted", "None"),
         ];
         for (method, path, want) in cases {

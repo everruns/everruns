@@ -116,7 +116,7 @@ the `modal_*` tools. The provider maps the lifecycle Modal lacks:
   provider validate the same ranges.
 - **Gating**: the plugin is linked everywhere, so the server's
   `managed_provider_offered` offers Modal only at development grade, both in
-  `/v1/sandbox-targets` and when a Session resolves its template.
+  `/v1/platform/sandbox-targets` and when a Session resolves its template.
 
 ## Egress: allowlists and keyless credentials
 

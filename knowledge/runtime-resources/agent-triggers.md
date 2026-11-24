@@ -25,7 +25,7 @@ Field shapes, SQL, and route handlers live in code, see
 `crates/server/src/domains/agent_triggers/record.rs` (`AgentTrigger`, `AgentTriggerType`,
 `ScheduleTriggerConfig`), migration `104_agent_triggers.sql`, the
 `crates/server/src/domains/agent_triggers/` domain, and the
-`/v1/agents/{agent_id}/triggers` API.
+`/v1/platform/agents/{agent_id}/triggers` API.
 
 ## Model
 
@@ -122,7 +122,7 @@ pipeline then, for every source alike:
 
 Each event is recorded as a delivery (`dispatched`, `filtered`, `duplicate`,
 `failed`, with the reason and session), readable at
-`/v1/agents/{agent_id}/triggers/{trigger_id}/deliveries`, so a user can see why
+`/v1/platform/agents/{agent_id}/triggers/{trigger_id}/deliveries`, so a user can see why
 an event did or did not run. History is bounded per trigger.
 
 A schedule tick runs as a durable task in one transaction, so a failed attempt
@@ -175,7 +175,7 @@ See `knowledge/integrations/mcp-events.md`.
 
 ## Manual fire
 
-`POST /v1/agents/{agent_id}/triggers/{trigger_id}/trigger` (CLI
+`POST /v1/platform/agents/{agent_id}/triggers/{trigger_id}/trigger` (CLI
 `everruns agents triggers trigger`, the same command over MCP) runs a trigger
 now. Without a body it runs a schedule trigger as a tick would. With an
 `event` it runs any trigger type on that event, and the event takes the

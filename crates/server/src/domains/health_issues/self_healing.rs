@@ -265,7 +265,7 @@ pub struct ListFindingActions {
     description = "List what Everruns or a person did about a finding, such as pausing a repeating schedule, and what the organization's self-healing policy offers to do now.",
     method = "GET",
     cli = CliRoute::new(&["health-issues", "actions"], "list").with_examples(&[CliExample::new("See whether a repeating schedule was paused", "everruns health-issues actions list --issue-id 550e8400-e29b-41d4-a716-446655440000")]),
-    path = "/v1/health-issues/{issue_id}/actions",
+    path = "/v1/platform/health-issues/{issue_id}/actions",
     policy = AGENT_VIEW,
     http = plain,
 )]
@@ -301,7 +301,7 @@ pub struct TakeFindingAction {
     description = "Take an action the organization's self-healing policy offers on a finding, such as pausing a schedule whose runs keep ending the same way. It is recorded on the finding and can be undone.",
     method = "POST",
     cli = CliRoute::new(&["health-issues", "actions"], "take").with_examples(&[CliExample::new("Pause a repeating schedule from its finding", "everruns health-issues actions take --issue-id 550e8400-e29b-41d4-a716-446655440000 --kind pause_schedule --reason 'Claim expired, polling is pointless'")]),
-    path = "/v1/health-issues/{issue_id}/actions",
+    path = "/v1/platform/health-issues/{issue_id}/actions",
     policy = AGENT_MANAGE,
     request_body(TakeFindingActionRequest),
     http = plain,
@@ -372,7 +372,7 @@ pub struct UndoFindingAction {
     description = "Undo an action taken on a finding, automatic or not. Undoing a pause resumes the schedule and starts its repeated-outcome count over.",
     method = "POST",
     cli = CliRoute::new(&["health-issues", "actions"], "undo").with_examples(&[CliExample::new("Resume a schedule that was paused automatically", "everruns health-issues actions undo --issue-id 550e8400-e29b-41d4-a716-446655440000 --action-id fact_01h9 --reason 'Still waiting on the claim; this is expected'")]),
-    path = "/v1/health-issues/{issue_id}/actions/{action_id}/undo",
+    path = "/v1/platform/health-issues/{issue_id}/actions/{action_id}/undo",
     policy = AGENT_MANAGE,
     http = plain,
 )]

@@ -166,7 +166,7 @@ pub struct Agent {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub starters: Vec<crate::domains::harnesses::record::ConversationStarter>,
     /// Avatar shown wherever the agent appears: the UI, the A2A Agent Card and
-    /// its Slack app. Set with `PUT /v1/agents/{agent_id}/avatar`.
+    /// its Slack app. Set with `PUT /v1/platform/agents/{agent_id}/avatar`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub avatar: Option<AgentAvatar>,
     /// System prompt that defines the agent's behavior.

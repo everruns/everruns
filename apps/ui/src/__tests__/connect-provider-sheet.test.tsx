@@ -56,7 +56,7 @@ jest.mock("@/hooks/use-providers", () => ({
 jest.mock("@/lib/api/providers", () => ({
   checkProviderCredentials: (...args: unknown[]) => mockCheckCredentials(...args),
   providerSupportsOAuth: (driver: string) => driver === "openrouter",
-  providerOAuthAuthorizeUrl: (id: string) => `/api/v1/providers/${id}/oauth/authorize`,
+  providerOAuthAuthorizeUrl: (id: string) => `/api/v1/platform/providers/${id}/oauth/authorize`,
 }));
 
 const provider = (overrides: Partial<Provider>): Provider =>

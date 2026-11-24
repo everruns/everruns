@@ -29,7 +29,7 @@ afterEach(() => {
   sources.length = 0;
   urls.length = 0;
 });
-const url = "/api/v1/sessions/session_1/sse";
+const url = "/api/v1/platform/sessions/session_1/sse";
 const scope = { shareScope: "alice:org" };
 function fire(index: number, type: string, data = "{}") {
   sources[index].listeners.get(type)?.(new MessageEvent(type, { data }));

@@ -47,11 +47,11 @@ Participant membership is managed below a session:
 
 | Method | Path | Purpose |
 |---|---|---|
-| `GET` | `/v1/sessions/{session_id}/participants` | List active and past participants in join order |
-| `POST` | `/v1/sessions/{session_id}/participants` | Add an agent or user member |
-| `DELETE` | `/v1/sessions/{session_id}/participants/{participant_id}` | Mark a member as having left |
+| `GET` | `/v1/platform/sessions/{session_id}/participants` | List active and past participants in join order |
+| `POST` | `/v1/platform/sessions/{session_id}/participants` | Add an agent or user member |
+| `DELETE` | `/v1/platform/sessions/{session_id}/participants/{participant_id}` | Mark a member as having left |
 
-To address an agent, set `addressed_participant_id` when creating a message with `POST /v1/sessions/{session_id}/messages`. Omit it to use the host.
+To address an agent, set `addressed_participant_id` when creating a message with `POST /v1/platform/sessions/{session_id}/messages`. Omit it to use the host.
 
 The participant list is the source of truth for join and leave history. Join and leave do not emit dedicated participant events on the session SSE stream. See the [API reference](/api/) for current schemas and authorization requirements.
 

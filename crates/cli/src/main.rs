@@ -4,7 +4,7 @@
 // Design Decision: Use clap derive for ergonomic argument parsing.
 // Design Decision: Support text/json output formats for scripting.
 // Design Decision: No SDK. Platform commands go through the shared contract
-// mapper and POST /v1/commands; the rest is plain HTTP (see contract.rs).
+// mapper and POST /v1/platform/commands; the rest is plain HTTP (see contract.rs).
 // Design Decision: Credential file (platform config dir/everruns/credentials.json) with env var override.
 
 mod auth;

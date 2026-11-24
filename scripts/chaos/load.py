@@ -22,7 +22,7 @@ instant `llmsim-default` answer, which is the platform-overhead probe.
 - approval: `llmsim-realistic` (calls `bash`) with `bashkit_shell` and
             `tool_approval` (mode `protective`): the call parks the turn on an
             `approve_tool_call` request, answered `allow_always` via
-            `POST /v1/sessions/{id}/tool-approvals`.
+            `POST /v1/platform/sessions/{id}/tool-approvals`.
 """
 
 from __future__ import annotations
@@ -117,7 +117,7 @@ class SessionStream:
             q = urllib.parse.urlencode({"after_sequence": self.last_seq})
             conn.request(
                 "GET",
-                f"{self.api.prefix}/v1/sessions/{self.session_id}/sse?{q}",
+                f"{self.api.prefix}/v1/platform/sessions/{self.session_id}/sse?{q}",
                 headers={"Accept": "text/event-stream"},
             )
             resp = conn.getresponse()
@@ -197,7 +197,7 @@ class Driver:
             "client_message_id": m.client_message_id,
         }
         try:
-            r = self.api.post(f"/v1/sessions/{run.session_id}/messages", body)
+            r = self.api.post(f"/v1/platform/sessions/{run.session_id}/messages", body)
             m.id = r.get("id")
             m.delivery = r.get("delivery")
         except Exception as e:  # noqa: BLE001
@@ -267,7 +267,7 @@ class Driver:
         }[kind]
         try:
             s = self.api.post(
-                "/v1/sessions",
+                "/v1/platform/sessions",
                 {
                     "agent_id": self.agents[agent],
                     "model_id": self.models[model],
@@ -312,7 +312,7 @@ class Driver:
                     time.sleep(random.uniform(0.2, 1.0))
                     run.cancels.append(time.time())
                     try:
-                        self.api.post(f"/v1/sessions/{run.session_id}/cancel")
+                        self.api.post(f"/v1/platform/sessions/{run.session_id}/cancel")
                     except Exception as e:  # noqa: BLE001
                         run.errors.append(f"cancel: {e}")
                     self.wait_turn(run, stream, m1, T)
@@ -375,7 +375,7 @@ class Driver:
                 # waiting_for_tool_results; the API answers 409 until it has.
                 for _ in range(100):
                     try:
-                        self.api.post(f"/v1/sessions/{run.session_id}/tool-approvals", {"decisions": decisions})
+                        self.api.post(f"/v1/platform/sessions/{run.session_id}/tool-approvals", {"decisions": decisions})
                         run.approvals += len(got)
                         break
                     except ApiError as e:

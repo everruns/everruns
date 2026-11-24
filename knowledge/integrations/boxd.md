@@ -58,7 +58,7 @@ the other providers.
 
 ## Client decisions
 
-- **Login.** The key is exchanged at `app.boxd.sh/api/v1/auth/token` for a
+- **Login.** The key is exchanged at `app.boxd.sh/api/v1/platform/auth/token` for a
   one-hour JWT. JWTs are cached process-wide per key and renewed five minutes
   early; a call answered `UNAUTHENTICATED` renews once and retries.
 - **Regions.** Each region has its own endpoint, from `ListRegions` (cached

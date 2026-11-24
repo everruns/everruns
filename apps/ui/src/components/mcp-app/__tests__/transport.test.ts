@@ -33,7 +33,7 @@ describe("MCP workspace events", () => {
       } as Response;
     });
     const events: number[] = [];
-    const stream = new WorkspaceEvents("/api/v1/sessions/session_1/sse?after_sequence=0");
+    const stream = new WorkspaceEvents("/api/v1/platform/sessions/session_1/sse?after_sequence=0");
     stream.addEventListener("turn.completed", (event) =>
       events.push(JSON.parse(event.data).sequence),
     );
@@ -59,7 +59,9 @@ describe("MCP workspace events", () => {
         }),
       } as Response;
     });
-    const stream = new WorkspaceEvents("/api/v1/sessions/session_1/sse?since_id=event_anchor");
+    const stream = new WorkspaceEvents(
+      "/api/v1/platform/sessions/session_1/sse?since_id=event_anchor",
+    );
     const events: string[] = [];
     stream.addEventListener("task.updated", (event) => events.push(JSON.parse(event.data).id));
     await jest.advanceTimersByTimeAsync(0);
@@ -77,7 +79,7 @@ describe("MCP workspace events", () => {
           finish = resolve;
         }),
     );
-    const stream = new WorkspaceEvents("/api/v1/sessions/session_1/sse?after_sequence=0");
+    const stream = new WorkspaceEvents("/api/v1/platform/sessions/session_1/sse?after_sequence=0");
     const listener = jest.fn();
     stream.addEventListener("turn.completed", listener);
     await jest.advanceTimersByTimeAsync(0);
@@ -109,7 +111,7 @@ it("accepts workspace initialization and replies only from its parent", async ()
     }),
   );
   expect(initialize).toHaveBeenCalledTimes(1);
-  const request = workspaceRequest("app_read", { path: "/v1/agents" });
+  const request = workspaceRequest("app_read", { path: "/v1/platform/agents" });
   const message = send.mock.calls.at(-1)![0];
   expect(message.arguments.organization_id).toBe("org_real");
   window.dispatchEvent(

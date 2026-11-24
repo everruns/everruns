@@ -26,7 +26,7 @@ const MAX_BYTES: usize = 64 * 1024;
 async fn session_with_message(server: &TestServer, text: &str) -> Session {
     let session: Session = server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             json!({ "harness_id": server.seed_base_harness_id }),
         )
         .await
@@ -35,7 +35,7 @@ async fn session_with_message(server: &TestServer, text: &str) -> Session {
 
     let _: Value = server
         .post(
-            &format!("/v1/sessions/{}/messages", session.id),
+            &format!("/v1/platform/sessions/{}/messages", session.id),
             json!({
                 "message": {
                     "role": "user",
@@ -57,7 +57,7 @@ async fn sse_after_sequence_zero_replays_events_written_before_subscribing() {
 
     let stream = server
         .get_stream_prefix(
-            &format!("/v1/sessions/{}/sse?after_sequence=0", session.id),
+            &format!("/v1/platform/sessions/{}/sse?after_sequence=0", session.id),
             MAX_BYTES,
             IDLE,
         )
@@ -79,7 +79,11 @@ async fn sse_without_a_cursor_still_starts_live() {
     let session = session_with_message(&server, "not replayed").await;
 
     let stream = server
-        .get_stream_prefix(&format!("/v1/sessions/{}/sse", session.id), MAX_BYTES, IDLE)
+        .get_stream_prefix(
+            &format!("/v1/platform/sessions/{}/sse", session.id),
+            MAX_BYTES,
+            IDLE,
+        )
         .await;
 
     assert!(
@@ -98,7 +102,7 @@ async fn sse_rejects_since_id_combined_with_after_sequence() {
     let session = session_with_message(&server, "hello").await;
 
     let events: Value = server
-        .get(&format!("/v1/sessions/{}/events", session.id))
+        .get(&format!("/v1/platform/sessions/{}/events", session.id))
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -106,7 +110,7 @@ async fn sse_rejects_since_id_combined_with_after_sequence() {
 
     server
         .get(&format!(
-            "/v1/sessions/{}/sse?since_id={first_id}&after_sequence=0",
+            "/v1/platform/sessions/{}/sse?since_id={first_id}&after_sequence=0",
             session.id
         ))
         .await
@@ -114,7 +118,7 @@ async fn sse_rejects_since_id_combined_with_after_sequence() {
 
     server
         .get(&format!(
-            "/v1/sessions/{}/sse?after_sequence=-1",
+            "/v1/platform/sessions/{}/sse?after_sequence=-1",
             session.id
         ))
         .await
@@ -152,7 +156,7 @@ async fn sse_catches_up_an_event_push_never_delivered() {
     // Longer than the 5 s catch-up wait, so the stream is still open for it.
     let stream = server
         .get_stream_prefix(
-            &format!("/v1/sessions/{}/sse?after_sequence=0", session.id),
+            &format!("/v1/platform/sessions/{}/sse?after_sequence=0", session.id),
             MAX_BYTES,
             Duration::from_secs(8),
         )

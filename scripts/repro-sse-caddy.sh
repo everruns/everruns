@@ -129,7 +129,7 @@ EOF
 test_sse_stream() {
     local mode="$1"
     local duration="$2"  # seconds to run
-    local url="http://localhost:${PROXY_PORT}/api/v1/sessions/${SESSION_ID}/sse?exclude=output.message.delta&exclude=reason.thinking.delta"
+    local url="http://localhost:${PROXY_PORT}/api/v1/platform/sessions/${SESSION_ID}/sse?exclude=output.message.delta&exclude=reason.thinking.delta"
 
     log "Opening SSE stream through Caddy (${mode}) for ${duration}s..."
     log "  URL: $url"
@@ -180,7 +180,7 @@ create_session() {
 
     # Create agent
     local agent_resp
-    agent_resp=$(curl -s -X POST "$api_url/v1/agents" \
+    agent_resp=$(curl -s -X POST "$api_url/v1/platform/agents" \
         -H "Content-Type: application/json" \
         -d '{"name":"SSE Repro Agent","system_prompt":"You are a test agent."}')
 
@@ -193,7 +193,7 @@ create_session() {
 
     # Create session
     local session_resp
-    session_resp=$(curl -s -X POST "$api_url/v1/sessions" \
+    session_resp=$(curl -s -X POST "$api_url/v1/platform/sessions" \
         -H "Content-Type: application/json" \
         -d "{\"agent_id\":\"$AGENT_ID\"}")
 

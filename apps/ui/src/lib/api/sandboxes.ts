@@ -76,14 +76,14 @@ export async function listSandboxes(
   const params = filterParams(filters);
   params.set("limit", String(page.limit));
   params.set("offset", String(page.offset));
-  return (await api.get<SandboxFleetPage>(`/v1/sandboxes?${params}`)).data;
+  return (await api.get<SandboxFleetPage>(`/v1/platform/sandboxes?${params}`)).data;
 }
 
 export async function getSandboxFleetStats(
   filters: SandboxFleetFilters,
 ): Promise<SandboxFleetStats> {
   const params = filterParams(filters);
-  return (await api.get<SandboxFleetStats>(`/v1/sandboxes/stats?${params}`)).data;
+  return (await api.get<SandboxFleetStats>(`/v1/platform/sandboxes/stats?${params}`)).data;
 }
 
 export async function getSandboxTimeline(
@@ -93,15 +93,15 @@ export async function getSandboxTimeline(
   const params = filterParams(filters);
   params.set("from", window.from);
   params.set("to", window.to);
-  return (await api.get<SandboxTimeline>(`/v1/sandboxes/timeline?${params}`)).data;
+  return (await api.get<SandboxTimeline>(`/v1/platform/sandboxes/timeline?${params}`)).data;
 }
 
 export async function getSandbox(id: string): Promise<SandboxFleetDetail> {
-  return (await api.get<SandboxFleetDetail>(`/v1/sandboxes/${id}`)).data;
+  return (await api.get<SandboxFleetDetail>(`/v1/platform/sandboxes/${id}`)).data;
 }
 
 export async function getSandboxProviderState(id: string): Promise<ProviderSandboxState> {
-  return (await api.get<ProviderSandboxState>(`/v1/sandboxes/${id}/provider`)).data;
+  return (await api.get<ProviderSandboxState>(`/v1/platform/sandboxes/${id}/provider`)).data;
 }
 
 export async function manageSessionSandbox(
@@ -109,7 +109,9 @@ export async function manageSessionSandbox(
   action: SandboxAction,
 ): Promise<ManageSessionSandboxResponse> {
   return (
-    await api.post<ManageSessionSandboxResponse>(`/v1/sessions/${sessionId}/sandbox`, { action })
+    await api.post<ManageSessionSandboxResponse>(`/v1/platform/sessions/${sessionId}/sandbox`, {
+      action,
+    })
   ).data;
 }
 
@@ -117,6 +119,7 @@ export async function manageSessionSandbox(
 export async function getSessionRepositories(
   sessionId: string,
 ): Promise<SessionRepositoriesResponse> {
-  return (await api.get<SessionRepositoriesResponse>(`/v1/sessions/${sessionId}/repositories`))
-    .data;
+  return (
+    await api.get<SessionRepositoriesResponse>(`/v1/platform/sessions/${sessionId}/repositories`)
+  ).data;
 }

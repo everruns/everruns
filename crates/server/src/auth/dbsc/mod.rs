@@ -5,11 +5,11 @@
 //! - The refresh-token row is the DBSC session. Binding stores the browser's
 //!   public key on it and removes the 30-day `refresh_token` cookie from the
 //!   browser. The bound credential is the existing `access_token` cookie: the
-//!   browser renews it through `/v1/auth/dbsc/refresh` with a proof signed by
+//!   browser renews it through `/v1/platform/auth/dbsc/refresh` with a proof signed by
 //!   the device key before it lets a request go out without one. A copied
 //!   access token is good until it expires (the access-token lifetime, 15
 //!   minutes by default); a copied refresh token is refused once bound.
-//! - `/v1/auth/refresh` never accepts a bound row, so the refresh token taken
+//! - `/v1/platform/auth/refresh` never accepts a bound row, so the refresh token taken
 //!   before binding cannot be exchanged after it.
 //! - The registration challenge is derived from the refresh token the response
 //!   just issued, so login paths need no extra storage; registration also
@@ -45,8 +45,8 @@ use uuid::Uuid;
 use super::builtin::BuiltinAuthBackend;
 use super::jwt::hash_token;
 
-pub const REGISTER_PATH: &str = "/v1/auth/dbsc/start";
-pub const REFRESH_PATH: &str = "/v1/auth/dbsc/refresh";
+pub const REGISTER_PATH: &str = "/v1/platform/auth/dbsc/start";
+pub const REFRESH_PATH: &str = "/v1/platform/auth/dbsc/refresh";
 /// Names the bound refresh-token row, for sign-out.
 pub const SESSION_COOKIE: &str = "dbsc_session";
 /// The bound credential. Its attributes match the login cookie.
@@ -386,7 +386,7 @@ async fn revoke_on_logout(
     request: Request,
     next: Next,
 ) -> Response {
-    let logout = request.uri().path() == "/v1/auth/logout";
+    let logout = request.uri().path() == "/v1/platform/auth/logout";
     if logout
         && let Some(cookie) = jar.get(SESSION_COOKIE)
         && let Err(e) = state
@@ -407,7 +407,7 @@ async fn revoke_on_logout(
     response
 }
 
-/// POST /v1/auth/dbsc/start: bind the request's new refresh token to the
+/// POST /v1/platform/auth/dbsc/start: bind the request's new refresh token to the
 /// browser's device key.
 pub async fn register(
     State(state): State<BuiltinAuthBackend>,
@@ -465,7 +465,7 @@ pub async fn register(
     instructions(jar, access, &session_id, &challenge)
 }
 
-/// POST /v1/auth/dbsc/refresh: exchange a proof from the bound key for a new
+/// POST /v1/platform/auth/dbsc/refresh: exchange a proof from the bound key for a new
 /// access token.
 pub async fn refresh(
     State(state): State<BuiltinAuthBackend>,

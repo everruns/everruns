@@ -71,15 +71,15 @@ The **Skills Registry** stores skills at the organization level. Registry skills
 
 | Method | Path | Description |
 |---|---|---|
-| POST | `/v1/skills` | Create from SKILL.md |
-| POST | `/v1/skills/upload` | Create from ZIP archive |
-| GET | `/v1/skills` | List |
-| GET | `/v1/skills/usage` | How many agents and harnesses use each skill |
-| GET | `/v1/skills/{id}` | Get metadata |
-| GET | `/v1/skills/{id}/content` | Get full content |
-| PATCH | `/v1/skills/{id}` | Update |
-| DELETE | `/v1/skills/{id}` | Delete |
-| POST | `/v1/skills/validate` | Validate without creating |
+| POST | `/v1/platform/skills` | Create from SKILL.md |
+| POST | `/v1/platform/skills/upload` | Create from ZIP archive |
+| GET | `/v1/platform/skills` | List |
+| GET | `/v1/platform/skills/usage` | How many agents and harnesses use each skill |
+| GET | `/v1/platform/skills/{id}` | Get metadata |
+| GET | `/v1/platform/skills/{id}/content` | Get full content |
+| PATCH | `/v1/platform/skills/{id}` | Update |
+| DELETE | `/v1/platform/skills/{id}` | Delete |
+| POST | `/v1/platform/skills/validate` | Validate without creating |
 
 See the [API reference](/api/) for request and response schemas.
 

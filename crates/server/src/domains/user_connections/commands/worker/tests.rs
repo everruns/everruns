@@ -349,7 +349,7 @@ async fn a_person_cannot_run_internal_commands() {
 }
 
 /// Internal commands stay off every public surface: discovery, the scripted
-/// toolset (MCP, Platform, `/v1/commands`), and the command tree. They are
+/// toolset (MCP, Platform, `/v1/platform/commands`), and the command tree. They are
 /// reads, so entity history (which captures a `Subject` change's params)
 /// never sees a token.
 #[test]

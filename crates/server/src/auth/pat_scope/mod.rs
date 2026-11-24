@@ -82,7 +82,7 @@ impl PatScope {
         matches!(scope, Some(Self::Read | Self::NoAccess))
     }
 
-    /// The scope as reported on `GET /v1/auth/me` (`token_scope`): `*` or
+    /// The scope as reported on `GET /v1/platform/auth/me` (`token_scope`): `*` or
     /// `read`. A `NoAccess` token never reaches that route (it is in scope for
     /// none), so its `none` is only a label, never a request value.
     pub fn as_str(self) -> &'static str {
@@ -116,7 +116,7 @@ pub enum RouteAccess {
     /// No scoped token may ever reach it (credentials, membership, the auth
     /// surface, the bulk data export), whatever scopes exist later.
     Never,
-    /// `POST /v1/commands/{name}`: the named command decides
+    /// `POST /v1/platform/commands/{name}`: the named command decides
     /// ([`classify_command`]).
     PerCommand,
 }
@@ -191,7 +191,7 @@ pub fn http_command_at(method: &Method, template: &str) -> Option<&'static Comma
 }
 
 /// Class of one command, wherever it is invoked (its own route or
-/// `POST /v1/commands/{name}`): `Never` when its route is on the Never list,
+/// `POST /v1/platform/commands/{name}`): `Never` when its route is on the Never list,
 /// else `Read` exactly when the shared read-only predicate holds.
 pub fn classify_command(desc: &CommandDescriptor) -> RouteAccess {
     let meta = (desc.meta)();
@@ -212,9 +212,13 @@ pub fn classify_command(desc: &CommandDescriptor) -> RouteAccess {
 pub struct ExtraRouteClasses(HashMap<RouteKey, RouteAccess>);
 
 impl ExtraRouteClasses {
+    pub(crate) fn paths(&self) -> impl Iterator<Item = &str> {
+        self.0.keys().map(|(_, path)| path.as_str())
+    }
+
     /// Classify `(method, path)`, with `path` as the router spells it under
     /// the API prefix (`/v1/...`). Panics on `PerCommand`, which only
-    /// `POST /v1/commands/{name}` may carry, and on an invalid method: both
+    /// `POST /v1/platform/commands/{name}` may carry, and on an invalid method: both
     /// are programming errors caught at startup.
     pub fn insert(&mut self, method: &str, path: &str, access: RouteAccess) {
         assert!(

@@ -285,9 +285,9 @@ custom login form (no credentials→token endpoint; interactive login is hosted-
 pixel-perfect Frame 2 on our own domain in Slate.
 
 Why it's tractable: OSS already ships, production-hardened, in `crates/server/src/auth/`:
-- Email+password **login** (`POST /v1/auth/login`) and **signup** (`POST /v1/auth/register`),
+- Email+password **login** (`POST /v1/platform/auth/login`) and **signup** (`POST /v1/platform/auth/register`),
   Argon2id hashing (`storage/password.rs`).
-- **OAuth Google + GitHub** natively (`auth/oauth.rs`, `/v1/auth/oauth/{p}` + callback).
+- **OAuth Google + GitHub** natively (`auth/oauth.rs`, `/v1/platform/auth/oauth/{p}` + callback).
 - **JWT access + single-use refresh rotation** (`auth/jwt.rs`), **PAT** + **CLI** login,
   rate limiting, and a **trait-based `AuthBackend`** so SaaS mounts OSS `BuiltinAuthBackend`
   instead of the PropelAuth backend.
@@ -295,8 +295,8 @@ Why it's tractable: OSS already ships, production-hardened, in `crates/server/sr
   not PropelAuth, so they are NOT lost by dropping PropelAuth.
 
 Net-new work (all general-purpose → build in OSS, SaaS inherits):
-- **Password reset / forgot-password**: DOES NOT EXIST today. Add `POST /v1/auth/forgot-password`
-  + `POST /v1/auth/reset-password`, a `password_reset_tokens` migration (hashed token, TTL,
+- **Password reset / forgot-password**: DOES NOT EXIST today. Add `POST /v1/platform/auth/forgot-password`
+  + `POST /v1/platform/auth/reset-password`, a `password_reset_tokens` migration (hashed token, TTL,
   single-use), email via existing `crates/server/src/records/email/` `EmailSender`, and UI pages
   under OSS `apps/ui/src/app/(auth)/`.
 - **Email verification flow**: column exists, flow MISSING. Add send-verification +
@@ -340,7 +340,7 @@ verifier.
 ## B2. Google/OAuth skips verify (review item 2)
 
 Backend already yields `email_verified=true` for OAuth on first sync. Frontend change
-only: the stepper is **dynamic**: read `GET /v1/saas/users/me.email_verified`; if true,
+only: the stepper is **dynamic**: read `GET /v1/platform/saas/users/me.email_verified`; if true,
 do not render Verify as an actionable step (start at Organisation; show a 3-step stepper or
 a pre-checked Verify). Password signups still see Verify. Do not hardcode "Step 1 of 4".
 
@@ -447,7 +447,7 @@ PR sequence (each PR-sized, tested, green before the next):
   Relocate the route (or hide the sidebar during onboarding) as part of PR 7's routing
   work, deferred to avoid a guard/redirect change inside a restyle.
 - ~~**verify-email resend needs the email.**~~ Resolved: the logged-in resend
-  (`POST /v1/auth/resend-verification`, `useResendVerification`) backs the verify-email
+  (`POST /v1/platform/auth/resend-verification`, `useResendVerification`) backs the verify-email
   page and banner, and SaaS uses it in full-auth mode (saas#705).
 
 ## B9. Open items / dependencies

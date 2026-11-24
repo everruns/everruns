@@ -27,7 +27,7 @@ pub struct ListSessionDatabases {
     description = "List all SQL databases created inside a session.",
     method = "GET",
     cli = CliRoute::new(&["sessions", "databases"], "list").with_args(&[CliArg::new("session_id").at(1)]).with_examples(&[CliExample::new("See which databases a session has created", "everruns sessions databases list session_01h9")]),
-    path = "/v1/sessions/{session_id}/databases",
+    path = "/v1/platform/sessions/{session_id}/databases",
     positional = "session_id"
 )]
 impl Command for ListSessionDatabases {
@@ -65,7 +65,7 @@ pub struct CreateSessionDatabaseCmd {
     description = "Create a new SQL database inside a session.",
     method = "POST",
     cli = CliRoute::new(&["sessions", "databases"], "create").with_examples(&[CliExample::new("Give a session a scratch SQL database to work with", "everruns sessions databases create --session-id session_01h9 --name analytics --reason 'Store intermediate results'")]),
-    path = "/v1/sessions/{session_id}/databases",
+    path = "/v1/platform/sessions/{session_id}/databases",
     policy = crate::domains::sessions::SESSION_MANAGE,
 )]
 impl Command for CreateSessionDatabaseCmd {
@@ -110,7 +110,7 @@ pub struct GetSessionDatabase {
     description = "Get metadata for a session SQL database.",
     method = "GET",
     cli = CliRoute::new(&["sessions", "databases"], "get").with_examples(&[CliExample::new("Check a session database's size and metadata", "everruns sessions databases get --session-id session_01h9 --name analytics")]),
-    path = "/v1/sessions/{session_id}/databases/{name}"
+    path = "/v1/platform/sessions/{session_id}/databases/{name}"
 )]
 impl Command for GetSessionDatabase {
     type Output = DatabaseInfoResponse;
@@ -150,7 +150,7 @@ pub struct DeleteSessionDatabase {
     description = "Delete a session SQL database.",
     method = "DELETE",
     cli = CliRoute::new(&["sessions", "databases"], "delete").with_examples(&[CliExample::new("Drop a session database once its data is exported", "everruns sessions databases delete --session-id session_01h9 --name analytics --reason 'No longer needed'")]),
-    path = "/v1/sessions/{session_id}/databases/{name}",
+    path = "/v1/platform/sessions/{session_id}/databases/{name}",
     policy = crate::domains::sessions::SESSION_MANAGE,
 )]
 impl Command for DeleteSessionDatabase {
@@ -189,7 +189,7 @@ pub struct GetSessionDatabaseSchema {
     description = "Inspect the schema of a session SQL database.",
     method = "GET",
     cli = CliRoute::new(&["sessions", "databases", "schema"], "get").with_examples(&[CliExample::new("Inspect a session database's tables before writing queries", "everruns sessions databases schema get --session-id session_01h9 --name analytics")]),
-    path = "/v1/sessions/{session_id}/databases/{name}/schema"
+    path = "/v1/platform/sessions/{session_id}/databases/{name}/schema"
 )]
 impl Command for GetSessionDatabaseSchema {
     type Output = SchemaResponse;

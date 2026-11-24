@@ -55,15 +55,15 @@ execute the same declarative capability without workers reading the database.
 
 CRUD API:
 
-- `GET /v1/capabilities` lists built-in, MCP, skill, and active declarative
+- `GET /v1/platform/capabilities` lists built-in, MCP, skill, and active declarative
   capability refs in one registry response.
-- `POST /v1/capabilities` creates a persisted declarative capability.
-- `GET /v1/capabilities/declarative` lists persisted declarative capability
+- `POST /v1/platform/capabilities` creates a persisted declarative capability.
+- `GET /v1/platform/capabilities/declarative` lists persisted declarative capability
   resources, including archived records when requested.
-- `GET /v1/capabilities/declarative/{public_id}`
-- `PATCH /v1/capabilities/declarative/{public_id}`
-- `DELETE /v1/capabilities/declarative/{public_id}`
-- `POST /v1/capabilities/declarative/{public_id}/delete`
+- `GET /v1/platform/capabilities/declarative/{public_id}`
+- `PATCH /v1/platform/capabilities/declarative/{public_id}`
+- `DELETE /v1/platform/capabilities/declarative/{public_id}`
+- `POST /v1/platform/capabilities/declarative/{public_id}/delete`
 
 The capability reference used on agents, harnesses, sessions, search results,
 and MCP/catalog surfaces is `declarative:<unique_name>`. Names are unique per
@@ -1222,15 +1222,15 @@ All endpoints are organization-scoped.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/v1/capabilities` | List all available capabilities |
-| GET | `/v1/capabilities/{capability_id}` | Get capability details |
+| GET | `/v1/platform/capabilities` | List all available capabilities |
+| GET | `/v1/platform/capabilities/{capability_id}` | Get capability details |
 
 Agent capabilities are managed through the agents API:
-- `POST /v1/agents` - Create agent with capabilities
-- `PATCH /v1/agents/{id}` - Update agent capabilities
-- `GET /v1/agents/{id}` - Get agent (includes capabilities)
+- `POST /v1/platform/agents` - Create agent with capabilities
+- `PATCH /v1/platform/agents/{id}` - Update agent capabilities
+- `GET /v1/platform/agents/{id}` - Get agent (includes capabilities)
 
-Capabilities are managed via the agents API (`POST /v1/agents`, `PATCH /v1/agents/{id}`). The capabilities array order determines priority (earlier = first in system prompt). See `knowledge/execution/apis.md` and the OpenAPI spec for request/response formats.
+Capabilities are managed via the agents API (`POST /v1/platform/agents`, `PATCH /v1/platform/agents/{id}`). The capabilities array order determines priority (earlier = first in system prompt). See `knowledge/execution/apis.md` and the OpenAPI spec for request/response formats.
 
 ### Database Schema
 
@@ -1300,7 +1300,7 @@ Virtual mounts (`MountSource::Virtual`) serve content from an in-memory `Virtual
 
 #### Mount Application Flow
 
-1. Session is created via POST `/v1/sessions` (with `agent_id` in body)
+1. Session is created via POST `/v1/platform/sessions` (with `agent_id` in body)
 2. SessionService fetches agent's capabilities
 3. Mounts are collected from all enabled capabilities
 4. Inline mounts: files and directories are created in session filesystem

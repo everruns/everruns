@@ -191,7 +191,7 @@ pub struct ListEntityHistory {
     category = "history",
     description = "List recorded changes to one entity (agent, harness, knowledge base, provider, ...), newest first, with who made each change, through which surface and session, and why.",
     method = "GET",
-    path = "/v1/history/{entity_ref}",
+    path = "/v1/platform/history/{entity_ref}",
     policy = HISTORY_READ,
     positional = "entity_ref",
     cli = CliRoute::new(&["history"], "list").with_args(&[CliArg::new("entity_ref").at(1)]).with_examples(&[CliExample::new("See why an agent was changed", "everruns history list agent_01h9 --limit 10",)]),
@@ -257,7 +257,7 @@ impl Command for ListOrgHistory {
             category: "history",
             description: "List recorded changes across the organization, newest first. Filter by entity kind, action, the user a change was made as, or the agent that made it.",
             method: "GET",
-            path: "/v1/history",
+            path: "/v1/platform/history",
         }
     }
 

@@ -43,8 +43,11 @@ type ApiError = (StatusCode, Json<ErrorResponse>);
 
 pub fn routes(state: AppState) -> Router {
     Router::new()
-        .route("/v1/search-providers", get(list_search_providers))
-        .route("/v1/search-providers/preview", post(preview_search_plan))
+        .route("/v1/platform/search-providers", get(list_search_providers))
+        .route(
+            "/v1/platform/search-providers/preview",
+            post(preview_search_plan),
+        )
         .with_state(state)
 }
 
@@ -76,7 +79,7 @@ pub struct NativeSearchProvider {
 #[derive(Debug, Serialize, ToSchema)]
 pub struct SearchConnector {
     /// Connector id, used to connect an account at
-    /// `/v1/orgs/{org}/organization-connections/providers/{provider}`.
+    /// `/v1/platform/orgs/{org}/organization-connections/providers/{provider}`.
     #[schema(example = "brave_search")]
     pub provider: String,
     pub name: String,
@@ -224,7 +227,7 @@ async fn org_settings(
 
 #[utoipa::path(
     get,
-    path = "/v1/search-providers",
+    path = "/v1/platform/search-providers",
     tag = "web-search",
     description = "List the web search providers of the active organization: built-in free and model provider search, connected model providers that search natively, connectors that hold search accounts, connected search accounts with status, and the organization's web search defaults.",
     responses((status = 200, body = SearchProviderCatalog))
@@ -380,7 +383,7 @@ async fn model_has_native(
 
 #[utoipa::path(
     post,
-    path = "/v1/search-providers/preview",
+    path = "/v1/platform/search-providers/preview",
     tag = "web-search",
     description = "Resolve an agent's web search setting and model to the ordered plan its searches follow, with the organization's current defaults. Optionally run a test query against one provider (`free` or `account:<id>`; organization admins only).",
     request_body = SearchPlanPreviewRequest,

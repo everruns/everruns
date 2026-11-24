@@ -58,7 +58,7 @@ pub struct GetSessionCost {
     description = "Show what a session spent: totals by cost category (uncached prompt, cache read, cache write, output), spend per hour and per turn, what started the turns, tool calls, and sandbox running time.",
     summary = "Show what a session spent",
     method = "GET",
-    path = "/v1/sessions/{session_id}/cost",
+    path = "/v1/platform/sessions/{session_id}/cost",
     policy = SESSION_VIEW,
     cli = CliRoute::new(&["sessions", "cost"], "get").with_args(&[CliArg::new("session_id").at(1)]).with_examples(&[CliExample::new("See where a session's spend went", "everruns sessions cost get session_01h9")]),
     positional = "session_id",

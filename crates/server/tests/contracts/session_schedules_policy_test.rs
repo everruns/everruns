@@ -78,7 +78,7 @@ impl PermissionResolver for DenySessionAccess {
 async fn create_session(server: &TestServer) -> Session {
     server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             json!({ "harness_id": server.seed_base_harness_id, "title": "Scheduled" }),
         )
         .await
@@ -135,9 +135,12 @@ async fn a_caller_without_session_view_cannot_read_schedules() {
     let (server, session, schedule_id) = fixture(policy.clone()).await;
     policy.armed.store(true, Ordering::SeqCst);
 
-    let list = format!("/v1/sessions/{}/schedules", session.id);
+    let list = format!("/v1/platform/sessions/{}/schedules", session.id);
     assert_forbidden_without_contents(server.get(&list).await, "list");
-    let one = format!("/v1/sessions/{}/schedules/{}", session.id, schedule_id);
+    let one = format!(
+        "/v1/platform/sessions/{}/schedules/{}",
+        session.id, schedule_id
+    );
     assert_forbidden_without_contents(server.get(&one).await, "get");
 }
 
@@ -149,7 +152,10 @@ async fn a_caller_without_session_manage_cannot_change_schedules() {
     let (server, session, schedule_id) = fixture(policy.clone()).await;
     policy.armed.store(true, Ordering::SeqCst);
 
-    let one = format!("/v1/sessions/{}/schedules/{}", session.id, schedule_id);
+    let one = format!(
+        "/v1/platform/sessions/{}/schedules/{}",
+        session.id, schedule_id
+    );
     assert_forbidden_without_contents(
         server.patch(&one, json!({ "enabled": false })).await,
         "update",
@@ -175,8 +181,11 @@ async fn a_caller_without_session_manage_cannot_change_schedules() {
 #[tokio::test]
 async fn an_authorized_caller_can_manage_schedules() {
     let (server, session, schedule_id) = fixture(Arc::new(DenySessionAccess::default())).await;
-    let list = format!("/v1/sessions/{}/schedules", session.id);
-    let one = format!("/v1/sessions/{}/schedules/{}", session.id, schedule_id);
+    let list = format!("/v1/platform/sessions/{}/schedules", session.id);
+    let one = format!(
+        "/v1/platform/sessions/{}/schedules/{}",
+        session.id, schedule_id
+    );
 
     let listed: Value = server.get(&list).await.assert_status(StatusCode::OK).json();
     assert_eq!(listed[0]["description"], SECRET_DESCRIPTION);
@@ -226,7 +235,10 @@ async fn an_authorized_caller_can_manage_schedules() {
 
 async fn create_platform_chat_session(server: &TestServer) -> Session {
     server
-        .post("/v1/sessions", json!({ "agent_name": "platform-chat" }))
+        .post(
+            "/v1/platform/sessions",
+            json!({ "agent_name": "platform-chat" }),
+        )
         .await
         .assert_status(StatusCode::CREATED)
         .json()
@@ -252,7 +264,10 @@ async fn reassign_owner(server: &TestServer, session: &Session, owner: Uuid) {
 
 /// Update, trigger, then delete the schedule; each must succeed.
 async fn manage_schedule(server: &TestServer, session: &Session, schedule_id: ScheduleId) {
-    let one = format!("/v1/sessions/{}/schedules/{}", session.id, schedule_id);
+    let one = format!(
+        "/v1/platform/sessions/{}/schedules/{}",
+        session.id, schedule_id
+    );
     server
         .patch(&one, json!({ "enabled": true }))
         .await
@@ -280,7 +295,10 @@ async fn a_non_owner_cannot_change_platform_chat_schedules() {
     let schedule_id = seed_schedule(&server, &session).await;
     reassign_owner(&server, &session, server.create_user("other-owner").await).await;
 
-    let one = format!("/v1/sessions/{}/schedules/{}", session.id, schedule_id);
+    let one = format!(
+        "/v1/platform/sessions/{}/schedules/{}",
+        session.id, schedule_id
+    );
     server
         .patch(&one, json!({ "enabled": false }))
         .await
@@ -306,7 +324,7 @@ async fn a_non_owner_cannot_change_platform_chat_schedules() {
 
     server.get(&one).await.assert_status(StatusCode::OK);
     server
-        .get(&format!("/v1/sessions/{}/schedules", session.id))
+        .get(&format!("/v1/platform/sessions/{}/schedules", session.id))
         .await
         .assert_status(StatusCode::OK);
 }

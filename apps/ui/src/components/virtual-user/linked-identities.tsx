@@ -22,11 +22,12 @@ export function LinkedIdentities({ identityId }: { identityId: string }) {
     queryKey: key,
     enabled: !!currentOrg,
     queryFn: async () =>
-      (await api.get<{ data: Binding[] }>(`/v1/virtual-users/${identityId}/bindings`)).data.data,
+      (await api.get<{ data: Binding[] }>(`/v1/platform/virtual-users/${identityId}/bindings`)).data
+        .data,
   });
   const unlink = useMutation({
     mutationFn: async (binding: string) =>
-      api.delete(`/v1/virtual-users/${identityId}/bindings/${binding}`),
+      api.delete(`/v1/platform/virtual-users/${identityId}/bindings/${binding}`),
     onSuccess: () => client.invalidateQueries({ queryKey: key }),
   });
   if (query.isLoading) return <p>{ui("Loading linked identities…")}</p>;

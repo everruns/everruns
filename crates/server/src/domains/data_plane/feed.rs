@@ -202,7 +202,7 @@ async fn store(
                 _ => {}
             }
             // The session's own record (created by the control plane's
-            // `POST /v1/sessions`) shows the same state in every list.
+            // `POST /v1/platform/sessions`) shows the same state in every list.
             if let Ok(id) = session_id.parse::<everruns_contracts::typed_id::SessionId>() {
                 let outcome = match (last_turn.as_str(), status.as_str()) {
                     ("completed" | "failed" | "cancelled", _) => last_turn.as_str(),

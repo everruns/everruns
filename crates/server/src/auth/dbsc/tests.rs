@@ -118,7 +118,10 @@ fn malformed_unsigned_or_mistyped_proofs_are_refused() {
 
 #[test]
 fn registration_paths_survive_a_proxy_prefix() {
-    assert_eq!(relative_path("/v1/auth/login", REGISTER_PATH), "dbsc/start");
+    assert_eq!(
+        relative_path("/v1/platform/auth/login", REGISTER_PATH),
+        "dbsc/start"
+    );
     assert_eq!(
         relative_path("/v1/auth/callback/google", REGISTER_PATH),
         "../dbsc/start"
@@ -129,11 +132,11 @@ fn registration_paths_survive_a_proxy_prefix() {
     );
     assert_eq!(relative_path(REGISTER_PATH, REFRESH_PATH), "refresh");
     assert_eq!(
-        relative_path("/login", "/v1/auth/dbsc/start"),
-        "v1/auth/dbsc/start"
+        relative_path("/login", "/v1/platform/auth/dbsc/start"),
+        "v1/platform/auth/dbsc/start"
     );
     assert_eq!(
-        registration_header("/v1/auth/login", "c"),
+        registration_header("/v1/platform/auth/login", "c"),
         "(ES256 RS256);path=\"dbsc/start\";challenge=\"c\""
     );
 }
@@ -237,7 +240,7 @@ async fn call(app: &Router, path: &str, headers: &[(&str, String)], body: Option
 async fn sign_up(app: &Router, email: &str) -> Reply {
     let reply = call(
         app,
-        "/v1/auth/register",
+        "/v1/platform/auth/register",
         &[],
         Some(json!({"email": email, "password": "password12345"})),
     )
@@ -260,7 +263,10 @@ async fn browser_session_binds_refreshes_and_ends_with_sign_out() {
         .expect("sign-in offers DBSC");
     assert_eq!(
         offer,
-        registration_header("/v1/auth/register", &registration_challenge(&refresh_token))
+        registration_header(
+            "/v1/platform/auth/register",
+            &registration_challenge(&refresh_token)
+        )
     );
     let key = DeviceKey::new();
     let cookie = |name: &str, value: &str| ("cookie", format!("{name}={value}"));
@@ -332,7 +338,7 @@ async fn browser_session_binds_refreshes_and_ends_with_sign_out() {
     // The refresh token copied before binding is dead for the classic refresh.
     let stolen = call(
         &app,
-        "/v1/auth/refresh",
+        "/v1/platform/auth/refresh",
         &[cookie("refresh_token", &refresh_token)],
         None,
     )
@@ -408,7 +414,7 @@ async fn browser_session_binds_refreshes_and_ends_with_sign_out() {
     // Sign-out through the DBSC session cookie revokes the bound row.
     let out = call(
         &app,
-        "/v1/auth/logout",
+        "/v1/platform/auth/logout",
         &[cookie(SESSION_COOKIE, &session_id)],
         None,
     )
@@ -427,7 +433,7 @@ async fn browsers_without_dbsc_keep_the_classic_refresh() {
     let refresh_token = login.cookie("refresh_token").unwrap().value().to_string();
     let rotated = call(
         &app,
-        "/v1/auth/refresh",
+        "/v1/platform/auth/refresh",
         &[("cookie", format!("refresh_token={refresh_token}"))],
         None,
     )
@@ -438,7 +444,7 @@ async fn browsers_without_dbsc_keep_the_classic_refresh() {
     assert_eq!(
         rotated.header(REGISTRATION_HEADER),
         Some(registration_header(
-            "/v1/auth/refresh",
+            "/v1/platform/auth/refresh",
             &registration_challenge(&next)
         ))
     );

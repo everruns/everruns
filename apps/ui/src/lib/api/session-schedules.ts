@@ -1,12 +1,12 @@
 // Session Schedules API functions
-// Org is sent via everruns_org cookie (set by OrgProvider via /v1/users/me/switch-org)
+// Org is sent via everruns_org cookie (set by OrgProvider via /v1/platform/users/me/switch-org)
 
 import { api } from "./client";
 import type { SessionSchedule, UpdateSessionScheduleRequest } from "./types";
 
 /** List all schedules for a session */
 export async function listSessionSchedules(sessionId: string): Promise<SessionSchedule[]> {
-  const response = await api.get<SessionSchedule[]>(`/v1/sessions/${sessionId}/schedules`);
+  const response = await api.get<SessionSchedule[]>(`/v1/platform/sessions/${sessionId}/schedules`);
   return response.data;
 }
 
@@ -16,7 +16,7 @@ export async function getSessionSchedule(
   scheduleId: string,
 ): Promise<SessionSchedule> {
   const response = await api.get<SessionSchedule>(
-    `/v1/sessions/${sessionId}/schedules/${scheduleId}`,
+    `/v1/platform/sessions/${sessionId}/schedules/${scheduleId}`,
   );
   return response.data;
 }
@@ -28,7 +28,7 @@ export async function updateSessionSchedule(
   request: UpdateSessionScheduleRequest,
 ): Promise<SessionSchedule> {
   const response = await api.patch<SessionSchedule>(
-    `/v1/sessions/${sessionId}/schedules/${scheduleId}`,
+    `/v1/platform/sessions/${sessionId}/schedules/${scheduleId}`,
     request,
   );
   return response.data;
@@ -36,7 +36,7 @@ export async function updateSessionSchedule(
 
 /** Delete a schedule */
 export async function deleteSessionSchedule(sessionId: string, scheduleId: string): Promise<void> {
-  await api.delete(`/v1/sessions/${sessionId}/schedules/${scheduleId}`);
+  await api.delete(`/v1/platform/sessions/${sessionId}/schedules/${scheduleId}`);
 }
 
 /** Manually trigger a schedule */
@@ -45,7 +45,7 @@ export async function triggerSessionSchedule(
   scheduleId: string,
 ): Promise<SessionSchedule> {
   const response = await api.post<SessionSchedule>(
-    `/v1/sessions/${sessionId}/schedules/${scheduleId}/trigger`,
+    `/v1/platform/sessions/${sessionId}/schedules/${scheduleId}/trigger`,
   );
   return response.data;
 }

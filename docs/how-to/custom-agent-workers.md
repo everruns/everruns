@@ -59,7 +59,7 @@ For a local development stack with `AUTH_MODE=none`:
 
 ```bash
 export EVERRUNS_API_URL=http://127.0.0.1:28701/api
-curl -fsS "$EVERRUNS_API_URL/v1/agents" \
+curl -fsS "$EVERRUNS_API_URL/v1/platform/agents" \
   -H 'Content-Type: application/json' \
   -d '{"name":"private-sales-agent","system_prompt":"Implementation supplied by our custom worker."}'
 ```
@@ -252,17 +252,17 @@ base from step 1:
 
 ```bash
 export AGENT_ID=agent_REPLACE_ME
-SESSION_ID=$(curl -fsS "$EVERRUNS_API_URL/v1/sessions" \
+SESSION_ID=$(curl -fsS "$EVERRUNS_API_URL/v1/platform/sessions" \
   -H 'Content-Type: application/json' \
   -d "{\"agent_id\":\"$AGENT_ID\",\"source\":\"playground\"}" | jq -r .id)
 
-curl -fsS "$EVERRUNS_API_URL/v1/sessions/$SESSION_ID/messages" \
+curl -fsS "$EVERRUNS_API_URL/v1/platform/sessions/$SESSION_ID/messages" \
   -H 'Content-Type: application/json' \
   -d '{"message":{"role":"user","content":[{"type":"text","text":"Use sales_summary to report north-region orders and revenue_cents."}]}}'
 
 # Read responses after the worker finishes, or follow the live SSE endpoint.
-curl -fsS "$EVERRUNS_API_URL/v1/sessions/$SESSION_ID/messages"
-curl -N "$EVERRUNS_API_URL/v1/sessions/$SESSION_ID/sse?after_sequence=0"
+curl -fsS "$EVERRUNS_API_URL/v1/platform/sessions/$SESSION_ID/messages"
+curl -N "$EVERRUNS_API_URL/v1/platform/sessions/$SESSION_ID/sse?after_sequence=0"
 ```
 
 With authentication enabled, add your normal API bearer credential and

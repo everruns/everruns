@@ -34,22 +34,27 @@ export interface SaveDestination {
   secrets?: { headers: Record<string, string> };
 }
 export const tracingPolicyPath = (agent?: string) =>
-  agent ? `/v1/agents/${encodeURIComponent(agent)}/tracing` : "/v1/tracing/defaults";
+  agent
+    ? `/v1/platform/agents/${encodeURIComponent(agent)}/tracing`
+    : "/v1/platform/tracing/defaults";
 export const listTracingDestinations = async () =>
-  (await api.get<TracingDestination[]>("/v1/tracing/destinations")).data;
+  (await api.get<TracingDestination[]>("/v1/platform/tracing/destinations")).data;
 export const getTracingPolicy = async (agent?: string) =>
   (await api.get<TracingPolicyView>(tracingPolicyPath(agent))).data;
 export const saveTracingPolicy = async (value: TracingPolicyView, agent?: string) =>
   (await api.put<TracingPolicyView>(tracingPolicyPath(agent), value)).data;
 export const saveTracingDestination = async (value: SaveDestination, id?: string) =>
   id
-    ? (await api.put<TracingDestination>(`/v1/tracing/destinations/${id}`, value)).data
-    : (await api.post<TracingDestination>("/v1/tracing/destinations", value)).data;
+    ? (await api.put<TracingDestination>(`/v1/platform/tracing/destinations/${id}`, value)).data
+    : (await api.post<TracingDestination>("/v1/platform/tracing/destinations", value)).data;
 export const deleteTracingDestination = async (id: string, revision: number) =>
-  api.delete(`/v1/tracing/destinations/${id}?revision=${revision}`);
+  api.delete(`/v1/platform/tracing/destinations/${id}?revision=${revision}`);
 export const testTracingDestination = async (id: string) =>
-  (await api.post<{ accepted: boolean; message: string }>(`/v1/tracing/destinations/${id}/test`))
-    .data;
+  (
+    await api.post<{ accepted: boolean; message: string }>(
+      `/v1/platform/tracing/destinations/${id}/test`,
+    )
+  ).data;
 export function effectiveDestinations(policy: TracingPolicy, defaults: string[]): string[] {
   return [
     ...new Set([

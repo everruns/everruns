@@ -207,15 +207,15 @@ be materialized by a local loader or supplied in ZIP; the server never reads
 paths from its own disk.
 
 ```bash
-curl -X POST "$EVERRUNS_API_URL/v1/agents/import?format=zip" \
+curl -X POST "$EVERRUNS_API_URL/v1/platform/agents/import?format=zip" \
   -H "Authorization: Bearer $EVERRUNS_API_KEY" \
   -H "Content-Type: application/zip" --data-binary @triage.zip
 
-curl "$EVERRUNS_API_URL/v1/agents/triage/export?format=zip" \
+curl "$EVERRUNS_API_URL/v1/platform/agents/triage/export?format=zip" \
   -H "Authorization: Bearer $EVERRUNS_API_KEY" -o triage.zip
 ```
 
-`POST /v1/agents/validate` and `POST /v1/agents/diff` accept the same bytes or an
+`POST /v1/platform/agents/validate` and `POST /v1/platform/agents/diff` accept the same bytes or an
 envelope `{ "content": "…", "format": "toml", "target": "triage" }`.
 Validation returns `valid`, field-addressed `diagnostics`, and an authored
 `preview` when parsing succeeds, even if a destination dependency is missing.
@@ -297,7 +297,7 @@ and never rewrites existing session files. Export and copy remain available.
 **Disconnect** retains your current definition and stops new sync attempts; a
 GitHub write already in flight may still complete.
 
-The API exposes `GET`, `PUT` and `DELETE /v1/agents/{agent_id}/source`, plus
+The API exposes `GET`, `PUT` and `DELETE /v1/platform/agents/{agent_id}/source`, plus
 `POST .../source/options`, `POST .../source/preview` and `POST .../source/sync`.
 `GET .../source/accounts` lists the GitHub accounts sync can use and their
 repositories. Options, preview and connect take `github_account` (`personal` or

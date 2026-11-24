@@ -6,10 +6,10 @@
 //! export OPENAI_API_KEY=...
 //! cargo build --release -p everruns-agentd-example-assistant
 //! AGENTD_NODE_BIN=target/release/everruns-agentd-example-assistant python3 scripts/agentd/fleet.py up --shards 1
-//! curl -s localhost:7101/v1/sessions -H 'content-type: application/json' \
+//! curl -s localhost:7101/v1/platform/sessions -H 'content-type: application/json' \
 //!   -d "{\"agent\": $(cat examples/agentd-assistant/agents/assistant.json)}"
-//! curl -s localhost:7101/v1/sessions/$ID/messages -d '{"text":"What time is it in Kyiv?"}' -H 'content-type: application/json'
-//! curl -sN localhost:7102/v1/sessions/$ID/sse        # stream from any node
+//! curl -s localhost:7101/v1/platform/sessions/$ID/messages -d '{"text":"What time is it in Kyiv?"}' -H 'content-type: application/json'
+//! curl -sN localhost:7102/v1/platform/sessions/$ID/sse        # stream from any node
 //! ```
 //!
 //! `agents/assistant.json` answers with the clock tool; `agents/reviewer.json`

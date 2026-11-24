@@ -95,7 +95,7 @@ impl OrgEgressAllowlistResponse {
     }
 }
 
-/// Body of `PUT /v1/orgs/{org}/egress-allowlist`.
+/// Body of `PUT /v1/platform/orgs/{org}/egress-allowlist`.
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct UpdateOrgEgressAllowlistRequest {
     /// The full list of host patterns; replaces the stored list. Blank entries
@@ -103,7 +103,7 @@ pub struct UpdateOrgEgressAllowlistRequest {
     pub patterns: Vec<String>,
 }
 
-/// Body of `PUT /v1/orgs/{org}/egress-allowlist/grant`. Omitted fields keep
+/// Body of `PUT /v1/platform/orgs/{org}/egress-allowlist/grant`. Omitted fields keep
 /// their current value; at least one is required.
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct UpdateOrgEgressAllowlistGrantRequest {
@@ -164,7 +164,7 @@ pub struct GetOrgEgressAllowlist {
     description = "Get the organization's outbound allowlist extension: whether a platform administrator granted it, its host patterns, and the deployment's egress policy mode.",
     summary = "Get the organization's outbound allowlist extension",
     method = "GET",
-    path = "/v1/orgs/{org}/egress-allowlist",
+    path = "/v1/platform/orgs/{org}/egress-allowlist",
     tag = "Organizations",
     policy = ORG_EGRESS_ALLOWLIST_VIEW,
     positional = "org",
@@ -195,7 +195,7 @@ pub struct SetOrgEgressAllowlist {
     category = "organizations",
     description = "Replace the organization's outbound allowlist extension. Requires an organization admin and a grant from a platform administrator. Patterns must name public hosts: `example.com`, `*.example.com`, or an `https://example.com/path/` prefix.",
     method = "PUT",
-    path = "/v1/orgs/{org}/egress-allowlist",
+    path = "/v1/platform/orgs/{org}/egress-allowlist",
     tag = "Organizations",
     policy = ORG_EGRESS_ALLOWLIST_MANAGE,
     http = plain,
@@ -258,7 +258,7 @@ pub struct SetOrgEgressAllowlistGrant {
     description = "Platform administrators only: allow or stop an organization extending the outbound allowlist (revoking keeps its patterns but stops enforcing them), and give or take back open egress (any public host the deny list allows, reads and writes). Omitted fields keep their value.",
     summary = "Grant or revoke an organization's egress extension",
     method = "PUT",
-    path = "/v1/orgs/{org}/egress-allowlist/grant",
+    path = "/v1/platform/orgs/{org}/egress-allowlist/grant",
     tag = "Organizations",
     policy = ORG_EGRESS_ALLOWLIST_GRANT,
     http = plain,

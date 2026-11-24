@@ -69,7 +69,7 @@ pub struct UserMcpConnectionsResponse {
 #[utoipa::path(
     description = "List the current user's cursor-paginated MCP OAuth connections in the selected organization.",
     get,
-    path = "/v1/user/mcp-connections",
+    path = "/v1/platform/user/mcp-connections",
     params(ListUserMcpConnectionsQuery),
     responses(
         (status = 200, description = "Cursor-paginated current user's MCP OAuth connections in the selected organization", body = UserMcpConnectionsResponse),

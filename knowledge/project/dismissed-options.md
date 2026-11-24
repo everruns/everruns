@@ -27,11 +27,11 @@ This document records technical options that were considered but dismissed for s
 - The runtime remains the source of truth; AG-UI events are translated from internal events
 - Follow-up work may add authenticated or scoped access controls
 
-## App API key: project through the global /v1/sessions surface
+## App API key: project through the global /v1/platform/sessions surface
 
 **Status**: Dismissed for the launch
 
-**What it was**: Making the existing `/v1/sessions/*` management endpoints accept
+**What it was**: Making the existing `/v1/platform/sessions/*` management endpoints accept
 the app-scoped execution key (`evr_app_...`) by threading an app-execution
 identity through the core auth middleware, the `Caller` / permission resolver,
 and every session command policy, a new `OrgSessionsExecute` permission plus a
@@ -121,7 +121,7 @@ execution keys.
 - **Existing retry logic already handles 429s**: `llm_retry.rs` implements per-call exponential backoff (2 retries, 1-60s backoff) with provider-specific rate-limit header parsing (Anthropic `anthropic-ratelimit-*`, OpenAI `x-ratelimit-*`). Transient 429s are handled transparently.
 - **Durable engine bounds concurrency**: The task queue with optimistic locking already limits how many activities run concurrently. Adding a second concurrency layer inside the process is redundant.
 - **Process-level semaphore doesn't help multi-process**: In production with multiple worker processes or pods, a per-process semaphore doesn't coordinate across instances. True rate limiting needs a distributed token bucket (e.g., Redis-based), which is a much larger effort.
-- **No circuit breaker covers this today** (corrected 2026-10-05; the original record claimed the durable worker wrapped `reason_activity` with `DistributedCircuitBreaker`, which no code on main does). `everruns-durable` implements `DistributedCircuitBreaker`, and the server exposes breaker state through the worker gRPC service (`CheckCircuitBreaker`, `RecordCircuitBreaker*`) and the `/v1/durable/circuit-breakers` admin API, but no turn step checks or records one, so sustained provider failures do not trip anything. Wiring a breaker around reason is a separate behaviour decision; the dismissal stands on the other points.
+- **No circuit breaker covers this today** (corrected 2026-10-05; the original record claimed the durable worker wrapped `reason_activity` with `DistributedCircuitBreaker`, which no code on main does). `everruns-durable` implements `DistributedCircuitBreaker`, and the server exposes breaker state through the worker gRPC service (`CheckCircuitBreaker`, `RecordCircuitBreaker*`) and the `/v1/platform/durable/circuit-breakers` admin API, but no turn step checks or records one, so sustained provider failures do not trip anything. Wiring a breaker around reason is a separate behaviour decision; the dismissal stands on the other points.
 - **Complexity vs. benefit**: Adding a wrapper layer around every LLM driver, threading `Arc<LlmRateLimiter>` through `ReasonAtom`, `WorkerAdapters`, and `DirectWorkerAdapters` added significant plumbing for marginal benefit.
 
 **What we use instead**:

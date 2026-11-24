@@ -1,4 +1,4 @@
-//! API integration tests: session work reports (`GET /v1/sessions/{id}/work`).
+//! API integration tests: session work reports (`GET /v1/platform/sessions/{id}/work`).
 
 use crate::test_harness;
 use axum::http::StatusCode;
@@ -19,7 +19,7 @@ async fn test_session_work_report_reads_the_latest_turn() {
     let server = TestServer::new().await;
     let agent: Agent = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({ "name": "work-report-agent", "system_prompt": "Test" }),
         )
         .await
@@ -27,13 +27,13 @@ async fn test_session_work_report_reads_the_latest_turn() {
         .json();
     let session: Session = server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             json!({ "harness_id": server.seed_base_harness_id, "agent_id": agent.public_id }),
         )
         .await
         .assert_status(StatusCode::CREATED)
         .json();
-    let path = format!("/v1/sessions/{}/work", session.id);
+    let path = format!("/v1/platform/sessions/{}/work", session.id);
 
     // A session that never ran a turn has no report.
     let empty: Value = server.get(&path).await.assert_status(StatusCode::OK).json();

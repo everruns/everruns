@@ -5,13 +5,13 @@ use crate::domains::agents::types::{AgentPreviewResponse, PreviewAgentRequest};
 use crate::domains::common::Command;
 use axum::{Json, extract::State};
 
-/// POST /v1/agents/preview - Preview the final agent shape with capabilities applied
+/// POST /v1/platform/agents/preview - Preview the final agent shape with capabilities applied
 ///
 /// Returns the merged system prompt and all tools that would be available to the agent.
 /// This is useful for previewing what the agent will look like before saving.
 #[utoipa::path(
     post,
-    path = "/v1/agents/preview",
+    path = "/v1/platform/agents/preview",
     request_body = PreviewAgentRequest,
     responses(
         (status = 200, description = "Agent preview generated", body = AgentPreviewResponse),

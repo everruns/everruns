@@ -134,7 +134,7 @@ everruns agents credentials create --agent-id agent_01h9 \
 ```
 
 Set one for a single session with `bindings` on
-`PUT /v1/sessions/{session_id}/storage/secrets`. Over MCP,
+`PUT /v1/platform/sessions/{session_id}/storage/secrets`. Over MCP,
 `session_set_secret` takes `url`, `auth`, `header` and `scope` and collects
 the value on a secure page, so it never passes through the MCP client.
 

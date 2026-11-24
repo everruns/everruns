@@ -1122,7 +1122,7 @@ async fn tool_agent_run(
         "session_id": session_id,
         "message_id": msg["id"],
         "status": session["status"],
-        "hint": "Use session_get_status to poll for the agent's response, or connect to SSE at /api/v1/sessions/{session_id}/sse"
+        "hint": "Use session_get_status to poll for the agent's response, or connect to SSE at /api/v1/platform/sessions/{session_id}/sse"
     });
     if let Some(bid) = budget_id {
         result["budget_id"] = json!(bid);

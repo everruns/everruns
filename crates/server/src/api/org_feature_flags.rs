@@ -59,15 +59,15 @@ pub struct UpdateOrgFeatureFlagsRequest {
 pub fn routes(state: AppState) -> Router {
     Router::new()
         .route(
-            "/v1/orgs/{org}/feature-flags",
+            "/v1/platform/orgs/{org}/feature-flags",
             get(get_org_feature_flags).patch(update_org_feature_flags),
         )
         .route(
-            "/v1/orgs/{org}/feature-flags/settings",
+            "/v1/platform/orgs/{org}/feature-flags/settings",
             get(get_org_feature_flag_settings),
         )
         .route(
-            "/v1/orgs/{org}/feature-flags/platform",
+            "/v1/platform/orgs/{org}/feature-flags/platform",
             get(get_platform_feature_flag_settings).patch(update_platform_feature_flags),
         )
         .with_state(state)
@@ -93,10 +93,10 @@ async fn resolve_path_org(
     Ok(row.org_id)
 }
 
-/// GET /v1/orgs/{org}/feature-flags — effective flags for the organization.
+/// GET /v1/platform/orgs/{org}/feature-flags — effective flags for the organization.
 #[utoipa::path(
     get,
-    path = "/v1/orgs/{org}/feature-flags",
+    path = "/v1/platform/orgs/{org}/feature-flags",
     tag = "Organizations",
     params(("org" = String, Path, description = "Organization public id")),
     responses(
@@ -142,10 +142,10 @@ async fn with_data_plane(
     Ok(Json(map))
 }
 
-/// GET /v1/orgs/{org}/feature-flags/settings — catalog with system/org/effective state.
+/// GET /v1/platform/orgs/{org}/feature-flags/settings — catalog with system/org/effective state.
 #[utoipa::path(
     get,
-    path = "/v1/orgs/{org}/feature-flags/settings",
+    path = "/v1/platform/orgs/{org}/feature-flags/settings",
     tag = "Organizations",
     params(("org" = String, Path, description = "Organization public id")),
     responses(
@@ -170,10 +170,10 @@ pub async fn get_org_feature_flag_settings(
     }))
 }
 
-/// PATCH /v1/orgs/{org}/feature-flags — update org opt-in (admin only).
+/// PATCH /v1/platform/orgs/{org}/feature-flags — update org opt-in (admin only).
 #[utoipa::path(
     patch,
-    path = "/v1/orgs/{org}/feature-flags",
+    path = "/v1/platform/orgs/{org}/feature-flags",
     tag = "Organizations",
     params(("org" = String, Path, description = "Organization public id")),
     request_body = UpdateOrgFeatureFlagsRequest,
@@ -216,14 +216,14 @@ pub async fn update_org_feature_flags(
 
 /// List every feature flag for the operator console
 ///
-/// GET /v1/orgs/{org}/feature-flags/platform — every flag, including the
+/// GET /v1/platform/orgs/{org}/feature-flags/platform — every flag, including the
 /// platform-managed ones, for the operator console.
 ///
 /// Platform users only. The tenant-facing settings route deliberately omits
 /// these rows, so this is where an operator sees what a tenant is enrolled in.
 #[utoipa::path(
     get,
-    path = "/v1/orgs/{org}/feature-flags/platform",
+    path = "/v1/platform/orgs/{org}/feature-flags/platform",
     tag = "Organizations",
     params(("org" = String, Path, description = "Organization public id")),
     responses(
@@ -249,7 +249,7 @@ pub async fn get_platform_feature_flag_settings(
     }))
 }
 
-/// PATCH /v1/orgs/{org}/feature-flags/platform — enrol an organization in a
+/// PATCH /v1/platform/orgs/{org}/feature-flags/platform — enrol an organization in a
 /// platform-managed feature.
 ///
 /// Platform users may enroll internal and adoption features. Tenant admins retain
@@ -257,7 +257,7 @@ pub async fn get_platform_feature_flag_settings(
 /// outside this route. Omitted overrides are unchanged.
 #[utoipa::path(
     patch,
-    path = "/v1/orgs/{org}/feature-flags/platform",
+    path = "/v1/platform/orgs/{org}/feature-flags/platform",
     tag = "Organizations",
     params(("org" = String, Path, description = "Organization public id")),
     request_body = UpdateOrgFeatureFlagsRequest,

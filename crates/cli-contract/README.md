@@ -23,7 +23,7 @@ let command = ContractCommand {
     verb: "list".into(),
     description: "List agents in the organization.".into(),
     method: "GET".into(),
-    http_path: "/v1/agents".into(),
+    http_path: "/v1/platform/agents".into(),
     args: vec![ContractArg {
         field: "limit".into(),
         long: "limit".into(),

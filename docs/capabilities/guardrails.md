@@ -70,7 +70,7 @@ Two reasons to prefer `jev` once your deployment has a key configured. It is che
 
 #### Use your organization's decision model
 
-By default, `jev` checks use the deployment's decision model. An organization can answer them with its own model instead: pick a **Default decision model** on the Models page, then set **System decisions** to **This organization's model** (or `PATCH /v1/orgs/{org}` with `"system_decisions": "organization"`). The checks then run on your provider account, count against the session's budget, and show up in its usage, the same as the `jev_decision` tool.
+By default, `jev` checks use the deployment's decision model. An organization can answer them with its own model instead: pick a **Default decision model** on the Models page, then set **System decisions** to **This organization's model** (or `PATCH /v1/platform/orgs/{org}` with `"system_decisions": "organization"`). The checks then run on your provider account, count against the session's budget, and show up in its usage, the same as the `jev_decision` tool.
 
 Once you opt in, the deployment's model is never used for your checks. If your default decision model is missing, disabled, or failing, `jev` checks fail open with a warning. Switch back with `"system_decisions": "deployment"`.
 
@@ -126,7 +126,7 @@ Every async check is bounded (10 s timeout; at most 4 utility-LLM calls per tool
 
 Two surfaces let you tune checks before enforcing them:
 
-- **`POST /v1/capabilities/guardrails/dry-run`** evaluates a config against sample text for a given stage, with no session and nothing persisted. It returns the triggered checks (id, rule type, effective action, reason code, matched excerpt) and whether the content would be blocked. It runs only deterministic checks, it never makes a network call, so it is the fast false-positive tuning loop for `regex`/`blocklist`/`tool_pattern`.
+- **`POST /v1/platform/capabilities/guardrails/dry-run`** evaluates a config against sample text for a given stage, with no session and nothing persisted. It returns the triggered checks (id, rule type, effective action, reason code, matched excerpt) and whether the content would be blocked. It runs only deterministic checks, it never makes a network call, so it is the fast false-positive tuning loop for `regex`/`blocklist`/`tool_pattern`.
 - **Advisory mode** runs the full set (including model-backed checks) against real traffic in `log`-only form, so you can review what *would* have been blocked before switching to `active`.
 
 ## The gallery: ready-made presets
@@ -134,7 +134,7 @@ Two surfaces let you tune checks before enforcing them:
 Rather than authoring checks from scratch, list the **guardrail gallery**: a read-only catalogue of adoptable presets:
 
 ```
-GET /v1/capabilities/guardrails/examples
+GET /v1/platform/capabilities/guardrails/examples
 ```
 
 Each listing carries a full `config` plus trust metadata so a picker can show what a preset does before adoption:
@@ -189,8 +189,8 @@ Every block or log carries a stable `guardrail.<rule_type>` code (e.g. `guardrai
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/v1/capabilities/guardrails/examples` | List adoptable gallery presets with trust metadata |
-| `POST` | `/v1/capabilities/guardrails/dry-run` | Evaluate a config against sample text; nothing persisted |
+| `GET` | `/v1/platform/capabilities/guardrails/examples` | List adoptable gallery presets with trust metadata |
+| `POST` | `/v1/platform/capabilities/guardrails/dry-run` | Evaluate a config against sample text; nothing persisted |
 
 Both are gated by the same `capability.view` policy as other capability reads.
 

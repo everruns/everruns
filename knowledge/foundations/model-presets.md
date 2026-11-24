@@ -67,7 +67,7 @@ A preset that no longer exists or leaves a job empty falls through to the next s
 ### Surfaces
 
 Every operation is a domain command (`crates/server/src/domains/model_presets/commands.rs`), so
-REST (`/v1/model-presets`), MCP, the in-session platform capability and the
+REST (`/v1/platform/model-presets`), MCP, the in-session platform capability and the
 `everruns model-presets` CLI share one schema. Creating, changing and deleting a custom preset
 are recorded in change history. The Models page shows presets on their own tab (Models, Presets,
 Providers, Defaults); the agent page's Model section picks "Models from".

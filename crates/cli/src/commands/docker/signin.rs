@@ -125,7 +125,7 @@ fn decide_current(store: &CredentialStore, profile: &str, switch: SwitchPolicy) 
 
 async fn me(http: &reqwest::Client, api_url: &str, token: &str) -> Result<Me> {
     let resp = http
-        .get(format!("{api_url}/v1/auth/me"))
+        .get(format!("{api_url}/v1/platform/auth/me"))
         .bearer_auth(token)
         .send()
         .await
@@ -133,7 +133,9 @@ async fn me(http: &reqwest::Client, api_url: &str, token: &str) -> Result<Me> {
     if !resp.status().is_success() {
         bail!("the server refused the token ({})", resp.status());
     }
-    resp.json().await.context("Failed to parse /v1/auth/me")
+    resp.json()
+        .await
+        .context("Failed to parse /v1/platform/auth/me")
 }
 
 fn token_name() -> String {
@@ -168,7 +170,7 @@ async fn mint_token(
     };
 
     let mut req = http
-        .post(format!("{api_url}/v1/auth/personal-access-tokens"))
+        .post(format!("{api_url}/v1/platform/auth/personal-access-tokens"))
         .json(&serde_json::json!({ "name": token_name() }));
     if let Some(session) = session {
         req = req.bearer_auth(session);
@@ -193,7 +195,7 @@ async fn ensure_organization(http: &reqwest::Client, api_url: &str, session: &st
         return Ok(());
     }
     let resp = http
-        .post(format!("{api_url}/v1/orgs"))
+        .post(format!("{api_url}/v1/platform/orgs"))
         .bearer_auth(session)
         .json(&serde_json::json!({ "name": "Everruns" }))
         .send()
@@ -207,7 +209,7 @@ async fn ensure_organization(http: &reqwest::Client, api_url: &str, session: &st
 
 async fn login(http: &reqwest::Client, api_url: &str, creds: &Credentials<'_>) -> Result<String> {
     let resp = http
-        .post(format!("{api_url}/v1/auth/login"))
+        .post(format!("{api_url}/v1/platform/auth/login"))
         .json(&serde_json::json!({ "email": creds.email, "password": creds.password }))
         .send()
         .await
@@ -230,7 +232,7 @@ async fn login(http: &reqwest::Client, api_url: &str, creds: &Credentials<'_>) -
 
 async fn register(http: &reqwest::Client, api_url: &str, creds: &Credentials<'_>) -> Result<()> {
     let resp = http
-        .post(format!("{api_url}/v1/auth/register"))
+        .post(format!("{api_url}/v1/platform/auth/register"))
         .json(&serde_json::json!({ "email": creds.email, "password": creds.password }))
         .send()
         .await

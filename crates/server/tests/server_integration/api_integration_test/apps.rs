@@ -14,7 +14,10 @@ async fn test_verify_connection_no_connection_returns_404() {
     let server = TestServer::in_memory().await;
 
     server
-        .post("/v1/user/connections/nonexistent/verify", json!({}))
+        .post(
+            "/v1/platform/user/connections/nonexistent/verify",
+            json!({}),
+        )
         .await
         .assert_status(StatusCode::NOT_FOUND);
 }
@@ -63,7 +66,7 @@ async fn app_archival_reads_remain_available() {
         .expect("seed archival App");
 
     let list: Value = server
-        .get("/v1/apps")
+        .get("/v1/platform/apps")
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -71,7 +74,7 @@ async fn app_archival_reads_remain_available() {
     assert_eq!(list["data"][0]["name"], "Archived management record");
 
     let detail: Value = server
-        .get(&format!("/v1/apps/{app_id}"))
+        .get(&format!("/v1/platform/apps/{app_id}"))
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -86,24 +89,24 @@ async fn app_management_routes_are_retired() {
     let channel_id = "channel_019d166cd0147e638c72892ecb30ffff";
 
     server
-        .post("/v1/apps", json!({}))
+        .post("/v1/platform/apps", json!({}))
         .await
         .assert_status(StatusCode::METHOD_NOT_ALLOWED);
     server
-        .patch(&format!("/v1/apps/{app_id}"), json!({}))
+        .patch(&format!("/v1/platform/apps/{app_id}"), json!({}))
         .await
         .assert_status(StatusCode::METHOD_NOT_ALLOWED);
     server
-        .delete(&format!("/v1/apps/{app_id}"))
+        .delete(&format!("/v1/platform/apps/{app_id}"))
         .await
         .assert_status(StatusCode::METHOD_NOT_ALLOWED);
     for path in [
-        format!("/v1/apps/{app_id}/publish"),
-        format!("/v1/apps/{app_id}/unpublish"),
-        format!("/v1/apps/{app_id}/run"),
-        format!("/v1/apps/{app_id}/runs"),
-        format!("/v1/apps/{app_id}/channels"),
-        format!("/v1/apps/{app_id}/channels/{channel_id}"),
+        format!("/v1/platform/apps/{app_id}/publish"),
+        format!("/v1/platform/apps/{app_id}/unpublish"),
+        format!("/v1/platform/apps/{app_id}/run"),
+        format!("/v1/platform/apps/{app_id}/runs"),
+        format!("/v1/platform/apps/{app_id}/channels"),
+        format!("/v1/platform/apps/{app_id}/channels/{channel_id}"),
     ] {
         server
             .post(&path, json!({}))
@@ -125,7 +128,7 @@ async fn public_chat_channel_route_matches_legacy_alias() {
     let server = TestServer::in_memory().await;
     let agent: Value = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": "public-chat-route-agent",
                 "display_name": "Public Chat route agent",
@@ -173,7 +176,7 @@ async fn test_identity_connections_not_found_for_missing_identity() {
     let server = TestServer::in_memory().await;
 
     server
-        .get("/v1/virtual-users/identity_019d166cd0147e638c72892ecb30ffff/connections")
+        .get("/v1/platform/virtual-users/identity_019d166cd0147e638c72892ecb30ffff/connections")
         .await
         .assert_status(StatusCode::NOT_FOUND);
 }
@@ -183,14 +186,16 @@ async fn test_identity_connections_delete_not_found() {
     let server = TestServer::in_memory().await;
 
     let identity: Value = server
-        .post("/v1/virtual-users", json!({"name": "ConnDel"}))
+        .post("/v1/platform/virtual-users", json!({"name": "ConnDel"}))
         .await
         .assert_status(StatusCode::CREATED)
         .json();
     let id = identity["id"].as_str().unwrap();
 
     server
-        .delete(&format!("/v1/virtual-users/{id}/connections/nonexistent"))
+        .delete(&format!(
+            "/v1/platform/virtual-users/{id}/connections/nonexistent"
+        ))
         .await
         .assert_status(StatusCode::NOT_FOUND);
 }
@@ -200,7 +205,7 @@ async fn test_identity_connections_create_unknown_provider() {
     let server = TestServer::in_memory().await;
 
     let identity: Value = server
-        .post("/v1/virtual-users", json!({"name": "ConnProv"}))
+        .post("/v1/platform/virtual-users", json!({"name": "ConnProv"}))
         .await
         .assert_status(StatusCode::CREATED)
         .json();
@@ -208,7 +213,7 @@ async fn test_identity_connections_create_unknown_provider() {
 
     server
         .post(
-            &format!("/v1/virtual-users/{id}/connections/nonexistent"),
+            &format!("/v1/platform/virtual-users/{id}/connections/nonexistent"),
             json!({"api_key": "test"}),
         )
         .await

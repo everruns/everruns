@@ -52,7 +52,7 @@ setting is a `problem` on `prod` and a `warning` on `dev`.
 
 ## Surfaces
 
-- `GET /v1/system/doctor` (command `run_system_doctor`), and through it
+- `GET /v1/platform/system/doctor` (command `run_system_doctor`), and through it
   `everruns system doctor` and MCP. A report is cached for a minute; `refresh`
   runs the checks again, at most once every five seconds, because some checks
   touch S3, NATS and Valkey.

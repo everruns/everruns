@@ -63,7 +63,7 @@ The skill lives at `/workspace/.agents/skills/csv-analyzer/` in the session VFS.
 Add the built-in `skills` capability to the agent so it can discover and activate skills from the workspace:
 
 ```bash
-curl -X POST http://localhost:9300/api/v1/agents \
+curl -X POST http://localhost:9300/api/v1/platform/agents \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Data Analyst",
@@ -113,7 +113,7 @@ The Skills Registry stores skills at the organization level. Registry skills per
 If your skill is a single Markdown file, post it directly:
 
 ```bash
-curl -X POST http://localhost:9300/api/v1/skills \
+curl -X POST http://localhost:9300/api/v1/platform/skills \
   -H "Content-Type: application/json" \
   -d '{
     "skill_md": "---\nname: hello-world\ndescription: A simple greeting skill.\n---\n\n# Hello World\n\nGreet the user warmly."
@@ -131,7 +131,7 @@ The response includes the skill ID:
 For skills with bundled scripts, references, or assets:
 
 ```bash
-curl -X POST http://localhost:9300/api/v1/skills/upload \
+curl -X POST http://localhost:9300/api/v1/platform/skills/upload \
   -F "file=@csv-analyzer.zip"
 ```
 
@@ -151,7 +151,7 @@ The top-level directory name is informational; the skill `name` comes from the S
 Validate without creating:
 
 ```bash
-curl -X POST http://localhost:9300/api/v1/skills/validate \
+curl -X POST http://localhost:9300/api/v1/platform/skills/validate \
   -H "Content-Type: application/json" \
   -d '{"skill_md": "---\nname: my-skill\ndescription: Does things.\n---\n\n# Instructions"}'
 ```
@@ -167,7 +167,7 @@ Response:
 Registry skills appear in the capability system as virtual capabilities with ID `skill:{uuid}`:
 
 ```bash
-curl -X POST http://localhost:9300/api/v1/agents \
+curl -X POST http://localhost:9300/api/v1/platform/agents \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Analyst Agent",
@@ -184,12 +184,12 @@ curl -X POST http://localhost:9300/api/v1/agents \
 
 ```bash
 # Update
-curl -X PATCH http://localhost:9300/api/v1/skills/$SKILL_ID \
+curl -X PATCH http://localhost:9300/api/v1/platform/skills/$SKILL_ID \
   -H "Content-Type: application/json" \
   -d '{"skill_md": "..."}'
 
 # Delete
-curl -X DELETE http://localhost:9300/api/v1/skills/$SKILL_ID
+curl -X DELETE http://localhost:9300/api/v1/platform/skills/$SKILL_ID
 ```
 
 Deleting a skill hides it from capability listings. Agents that reference it via `ref: "skill:..."` will still resolve until you update them.

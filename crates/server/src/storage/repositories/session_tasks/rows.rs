@@ -12,7 +12,7 @@ pub struct SessionTaskRow {
     pub id: String,
     pub session_id: SessionId,
     /// Root of the owning session's delegation tree (EVE-680). Denormalized
-    /// from `sessions.root_session_id` at insert so `GET /v1/tasks` can filter a
+    /// from `sessions.root_session_id` at insert so `GET /v1/platform/tasks` can filter a
     /// whole tree's work by a local column. DB-only — not part of the core
     /// `SessionTask`; `#[sqlx(default)]` so queries that omit it still map.
     #[sqlx(default)]

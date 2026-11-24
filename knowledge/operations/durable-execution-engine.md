@@ -219,7 +219,7 @@ Guidance:
 
 A worker is drained two ways, and both end in the same registry state (`status = 'draining'`), so the queue hands it no new claims:
 
-- **Operator drain.** `POST /v1/durable/workers/{id}/drain` (and `/resume`) flips the registry row. The worker learns it from its next heartbeat, whose reply carries `draining`, and stops claiming; a heartbeat that reports the drain lifted wakes the poll loop at once. Running tasks are left alone.
+- **Operator drain.** `POST /v1/platform/durable/workers/{id}/drain` (and `/resume`) flips the registry row. The worker learns it from its next heartbeat, whose reply carries `draining`, and stops claiming; a heartbeat that reports the drain lifted wakes the poll loop at once. Running tasks are left alone.
 - **Shutdown.** SIGTERM or Ctrl+C stops the poll loop and the actor lease loop, and the worker drains itself (`DrainDurableWorker`). It keeps heartbeating while in-flight tasks and running turns finish, waits up to `WORKER_SHUTDOWN_GRACE_SECS`, aborts what is left, then deregisters, which returns the aborted tasks to the queue. A running turn is handed off instead of held: at the next step boundary (after its act, before its next reason) it stores what it wrote and hands the lease back with `HandOffActor`, which leaves the actor runnable, so another worker resumes the turn from the log within about a second. A turn mid-step finishes that step first. A turn still running when the grace runs out is aborted and keeps its actor lease until it expires (10 s); another worker then resumes it the same way. A server without `HandOffActor` answers `UNIMPLEMENTED` and the worker falls back to letting the lease expire, so mixed-version rollouts are safe. A second signal exits at once.
 
 A drained worker leases no actors either; turns it already runs go on.
@@ -230,14 +230,14 @@ The grace period must fit inside the orchestrator's kill timeout (Kubernetes `te
 
 The task queue supports standalone tasks that run independently of any workflow. `TaskDefinition.workflow_id` is `Option<Uuid>`, when `None`, the task is a standalone queue entry.
 
-- **Enqueue**: `POST /v1/durable/tasks` with `activity_type`, `input`, and optional retry/priority config
+- **Enqueue**: `POST /v1/platform/durable/tasks` with `activity_type`, `input`, and optional retry/priority config
 - **Processing**: Workers claim and execute standalone tasks identically to workflow tasks
 - **Event recording**: Standalone tasks skip workflow event recording (ActivityStarted/Completed/Failed are no-ops)
 - **Limits**: Global cap of 10,000 pending standalone tasks (vs 100 per-workflow)
 - **DLQ**: Failed standalone tasks go to dead letter queue with `workflow_id = NULL`
 - **Dashboard**: UI shows "standalone" badge for tasks not linked to a workflow
 
-See `crates/durable/src/persistence/store.rs` for `TaskDefinition` and `crates/server/src/api/durable.rs` for the enqueue endpoint.
+See `crates/durable/src/persistence/store.rs` for `TaskDefinition` and `crates/server/src/api/durable/mod.rs` for the enqueue endpoint.
 
 ### Reliability
 
@@ -576,7 +576,7 @@ tasks from the DLQ. Sealed tasks already carry the seal reason and counters via
 - Semantic conventions: `durable.workflow.*`, `durable.activity.*`, `durable.worker.*`
 - Metrics: workflows started/completed/failed, activity durations, queue depth
 - Admin API: `/api/durable/workers`, `/api/durable/workflows`, `/api/durable/dlq`
-- Metrics time series: `/v1/durable/metrics/timeseries`, server-side ring buffer (360 points, 10s resolution)
+- Metrics time series: `/v1/platform/durable/metrics/timeseries`, server-side ring buffer (360 points, 10s resolution)
 
 ### Metrics Dashboard
 
@@ -584,11 +584,11 @@ The durable landing page is [Monitoring](monitoring.md), showing session-actor
 execution, worker ownership, and lease health. Generic queue/workflow metrics
 remain available through the durable metrics API and Prometheus. They describe
 background activities, not platform turn throughput. Source contracts and the
-ring-buffer collector remain in `crates/server/src/api/durable.rs`.
+ring-buffer collector remain in `crates/server/src/api/durable/mod.rs`.
 
 ### System Health Counters
 
-`get_system_health` (feeding `/v1/durable/health`, the ~10s metrics sampler, and the durable SSE stream) splits its fields by cost:
+`get_system_health` (feeding `/v1/platform/durable/health`, the ~10s metrics sampler, and the durable SSE stream) splits its fields by cost:
 
 - **Live gauges**: pending/claimed tasks, running/pending workflows, workers, capacity/load, DLQ size, are queried directly. They are bounded by current work and backed by partial indexes, so they stay cheap.
 - **Cumulative totals**: completed/failed/started for tasks and workflows (the Prometheus-style monotonic counters), are read from `durable_stat_counters`, a tiny table maintained incrementally by AFTER triggers on `durable_task_queue` and `durable_workflow_instances` (migration `082`). The history tables are never pruned in production, so these grew without bound; counting them per call forced repeated full scans (~127MB heap at ~156k rows) and could starve the DB pool.

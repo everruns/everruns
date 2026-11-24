@@ -85,15 +85,15 @@ impl_dispatchable!(AppState);
 
 pub fn routes(state: AppState) -> Router {
     Router::new()
-        .route("/v1/apps", get(list_apps))
-        .route("/v1/apps/{app_id}", get(get_app))
+        .route("/v1/platform/apps", get(list_apps))
+        .route("/v1/platform/apps/{app_id}", get(get_app))
         .with_state(state)
 }
 
 #[utoipa::path(
     description = "List archival App records. This endpoint is read-only and deprecated.",
     get,
-    path = "/v1/apps",
+    path = "/v1/platform/apps",
     responses(
         (status = 200, description = "Archival list of Apps", body = ListResponse<WithUrls<App>>),
         (status = 500, description = "Internal server error")
@@ -120,7 +120,7 @@ pub async fn list_apps(
 #[utoipa::path(
     description = "Get an archival App record. This endpoint is read-only and deprecated.",
     get,
-    path = "/v1/apps/{app_id}",
+    path = "/v1/platform/apps/{app_id}",
     params(("app_id" = String, Path, description = "App ID")),
     responses(
         (status = 200, description = "Archival App record", body = WithUrls<App>),

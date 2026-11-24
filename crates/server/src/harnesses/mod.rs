@@ -6,8 +6,8 @@
 //! for existing bindings. Platform Chat is a managed Agent on Bashkit Worker.
 //! Specialized harnesses
 //! (`coding`, `data-analyst`) live in the
-//! `examples` module and are adopted on demand via `/v1/harness-examples`
-//! and `POST /v1/harnesses/import?from-example=…`.
+//! `examples` module and are adopted on demand via `/v1/platform/harness-examples`
+//! and `POST /v1/platform/harnesses/import?from-example=…`.
 //!
 //! Each submodule still defines one harness (system prompt, capabilities,
 //! tags, roles). The top-level `built_in_harnesses()` function collects the

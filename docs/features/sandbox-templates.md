@@ -275,7 +275,7 @@ Session's running Sandbox instead:
 
 ```bash
 # Fork a Session together with its Sandbox
-curl -X POST http://localhost:9300/api/v1/sessions/{session_id}/fork \
+curl -X POST http://localhost:9300/api/v1/platform/sessions/{session_id}/fork \
   -H "Authorization: Bearer $EVERRUNS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"sandbox": "fork"}'
@@ -312,7 +312,7 @@ in-memory process state do not.
 Create a reusable template:
 
 ```json
-POST /v1/sandbox-templates
+POST /v1/platform/sandbox-templates
 {
   "name": "daytona-build",
   "display_name": "Daytona Build",
@@ -358,9 +358,9 @@ Select a declared binding in Playground when the mode is `selectable` or `config
 }
 ```
 
-Use `GET /v1/sandbox-targets` to discover available targets,
-`GET /v1/sessions/{session_id}/sandbox` to inspect the resolved Sandbox, and
-`GET /v1/sandbox-templates` to list reusable templates. `GET /v1/sandboxes/{id}/diagnosis`,
+Use `GET /v1/platform/sandbox-targets` to discover available targets,
+`GET /v1/platform/sessions/{session_id}/sandbox` to inspect the resolved Sandbox, and
+`GET /v1/platform/sandbox-templates` to list reusable templates. `GET /v1/platform/sandboxes/{id}/diagnosis`,
 `/events` and `/provider` back the commands in [Why did my Sandbox stop?](#why-did-my-sandbox-stop).
 
 ## Resource Sandbox fleets

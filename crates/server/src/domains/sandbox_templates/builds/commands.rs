@@ -14,7 +14,7 @@ pub struct StartSandboxTemplateBuild {
     #[serde(flatten)]
     pub req: SandboxBuildRequest,
 }
-#[command(name="start_sandbox_template_build", http=plain, request_body(SandboxBuildRequest), tag="sandbox-templates", category="sandbox-templates", summary="Build a Sandbox Template snapshot", description="Run an install script in fresh isolated compute and bake a reusable provider snapshot. Does not revise the template.", method="POST", path="/v1/sandbox-templates/{id}/builds", policy=HARNESS_MANAGE, cli=CliRoute::new(&["sandbox-templates","builds"],"start").with_examples(&[CliExample::new("Start a Sandbox Template build", "everruns sandbox-templates builds start --id sbxtpl_01933b5a000070008000000000000001 --source-revision-id sbxtplrev_01933b5a000070008000000000000001 --install-script 'echo ready'")]))]
+#[command(name="start_sandbox_template_build", http=plain, request_body(SandboxBuildRequest), tag="sandbox-templates", category="sandbox-templates", summary="Build a Sandbox Template snapshot", description="Run an install script in fresh isolated compute and bake a reusable provider snapshot. Does not revise the template.", method="POST", path="/v1/platform/sandbox-templates/{id}/builds", policy=HARNESS_MANAGE, cli=CliRoute::new(&["sandbox-templates","builds"],"start").with_examples(&[CliExample::new("Start a Sandbox Template build", "everruns sandbox-templates builds start --id sbxtpl_01933b5a000070008000000000000001 --source-revision-id sbxtplrev_01933b5a000070008000000000000001 --install-script 'echo ready'")]))]
 impl Command for StartSandboxTemplateBuild {
     type Output = SandboxTemplateBuild;
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
@@ -114,7 +114,7 @@ pub struct ListSandboxTemplateBuilds {
     #[serde(default)]
     pub offset: u32,
 }
-#[command(name="list_sandbox_template_builds", http=plain, tag="sandbox-templates",category="sandbox-templates",summary="List Sandbox Template builds",description="List twenty build attempts at an optional offset, bounded logs, and captured software notes.",method="GET",path="/v1/sandbox-templates/{id}/builds",policy=HARNESS_VIEW,cli=CliRoute::new(&["sandbox-templates","builds"],"list").with_examples(&[CliExample::new("List a Sandbox Template build", "everruns sandbox-templates builds list --id sbxtpl_01933b5a000070008000000000000001")]))]
+#[command(name="list_sandbox_template_builds", http=plain, tag="sandbox-templates",category="sandbox-templates",summary="List Sandbox Template builds",description="List twenty build attempts at an optional offset, bounded logs, and captured software notes.",method="GET",path="/v1/platform/sandbox-templates/{id}/builds",policy=HARNESS_VIEW,cli=CliRoute::new(&["sandbox-templates","builds"],"list").with_examples(&[CliExample::new("List a Sandbox Template build", "everruns sandbox-templates builds list --id sbxtpl_01933b5a000070008000000000000001")]))]
 impl Command for ListSandboxTemplateBuilds {
     type Output = Vec<SandboxTemplateBuild>;
     fn output_schema() -> serde_json::Value {
@@ -136,7 +136,7 @@ impl Command for ListSandboxTemplateBuilds {
 pub struct GetSandboxTemplateBuild {
     pub id: SandboxTemplateBuildId,
 }
-#[command(name="get_sandbox_template_build",http=plain,tag="sandbox-templates",category="sandbox-templates",summary="Get Sandbox Template build",description="Inspect a build attempt in the authenticated organization.",method="GET",path="/v1/sandbox-template-builds/{id}",policy=HARNESS_VIEW,cli=CliRoute::new(&["sandbox-templates","builds"],"get").with_examples(&[CliExample::new("Get a Sandbox Template build", "everruns sandbox-templates builds get --id sbxbuild_01933b5a000070008000000000000001")]))]
+#[command(name="get_sandbox_template_build",http=plain,tag="sandbox-templates",category="sandbox-templates",summary="Get Sandbox Template build",description="Inspect a build attempt in the authenticated organization.",method="GET",path="/v1/platform/sandbox-template-builds/{id}",policy=HARNESS_VIEW,cli=CliRoute::new(&["sandbox-templates","builds"],"get").with_examples(&[CliExample::new("Get a Sandbox Template build", "everruns sandbox-templates builds get --id sbxbuild_01933b5a000070008000000000000001")]))]
 impl Command for GetSandboxTemplateBuild {
     type Output = SandboxTemplateBuild;
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
@@ -151,7 +151,7 @@ impl Command for GetSandboxTemplateBuild {
 pub struct CancelSandboxTemplateBuild {
     pub id: SandboxTemplateBuildId,
 }
-#[command(name="cancel_sandbox_template_build",http=plain,tag="sandbox-templates",category="sandbox-templates",summary="Cancel Sandbox Template build",description="Cancel queued or running build work and clean up its disposable resources.",method="POST",path="/v1/sandbox-template-builds/{id}/cancel",policy=HARNESS_MANAGE,cli=CliRoute::new(&["sandbox-templates","builds"],"cancel").with_examples(&[CliExample::new("Cancel a Sandbox Template build", "everruns sandbox-templates builds cancel --id sbxbuild_01933b5a000070008000000000000001")]))]
+#[command(name="cancel_sandbox_template_build",http=plain,tag="sandbox-templates",category="sandbox-templates",summary="Cancel Sandbox Template build",description="Cancel queued or running build work and clean up its disposable resources.",method="POST",path="/v1/platform/sandbox-template-builds/{id}/cancel",policy=HARNESS_MANAGE,cli=CliRoute::new(&["sandbox-templates","builds"],"cancel").with_examples(&[CliExample::new("Cancel a Sandbox Template build", "everruns sandbox-templates builds cancel --id sbxbuild_01933b5a000070008000000000000001")]))]
 impl Command for CancelSandboxTemplateBuild {
     type Output = SandboxTemplateBuild;
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
@@ -169,7 +169,7 @@ impl Command for CancelSandboxTemplateBuild {
 pub struct ApplySandboxTemplateBuild {
     pub id: SandboxTemplateBuildId,
 }
-#[command(name="apply_sandbox_template_build",http=plain,tag="sandbox-templates",category="sandbox-templates",summary="Save built snapshot as new revision",description="Atomically apply a ready snapshot to its unchanged source template. Existing Agent and Session pins do not move.",method="POST",path="/v1/sandbox-template-builds/{id}/apply",policy=HARNESS_MANAGE,cli=CliRoute::new(&["sandbox-templates","builds"],"apply").with_examples(&[CliExample::new("Apply a Sandbox Template build", "everruns sandbox-templates builds apply --id sbxbuild_01933b5a000070008000000000000001")]))]
+#[command(name="apply_sandbox_template_build",http=plain,tag="sandbox-templates",category="sandbox-templates",summary="Save built snapshot as new revision",description="Atomically apply a ready snapshot to its unchanged source template. Existing Agent and Session pins do not move.",method="POST",path="/v1/platform/sandbox-template-builds/{id}/apply",policy=HARNESS_MANAGE,cli=CliRoute::new(&["sandbox-templates","builds"],"apply").with_examples(&[CliExample::new("Apply a Sandbox Template build", "everruns sandbox-templates builds apply --id sbxbuild_01933b5a000070008000000000000001")]))]
 impl Command for ApplySandboxTemplateBuild {
     type Output = SandboxTemplate;
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
@@ -240,7 +240,7 @@ impl Command for ApplySandboxTemplateBuild {
 pub struct DiscardSandboxTemplateBuild {
     pub id: SandboxTemplateBuildId,
 }
-#[command(name="discard_sandbox_template_build",http=plain,tag="sandbox-templates",category="sandbox-templates",summary="Discard unused build artifact",description="Remove an unused build artifact. Applied artifacts remain pinned and cannot be discarded.",method="POST",path="/v1/sandbox-template-builds/{id}/discard",policy=HARNESS_MANAGE,cli=CliRoute::new(&["sandbox-templates","builds"],"discard").with_examples(&[CliExample::new("Discard a Sandbox Template build", "everruns sandbox-templates builds discard --id sbxbuild_01933b5a000070008000000000000001")]))]
+#[command(name="discard_sandbox_template_build",http=plain,tag="sandbox-templates",category="sandbox-templates",summary="Discard unused build artifact",description="Remove an unused build artifact. Applied artifacts remain pinned and cannot be discarded.",method="POST",path="/v1/platform/sandbox-template-builds/{id}/discard",policy=HARNESS_MANAGE,cli=CliRoute::new(&["sandbox-templates","builds"],"discard").with_examples(&[CliExample::new("Discard a Sandbox Template build", "everruns sandbox-templates builds discard --id sbxbuild_01933b5a000070008000000000000001")]))]
 impl Command for DiscardSandboxTemplateBuild {
     type Output = SandboxTemplateBuild;
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {

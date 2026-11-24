@@ -45,7 +45,7 @@ function ownerQuery(owner: CredentialOwner) {
   ).toString();
 }
 export const listScopedCredentials = async (owner: CredentialOwner) =>
-  (await api.get<ScopedCredential[]>(`/v1/credential-bindings?${ownerQuery(owner)}`)).data;
+  (await api.get<ScopedCredential[]>(`/v1/platform/credential-bindings?${ownerQuery(owner)}`)).data;
 export const createScopedCredential = async (
   owner: CredentialOwner,
   input: {
@@ -54,30 +54,31 @@ export const createScopedCredential = async (
     binding?: HttpBinding;
     mcp?: { server_name: string; url: string; tool_name: string; parameter_name: string };
   },
-) => (await api.post<{ id: string }>("/v1/credential-bindings", { ...owner, ...input })).data;
+) =>
+  (await api.post<{ id: string }>("/v1/platform/credential-bindings", { ...owner, ...input })).data;
 export async function saveCredentialValue(
   id: string,
   value: string,
   revision: number,
   expiresAt?: string,
 ) {
-  await api.put(`/v1/credential-bindings/${id}`, {
+  await api.put(`/v1/platform/credential-bindings/${id}`, {
     value,
     revision,
     expires_at: expiresAt ?? null,
   });
 }
 export async function revokeScopedCredential(id: string, revision: number) {
-  await api.delete(`/v1/credential-bindings/${id}?revision=${revision}`);
+  await api.delete(`/v1/platform/credential-bindings/${id}?revision=${revision}`);
 }
 export const listCredentialGrants = async (id: string) =>
-  (await api.get<CredentialGrant[]>(`/v1/resources/${id}/grants`)).data;
+  (await api.get<CredentialGrant[]>(`/v1/platform/resources/${id}/grants`)).data;
 export async function grantCredential(
   id: string,
   consumerId: string | undefined,
   expiresAt?: string,
 ) {
-  await api.post(`/v1/resources/${id}/grants`, {
+  await api.post(`/v1/platform/resources/${id}/grants`, {
     consumer_scope: consumerId ? "agent" : "organization",
     consumer_id: consumerId,
     usage: "service",
@@ -85,5 +86,5 @@ export async function grantCredential(
   });
 }
 export async function revokeCredentialGrant(id: string, grantId: string) {
-  await api.delete(`/v1/resources/${id}/grants/${grantId}`);
+  await api.delete(`/v1/platform/resources/${id}/grants/${grantId}`);
 }

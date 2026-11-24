@@ -1,5 +1,5 @@
 //! Integration tests for generic command dispatch over HTTP
-//! (`GET /v1/commands`, `POST /v1/commands/{name}`).
+//! (`GET /v1/platform/commands`, `POST /v1/platform/commands/{name}`).
 //!
 //! The endpoint must behave as the scripted surfaces do: same contract, same
 //! policy and feature gates, typed errors mapped to Problem Details.
@@ -61,7 +61,10 @@ async fn connection_command_matches_console_virtual_user_connections() {
         .assert_status(StatusCode::OK)
         .json();
     let command: Value = server
-        .post("/v1/commands/list_user_connections", json!({"params": {}}))
+        .post(
+            "/v1/platform/commands/list_user_connections",
+            json!({"params": {}}),
+        )
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -89,7 +92,7 @@ async fn connection_command_matches_console_virtual_user_connections() {
 async fn catalog_lists_the_contract_and_hides_internal_commands() {
     let server = TestServer::in_memory().await;
     let body: Value = server
-        .get("/v1/commands")
+        .get("/v1/platform/commands")
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -106,7 +109,7 @@ async fn catalog_lists_the_contract_and_hides_internal_commands() {
         commands.iter().all(|command| !command["http_path"]
             .as_str()
             .unwrap_or_default()
-            .starts_with("/v1/durable/")),
+            .starts_with("/v1/platform/durable/")),
         "durable internals are not part of the contract"
     );
 }
@@ -123,7 +126,11 @@ async fn catalog_omits_commands_whose_feature_is_off() {
         .await
         .expect("disable skills");
 
-    let body: Value = server.get("/v1/commands").await.assert_success().json();
+    let body: Value = server
+        .get("/v1/platform/commands")
+        .await
+        .assert_success()
+        .json();
     let commands = body["commands"].as_array().expect("commands array");
     assert!(
         commands
@@ -133,7 +140,7 @@ async fn catalog_omits_commands_whose_feature_is_off() {
     );
 
     let error: Value = server
-        .post("/v1/commands/list_skills", json!({}))
+        .post("/v1/platform/commands/list_skills", json!({}))
         .await
         .assert_status(StatusCode::NOT_FOUND)
         .json();
@@ -147,7 +154,7 @@ async fn dispatch_creates_reads_and_lists_an_agent() {
 
     let created: Value = server
         .post(
-            "/v1/commands/create_agent",
+            "/v1/platform/commands/create_agent",
             json!({ "params": { "name": name, "system_prompt": "You tell short jokes." } }),
         )
         .await
@@ -161,7 +168,10 @@ async fn dispatch_creates_reads_and_lists_an_agent() {
     assert_eq!(created["name"], name);
 
     let fetched: Value = server
-        .post("/v1/commands/get_agent", json!({ "params": { "id": id } }))
+        .post(
+            "/v1/platform/commands/get_agent",
+            json!({ "params": { "id": id } }),
+        )
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -171,7 +181,7 @@ async fn dispatch_creates_reads_and_lists_an_agent() {
 
     let listed: Value = server
         .post(
-            "/v1/commands/list_agents",
+            "/v1/platform/commands/list_agents",
             json!({ "params": { "search": name } }),
         )
         .await
@@ -192,7 +202,7 @@ async fn dispatch_accepts_json_fields_as_text_like_the_scripted_surface() {
     // the same result as one that sends structured JSON.
     let created: Value = server
         .post(
-            "/v1/commands/create_agent",
+            "/v1/platform/commands/create_agent",
             json!({ "params": {
                 "name": name,
                 "system_prompt": "p",
@@ -209,7 +219,7 @@ async fn dispatch_accepts_json_fields_as_text_like_the_scripted_surface() {
 async fn unknown_command_is_not_found() {
     let server = TestServer::in_memory().await;
     let error: Value = server
-        .post("/v1/commands/no_such_command", json!({}))
+        .post("/v1/platform/commands/no_such_command", json!({}))
         .await
         .assert_status(StatusCode::NOT_FOUND)
         .json();
@@ -225,9 +235,9 @@ async fn unknown_command_is_not_found() {
 #[tokio::test]
 async fn internal_commands_are_not_dispatchable() {
     let server = TestServer::in_memory().await;
-    // Durable schedules are control-plane internals (`/v1/durable/...`).
+    // Durable schedules are control-plane internals (`/v1/platform/durable/...`).
     server
-        .post("/v1/commands/list_schedules", json!({}))
+        .post("/v1/platform/commands/list_schedules", json!({}))
         .await
         .assert_status(StatusCode::NOT_FOUND);
 }
@@ -239,7 +249,7 @@ async fn invalid_params_are_a_bad_request() {
     // Missing the required system_prompt.
     server
         .post(
-            "/v1/commands/create_agent",
+            "/v1/platform/commands/create_agent",
             json!({ "params": { "name": unique("missing") } }),
         )
         .await
@@ -248,7 +258,7 @@ async fn invalid_params_are_a_bad_request() {
     // Params must be an object.
     server
         .post(
-            "/v1/commands/list_agents",
+            "/v1/platform/commands/list_agents",
             json!({ "params": ["not", "an", "object"] }),
         )
         .await
@@ -258,7 +268,11 @@ async fn invalid_params_are_a_bad_request() {
 #[tokio::test]
 async fn catalog_entries_carry_version_and_schema_hash() {
     let server = TestServer::in_memory().await;
-    let body: Value = server.get("/v1/commands").await.assert_success().json();
+    let body: Value = server
+        .get("/v1/platform/commands")
+        .await
+        .assert_success()
+        .json();
     let create = body["commands"]
         .as_array()
         .expect("commands array")
@@ -277,7 +291,7 @@ async fn catalog_entries_carry_version_and_schema_hash() {
     // The current hash is echoed back without a warning.
     let fresh: Value = server
         .post(
-            "/v1/commands/list_agents",
+            "/v1/platform/commands/list_agents",
             json!({ "params": {}, "schema_hash": list_agents_hash(&body), "metadata": { "client": "test" } }),
         )
         .await
@@ -291,7 +305,7 @@ async fn catalog_entries_carry_version_and_schema_hash() {
     // A stale hash still runs, and says so.
     let stale: Value = server
         .post(
-            "/v1/commands/list_agents",
+            "/v1/platform/commands/list_agents",
             json!({ "params": {}, "schema_hash": "0000000000000000" }),
         )
         .await
@@ -318,7 +332,7 @@ async fn envelope_rejects_unknown_versions_and_fields() {
     let server = TestServer::in_memory().await;
     server
         .post(
-            "/v1/commands/list_agents",
+            "/v1/platform/commands/list_agents",
             json!({ "params": {}, "api_version": "v2" }),
         )
         .await
@@ -326,7 +340,10 @@ async fn envelope_rejects_unknown_versions_and_fields() {
     // A field the envelope does not define, such as bare params, is rejected
     // rather than silently ignored.
     let response = server
-        .post("/v1/commands/list_agents", json!({ "search": "x" }))
+        .post(
+            "/v1/platform/commands/list_agents",
+            json!({ "search": "x" }),
+        )
         .await;
     assert!(response.status().is_client_error(), "{}", response.text());
 }
@@ -353,7 +370,7 @@ async fn post_with_key(
 async fn agents_named(server: &TestServer, name: &str) -> usize {
     let body: Value = server
         .post(
-            "/v1/commands/list_agents",
+            "/v1/platform/commands/list_agents",
             json!({ "params": { "search": name } }),
         )
         .await
@@ -370,14 +387,20 @@ async fn idempotency_key_replays_the_first_response(server: TestServer) {
     let key = unique("key");
     let params = json!({ "params": { "name": name, "system_prompt": "Be brief" } });
 
-    let first = post_with_key(&server, "/v1/commands/create_agent", &key, params).await;
+    let first = post_with_key(&server, "/v1/platform/commands/create_agent", &key, params).await;
     assert_eq!(first.status(), StatusCode::OK, "{}", first.text());
     assert!(first.headers().get("idempotent-replayed").is_none());
     let first: Value = first.json();
 
     // Field order is not part of the request's identity.
     let reordered = json!({ "params": { "system_prompt": "Be brief", "name": name } });
-    let second = post_with_key(&server, "/v1/commands/create_agent", &key, reordered).await;
+    let second = post_with_key(
+        &server,
+        "/v1/platform/commands/create_agent",
+        &key,
+        reordered,
+    )
+    .await;
     assert_eq!(second.status(), StatusCode::OK, "{}", second.text());
     assert_eq!(second.headers()["idempotent-replayed"], "true");
     let second: Value = second.json();
@@ -435,7 +458,7 @@ async fn idempotency_key_reused_for_another_request_is_unprocessable() {
     let key = unique("key");
     post_with_key(
         &server,
-        "/v1/commands/create_agent",
+        "/v1/platform/commands/create_agent",
         &key,
         json!({ "params": { "name": unique("idem"), "system_prompt": "a" } }),
     )
@@ -445,7 +468,7 @@ async fn idempotency_key_reused_for_another_request_is_unprocessable() {
     let other_name = unique("idem");
     let error: Value = post_with_key(
         &server,
-        "/v1/commands/create_agent",
+        "/v1/platform/commands/create_agent",
         &key,
         json!({ "params": { "name": other_name, "system_prompt": "a" } }),
     )
@@ -462,7 +485,7 @@ async fn a_failed_command_releases_its_key() {
     let key = unique("key");
     post_with_key(
         &server,
-        "/v1/commands/create_agent",
+        "/v1/platform/commands/create_agent",
         &key,
         json!({ "params": { "name": 7 } }),
     )
@@ -472,7 +495,7 @@ async fn a_failed_command_releases_its_key() {
     let name = unique("idem");
     let response = post_with_key(
         &server,
-        "/v1/commands/create_agent",
+        "/v1/platform/commands/create_agent",
         &key,
         json!({ "params": { "name": name, "system_prompt": "a" } }),
     )
@@ -515,7 +538,7 @@ async fn a_key_still_in_flight_is_a_conflict() {
 
     let error: Value = post_with_key(
         &server,
-        "/v1/commands/create_agent",
+        "/v1/platform/commands/create_agent",
         &key,
         json!({ "params": params }),
     )
@@ -535,16 +558,27 @@ async fn read_only_commands_ignore_the_key_and_bad_keys_are_rejected() {
     let server = TestServer::in_memory().await;
     let key = unique("key");
     for _ in 0..2 {
-        let response = post_with_key(&server, "/v1/commands/list_agents", &key, json!({})).await;
+        let response = post_with_key(
+            &server,
+            "/v1/platform/commands/list_agents",
+            &key,
+            json!({}),
+        )
+        .await;
         assert_eq!(response.status(), StatusCode::OK, "{}", response.text());
         assert!(response.headers().get("idempotent-replayed").is_none());
     }
 
     let too_long = "k".repeat(256);
     for bad in ["", "has space", too_long.as_str()] {
-        post_with_key(&server, "/v1/commands/create_agent", bad, json!({}))
-            .await
-            .assert_status(StatusCode::BAD_REQUEST);
+        post_with_key(
+            &server,
+            "/v1/platform/commands/create_agent",
+            bad,
+            json!({}),
+        )
+        .await
+        .assert_status(StatusCode::BAD_REQUEST);
     }
 }
 
@@ -670,7 +704,7 @@ async fn an_aborted_transactional_command_does_not_strand_its_claim() {
         let server = server.clone();
         let key = key.clone();
         let body = body.clone();
-        async move { post_with_key(&server, "/v1/commands/create_agent", &key, body).await }
+        async move { post_with_key(&server, "/v1/platform/commands/create_agent", &key, body).await }
     });
     crate::agent_api_retry_cors_test::wait_for_relation_waiter(&server.pool, "agents").await;
     original.abort();
@@ -679,8 +713,13 @@ async fn an_aborted_transactional_command_does_not_strand_its_claim() {
 
     let first = tokio::time::timeout(std::time::Duration::from_secs(5), async {
         loop {
-            let response =
-                post_with_key(&server, "/v1/commands/create_agent", &key, body.clone()).await;
+            let response = post_with_key(
+                &server,
+                "/v1/platform/commands/create_agent",
+                &key,
+                body.clone(),
+            )
+            .await;
             if response.status() != StatusCode::CONFLICT {
                 break response;
             }
@@ -690,7 +729,7 @@ async fn an_aborted_transactional_command_does_not_strand_its_claim() {
     .await
     .expect("a cancelled command left a committed claim")
     .assert_status(StatusCode::OK);
-    let replay = post_with_key(&server, "/v1/commands/create_agent", &key, body)
+    let replay = post_with_key(&server, "/v1/platform/commands/create_agent", &key, body)
         .await
         .assert_status(StatusCode::OK);
     assert_eq!(
@@ -706,7 +745,7 @@ async fn an_aborted_console_message_admission_retries_once() {
     let server = std::sync::Arc::new(TestServer::in_memory().await);
     let session = server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             json!({"harness_id": server.seed_base_harness_id}),
         )
         .await
@@ -729,7 +768,7 @@ async fn an_aborted_console_message_admission_retries_once() {
         let server = server.clone();
         let key = key.clone();
         let body = body.clone();
-        async move { post_with_key(&server, "/v1/commands/create_message", &key, body).await }
+        async move { post_with_key(&server, "/v1/platform/commands/create_message", &key, body).await }
     });
     crate::agent_api_retry_cors_test::wait_for_relation_waiter(&server.pool, "sessions").await;
     original.abort();
@@ -737,8 +776,13 @@ async fn an_aborted_console_message_admission_retries_once() {
     blocker.rollback().await.unwrap();
     let first = tokio::time::timeout(std::time::Duration::from_secs(5), async {
         loop {
-            let response =
-                post_with_key(&server, "/v1/commands/create_message", &key, body.clone()).await;
+            let response = post_with_key(
+                &server,
+                "/v1/platform/commands/create_message",
+                &key,
+                body.clone(),
+            )
+            .await;
             if response.status() != StatusCode::CONFLICT {
                 break response;
             }
@@ -748,7 +792,7 @@ async fn an_aborted_console_message_admission_retries_once() {
     .await
     .expect("a cancelled console send left a committed claim")
     .assert_status(StatusCode::OK);
-    let replay = post_with_key(&server, "/v1/commands/create_message", &key, body)
+    let replay = post_with_key(&server, "/v1/platform/commands/create_message", &key, body)
         .await
         .assert_status(StatusCode::OK);
     assert_eq!(

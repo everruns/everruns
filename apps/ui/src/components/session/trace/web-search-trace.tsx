@@ -34,7 +34,7 @@ function useCompletedEventData(sessionId: string, detail: TraceStepDetail): unkn
         limit: "1",
       });
       const response = await api.get<ListResponse<Event>>(
-        `/v1/sessions/${encodeURIComponent(sessionId)}/events?${params}`,
+        `/v1/platform/sessions/${encodeURIComponent(sessionId)}/events?${params}`,
       );
       return response.data.data.find((event) => event.sequence === ref!.sequence)?.data ?? null;
     },

@@ -130,7 +130,7 @@ log_test "get seed harness"
 HARNESSES_OUTPUT=""
 HARNESS_ID=""
 for _ in {1..30}; do
-  HARNESSES_OUTPUT=$(curl -s "$API_URL/v1/harnesses" -H "Authorization: ${EVERRUNS_API_KEY:-test}") || {
+  HARNESSES_OUTPUT=$(curl -s "$API_URL/v1/platform/harnesses" -H "Authorization: ${EVERRUNS_API_KEY:-test}") || {
     sleep 1
     continue
   }

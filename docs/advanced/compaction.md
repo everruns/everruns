@@ -414,7 +414,7 @@ markers distinguish **Checkpoint saved** from a request-local reduction. They
 show available token measurements, progress and safe failure status. A skipped
 attempt closes progress without claiming that smaller context was installed.
 
-`GET /v1/sessions/{session_id}/context-report` (also
+`GET /v1/platform/sessions/{session_id}/context-report` (also
 `everruns sessions context <session_id>`) returns the last recorded main-model
 request estimate and the effective `compaction` status. `as_of_sequence` identifies
 the measured request; `measurement_available: false` means no recent main-model
@@ -507,7 +507,7 @@ compaction caused it or that all other information was preserved.
 Use the organization API to enable mechanical checks:
 
 ```http
-PATCH /v1/orgs/{org}
+PATCH /v1/platform/orgs/{org}
 Content-Type: application/json
 
 {
@@ -521,7 +521,7 @@ Content-Type: application/json
 }
 ```
 
-`GET /v1/orgs/{org}/quality-monitoring` returns policy, seven-day coverage and
+`GET /v1/platform/orgs/{org}/quality-monitoring` returns policy, seven-day coverage and
 UTC-day spending. `/quality-monitoring/scores` returns recent findings;
 `PUT /quality-monitoring/scores/{score}/review` accepts `{"agrees": false}`.
 Policy updates replace the monitoring policy. `eval` sessions are always excluded.

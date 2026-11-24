@@ -33,11 +33,11 @@ Verify that sessions can be listed and filtered by agent_id.
 
 1. Create two agents:
    ```bash
-   curl -s -X POST "${BASE_URL}/api/v1/agents" \
+   curl -s -X POST "${BASE_URL}/api/v1/platform/agents" \
      -H "Content-Type: application/json" \
      -d '{"name": "session-agent-a", "system_prompt": "Agent A."}'
 
-   curl -s -X POST "${BASE_URL}/api/v1/agents" \
+   curl -s -X POST "${BASE_URL}/api/v1/platform/agents" \
      -H "Content-Type: application/json" \
      -d '{"name": "session-agent-b", "system_prompt": "Agent B."}'
    ```
@@ -45,15 +45,15 @@ Verify that sessions can be listed and filtered by agent_id.
 
 2. Create sessions for each agent:
    ```bash
-   curl -s -X POST "${BASE_URL}/api/v1/sessions" \
+   curl -s -X POST "${BASE_URL}/api/v1/platform/sessions" \
      -H "Content-Type: application/json" \
      -d '{"agent_id": "{agent_a_id}"}'
 
-   curl -s -X POST "${BASE_URL}/api/v1/sessions" \
+   curl -s -X POST "${BASE_URL}/api/v1/platform/sessions" \
      -H "Content-Type: application/json" \
      -d '{"agent_id": "{agent_a_id}"}'
 
-   curl -s -X POST "${BASE_URL}/api/v1/sessions" \
+   curl -s -X POST "${BASE_URL}/api/v1/platform/sessions" \
      -H "Content-Type: application/json" \
      -d '{"agent_id": "{agent_b_id}"}'
    ```
@@ -61,17 +61,17 @@ Verify that sessions can be listed and filtered by agent_id.
 
 3. List all sessions:
    ```bash
-   curl -s "${BASE_URL}/api/v1/sessions"
+   curl -s "${BASE_URL}/api/v1/platform/sessions"
    ```
 
 4. Filter sessions by Agent A:
    ```bash
-   curl -s "${BASE_URL}/api/v1/sessions?agent_id={agent_a_id}"
+   curl -s "${BASE_URL}/api/v1/platform/sessions?agent_id={agent_a_id}"
    ```
 
 5. Filter sessions by Agent B:
    ```bash
-   curl -s "${BASE_URL}/api/v1/sessions?agent_id={agent_b_id}"
+   curl -s "${BASE_URL}/api/v1/platform/sessions?agent_id={agent_b_id}"
    ```
 
 ## Expected Result

@@ -96,7 +96,7 @@ async fn register_user(router: &Router, email: &str) -> String {
     let (status, headers, body) = send(
         router,
         Method::POST,
-        "/v1/auth/register",
+        "/v1/platform/auth/register",
         Some((
             "application/json",
             json!({"name": "Ava Clients", "email": email, "password": "longenough123"}).to_string(),
@@ -253,7 +253,7 @@ async fn revoked_client_is_cut_off_and_reapproval_starts_a_new_grant() {
     let (status, _, body) = send(
         &router,
         Method::GET,
-        "/v1/user/connected-clients",
+        "/v1/platform/user/connected-clients",
         None,
         Some(&cookie),
     )
@@ -276,7 +276,7 @@ async fn revoked_client_is_cut_off_and_reapproval_starts_a_new_grant() {
     let (status, _, body) = send(
         &router,
         Method::DELETE,
-        &format!("/v1/user/connected-clients/{grant_id}"),
+        &format!("/v1/platform/user/connected-clients/{grant_id}"),
         None,
         Some(&cookie),
     )
@@ -300,7 +300,7 @@ async fn revoked_client_is_cut_off_and_reapproval_starts_a_new_grant() {
     let (_, _, body) = send(
         &router,
         Method::GET,
-        "/v1/user/connected-clients",
+        "/v1/platform/user/connected-clients",
         None,
         Some(&cookie),
     )
@@ -312,7 +312,7 @@ async fn revoked_client_is_cut_off_and_reapproval_starts_a_new_grant() {
     let (status, _, _) = send(
         &router,
         Method::DELETE,
-        &format!("/v1/user/connected-clients/{grant_id}"),
+        &format!("/v1/platform/user/connected-clients/{grant_id}"),
         None,
         Some(&cookie),
     )
@@ -337,7 +337,7 @@ async fn connected_clients_require_a_session() {
     let (status, _, _) = send(
         &router,
         Method::GET,
-        "/v1/user/connected-clients",
+        "/v1/platform/user/connected-clients",
         None,
         None,
     )
@@ -385,7 +385,7 @@ async fn unsupported_scope_cannot_be_presented_or_approved_as_narrow_access() {
     let (_, _, body) = send(
         &router,
         Method::GET,
-        "/v1/user/connected-clients",
+        "/v1/platform/user/connected-clients",
         None,
         Some(&cookie),
     )

@@ -35,7 +35,7 @@ Verify successful sign-out revokes refresh, clears account data, and requires au
 3. Save the current refresh credential privately for the replay check, then choose **Sign out** in the sidebar user menu.
 4. Check that the logout request succeeds and access, refresh, and organization cookies are cleared.
 5. Open `/agents` directly, then use browser Back and reload. Protected content must not reload without authentication.
-6. Use the saved refresh credential once at `POST /api/v1/auth/refresh`; inspect the response.
+6. Use the saved refresh credential once at `POST /api/v1/platform/auth/refresh`; inspect the response.
 7. Sign in as B and inspect Agents and Sessions. Reload and inspect the organization switcher.
 
 ## Expected Result

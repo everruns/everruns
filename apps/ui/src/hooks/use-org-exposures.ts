@@ -110,7 +110,7 @@ export interface OrgExposure {
 /// The Agent detail page cannot answer "what is reachable from outside right
 /// now" by construction — it shows one agent. This is the surface that can.
 ///
-/// Channels are read per agent from `/v1/agents/{id}/channels`, and only for
+/// Channels are read per agent from `/v1/platform/agents/{id}/channels`, and only for
 /// agents whose list summary says they have one. Apps are archival and no
 /// longer carry an agent's channels, so they cannot be the source here. The
 /// per-agent query keys are the ones the channel mutations invalidate, so a

@@ -1,6 +1,6 @@
 // Event API functions
 // Events are SSE notifications for real-time updates
-// Org is sent via everruns_org cookie (set by OrgProvider via /v1/users/me/switch-org)
+// Org is sent via everruns_org cookie (set by OrgProvider via /v1/platform/users/me/switch-org)
 
 import { api, getApiBaseUrl, throwApiError } from "./client";
 import type { Event, ListResponse } from "./types";
@@ -62,7 +62,7 @@ export async function listEventsPaginated(
     params.set("before_sequence", String(options.before_sequence));
   }
   const queryString = params.toString();
-  const url = `${getApiBaseUrl()}/v1/sessions/${sessionId}/events${queryString ? `?${queryString}` : ""}`;
+  const url = `${getApiBaseUrl()}/v1/platform/sessions/${sessionId}/events${queryString ? `?${queryString}` : ""}`;
 
   const response = await fetch(url, {
     method: "GET",
@@ -98,7 +98,7 @@ export async function searchSessionEvents(
   params.set("order_desc", "true");
   for (const type of DEFAULT_EXCLUDED_EVENTS) params.append("exclude", type);
   const response = await api.get<ListResponse<Event>>(
-    `/v1/sessions/${encodeURIComponent(sessionId)}/events?${params.toString()}`,
+    `/v1/platform/sessions/${encodeURIComponent(sessionId)}/events?${params.toString()}`,
   );
   return response.data.data;
 }
@@ -128,7 +128,7 @@ export async function listToolCompletionEvents(
     params.set("limit", String(TOOL_EVENT_PAGE_SIZE));
     if (before !== undefined) params.set("before_sequence", String(before));
     const response = await api.get<ListResponse<Event>>(
-      `/v1/sessions/${encodeURIComponent(sessionId)}/events?${params.toString()}`,
+      `/v1/platform/sessions/${encodeURIComponent(sessionId)}/events?${params.toString()}`,
     );
     const batch = response.data.data ?? [];
     if (batch.length === 0) break;
@@ -180,5 +180,5 @@ export function getSseUrl(sessionId: string, cursor?: SseCursor, exclude?: strin
     }
   }
   const queryString = params.toString();
-  return `${baseUrl}/v1/sessions/${sessionId}/sse${queryString ? `?${queryString}` : ""}`;
+  return `${baseUrl}/v1/platform/sessions/${sessionId}/sse${queryString ? `?${queryString}` : ""}`;
 }

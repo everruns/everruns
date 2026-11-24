@@ -241,7 +241,7 @@ starts with `INTERNAL_COMMAND_PATH_PREFIX` (`/internal/`) is internal worker
 plumbing:
 
 - no REST route or OpenAPI entry, and no MCP discover, query, or execute,
-  `/v1/commands`, or command-tree spelling;
+  `/v1/platform/commands`, or command-tree spelling;
 - `Command::run` refuses it to any caller that is not `Caller::internal`, so a
   worker request acting for a user cannot reach it;
 - it still declares a policy and its change-history entry like any command.

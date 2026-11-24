@@ -82,15 +82,15 @@ export interface CollectionInput {
 export const listKnowledge = async (after = "") =>
   (
     await api.get<CursorPage<KnowledgeCollection>>(
-      `/v1/knowledge?limit=100&after=${encodeURIComponent(after)}`,
+      `/v1/platform/knowledge?limit=100&after=${encodeURIComponent(after)}`,
     )
   ).data;
 export const getKnowledge = async (id: string) =>
-  (await api.get<KnowledgeCollection>(`/v1/knowledge/${id}`)).data;
+  (await api.get<KnowledgeCollection>(`/v1/platform/knowledge/${id}`)).data;
 export const createKnowledge = async (input: CollectionInput) =>
-  (await api.post<KnowledgeCollection>("/v1/knowledge", input)).data;
+  (await api.post<KnowledgeCollection>("/v1/platform/knowledge", input)).data;
 export const updateKnowledge = async (id: string, input: CollectionInput) =>
-  (await api.patch<KnowledgeCollection>(`/v1/knowledge/${id}`, input)).data;
+  (await api.patch<KnowledgeCollection>(`/v1/platform/knowledge/${id}`, input)).data;
 /** One entry of a folder listing: a file, or a subfolder (`kind: "folder"`). */
 export type KnowledgeEntry =
   | (KnowledgeFile & { kind: "file"; name: string })
@@ -99,12 +99,12 @@ export type KnowledgeEntry =
 export const listKnowledgeFolder = async (id: string, path = "/", after = "") =>
   (
     await api.get<CursorPage<KnowledgeEntry>>(
-      `/v1/knowledge/${id}/files?${new URLSearchParams({ path, after, limit: "500", tree: "true" })}`,
+      `/v1/platform/knowledge/${id}/files?${new URLSearchParams({ path, after, limit: "500", tree: "true" })}`,
     )
   ).data;
 export const deleteKnowledgeFile = async (id: string, path: string) =>
-  api.delete(`/v1/knowledge/${id}/files?${new URLSearchParams({ path })}`);
-export const syncKnowledge = async (id: string) => api.post(`/v1/knowledge/${id}/sync`);
+  api.delete(`/v1/platform/knowledge/${id}/files?${new URLSearchParams({ path })}`);
+export const syncKnowledge = async (id: string) => api.post(`/v1/platform/knowledge/${id}/sync`);
 export const addKnowledgeSource = async (
   id: string,
   input: {
@@ -113,17 +113,22 @@ export const addKnowledgeSource = async (
     config: Record<string, string>;
     connection_owner?: string;
   },
-) => api.post(`/v1/knowledge/${id}/sources`, input);
+) => api.post(`/v1/platform/knowledge/${id}/sources`, input);
 export const searchKnowledge = async (id: string, query: string) =>
-  (await api.post<KnowledgeResults>("/v1/knowledge/search", { collections: [id], query, limit: 8 }))
-    .data;
+  (
+    await api.post<KnowledgeResults>("/v1/platform/knowledge/search", {
+      collections: [id],
+      query,
+      limit: 8,
+    })
+  ).data;
 export const listKnowledgeIndexers = async () =>
-  (await api.get<{ data: KnowledgeIndexer[] }>("/v1/knowledge-indexers")).data.data;
+  (await api.get<{ data: KnowledgeIndexer[] }>("/v1/platform/knowledge-indexers")).data.data;
 export const createKnowledgeIndexer = async (input: {
   name: string;
   endpoint: string;
   credential_binding_id: string | null;
-}) => api.post("/v1/knowledge-indexers", input);
+}) => api.post("/v1/platform/knowledge-indexers", input);
 /** Writes a text file, typed by its extension (Markdown unless it says otherwise). */
 export const writeKnowledgeFile = async (id: string, path: string, content: string) => {
   const ext = path.split(".").pop()?.toLowerCase();
@@ -133,11 +138,11 @@ export const writeKnowledgeFile = async (id: string, path: string, content: stri
       : ext === "txt" || ext === "csv" || ext === "yaml" || ext === "yml"
         ? "text/plain"
         : "text/markdown";
-  return api.put(`/v1/knowledge/${id}/files`, { path, content, mime_type: mime });
+  return api.put(`/v1/platform/knowledge/${id}/files`, { path, content, mime_type: mime });
 };
 export async function uploadKnowledgeFile(id: string, file: File, path: string) {
   const result = await fetch(
-    `/api/v1/knowledge/${id}/upload?${new URLSearchParams({ path, mime_type: file.type || "application/octet-stream" })}`,
+    `/api/v1/platform/knowledge/${id}/upload?${new URLSearchParams({ path, mime_type: file.type || "application/octet-stream" })}`,
     { method: "PUT", headers: withOrgHeader(), credentials: "include", body: file },
   );
   if (!result.ok) throw new Error("Upload failed. Check your permissions and the file path.");
@@ -152,5 +157,9 @@ export const updateKnowledgeFileMetadata = async (
     readable?: boolean;
   },
 ) =>
-  (await api.patch<{ file_id: string; version_id: string }>(`/v1/knowledge/${id}/files`, input))
-    .data;
+  (
+    await api.patch<{ file_id: string; version_id: string }>(
+      `/v1/platform/knowledge/${id}/files`,
+      input,
+    )
+  ).data;

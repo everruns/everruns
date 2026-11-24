@@ -89,7 +89,7 @@ now: its branch, commits ahead of the base branch, files not committed, whether
 the work is pushed, the changed files and the diff against the base branch, and
 a link to the pull request once the agent opened one. It reads from the running
 sandbox and never starts one; when the sandbox is stopped, pushed work is still
-on GitHub. The same data is at `GET /v1/sessions/{session_id}/repositories`.
+on GitHub. The same data is at `GET /v1/platform/sessions/{session_id}/repositories`.
 The tab has no merge, push or discard buttons: the agent acts, you review.
 
 ## Layout and branches

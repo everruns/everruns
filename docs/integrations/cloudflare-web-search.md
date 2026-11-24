@@ -44,7 +44,7 @@ missing key alias is reported before the account is saved. Only the token is a s
 account ID, gateway, index and alias are stored as the connection's settings.
 
 The API connection is
-`POST /v1/orgs/{org}/organization-connections/providers/cloudflare_web_search` with `api_key`
+`POST /v1/platform/orgs/{org}/organization-connections/providers/cloudflare_web_search` with `api_key`
 (the token), `account_id`, and optionally `index`, `gateway_id` and `byok_alias`.
 
 ## How it searches

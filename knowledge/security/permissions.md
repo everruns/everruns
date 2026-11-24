@@ -72,8 +72,8 @@ OSS exposes platform/system authorization as explicit auth context, not tenant-r
 
 - `AuthUser.is_platform_user` is the first-class flag returned by the auth backend.
 - `ResolvedOrg` preserves that flag when HTTP auth is converted into a `Caller`.
-- `Rule::IsPlatformUser` is the gate for global/system surfaces such as `/v1/durable/*`.
-- `GET /v1/durable/config` exposes durable policy results so wrapper UIs can gate navigation from the same contract.
+- `Rule::IsPlatformUser` is the gate for global/system surfaces such as `/v1/platform/durable/*`.
+- `GET /v1/platform/durable/config` exposes durable policy results so wrapper UIs can gate navigation from the same contract.
 
 Built-in OSS auth preserves previous behavior by deriving `is_platform_user` from the `admin` auth role. Wrappers can supply their own value from their auth backend without mapping tenant org roles into global platform access.
 
@@ -140,13 +140,13 @@ Per-resource config endpoints return which policies the caller satisfies.
 ### Endpoint Pattern
 
 ```
-GET /v1/harnesses/config
-GET /v1/agents/config
-GET /v1/sessions/config
-GET /v1/mcp-servers/config
-GET /v1/providers/config
-GET /v1/models/config
-GET /v1/skills/config
+GET /v1/platform/harnesses/config
+GET /v1/platform/agents/config
+GET /v1/platform/sessions/config
+GET /v1/platform/mcp-servers/config
+GET /v1/platform/providers/config
+GET /v1/platform/models/config
+GET /v1/platform/skills/config
 ```
 
 ### Response
@@ -197,7 +197,7 @@ Every non-GET domain command MUST declare `Command::policy() -> Option<&'static 
 - Config endpoints for UI
 - `IsPlatformUser` rule with allowlist
 - `AuthUser.is_platform_user` and `ResolvedOrg.is_platform_user` carry wrapper-defined platform access through HTTP caller construction
-- `/v1/durable/config` exposes platform-user policy results for UI gating
+- `/v1/platform/durable/config` exposes platform-user policy results for UI gating
 - No DB changes
 
 ### Phase 2 (future)

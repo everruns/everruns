@@ -51,7 +51,8 @@ export type ExternalAgentStatus = {
   endpoint: ExternalAgentEndpoint | null;
 };
 
-const statusPath = (agentId: string) => `/v1/agents/${encodeURIComponent(agentId)}/external-worker`;
+const statusPath = (agentId: string) =>
+  `/v1/platform/agents/${encodeURIComponent(agentId)}/external-worker`;
 export const externalAgentKey = (agentId: string) => ["external-agent", agentId];
 
 export function useExternalAgent(agentId: string, enabled = true) {

@@ -39,7 +39,7 @@ command -v jq > /dev/null || fail "jq is required."
 
 log "Step 1: Creating an agent wired to ${MCP_URL}"
 
-AGENT_ID=$(curl -fsS -X POST "${BASE_URL}/v1/agents" \
+AGENT_ID=$(curl -fsS -X POST "${BASE_URL}/v1/platform/agents" \
   -H "Content-Type: application/json" \
   -d "$(jq -n --arg url "$MCP_URL" '{
     name: "elicitation-example-agent",
@@ -59,7 +59,7 @@ info "agent: ${AGENT_ID}"
 
 log "Step 2: Creating a session with the url_elicitation hint"
 
-SESSION_ID=$(curl -fsS -X POST "${BASE_URL}/v1/sessions" \
+SESSION_ID=$(curl -fsS -X POST "${BASE_URL}/v1/platform/sessions" \
   -H "Content-Type: application/json" \
   -d "$(jq -n --arg agent "$AGENT_ID" '{
     agent_id: $agent,
@@ -72,7 +72,7 @@ info "session: ${SESSION_ID}"
 
 log "Step 3: Sending the message"
 
-curl -fsS -X POST "${BASE_URL}/v1/sessions/${SESSION_ID}/messages" \
+curl -fsS -X POST "${BASE_URL}/v1/platform/sessions/${SESSION_ID}/messages" \
   -H "Content-Type: application/json" \
   -d '{"message":{"role":"user","content":[{"type":"text","text":"Run the revenue report for August 2026."}]}}' \
   > /dev/null
@@ -83,7 +83,7 @@ log "Step 4: Waiting for the confirm_url_elicitation call"
 
 TOOL_CALL_ID=""
 for _ in $(seq 1 60); do
-  EVENTS=$(curl -fsS "${BASE_URL}/v1/sessions/${SESSION_ID}/events?limit=100")
+  EVENTS=$(curl -fsS "${BASE_URL}/v1/platform/sessions/${SESSION_ID}/events?limit=100")
   PENDING=$(echo "$EVENTS" | jq -c '
     [ .data[]? | select(.type == "tool.call_requested")
       | .data.tool_calls[]? | select(.name == "confirm_url_elicitation") ] | last // empty')
@@ -110,7 +110,7 @@ done
 log "Step 5: Waiting for you"
 read -r -p "    Press Enter once you have entered the key on that page… " _
 
-curl -fsS -X POST "${BASE_URL}/v1/sessions/${SESSION_ID}/mcp-elicitation-consent" \
+curl -fsS -X POST "${BASE_URL}/v1/platform/sessions/${SESSION_ID}/mcp-elicitation-consent" \
   -H "Content-Type: application/json" \
   -d "$(jq -n --arg id "$TOOL_CALL_ID" '{ tool_call_id: $id, action: "accept" }')" \
   | jq -c '.'
@@ -120,18 +120,18 @@ curl -fsS -X POST "${BASE_URL}/v1/sessions/${SESSION_ID}/mcp-elicitation-consent
 log "Step 6: Waiting for the answer"
 
 for _ in $(seq 1 60); do
-  STATUS=$(curl -fsS "${BASE_URL}/v1/sessions/${SESSION_ID}" | jq -r '.status')
+  STATUS=$(curl -fsS "${BASE_URL}/v1/platform/sessions/${SESSION_ID}" | jq -r '.status')
   case "$STATUS" in
     idle|completed|failed) break ;;
   esac
   sleep 2
 done
 
-curl -fsS "${BASE_URL}/v1/sessions/${SESSION_ID}/events?limit=200" \
+curl -fsS "${BASE_URL}/v1/platform/sessions/${SESSION_ID}/events?limit=200" \
   | jq -r '[ .data[]? | select(.type == "output.message.completed")
              | .data.message.content[]? | select(.type == "text") | .text ] | last // "no answer"'
 
 log "The secret never entered the session"
-curl -fsS "${BASE_URL}/v1/sessions/${SESSION_ID}/events?limit=200" \
+curl -fsS "${BASE_URL}/v1/platform/sessions/${SESSION_ID}/events?limit=200" \
   | jq -r 'if (tostring | test("sk-live")) then "  FOUND a key in the events — that should not happen"
            else "  no API key anywhere in the session events" end'

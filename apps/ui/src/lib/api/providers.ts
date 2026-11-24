@@ -1,5 +1,5 @@
 // Provider and Model API functions
-// Org is sent via everruns_org cookie (set by OrgProvider via /v1/users/me/switch-org)
+// Org is sent via everruns_org cookie (set by OrgProvider via /v1/platform/users/me/switch-org)
 
 import { api, getBackendUrl } from "./client";
 import type {
@@ -19,17 +19,17 @@ import type {
 
 // Provider CRUD
 export async function getProviders(): Promise<Provider[]> {
-  const response = await api.get<ListResponse<Provider>>("/v1/providers");
+  const response = await api.get<ListResponse<Provider>>("/v1/platform/providers");
   return response.data.data;
 }
 
 export async function getProvider(providerId: string): Promise<Provider> {
-  const response = await api.get<Provider>(`/v1/providers/${providerId}`);
+  const response = await api.get<Provider>(`/v1/platform/providers/${providerId}`);
   return response.data;
 }
 
 export async function createProvider(data: CreateProviderRequest): Promise<Provider> {
-  const response = await api.post<Provider>("/v1/providers", data);
+  const response = await api.post<Provider>("/v1/platform/providers", data);
   return response.data;
 }
 
@@ -38,7 +38,10 @@ export async function createProvider(data: CreateProviderRequest): Promise<Provi
 export async function checkProviderCredentials(
   data: CheckCredentialsRequest,
 ): Promise<CredentialCheckResult> {
-  const response = await api.post<CredentialCheckResult>("/v1/providers/check-credentials", data);
+  const response = await api.post<CredentialCheckResult>(
+    "/v1/platform/providers/check-credentials",
+    data,
+  );
   return response.data;
 }
 
@@ -46,30 +49,32 @@ export async function updateProvider(
   providerId: string,
   data: UpdateProviderRequest,
 ): Promise<Provider> {
-  const response = await api.patch<Provider>(`/v1/providers/${providerId}`, data);
+  const response = await api.patch<Provider>(`/v1/platform/providers/${providerId}`, data);
   return response.data;
 }
 
 export async function deleteProvider(providerId: string): Promise<void> {
-  await api.delete(`/v1/providers/${providerId}`);
+  await api.delete(`/v1/platform/providers/${providerId}`);
 }
 
 export async function syncProviderModels(providerId: string): Promise<SyncModelsResponse> {
-  const response = await api.post<SyncModelsResponse>(`/v1/providers/${providerId}/sync-models`);
+  const response = await api.post<SyncModelsResponse>(
+    `/v1/platform/providers/${providerId}/sync-models`,
+  );
   return response.data;
 }
 
 // Clear the "new" flag on a provider's discovered models: only models
 // discovered after this call, and still disabled, read back as new.
 export async function reviewProviderModels(providerId: string): Promise<Provider> {
-  const response = await api.post<Provider>(`/v1/providers/${providerId}/models/review`);
+  const response = await api.post<Provider>(`/v1/platform/providers/${providerId}/models/review`);
   return response.data;
 }
 
 // Caller policies plus the per-driver credential schemas the Settings UI renders
 // as discrete typed inputs (multi-field AWS keys, Entra OAuth fields).
 export async function getProvidersConfig(): Promise<ProvidersConfigResponse> {
-  const response = await api.get<ProvidersConfigResponse>("/v1/providers/config");
+  const response = await api.get<ProvidersConfigResponse>("/v1/platform/providers/config");
   return response.data;
 }
 
@@ -91,7 +96,7 @@ export function providerSupportsOAuth(providerType: string): boolean {
 // a server redirect (sets a state cookie), so it must hit the backend directly
 // rather than going through the API client.
 export function providerOAuthAuthorizeUrl(providerId: string): string {
-  return `${getBackendUrl()}/v1/providers/${providerId}/oauth/authorize`;
+  return `${getBackendUrl()}/v1/platform/providers/${providerId}/oauth/authorize`;
 }
 
 // Begin the provider's OAuth connect flow from a click. A top-level navigation
@@ -105,30 +110,32 @@ export async function startProviderOAuth(providerId: string): Promise<void> {
 
 // Model CRUD
 export async function getModels(): Promise<ModelWithProvider[]> {
-  const response = await api.get<ListResponse<ModelWithProvider>>("/v1/models");
+  const response = await api.get<ListResponse<ModelWithProvider>>("/v1/platform/models");
   return response.data.data;
 }
 
 export async function getProviderModels(providerId: string): Promise<Model[]> {
-  const response = await api.get<ListResponse<Model>>(`/v1/providers/${providerId}/models`);
+  const response = await api.get<ListResponse<Model>>(
+    `/v1/platform/providers/${providerId}/models`,
+  );
   return response.data.data;
 }
 
 export async function getModel(modelId: string): Promise<ModelWithProvider> {
-  const response = await api.get<ModelWithProvider>(`/v1/models/${modelId}`);
+  const response = await api.get<ModelWithProvider>(`/v1/platform/models/${modelId}`);
   return response.data;
 }
 
 export async function createModel(providerId: string, data: CreateModelRequest): Promise<Model> {
-  const response = await api.post<Model>(`/v1/providers/${providerId}/models`, data);
+  const response = await api.post<Model>(`/v1/platform/providers/${providerId}/models`, data);
   return response.data;
 }
 
 export async function updateModel(modelId: string, data: UpdateModelRequest): Promise<Model> {
-  const response = await api.patch<Model>(`/v1/models/${modelId}`, data);
+  const response = await api.patch<Model>(`/v1/platform/models/${modelId}`, data);
   return response.data;
 }
 
 export async function deleteModel(modelId: string): Promise<void> {
-  await api.delete(`/v1/models/${modelId}`);
+  await api.delete(`/v1/platform/models/${modelId}`);
 }

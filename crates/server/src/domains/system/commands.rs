@@ -40,7 +40,7 @@ pub struct RunSystemDoctor {
     category = "system",
     description = "Check whether the whole install is set up right and working: database, workers, keys, messaging, storage, monitoring.",
     method = "GET",
-    path = "/v1/system/doctor",
+    path = "/v1/platform/system/doctor",
     policy = super::SYSTEM_VIEW,
     cli = CliRoute::new(&["system"], "doctor").with_examples(&[CliExample::new("Check every part of the install and list what needs fixing", "everruns system doctor --refresh true",)]),
 )]
@@ -71,7 +71,7 @@ pub struct ListPlatformDetections {
     category = "system",
     description = "List open abuse detections in every organization, with the Inspector's write-up. Leads for a person to confirm, never grounds for automatic action.",
     method = "GET",
-    path = "/v1/system/detections",
+    path = "/v1/platform/system/detections",
     policy = super::SYSTEM_VIEW,
     cli = CliRoute::new(&["system"], "detections").with_examples(&[CliExample::new("Review sessions suspected of abusing the platform", "everruns system detections --limit 20",)]),
 )]

@@ -31,7 +31,7 @@ fn exposed_to_scripting(meta: &crate::domains::common::CommandMeta) -> bool {
     // Durable control-plane APIs are infrastructure internals. App schedule
     // channels expose their own user-facing commands instead. Internal worker
     // commands are nobody's tool (`INTERNAL_COMMAND_PATH_PREFIX`).
-    !meta.path.starts_with("/v1/durable/")
+    !meta.path.starts_with("/v1/platform/durable/")
         && !meta.is_internal()
         && !meta.is_retired()
         && !meta.is_interactive_secret_setup()
@@ -832,7 +832,7 @@ fn make_inventory_callback(
 ///
 /// The scripted callback's pipeline without the shell around it: the same
 /// exposure rule, parameter normalization, `Command::run` and output
-/// decoration, so `POST /v1/commands/{name}` answers exactly what `execute`
+/// decoration, so `POST /v1/platform/commands/{name}` answers exactly what `execute`
 /// would. Errors stay typed so each transport maps them its own way.
 pub(crate) async fn dispatch_named(
     name: &str,
@@ -1000,7 +1000,7 @@ mod tests {
 
         assert_eq!(
             value["self_url"],
-            "https://api.example/api/v1/agents/agent_00000000000000000000000000000001"
+            "https://api.example/api/v1/platform/agents/agent_00000000000000000000000000000001"
         );
         assert_eq!(
             value["ui_link"],

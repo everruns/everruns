@@ -116,7 +116,7 @@ pub struct Skill {
 }
 
 /// Number of agents and harnesses that reference a skill via its
-/// `skill:{uuid}` capability id. The `/v1/skills/usage` endpoint returns this
+/// `skill:{uuid}` capability id. The `/v1/platform/skills/usage` endpoint returns this
 /// keyed by public `SkillId`; skills with no references are omitted from the
 /// map and the UI defaults missing entries to zero.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, ToSchema)]

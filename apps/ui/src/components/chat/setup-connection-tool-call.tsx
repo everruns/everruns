@@ -107,7 +107,7 @@ export function SetupConnectionToolCall({
   const handleOAuthConnect = () => {
     const returnTo = `${window.location.pathname}${window.location.search}`;
     const popup = window.open(
-      `${getBackendUrl()}/v1/user/connections/${encodeURIComponent(provider)}/authorize?mode=session&session_id=${encodeURIComponent(sessionId)}&popup=true&return_to=${encodeURIComponent(returnTo)}`,
+      `${getBackendUrl()}/v1/platform/user/connections/${encodeURIComponent(provider)}/authorize?mode=session&session_id=${encodeURIComponent(sessionId)}&popup=true&return_to=${encodeURIComponent(returnTo)}`,
       "everruns-mcp-auth",
       "popup,width=720,height=820",
     );

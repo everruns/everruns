@@ -42,7 +42,7 @@ fields that are present.
   on the cheap/safe sibling when two operations overlap. Pair with
   `x-llm-rationale` whenever non-`neutral`.
 * **`x-llm-rationale`**: one sentence, present tense, addresses the
-  caller. "Use POST /v1/agents/{id}/archive instead unless audit
+  caller. "Use POST /v1/platform/agents/{id}/archive instead unless audit
   trail must be removed."
 * **`x-error-codes`**: set when the operation has a closed set of
   `ErrorResponse.code` values it can return. Skip on operations
@@ -66,7 +66,7 @@ Use it directly on the handler:
 ```rust
 #[utoipa::path(
     delete,
-    path = "/v1/agents/{id}",
+    path = "/v1/platform/agents/{id}",
     extensions(
         ("x-side-effect" = json!("irreversible")),
         ("x-llm-prefer" = json!("avoid")),

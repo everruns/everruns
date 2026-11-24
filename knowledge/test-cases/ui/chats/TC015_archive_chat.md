@@ -40,7 +40,7 @@ None.
 
 | Check | Expected |
 |-------|----------|
-| List action | The archived row disappears from the default list; `PUT /v1/sessions/{id}/archive` returns 204 |
+| List action | The archived row disappears from the default list; `PUT /v1/platform/sessions/{id}/archive` returns 204 |
 | Sidebar | The archived thread is gone from the sidebar list, and the **All chats** link is still offered |
 | Filter | Enabling **Show archived** re-lists the thread, dimmed and badged **Archived**, below unarchived threads |
 | Thread | Opening the archived thread loads its full transcript and header, with an **Archived** badge |

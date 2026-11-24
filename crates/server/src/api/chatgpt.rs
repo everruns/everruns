@@ -87,7 +87,7 @@ async fn row(
 /// provider is hidden even from organization administrators.
 #[utoipa::path(
     get,
-    path = "/v1/providers/{provider_id}/chatgpt",
+    path = "/v1/platform/providers/{provider_id}/chatgpt",
     params(("provider_id" = String, Path, description = "Personal provider ID")),
     responses(
         (status = 200, description = "Personal connection status", body = ConnectionStatus),
@@ -122,7 +122,7 @@ pub async fn status(
 /// Requires deployment enablement, organization opt-in, encryption, and exact ownership.
 #[utoipa::path(
     post,
-    path = "/v1/providers/{provider_id}/chatgpt/login",
+    path = "/v1/platform/providers/{provider_id}/chatgpt/login",
     params(("provider_id" = String, Path, description = "Personal provider ID")),
     responses(
         (status = 200, description = "Personal connection login", body = LoginResponse),
@@ -343,7 +343,7 @@ async fn save_connection(
 /// A failed revocation retains credentials so the owner can retry.
 #[utoipa::path(
     delete,
-    path = "/v1/providers/{provider_id}/chatgpt",
+    path = "/v1/platform/providers/{provider_id}/chatgpt",
     params(("provider_id" = String, Path, description = "Personal provider ID")),
     responses(
         (status = 200, description = "Personal connection disconnect", body = serde_json::Value),
@@ -378,7 +378,7 @@ pub async fn disconnect(
 /// before persisting credentials. Only the provider's owner may import the document.
 #[utoipa::path(
     post,
-    path = "/v1/providers/{provider_id}/chatgpt/import",
+    path = "/v1/platform/providers/{provider_id}/chatgpt/import",
     params(("provider_id" = String, Path, description = "Personal provider ID")),
     request_body = ImportedConnection,
     responses(

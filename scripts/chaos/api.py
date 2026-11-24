@@ -105,10 +105,10 @@ class Api:
         platform user of its one org. Raises when a flag did not take."""
         if not flags:
             return
-        orgs = self.get("/v1/orgs")
+        orgs = self.get("/v1/platform/orgs")
         items = orgs.get("data", orgs) if isinstance(orgs, dict) else orgs
         org = items[0].get("id") or items[0]["public_id"]
-        effective = self.request("PATCH", f"/v1/orgs/{org}/feature-flags/platform", body={"flags": flags})
+        effective = self.request("PATCH", f"/v1/platform/orgs/{org}/feature-flags/platform", body={"flags": flags})
         wrong = {name: effective.get(name) for name, on in flags.items() if bool(effective.get(name)) != on}
         if wrong:
             raise RuntimeError(f"org feature flags did not take: {wrong}")
@@ -119,7 +119,7 @@ class Api:
         cursor = after_sequence if after_sequence is not None else 0
         while True:
             page = self.get(
-                f"/v1/sessions/{session_id}/events",
+                f"/v1/platform/sessions/{session_id}/events",
                 query={"after_sequence": cursor, "limit": 1000},
             )
             items = page.get("data", page) if isinstance(page, dict) else page

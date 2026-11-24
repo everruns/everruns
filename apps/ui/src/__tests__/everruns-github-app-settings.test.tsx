@@ -58,7 +58,7 @@ describe("EverrunsGitHubAppSettings", () => {
     expect(screen.getByText(/everruns\[bot\]/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Link/ })).toHaveAttribute(
       "href",
-      "https://api.example.test/v1/orgs/org_1/github/everruns-app/authorize?return_to=%2Fsettings%2Forganization",
+      "https://api.example.test/v1/platform/orgs/org_1/github/everruns-app/authorize?return_to=%2Fsettings%2Forganization",
     );
     expect(mocked.listEverrunsAppLinks).toHaveBeenCalledWith("org_1");
   });

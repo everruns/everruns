@@ -109,7 +109,7 @@ fn session_cookie(set_cookies: &[String]) -> String {
 async fn register_user(router: Router, name: &str, email: &str) -> String {
     let req = Request::builder()
         .method(Method::POST)
-        .uri("/v1/auth/register")
+        .uri("/v1/platform/auth/register")
         .header(header::CONTENT_TYPE, "application/json")
         .body(Body::from(
             json!({"name": name, "email": email, "password": "longenough123"}).to_string(),
@@ -319,7 +319,7 @@ async fn test_mcp_oauth_authorize_user_switch_end_to_end() {
 
     let req = Request::builder()
         .method(Method::GET)
-        .uri("/v1/auth/me")
+        .uri("/v1/platform/auth/me")
         .header(header::COOKIE, &bob)
         .body(Body::empty())
         .unwrap();

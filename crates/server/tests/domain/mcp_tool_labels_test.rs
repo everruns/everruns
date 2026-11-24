@@ -11,7 +11,7 @@ use test_harness::TestServer;
 async fn server_with_tools(server: &TestServer) -> String {
     let created: Value = server
         .post(
-            "/v1/mcp-servers",
+            "/v1/platform/mcp-servers",
             json!({
                 "name": format!("docs-{}", uuid::Uuid::new_v4().simple()),
                 "url": "https://example.com/mcp",
@@ -55,7 +55,10 @@ async fn put_label(
     body: Value,
 ) -> test_harness::TestResponse {
     server
-        .put(&format!("/v1/mcp-servers/{id}/tools/{tool}/label"), body)
+        .put(
+            &format!("/v1/platform/mcp-servers/{id}/tools/{tool}/label"),
+            body,
+        )
         .await
 }
 
@@ -65,7 +68,7 @@ async fn lists_tools_and_sets_and_clears_a_label() {
     let id = server_with_tools(&server).await;
 
     let tools: Value = server
-        .get(&format!("/v1/mcp-servers/{id}/tools"))
+        .get(&format!("/v1/platform/mcp-servers/{id}/tools"))
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -90,7 +93,7 @@ async fn lists_tools_and_sets_and_clears_a_label() {
         .assert_status(StatusCode::OK);
 
     let tools: Value = server
-        .get(&format!("/v1/mcp-servers/{id}/tools"))
+        .get(&format!("/v1/platform/mcp-servers/{id}/tools"))
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -103,7 +106,7 @@ async fn lists_tools_and_sets_and_clears_a_label() {
         .json();
     assert_eq!(cleared["label"], Value::Null);
     let tools: Value = server
-        .get(&format!("/v1/mcp-servers/{id}/tools"))
+        .get(&format!("/v1/platform/mcp-servers/{id}/tools"))
         .await
         .json();
     assert_eq!(tools[1]["label"], Value::Null);
@@ -126,13 +129,13 @@ async fn rejects_unknown_labels_tools_and_servers() {
         .await
         .assert_status(StatusCode::NOT_FOUND);
     server
-        .get(&format!("/v1/mcp-servers/{missing}/tools"))
+        .get(&format!("/v1/platform/mcp-servers/{missing}/tools"))
         .await
         .assert_status(StatusCode::NOT_FOUND);
 
     // Nothing was saved by the rejected calls.
     let tools: Value = server
-        .get(&format!("/v1/mcp-servers/{id}/tools"))
+        .get(&format!("/v1/platform/mcp-servers/{id}/tools"))
         .await
         .json();
     assert!(
@@ -162,7 +165,7 @@ async fn setting_a_label_confirms_and_drops_the_suggestion() {
 
     // Shown, never applied.
     let tools: Value = server
-        .get(&format!("/v1/mcp-servers/{id}/tools"))
+        .get(&format!("/v1/platform/mcp-servers/{id}/tools"))
         .await
         .json();
     assert_eq!(tools[0]["suggested_label"], "changes");
@@ -175,7 +178,7 @@ async fn setting_a_label_confirms_and_drops_the_suggestion() {
     assert_eq!(set["label"], "changes");
     assert_eq!(set["suggested_label"], Value::Null);
     let tools: Value = server
-        .get(&format!("/v1/mcp-servers/{id}/tools"))
+        .get(&format!("/v1/platform/mcp-servers/{id}/tools"))
         .await
         .json();
     assert_eq!(
@@ -199,7 +202,7 @@ async fn suggesting_labels_needs_a_decision_service() {
     let id = server_with_tools(&server).await;
     let response = server
         .post(
-            &format!("/v1/mcp-servers/{id}/tools/suggest-labels"),
+            &format!("/v1/platform/mcp-servers/{id}/tools/suggest-labels"),
             json!({}),
         )
         .await
@@ -212,7 +215,7 @@ async fn suggesting_labels_needs_a_decision_service() {
     let missing = everruns_contracts::typed_id::McpServerId::new().to_string();
     server
         .post(
-            &format!("/v1/mcp-servers/{missing}/tools/suggest-labels"),
+            &format!("/v1/platform/mcp-servers/{missing}/tools/suggest-labels"),
             json!({}),
         )
         .await

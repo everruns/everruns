@@ -218,17 +218,17 @@ This preserves the rendered message while keeping enough context for future anal
 
 ### Sessions
 
-`POST /v1/sessions`
+`POST /v1/platform/sessions`
 - accepts optional `locale`
 - should accept optional `timezone`
 
-`PATCH /v1/sessions/{session_id}`
+`PATCH /v1/platform/sessions/{session_id}`
 - accepts optional `locale`
 - should accept optional `timezone`
 
 ### Messages
 
-`POST /v1/sessions/{session_id}/messages`
+`POST /v1/platform/sessions/{session_id}/messages`
 - `controls.locale` is the preferred per-turn locale override
 - `metadata.locale` is reserved for per-turn locale override
 - `metadata.timezone` is reserved for per-turn timezone override
@@ -289,7 +289,7 @@ separate small catalog; authored arguments are appended only after translation.
 
 ### Users
 
-`PATCH /v1/users/me`
+`PATCH /v1/platform/users/me`
 - should support updating `name`, `locale`, and `timezone`
 - patch semantics should allow partial updates
 

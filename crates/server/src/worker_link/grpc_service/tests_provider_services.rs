@@ -4,7 +4,7 @@ use super::tests::test_worker_service;
 use super::*;
 
 /// Provider commands the worker dispatches (`sync_provider_models`,
-/// `create_provider`, `update_provider`) need the services `/v1/providers`
+/// `create_provider`, `update_provider`) need the services `/v1/platform/providers`
 /// attaches. Without them sync answered 503 "Model sync is not available on
 /// this endpoint" and create/update skipped model discovery and bootstrap.
 #[tokio::test]
@@ -21,7 +21,7 @@ async fn grpc_worker_context_carries_provider_services() {
     );
     assert!(ctx.model_service.is_some(), "model service missing");
 
-    // Composed: exactly the `/v1/providers` instances, so their resolver cache
+    // Composed: exactly the `/v1/platform/providers` instances, so their resolver cache
     // invalidation reaches the runtime.
     let shared = crate::domains::providers::ProviderServices::new(
         service.db.clone(),

@@ -6,7 +6,7 @@ use crate::test_harness::TestServer;
 use axum::http::StatusCode;
 use serde_json::Value;
 
-const AUDIT_LOGS: &str = "/v1/orgs/org_00000000000000000000000000000001/audit-logs";
+const AUDIT_LOGS: &str = "/v1/platform/orgs/org_00000000000000000000000000000001/audit-logs";
 
 #[tokio::test]
 async fn audit_log_route_keeps_its_response_shape() {

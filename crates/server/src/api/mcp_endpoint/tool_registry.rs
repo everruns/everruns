@@ -329,7 +329,7 @@ fn agent_run_tool(protocol_version: &str, org_id_description: &str) -> McpEndpoi
         protocol_version,
         "agent_run",
         "Run Agent",
-        "Create a new session and send the first message to an agent. Returns the session ID and message ID. Use session_get_status to poll for the agent's response, or connect to the SSE stream at /api/v1/sessions/{session_id}/sse for real-time events. To show the session UI, call session_open with the returned session_id.",
+        "Create a new session and send the first message to an agent. Returns the session ID and message ID. Use session_get_status to poll for the agent's response, or connect to the SSE stream at /api/v1/platform/sessions/{session_id}/sse for real-time events. To show the session UI, call session_open with the returned session_id.",
         object_schema(
             vec![
                 id_property(

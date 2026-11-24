@@ -192,7 +192,7 @@ pub struct UpdateOrganizationRequest {
     >,
     /// Who answers deployment-owned decision checks (guardrail `jev` checks
     /// and the Slack relevance check). `organization` uses the org's default
-    /// decision model (`PUT /v1/models/decision-default`) on its own provider
+    /// decision model (`PUT /v1/platform/models/decision-default`) on its own provider
     /// account; when that model is missing or failing, guardrail checks fail
     /// open and Slack stays silent, never falling back to the deployment.
     #[serde(skip_serializing_if = "Option::is_none")]

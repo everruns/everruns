@@ -23,10 +23,10 @@ const routes = [
   ["orgs", "organization"],
 ];
 it.each(routes)("reviews the real %s configuration endpoint", (path, kind) => {
-  expect(resourceWrite("PATCH", `/v1/${path}/${id}`)).toMatchObject({ kind, id });
+  expect(resourceWrite("PATCH", `/v1/platform/${path}/${id}`)).toMatchObject({ kind, id });
   expect(formResource(kind, id)).toMatchObject({ kind, id });
-  expect(resourceWrite("POST", `/v1/${path}/${id}`)).toBeUndefined();
-  expect(resourceWrite("PATCH", `/v1/${path}/${id}/credentials`)).toBeUndefined();
+  expect(resourceWrite("POST", `/v1/platform/${path}/${id}`)).toBeUndefined();
+  expect(resourceWrite("PATCH", `/v1/platform/${path}/${id}/credentials`)).toBeUndefined();
 });
 it.each([
   [`agents/agent_${id}/channels/appchan_${id}`, "agent_channel", `appchan_${id}`],
@@ -36,16 +36,16 @@ it.each([
   [`evals/eval_${id}/cases/evalcase_${id}`, "eval_case", `evalcase_${id}`],
   [`orgs/org_${id}/organization-connections/${id}`, "organization_account", id],
 ])("reviews nested resource %s without using its parent as the subject", (path, kind, subject) => {
-  expect(resourceWrite("PATCH", `/v1/${path}`)).toMatchObject({ kind, id: subject });
+  expect(resourceWrite("PATCH", `/v1/platform/${path}`)).toMatchObject({ kind, id: subject });
   expect(formResource(kind, subject)).toMatchObject({ kind, id: subject });
 });
 it("distinguishes settings sharing an organization identifier", () => {
   const org = `org_${id}`;
-  expect(resourceWrite("PUT", `/v1/orgs/${org}/egress-allowlist`)).toMatchObject({
+  expect(resourceWrite("PUT", `/v1/platform/orgs/${org}/egress-allowlist`)).toMatchObject({
     kind: "organization_network",
     id: org,
   });
-  expect(resourceWrite("PUT", "/v1/models/decision-default", org)).toMatchObject({
+  expect(resourceWrite("PUT", "/v1/platform/models/decision-default", org)).toMatchObject({
     kind: "organization_decision",
     id: org,
   });

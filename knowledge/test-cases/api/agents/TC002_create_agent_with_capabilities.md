@@ -32,7 +32,7 @@ Verify that an agent can be created with capabilities and that the capabilities 
 
 1. Create agent with capabilities:
    ```bash
-   curl -s -X POST "http://localhost:9300/api/v1/agents" \
+   curl -s -X POST "http://localhost:9300/api/v1/platform/agents" \
      -H "Content-Type: application/json" \
      -d '{
        "name": "capable-agent",
@@ -49,7 +49,7 @@ Verify that an agent can be created with capabilities and that the capabilities 
 
 2. Fetch agent:
    ```bash
-   curl -s "http://localhost:9300/api/v1/agents/{id}"
+   curl -s "http://localhost:9300/api/v1/platform/agents/{id}"
    ```
 
 ## Expected Result

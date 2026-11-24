@@ -1,5 +1,5 @@
 # Reverse proxy routes:
-#   /api/v1/sessions* /api/v1/commands* workspace files -> edge, else API
+#   /api/v1/platform/sessions* /api/v1/platform/commands* workspace files -> edge, else API
 #   /api/*     -> API
 #   /oauth/*   -> API
 #   /mcp       -> API
@@ -18,7 +18,7 @@
   # v2 org's sessions from the shard and passes everything else to the
   # API unchanged. With no edge (v1, DATA_PLANE_REPLICAS=0) they go
   # straight to the API. No compression: these are mostly SSE streams.
-  @sessions path_regexp ^/api/v1/(sessions|commands|workspaces/[^/]+/fs(/|$))
+  @sessions path_regexp ^/api/v1/(platform/)?(sessions|commands|workspaces/[^/]+/fs(/|$))
   handle @sessions {
     reverse_proxy edge:7100 server:9000 {
       lb_policy first

@@ -1,7 +1,7 @@
 ---
 type: Test Case
 title: "TC007: Check Agent Name Availability"
-description: "Verify the `/v1/agents/check-name` endpoint correctly reports name availability, including format validation and exclude_id support for edit forms."
+description: "Verify the `/v1/platform/agents/check-name` endpoint correctly reports name availability, including format validation and exclude_id support for edit forms."
 tags:
   - everruns
   - test-case
@@ -12,7 +12,7 @@ tags:
 
 ## Description
 
-Verify the `/v1/agents/check-name` endpoint correctly reports name availability, including format validation and exclude_id support for edit forms.
+Verify the `/v1/platform/agents/check-name` endpoint correctly reports name availability, including format validation and exclude_id support for edit forms.
 
 ## Preconditions
 
@@ -22,12 +22,12 @@ Verify the `/v1/agents/check-name` endpoint correctly reports name availability,
 
 1. Check a name that doesn't exist:
    ```bash
-   curl -s "http://localhost:9300/api/v1/agents/check-name?name=fresh-agent"
+   curl -s "http://localhost:9300/api/v1/platform/agents/check-name?name=fresh-agent"
    ```
 
 2. Create an agent:
    ```bash
-   curl -s -X POST "http://localhost:9300/api/v1/agents" \
+   curl -s -X POST "http://localhost:9300/api/v1/platform/agents" \
      -H "Content-Type: application/json" \
      -d '{
        "name": "taken-agent",
@@ -38,22 +38,22 @@ Verify the `/v1/agents/check-name` endpoint correctly reports name availability,
 
 3. Check the taken name:
    ```bash
-   curl -s "http://localhost:9300/api/v1/agents/check-name?name=taken-agent"
+   curl -s "http://localhost:9300/api/v1/platform/agents/check-name?name=taken-agent"
    ```
 
 4. Check the taken name with exclude_id (edit form scenario):
    ```bash
-   curl -s "http://localhost:9300/api/v1/agents/check-name?name=taken-agent&exclude_id={id}"
+   curl -s "http://localhost:9300/api/v1/platform/agents/check-name?name=taken-agent&exclude_id={id}"
    ```
 
 5. Check an invalid name format (uppercase):
    ```bash
-   curl -s "http://localhost:9300/api/v1/agents/check-name?name=Bad+Name"
+   curl -s "http://localhost:9300/api/v1/platform/agents/check-name?name=Bad+Name"
    ```
 
 6. Check a very short name (1 char):
    ```bash
-   curl -s "http://localhost:9300/api/v1/agents/check-name?name=a"
+   curl -s "http://localhost:9300/api/v1/platform/agents/check-name?name=a"
    ```
 
 ## Expected Result

@@ -107,16 +107,16 @@ contract as evals.
 Decided ordering (Option A → C → B from the design review):
 
 1. **Built-in rules in preview.** Tier-1 rules computed inside
-   `POST /v1/agents/preview`; response gains a `findings` array. Editor shows
+   `POST /v1/platform/agents/preview`; response gains a `findings` array. Editor shows
    a collapsible Checks panel with severity badges and deep links to the
    offending field/span.
-2. **LLM analysis + fixes.** `Analyze` action (`POST /v1/agents/analyze`,
+2. **LLM analysis + fixes.** `Analyze` action (`POST /v1/platform/agents/analyze`,
    `analyze_agent` command) runs tier-2 checkers on the utility LLM and
    returns merged tier-1 + tier-2 findings. Findings gain span locations and
    proposed `fix` payloads with one-click apply. This phase delivers the
    "too verbose / duplicated / contradictory / poor structure" feedback.
 3. **Health checks.** Async behavioral smoke run: the `trigger_agent_health_check`
-   command (`POST /v1/agents/{agent_id}/health-checks`) resolves the agent
+   command (`POST /v1/platform/agents/{agent_id}/health-checks`) resolves the agent
    config, persists a run row keyed by `config_hash`, and spawns a background
    task that generates cases (utility LLM), runs each as a real session
    through the session/message services, and scores them deterministically
@@ -171,7 +171,7 @@ Decided ordering (Option A → C → B from the design review):
 
 ## Relationship to existing systems
 
-- **Preview** (`POST /v1/agents/preview`): tier-1 carrier; already computes
+- **Preview** (`POST /v1/platform/agents/preview`): tier-1 carrier; already computes
   the resolved shape findings are evaluated against.
 - **Utility LLM** (`knowledge/operations/utility-llm.md`): engine for tier 2 and for health
   check case generation, under the "system analysis tasks" allowance.

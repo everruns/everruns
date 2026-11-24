@@ -47,4 +47,4 @@ Verify that an idle browser session renews through its refresh cookie and that e
 
 ## Review Note
 
-Source review identified a path to verify: the route proxy admits refresh-only cookies, but the client skips automatic refresh for `/v1/auth/*`, including the bootstrap `/v1/auth/me` request. Cold reload must be exercised separately from concurrent non-auth reads. A login bounce with a valid refresh cookie fails this case; source review alone is not execution evidence.
+Source review identified a path to verify: the route proxy admits refresh-only cookies, but the client skips automatic refresh for `/v1/platform/auth/*`, including the bootstrap `/v1/platform/auth/me` request. Cold reload must be exercised separately from concurrent non-auth reads. A login bounce with a valid refresh cookie fails this case; source review alone is not execution evidence.

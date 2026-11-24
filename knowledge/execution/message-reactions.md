@@ -53,7 +53,7 @@ already share. Removing appends; nothing is deleted. A partial index
   a platform custom emoji `:name:`. Text is refused, so a reaction can never
   carry a sentence into what the agent reads.
 - At most 20 distinct emoji per message.
-- Reads fold the log: `GET /v1/sessions/{id}/reactions` returns, per message,
+- Reads fold the log: `GET /v1/platform/sessions/{id}/reactions` returns, per message,
   each emoji with its count, whether the caller (`me`) and the agent (`agent`)
   reacted, and who, earliest first. Agent reactions are named after the
   session's agent at read time.
@@ -108,8 +108,8 @@ channel and timestamp).
 
 ## Surfaces
 
-- **`/v1`:** `PUT` / `DELETE /v1/sessions/{id}/messages/{message_id}/reactions/{emoji}`
-  (SESSION_MANAGE, signed-in user), `GET /v1/sessions/{id}/reactions`
+- **`/v1`:** `PUT` / `DELETE /v1/platform/sessions/{id}/messages/{message_id}/reactions/{emoji}`
+  (SESSION_MANAGE, signed-in user), `GET /v1/platform/sessions/{id}/reactions`
   (SESSION_VIEW). CLI: `everruns sessions messages react|unreact|reactions`.
 - **Agent Execution API:** the same three routes under the agent base URL,
   in the caller's own sessions. An end user reacts as that consumer; an agent

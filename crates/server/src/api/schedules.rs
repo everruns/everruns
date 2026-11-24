@@ -101,39 +101,45 @@ impl ScheduleAppState {
 pub fn routes(state: ScheduleAppState) -> Router {
     Router::new()
         // CRUD
-        .route("/v1/durable/schedules", post(create_schedule))
-        .route("/v1/durable/schedules", get(list_schedules))
-        .route("/v1/durable/schedules/{schedule_id}", get(get_schedule))
+        .route("/v1/platform/durable/schedules", post(create_schedule))
+        .route("/v1/platform/durable/schedules", get(list_schedules))
         .route(
-            "/v1/durable/schedules/{schedule_id}",
+            "/v1/platform/durable/schedules/{schedule_id}",
+            get(get_schedule),
+        )
+        .route(
+            "/v1/platform/durable/schedules/{schedule_id}",
             patch(update_schedule),
         )
         .route(
-            "/v1/durable/schedules/{schedule_id}",
+            "/v1/platform/durable/schedules/{schedule_id}",
             delete(delete_schedule),
         )
         // Actions
         .route(
-            "/v1/durable/schedules/{schedule_id}/pause",
+            "/v1/platform/durable/schedules/{schedule_id}/pause",
             post(pause_schedule),
         )
         .route(
-            "/v1/durable/schedules/{schedule_id}/resume",
+            "/v1/platform/durable/schedules/{schedule_id}/resume",
             post(resume_schedule),
         )
         .route(
-            "/v1/durable/schedules/{schedule_id}/trigger",
+            "/v1/platform/durable/schedules/{schedule_id}/trigger",
             post(trigger_schedule),
         )
         // Executions
         .route(
-            "/v1/durable/schedules/{schedule_id}/executions",
+            "/v1/platform/durable/schedules/{schedule_id}/executions",
             get(list_schedule_executions),
         )
-        .route("/v1/durable/executions/{execution_id}", get(get_execution))
+        .route(
+            "/v1/platform/durable/executions/{execution_id}",
+            get(get_execution),
+        )
         // Stats
         .route(
-            "/v1/durable/schedules/{schedule_id}/stats",
+            "/v1/platform/durable/schedules/{schedule_id}/stats",
             get(get_schedule_stats),
         )
         .with_state(state)
@@ -143,10 +149,10 @@ pub fn routes(state: ScheduleAppState) -> Router {
 // Route handlers
 // ============================================================================
 
-/// POST /v1/durable/schedules - Create a new schedule
+/// POST /v1/platform/durable/schedules - Create a new schedule
 #[utoipa::path(
     post,
-    path = "/v1/durable/schedules",
+    path = "/v1/platform/durable/schedules",
     request_body = CreateScheduleRequest,
     responses(
         (status = 201, description = "Schedule created", body = ScheduleResponse),
@@ -179,10 +185,10 @@ pub async fn create_schedule(
     Ok((StatusCode::CREATED, Json(schedule)))
 }
 
-/// GET /v1/durable/schedules - List schedules
+/// GET /v1/platform/durable/schedules - List schedules
 #[utoipa::path(
     get,
-    path = "/v1/durable/schedules",
+    path = "/v1/platform/durable/schedules",
     params(
         ("enabled" = Option<bool>, Query, description = "Filter by enabled status"),
         ("target_type" = Option<String>, Query, description = "Filter by target type"),
@@ -212,10 +218,10 @@ pub async fn list_schedules(
     Ok(Json(schedules))
 }
 
-/// GET /v1/durable/schedules/:schedule_id - Get schedule details
+/// GET /v1/platform/durable/schedules/:schedule_id - Get schedule details
 #[utoipa::path(
     get,
-    path = "/v1/durable/schedules/{schedule_id}",
+    path = "/v1/platform/durable/schedules/{schedule_id}",
     params(
         ("schedule_id" = Uuid, Path, description = "Schedule ID")
     ),
@@ -236,10 +242,10 @@ pub async fn get_schedule(
     Ok(Json(schedule))
 }
 
-/// PATCH /v1/durable/schedules/:schedule_id - Update schedule
+/// PATCH /v1/platform/durable/schedules/:schedule_id - Update schedule
 #[utoipa::path(
     patch,
-    path = "/v1/durable/schedules/{schedule_id}",
+    path = "/v1/platform/durable/schedules/{schedule_id}",
     params(
         ("schedule_id" = Uuid, Path, description = "Schedule ID")
     ),
@@ -265,10 +271,10 @@ pub async fn update_schedule(
     Ok(Json(schedule))
 }
 
-/// DELETE /v1/durable/schedules/:schedule_id - Delete schedule
+/// DELETE /v1/platform/durable/schedules/:schedule_id - Delete schedule
 #[utoipa::path(
     delete,
-    path = "/v1/durable/schedules/{schedule_id}",
+    path = "/v1/platform/durable/schedules/{schedule_id}",
     params(
         ("schedule_id" = Uuid, Path, description = "Schedule ID")
     ),
@@ -291,10 +297,10 @@ pub async fn delete_schedule(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// POST /v1/durable/schedules/:schedule_id/pause - Pause schedule
+/// POST /v1/platform/durable/schedules/:schedule_id/pause - Pause schedule
 #[utoipa::path(
     post,
-    path = "/v1/durable/schedules/{schedule_id}/pause",
+    path = "/v1/platform/durable/schedules/{schedule_id}/pause",
     params(
         ("schedule_id" = Uuid, Path, description = "Schedule ID")
     ),
@@ -317,10 +323,10 @@ pub async fn pause_schedule(
     Ok(Json(schedule))
 }
 
-/// POST /v1/durable/schedules/:schedule_id/resume - Resume schedule
+/// POST /v1/platform/durable/schedules/:schedule_id/resume - Resume schedule
 #[utoipa::path(
     post,
-    path = "/v1/durable/schedules/{schedule_id}/resume",
+    path = "/v1/platform/durable/schedules/{schedule_id}/resume",
     params(
         ("schedule_id" = Uuid, Path, description = "Schedule ID")
     ),
@@ -343,10 +349,10 @@ pub async fn resume_schedule(
     Ok(Json(schedule))
 }
 
-/// POST /v1/durable/schedules/:schedule_id/trigger - Manually trigger schedule
+/// POST /v1/platform/durable/schedules/:schedule_id/trigger - Manually trigger schedule
 #[utoipa::path(
     post,
-    path = "/v1/durable/schedules/{schedule_id}/trigger",
+    path = "/v1/platform/durable/schedules/{schedule_id}/trigger",
     params(
         ("schedule_id" = Uuid, Path, description = "Schedule ID")
     ),
@@ -369,10 +375,10 @@ pub async fn trigger_schedule(
     Ok(Json(response))
 }
 
-/// GET /v1/durable/schedules/:schedule_id/executions - List schedule executions
+/// GET /v1/platform/durable/schedules/:schedule_id/executions - List schedule executions
 #[utoipa::path(
     get,
-    path = "/v1/durable/schedules/{schedule_id}/executions",
+    path = "/v1/platform/durable/schedules/{schedule_id}/executions",
     params(
         ("schedule_id" = Uuid, Path, description = "Schedule ID"),
         ("status" = Option<String>, Query, description = "Filter by status"),
@@ -404,10 +410,10 @@ pub async fn list_schedule_executions(
     Ok(Json(executions))
 }
 
-/// GET /v1/durable/executions/:execution_id - Get execution details
+/// GET /v1/platform/durable/executions/:execution_id - Get execution details
 #[utoipa::path(
     get,
-    path = "/v1/durable/executions/{execution_id}",
+    path = "/v1/platform/durable/executions/{execution_id}",
     params(
         ("execution_id" = Uuid, Path, description = "Execution ID")
     ),
@@ -430,10 +436,10 @@ pub async fn get_execution(
     Ok(Json(execution))
 }
 
-/// GET /v1/durable/schedules/:schedule_id/stats - Get schedule statistics
+/// GET /v1/platform/durable/schedules/:schedule_id/stats - Get schedule statistics
 #[utoipa::path(
     get,
-    path = "/v1/durable/schedules/{schedule_id}/stats",
+    path = "/v1/platform/durable/schedules/{schedule_id}/stats",
     params(
         ("schedule_id" = Uuid, Path, description = "Schedule ID")
     ),
@@ -556,17 +562,26 @@ mod tests {
     async fn schedule_routes_reject_unauthenticated() {
         let id = Uuid::now_v7();
         let cases: [(&str, String); 11] = [
-            ("POST", "/v1/durable/schedules".to_string()),
-            ("GET", "/v1/durable/schedules".to_string()),
-            ("GET", format!("/v1/durable/schedules/{id}")),
-            ("PATCH", format!("/v1/durable/schedules/{id}")),
-            ("DELETE", format!("/v1/durable/schedules/{id}")),
-            ("POST", format!("/v1/durable/schedules/{id}/pause")),
-            ("POST", format!("/v1/durable/schedules/{id}/resume")),
-            ("POST", format!("/v1/durable/schedules/{id}/trigger")),
-            ("GET", format!("/v1/durable/schedules/{id}/executions")),
-            ("GET", format!("/v1/durable/executions/{id}")),
-            ("GET", format!("/v1/durable/schedules/{id}/stats")),
+            ("POST", "/v1/platform/durable/schedules".to_string()),
+            ("GET", "/v1/platform/durable/schedules".to_string()),
+            ("GET", format!("/v1/platform/durable/schedules/{id}")),
+            ("PATCH", format!("/v1/platform/durable/schedules/{id}")),
+            ("DELETE", format!("/v1/platform/durable/schedules/{id}")),
+            ("POST", format!("/v1/platform/durable/schedules/{id}/pause")),
+            (
+                "POST",
+                format!("/v1/platform/durable/schedules/{id}/resume"),
+            ),
+            (
+                "POST",
+                format!("/v1/platform/durable/schedules/{id}/trigger"),
+            ),
+            (
+                "GET",
+                format!("/v1/platform/durable/schedules/{id}/executions"),
+            ),
+            ("GET", format!("/v1/platform/durable/executions/{id}")),
+            ("GET", format!("/v1/platform/durable/schedules/{id}/stats")),
         ];
         for (method, path) in cases {
             assert_unauthenticated_rejected(method, &path).await;
@@ -579,15 +594,24 @@ mod tests {
     async fn schedule_routes_pass_authenticated() {
         let id = Uuid::now_v7();
         let cases: [(&str, String); 9] = [
-            ("GET", "/v1/durable/schedules".to_string()),
-            ("GET", format!("/v1/durable/schedules/{id}")),
-            ("DELETE", format!("/v1/durable/schedules/{id}")),
-            ("POST", format!("/v1/durable/schedules/{id}/pause")),
-            ("POST", format!("/v1/durable/schedules/{id}/resume")),
-            ("POST", format!("/v1/durable/schedules/{id}/trigger")),
-            ("GET", format!("/v1/durable/schedules/{id}/executions")),
-            ("GET", format!("/v1/durable/executions/{id}")),
-            ("GET", format!("/v1/durable/schedules/{id}/stats")),
+            ("GET", "/v1/platform/durable/schedules".to_string()),
+            ("GET", format!("/v1/platform/durable/schedules/{id}")),
+            ("DELETE", format!("/v1/platform/durable/schedules/{id}")),
+            ("POST", format!("/v1/platform/durable/schedules/{id}/pause")),
+            (
+                "POST",
+                format!("/v1/platform/durable/schedules/{id}/resume"),
+            ),
+            (
+                "POST",
+                format!("/v1/platform/durable/schedules/{id}/trigger"),
+            ),
+            (
+                "GET",
+                format!("/v1/platform/durable/schedules/{id}/executions"),
+            ),
+            ("GET", format!("/v1/platform/durable/executions/{id}")),
+            ("GET", format!("/v1/platform/durable/schedules/{id}/stats")),
         ];
         for (method, path) in cases {
             assert_authenticated_passes(method, &path).await;
@@ -666,7 +690,7 @@ mod tests {
         let response = app_with_platform_user(false)
             .oneshot(
                 Request::builder()
-                    .uri("/v1/durable/schedules")
+                    .uri("/v1/platform/durable/schedules")
                     .header("Authorization", "Bearer test-token")
                     .body(Body::empty())
                     .unwrap(),
@@ -682,7 +706,7 @@ mod tests {
         let response = app_with_platform_user(true)
             .oneshot(
                 Request::builder()
-                    .uri("/v1/durable/schedules")
+                    .uri("/v1/platform/durable/schedules")
                     .header("Authorization", "Bearer test-token")
                     .body(Body::empty())
                     .unwrap(),
@@ -699,7 +723,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/v1/durable/schedules")
+                    .uri("/v1/platform/durable/schedules")
                     .header("Authorization", "Bearer test-token")
                     .header("content-type", "application/json")
                     .body(Body::from("{}"))

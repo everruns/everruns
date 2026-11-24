@@ -110,7 +110,7 @@ expected = {"/": ("Prefix", "ui")}
 expected.update({path: ("Prefix", "server") for path in ("/api", "/oauth", "/.well-known", "/api-doc")})
 expected.update({path: ("Exact", "server") for path in ("/mcp", "/health", "/llms.txt", "/auth.md", "/robots.txt", "/sitemap.xml")})
 if mode != "v1":
-    expected.update({"/api/v1/" + route: ("Prefix", "edge") for route in ("sessions", "commands", "workspaces")})
+    expected.update({prefix + route: ("Prefix", "edge") for prefix in ("/api/v1/platform/", "/api/v1/") for route in ("sessions", "commands", "workspaces")})
 assert routes == expected, routes
 for service in {backend for _, backend in expected.values()}:
     name = f"check-everruns-{service}"

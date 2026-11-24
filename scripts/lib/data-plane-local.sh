@@ -10,7 +10,7 @@
 # - The link's token and the data plane's wrapping key are made once per
 #   prefix and kept (mode 0600) under .local/data-plane/, like the local
 #   secrets key: a restart keeps the orgs already moved working.
-# - The proxy sends /api/v1/sessions and below to the edge (SESSIONS_UPSTREAM);
+# - The proxy sends /api/v1/platform/sessions and below to the edge (SESSIONS_UPSTREAM);
 #   the edge passes everything that is not a data plane session's call on
 #   to the API server unchanged.
 # - The API server registers the data plane and puts every org that has

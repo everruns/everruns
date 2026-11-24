@@ -16,7 +16,7 @@ export interface SaveOrganizationConnection {
 }
 
 function base(org: string): string {
-  return `/v1/orgs/${encodeURIComponent(org)}/organization-connections`;
+  return `/v1/platform/orgs/${encodeURIComponent(org)}/organization-connections`;
 }
 
 export async function listOrganizationConnections(org: string): Promise<OrganizationConnection[]> {

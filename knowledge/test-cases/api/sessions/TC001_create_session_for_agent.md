@@ -33,7 +33,7 @@ Verify that a session can be created for an existing agent and starts in the cor
 
 1. Create agent:
    ```bash
-   curl -s -X POST "${BASE_URL}/api/v1/agents" \
+   curl -s -X POST "${BASE_URL}/api/v1/platform/agents" \
      -H "Content-Type: application/json" \
      -d '{
        "name": "chat-agent",
@@ -45,7 +45,7 @@ Verify that a session can be created for an existing agent and starts in the cor
 
 2. Create session:
    ```bash
-   curl -s -X POST "${BASE_URL}/api/v1/sessions" \
+   curl -s -X POST "${BASE_URL}/api/v1/platform/sessions" \
      -H "Content-Type: application/json" \
      -d '{"agent_id": "{agent_id}"}'
    ```
@@ -53,7 +53,7 @@ Verify that a session can be created for an existing agent and starts in the cor
 
 3. Fetch session:
    ```bash
-   curl -s "${BASE_URL}/api/v1/sessions/{session_id}"
+   curl -s "${BASE_URL}/api/v1/platform/sessions/{session_id}"
    ```
 
 ## Expected Result

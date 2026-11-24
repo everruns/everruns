@@ -30,11 +30,11 @@ pub struct SetAgentCredentialValueRequest {
 pub fn routes(state: ApiState) -> Router {
     Router::new()
         .route(
-            "/v1/agents/{agent_id}/credentials",
+            "/v1/platform/agents/{agent_id}/credentials",
             get(list_credentials).post(create_credential_binding),
         )
         .route(
-            "/v1/agents/{agent_id}/credentials/{binding_id}",
+            "/v1/platform/agents/{agent_id}/credentials/{binding_id}",
             axum::routing::put(set_credential_value).delete(delete_credential_binding),
         )
         .with_state(state)
@@ -65,7 +65,7 @@ async fn resolve_agent(
 
 #[utoipa::path(
     get,
-    path = "/v1/agents/{agent_id}/credentials",
+    path = "/v1/platform/agents/{agent_id}/credentials",
     description = "List write-only MCP credential bindings for an agent. Responses contain metadata and configuration status, never credential values.",
     params(("agent_id" = String, Path, description = "Agent ID")),
     responses((status = 200, description = "Credential binding metadata", body = ListResponse<AgentCredentialBinding>)),
@@ -91,7 +91,7 @@ pub async fn list_credentials(
 
 #[utoipa::path(
     post,
-    path = "/v1/agents/{agent_id}/credentials",
+    path = "/v1/platform/agents/{agent_id}/credentials",
     description = "Declare a write-only credential binding for one MCP tool parameter. The secret value is provisioned separately.",
     params(("agent_id" = String, Path, description = "Agent ID")),
     request_body = CreateAgentCredentialBinding,
@@ -110,7 +110,7 @@ pub async fn create_credential_binding(
 
 #[utoipa::path(
     put,
-    path = "/v1/agents/{agent_id}/credentials/{binding_id}",
+    path = "/v1/platform/agents/{agent_id}/credentials/{binding_id}",
     description = "Encrypt and replace the write-only value for an agent credential binding.",
     params(
         ("agent_id" = String, Path, description = "Agent ID"),
@@ -168,7 +168,7 @@ pub async fn set_credential_value(
 
 #[utoipa::path(
     delete,
-    path = "/v1/agents/{agent_id}/credentials/{binding_id}",
+    path = "/v1/platform/agents/{agent_id}/credentials/{binding_id}",
     description = "Revoke an agent credential binding and permanently remove its encrypted value.",
     params(
         ("agent_id" = String, Path, description = "Agent ID"),

@@ -1,7 +1,7 @@
 //! A v2 session's attachments (data plane v2, step 11.6).
 //!
 //! Decisions:
-//! - Uploads stay org records here (`/v1/images`, `/v1/files`). A message
+//! - Uploads stay org records here (`/v1/platform/images`, `/v1/platform/files`). A message
 //!   that refers to one is sent through the control plane: the edge passes
 //!   such a message here instead of to the shard, and channels send theirs
 //!   from here anyway. Each upload is copied into the session's files on

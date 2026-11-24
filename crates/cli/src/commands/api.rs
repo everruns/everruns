@@ -351,7 +351,7 @@ mod tests {
         let (url, captured) = capture::serve_once(200, "{}").await;
         let client = ApiClient::new(&url, "key", None);
         client
-            .post_with_reason("/v1/agents/import", None, Some("kid friendly: ok"))
+            .post_with_reason("/v1/platform/agents/import", None, Some("kid friendly: ok"))
             .await
             .unwrap();
         let request = captured.await.unwrap();
@@ -366,7 +366,7 @@ mod tests {
         let (url, captured) = capture::serve_once(200, "{}").await;
         let client = ApiClient::new(&url, "key", None);
         client
-            .post_with_reason("/v1/agents/import", None, None)
+            .post_with_reason("/v1/platform/agents/import", None, None)
             .await
             .unwrap();
         assert_eq!(captured.await.unwrap().header(CHANGE_REASON_HEADER), None);
@@ -418,7 +418,11 @@ mod tests {
         let client = ApiClient::new(&url, "key", None);
 
         let response = client
-            .post_command("/v1/commands/create_agent", &serde_json::json!({}), "k-1")
+            .post_command(
+                "/v1/platform/commands/create_agent",
+                &serde_json::json!({}),
+                "k-1",
+            )
             .await
             .unwrap();
 
@@ -438,7 +442,11 @@ mod tests {
         let client = ApiClient::new(&url, "key", None);
 
         let err = client
-            .post_command("/v1/commands/create_agent", &serde_json::json!({}), "k-2")
+            .post_command(
+                "/v1/platform/commands/create_agent",
+                &serde_json::json!({}),
+                "k-2",
+            )
             .await
             .unwrap_err();
 
@@ -457,7 +465,11 @@ mod tests {
         let (url, _keys) = serve(vec![Some((403, REFUSAL))]).await;
         let client = ApiClient::new(&url, "evr_pat_read", None);
         let err = client
-            .post_command("/v1/commands/create_agent", &serde_json::json!({}), "k-4")
+            .post_command(
+                "/v1/platform/commands/create_agent",
+                &serde_json::json!({}),
+                "k-4",
+            )
             .await
             .unwrap_err();
         assert_eq!(explain(err).to_string(), INSUFFICIENT_SCOPE_MESSAGE);
@@ -468,7 +480,7 @@ mod tests {
         let (url, _captured) = capture::serve_once(403, REFUSAL).await;
         let client = ApiClient::new(&url, "evr_pat_read", None);
         let err = client
-            .post("/v1/agents/import", None)
+            .post("/v1/platform/agents/import", None)
             .await
             .context("Failed to import")
             .unwrap_err();
@@ -509,7 +521,11 @@ mod tests {
         let client = ApiClient::new(&url, "key", None);
 
         let err = client
-            .post_command("/v1/commands/create_agent", &serde_json::json!({}), "k-3")
+            .post_command(
+                "/v1/platform/commands/create_agent",
+                &serde_json::json!({}),
+                "k-3",
+            )
             .await
             .unwrap_err();
 

@@ -25,7 +25,7 @@ it("sends page context and mouse actions as request metadata, keeping authored t
     metadata,
   });
   expect(api.post).toHaveBeenCalledWith(
-    "/v1/commands/create_message",
+    "/v1/platform/commands/create_message",
     {
       params: expect.objectContaining({
         session_id: "session_1",
@@ -46,10 +46,14 @@ it("returns the atomic command output and retains cancellation and caller header
     { signal: controller.signal, headers: { "X-Trace": "trace", "Idempotency-Key": "wrong" } },
   );
   expect(result).toEqual({ id: "message_1" });
-  expect(api.post).toHaveBeenLastCalledWith("/v1/commands/create_message", expect.anything(), {
-    signal: controller.signal,
-    headers: { "X-Trace": "trace", "Idempotency-Key": "client_2" },
-  });
+  expect(api.post).toHaveBeenLastCalledWith(
+    "/v1/platform/commands/create_message",
+    expect.anything(),
+    {
+      signal: controller.signal,
+      headers: { "X-Trace": "trace", "Idempotency-Key": "client_2" },
+    },
+  );
 });
 
 it("preserves legacy REST behavior for sends without a client identity", async () => {
@@ -57,5 +61,9 @@ it("preserves legacy REST behavior for sends without a client identity", async (
     message: { role: "user" as const, content: [{ type: "text" as const, text: "hi" }] },
   };
   await createMessage("session_1", request);
-  expect(api.post).toHaveBeenLastCalledWith("/v1/sessions/session_1/messages", request, undefined);
+  expect(api.post).toHaveBeenLastCalledWith(
+    "/v1/platform/sessions/session_1/messages",
+    request,
+    undefined,
+  );
 });

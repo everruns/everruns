@@ -333,35 +333,52 @@ struct PendingOAuthState {
 pub fn routes(state: AppState) -> Router {
     Router::new()
         .route("/v1/connection-providers", get(list_runtime_connectors))
+        .merge(
+            Router::new()
+                .route(
+                    "/v1/virtual-users/{identity_id}/connections/{provider}/authorize",
+                    get(authorize_target_connection).post(start_target_connection),
+                )
+                .route_layer(axum::middleware::from_fn_with_state(
+                    state.auth.clone(),
+                    super::virtual_users::require_self,
+                )),
+        )
         .route(
-            "/v1/user/connection-migrations",
+            "/v1/platform/user/connection-migrations",
             get(list_pending_connection_migrations),
         )
         .route(
-            "/v1/user/connection-migrations/{connection_id}",
+            "/v1/platform/user/connection-migrations/{connection_id}",
             post(migrate_pending_connection),
         )
         .route(
-            "/v1/virtual-users/{identity_id}/connections/{provider}/authorize",
+            "/v1/platform/virtual-users/{identity_id}/connections/{provider}/authorize",
             get(authorize_target_connection).post(start_target_connection),
         )
         .route(
             "/v1/virtual-users/me/mcp-connections",
             get(list_mcp_connections),
         )
-        .route("/v1/user/connections", get(list_connections))
-        .route("/v1/user/mcp-connections", get(list_mcp_connections))
-        .route("/v1/user/connections/providers", get(list_connectors))
+        .route("/v1/platform/user/connections", get(list_connections))
         .route(
-            "/v1/user/connections/{provider}",
+            "/v1/platform/user/mcp-connections",
+            get(list_mcp_connections),
+        )
+        .route(
+            "/v1/platform/user/connections/providers",
+            get(list_connectors),
+        )
+        .route(
+            "/v1/platform/user/connections/{provider}",
             delete(delete_connection).post(create_api_key_connection),
         )
         .route(
-            "/v1/user/connections/{provider}/verify",
+            "/v1/platform/user/connections/{provider}/verify",
             post(verify_connection),
         )
         .route(
-            "/v1/user/connections/{provider}/authorize",
+            "/v1/platform/user/connections/{provider}/authorize",
             get(authorize_connection),
         )
         .route(
@@ -369,7 +386,7 @@ pub fn routes(state: AppState) -> Router {
             get(connection_oauth_callback),
         )
         .route(
-            "/v1/user/connections/github/authorize",
+            "/v1/platform/user/connections/github/authorize",
             get(github_authorize),
         )
         .route("/v1/user/connections/github/callback", get(github_callback))
@@ -386,7 +403,7 @@ pub fn routes(state: AppState) -> Router {
 // Handlers
 // ============================================================================
 
-/// GET /v1/user/connections — List user's connected accounts
+/// GET /v1/platform/user/connections — List user's connected accounts
 pub async fn list_connections(
     State(state): State<AppState>,
     auth: ConnectionUser,
@@ -410,7 +427,7 @@ pub async fn list_connections(
     Ok(Json(connections))
 }
 
-/// GET /v1/user/connections/providers — List available connectors
+/// GET /v1/platform/user/connections/providers — List available connectors
 ///
 /// Returns both hardcoded connectors (GitHub/OAuth) and plugin-registered
 /// connectors (Daytona/API-key). Frontend uses this to render connection forms.
@@ -635,7 +652,7 @@ fn mcp_connection_display_name(
     }
 }
 
-/// POST /v1/user/connections/:provider — Create API-key connection
+/// POST /v1/platform/user/connections/:provider — Create API-key connection
 ///
 /// For providers that use direct API key entry (not OAuth).
 /// Validates the key via the provider's validate() method before saving.
@@ -744,7 +761,7 @@ pub async fn create_api_key_connection(
     ))
 }
 
-/// DELETE /v1/user/connections/:provider — Disconnect
+/// DELETE /v1/platform/user/connections/:provider — Disconnect
 pub async fn delete_connection(
     State(state): State<AppState>,
     auth: ConnectionUser,
@@ -774,7 +791,7 @@ pub struct VerifyConnectionResponse {
     pub error: Option<String>,
 }
 
-/// POST /v1/user/connections/:provider/verify — Verify stored API key still works
+/// POST /v1/platform/user/connections/:provider/verify — Verify stored API key still works
 ///
 /// Generic endpoint: decrypts the stored credential and calls the provider's
 /// validate() method. Works for any API-key provider that implements
@@ -865,7 +882,7 @@ pub async fn verify_connection(
     }
 }
 
-/// GET /v1/user/connections/:provider/authorize — start OAuth flow for dynamic providers.
+/// GET /v1/platform/user/connections/:provider/authorize — start OAuth flow for dynamic providers.
 pub async fn authorize_connection(
     State(state): State<AppState>,
     org: ResolvedOrg,

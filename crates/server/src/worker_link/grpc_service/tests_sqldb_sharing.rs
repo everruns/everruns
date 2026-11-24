@@ -12,7 +12,7 @@ use super::*;
 /// gRPC service stands alone (tests, the direct adapters) and wrong in the
 /// composed server, where `app_builder` spawns it beside the HTTP routes. When
 /// they diverged, a database an agent created was invisible to
-/// `GET /v1/sessions/{id}/databases` — which answered `200` with an empty list,
+/// `GET /v1/platform/sessions/{id}/databases` — which answered `200` with an empty list,
 /// so nothing looked broken from either side.
 #[tokio::test]
 async fn injected_sqldb_store_replaces_the_services_own() {

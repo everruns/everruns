@@ -14,7 +14,7 @@ card for this. Any client can do the same over the REST API and the SSE stream.
 The pause only happens for clients that say they can answer it:
 
 ```bash
-curl -X POST "$EVERRUNS/api/v1/sessions" \
+curl -X POST "$EVERRUNS/api/v1/platform/sessions" \
   -H 'content-type: application/json' \
   -d '{
     "agent_id": "agent_01a063c3b55f79f2b5de55fb002e0ae3",
@@ -29,7 +29,7 @@ Without the hint the turn never pauses and the flow cannot be completed — see
 
 Send a message as usual. When a tool call hits an elicitation, the session moves
 to `waiting_for_tool_results` and a `tool.call_requested` event arrives on
-`GET /api/v1/sessions/{session_id}/sse`:
+`GET /api/v1/platform/sessions/{session_id}/sse`:
 
 ```json
 {
@@ -67,7 +67,7 @@ server checks whether the out-of-band interaction completed, so consenting at
 open time just makes it ask again.
 
 ```bash
-curl -X POST "$EVERRUNS/api/v1/sessions/$SESSION_ID/mcp-elicitation-consent" \
+curl -X POST "$EVERRUNS/api/v1/platform/sessions/$SESSION_ID/mcp-elicitation-consent" \
   -H 'content-type: application/json' \
   -d '{
     "tool_call_id": "url_elicitation_01a063cf-c0bb-7891-926e-fd83aeb24d88",

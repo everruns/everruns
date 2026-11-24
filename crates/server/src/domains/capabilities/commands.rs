@@ -52,7 +52,7 @@ pub struct ListCapabilities {
     category = "capabilities",
     description = "List available capabilities. Use search for name/description filtering. Retired capabilities are excluded unless include_retired is set. Supports pagination (limit/offset).",
     method = "GET",
-    path = "/v1/capabilities",
+    path = "/v1/platform/capabilities",
     cli = CliRoute::new(&["capabilities"], "list").with_examples(&[CliExample::new("Find a capability by name when you do not know its id", "everruns capabilities list --search web")]),
 )]
 impl Command for ListCapabilities {
@@ -122,7 +122,7 @@ pub struct GetCapability {
     category = "capabilities",
     description = "Get a specific capability by ID.",
     method = "GET",
-    path = "/v1/capabilities/{id}",
+    path = "/v1/platform/capabilities/{id}",
     cli = CliRoute::new(&["capabilities"], "get").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Read what a capability provides before adding it to an agent", "everruns capabilities get cap_01h9")]),
     positional = "id"
 )]
@@ -168,7 +168,7 @@ impl CommandSchema for CreateDeclarativeCapability {
     category = "capabilities",
     description = "Create a persisted declarative capability.",
     method = "POST",
-    path = "/v1/capabilities",
+    path = "/v1/platform/capabilities",
     policy = CAPABILITY_MANAGE,
     cli = CliRoute::new(&["capabilities"], "create").with_examples(&[CliExample::new("Package instructions and starter files as a reusable capability", "everruns capabilities create --definition '{\"name\":\"research_pack\",\"display_name\":\"Research Pack\",\"description\":\"Research workflow\",\"system_prompt\":\"Use the research workflow.\"}' --reason 'Share the research workflow'")]),
 )]
@@ -226,7 +226,7 @@ pub struct ListDeclarativeCapabilities {
     category = "capabilities",
     description = "List persisted declarative capabilities.",
     method = "GET",
-    path = "/v1/capabilities/declarative",
+    path = "/v1/platform/capabilities/declarative",
     policy = CAPABILITY_VIEW,
     cli = CliRoute::new(&["capabilities", "declarative"], "list").with_examples(&[CliExample::new("List the declarative capabilities your organization has defined", "everruns capabilities declarative list --search research")]),
 )]
@@ -257,7 +257,7 @@ pub struct GetDeclarativeCapability {
     category = "capabilities",
     description = "Get a persisted declarative capability.",
     method = "GET",
-    path = "/v1/capabilities/declarative/{id}",
+    path = "/v1/platform/capabilities/declarative/{id}",
     policy = CAPABILITY_VIEW,
     cli = CliRoute::new(&["capabilities", "declarative"], "get").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Read the saved definition of a declarative capability", "everruns capabilities declarative get cap_01h9")]),
     positional = "id",
@@ -284,7 +284,7 @@ pub struct UpdateDeclarativeCapabilityCmd {
     category = "capabilities",
     description = "Update a persisted declarative capability.",
     method = "PATCH",
-    path = "/v1/capabilities/declarative/{id}",
+    path = "/v1/platform/capabilities/declarative/{id}",
     policy = CAPABILITY_MANAGE,
     cli = CliRoute::new(&["capabilities", "declarative"], "update").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Replace a declarative capability's definition", "everruns capabilities declarative update cap_01h9 --definition '{\"name\":\"research_pack\",\"display_name\":\"Research Pack\",\"description\":\"Research workflow\",\"system_prompt\":\"Use the updated research workflow.\"}' --reason 'Tighten the instructions'")]),
     positional = "id",
@@ -355,7 +355,7 @@ pub struct DeleteDeclarativeCapability {
     category = "capabilities",
     description = "Archive a persisted declarative capability.",
     method = "DELETE",
-    path = "/v1/capabilities/declarative/{id}",
+    path = "/v1/platform/capabilities/declarative/{id}",
     policy = CAPABILITY_MANAGE,
     cli = CliRoute::new(&["capabilities", "declarative"], "delete").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Archive a declarative capability that agents should stop using", "everruns capabilities declarative delete cap_01h9 --reason 'Replaced by research_pack v2'")]),
     positional = "id",
@@ -387,7 +387,7 @@ pub struct DestroyDeclarativeCapability {
     category = "capabilities",
     description = "Permanently delete an archived declarative capability.",
     method = "POST",
-    path = "/v1/capabilities/declarative/{id}/delete",
+    path = "/v1/platform/capabilities/declarative/{id}/delete",
     policy = CAPABILITY_DANGEROUS,
     positional = "id",
     cli = CliRoute::new(&["capabilities", "declarative"], "destroy").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Permanently remove an archived declarative capability", "everruns capabilities declarative destroy cap_01h9 --reason 'Retired after the archive window'",)]),
@@ -478,7 +478,7 @@ impl CommandSchema for DryRunGuardrails {
     category = "capabilities",
     description = "Evaluate a guardrails capability config against sample text without a session. Returns triggered checks and whether the content would be blocked.",
     method = "POST",
-    path = "/v1/capabilities/guardrails/dry-run",
+    path = "/v1/platform/capabilities/guardrails/dry-run",
     policy = CAPABILITY_VIEW,
     cli = CliRoute::new(&["capabilities", "guardrails", "dry-run"], "dry").with_examples(&[CliExample::new("Try a guardrails config on sample text before attaching it to an agent", "everruns capabilities guardrails dry-run dry --stage output --text 'this is darn slow' --config '{\"mode\":\"advisory\",\"checks\":[{\"id\":\"profanity\",\"stage\":\"output\",\"type\":\"blocklist\",\"words\":[\"darn\"]}]}'")]),
 )]
@@ -535,7 +535,7 @@ pub struct ListGuardrailExamples {}
     category = "capabilities",
     description = "List adoptable guardrail presets (the guardrail gallery), each with its config and trust metadata (check-type composition, stages, data egress).",
     method = "GET",
-    path = "/v1/capabilities/guardrails/examples",
+    path = "/v1/platform/capabilities/guardrails/examples",
     policy = CAPABILITY_VIEW,
     cli = CliRoute::new(&["capabilities", "guardrails", "examples"], "list").with_examples(&[CliExample::new("Start from a ready-made guardrail preset instead of writing checks by hand", "everruns capabilities guardrails examples list")]),
 )]

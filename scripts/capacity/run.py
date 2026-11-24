@@ -369,7 +369,7 @@ async def event_pages(client, target, actor, types, limit):
             )
             if actor.path == "console"
             else await client.get(
-                f"{target.control}/v1/sessions/{actor.session}/events",
+                f"{target.control}/v1/platform/sessions/{actor.session}/events",
                 params=params,
                 headers=target.headers_for(actor),
             )
@@ -637,7 +637,7 @@ async def run(args):
                         )
                         if actor.path == "console"
                         else await control.post(
-                            f"{target.control}/v1/sessions/{actor.session}/fs/load-test/research.md",
+                            f"{target.control}/v1/platform/sessions/{actor.session}/fs/load-test/research.md",
                             headers=target.headers_for(actor),
                             json=document,
                         )

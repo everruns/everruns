@@ -27,7 +27,7 @@ class Health(http.server.BaseHTTPRequestHandler):
     backend = None
 
     def do_GET(self):
-        if self.path != "/api/v1/durable/health":
+        if self.path != "/api/v1/platform/durable/health":
             self.send_error(404)
             return
         body = json.dumps({"status": "healthy", "event_delivery": self.backend}).encode()
@@ -296,7 +296,7 @@ class EngineHostingTests(unittest.TestCase):
 
         api.request = request
         api.set_org_flags({"engine_hosting": True})
-        self.assertEqual(calls, [("PATCH", "/v1/orgs/org_1/feature-flags/platform",
+        self.assertEqual(calls, [("PATCH", "/v1/platform/orgs/org_1/feature-flags/platform",
                                   {"flags": {"engine_hosting": True}})])
         api.set_org_flags({})
         self.assertEqual(len(calls), 1)

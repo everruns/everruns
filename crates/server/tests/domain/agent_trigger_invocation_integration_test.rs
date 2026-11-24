@@ -26,7 +26,7 @@ use everruns_server::storage::{CreateAgentTriggerRow, CreateBudgetLedgerRow, Cre
 async fn create_agent(server: &TestServer, name: &str) -> Value {
     server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": name,
                 "system_prompt": "you are a scheduled worker",
@@ -41,7 +41,7 @@ async fn create_agent(server: &TestServer, name: &str) -> Value {
 async fn create_trigger(server: &TestServer, agent_id: &str, session_mode: &str) -> Value {
     server
         .post(
-            &format!("/v1/agents/{agent_id}/triggers"),
+            &format!("/v1/platform/agents/{agent_id}/triggers"),
             json!({
                 "cron_expression": "0 * * * *",
                 "timezone": "UTC",
@@ -63,7 +63,7 @@ async fn webhook_trigger_can_be_created() {
 
     let trigger: Value = server
         .post(
-            &format!("/v1/agents/{agent_id}/triggers"),
+            &format!("/v1/platform/agents/{agent_id}/triggers"),
             json!({
                 "trigger_type": "webhook",
                 "token": "webhook-secret",
@@ -119,7 +119,7 @@ async fn webhook_trigger_can_be_created() {
 
 async fn list_user_message_texts(server: &TestServer, session_id: &str) -> Vec<String> {
     let body: Value = server
-        .get(&format!("/v1/sessions/{session_id}/messages"))
+        .get(&format!("/v1/platform/sessions/{session_id}/messages"))
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -230,7 +230,7 @@ async fn webhook_trigger_creation_rejects_unsupported_auth_and_bindings() {
     for binding in ["per_thread", "per_channel", "per_user"] {
         let response = server
             .post(
-                &format!("/v1/agents/{agent_id}/triggers"),
+                &format!("/v1/platform/agents/{agent_id}/triggers"),
                 json!({
                     "trigger_type": "webhook",
                     "token": "secret",
@@ -245,7 +245,7 @@ async fn webhook_trigger_creation_rejects_unsupported_auth_and_bindings() {
 
     let response = server
         .post(
-            &format!("/v1/agents/{agent_id}/triggers"),
+            &format!("/v1/platform/agents/{agent_id}/triggers"),
             json!({
                 "trigger_type": "webhook",
                 "token": "secret",
@@ -380,7 +380,7 @@ async fn migrated_webhook_trigger_preserves_routes_auth_templates_and_shared_ses
     }));
 
     server
-        .post(&format!("/v1/agents/{agent_id}/pause"), json!({}))
+        .post(&format!("/v1/platform/agents/{agent_id}/pause"), json!({}))
         .await
         .assert_status(StatusCode::OK);
     for path in [
@@ -465,7 +465,7 @@ async fn migrated_webhook_reuses_legacy_session_and_enforces_its_budget() {
         .expect("migrated App exists");
     let legacy_session: Value = server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             json!({
                 "agent_id": agent_id,
                 "title": "legacy webhook session",
@@ -726,7 +726,7 @@ async fn agent_trigger_binds_schedule_and_invokes_shared_session() {
     );
 
     server
-        .delete(&format!("/v1/virtual-users/{identity_id}"))
+        .delete(&format!("/v1/platform/virtual-users/{identity_id}"))
         .await
         .assert_status(StatusCode::CONFLICT);
 }
@@ -797,7 +797,7 @@ async fn paused_agent_schedule_does_not_run_until_resumed() {
     );
 
     server
-        .post(&format!("/v1/agents/{agent_id}/pause"), json!({}))
+        .post(&format!("/v1/platform/agents/{agent_id}/pause"), json!({}))
         .await
         .assert_status(StatusCode::OK);
 
@@ -816,7 +816,7 @@ async fn paused_agent_schedule_does_not_run_until_resumed() {
     assert!(error.to_string().contains("paused"), "{error}");
 
     server
-        .post(&format!("/v1/agents/{agent_id}/resume"), json!({}))
+        .post(&format!("/v1/platform/agents/{agent_id}/resume"), json!({}))
         .await
         .assert_status(StatusCode::OK);
     invoke_agent_trigger(

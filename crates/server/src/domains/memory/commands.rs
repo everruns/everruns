@@ -199,7 +199,7 @@ impl From<ListMemoriesQuery> for ListMemories {
     category = "memories",
     description = "List workspace memories in the current organization.",
     method = "GET",
-    path = "/v1/memories",
+    path = "/v1/platform/memories",
     policy = MEMORY_VIEW,
     cli = CliRoute::new(&["memories"], "list").with_examples(&[CliExample::new("Find memories by name when you do not know the id", "everruns memories list --search design",)]),
 )]
@@ -252,7 +252,7 @@ impl From<CreateMemoryRequest> for CreateMemory {
     category = "memories",
     description = "Create a workspace memory in the current organization.",
     method = "POST",
-    path = "/v1/memories",
+    path = "/v1/platform/memories",
     policy = MEMORY_MANAGE,
     cli = CliRoute::new(&["memories"], "create").with_examples(&[CliExample::new("Sync a docs repository into a workspace memory", "everruns memories create --name design-docs --description 'Living design documents' --source '{\"type\":\"github\",\"repository\":\"acme/design-docs\",\"branch\":\"main\",\"root_folder\":\"docs/\"}' --reason 'Give agents the design docs'",)]),
 )]
@@ -297,7 +297,7 @@ pub struct GetMemory {
     category = "memories",
     description = "Get a workspace memory by ID.",
     method = "GET",
-    path = "/v1/memories/{memory_id}",
+    path = "/v1/platform/memories/{memory_id}",
     policy = MEMORY_VIEW,
     positional = "memory_id",
     cli = CliRoute::new(&["memories"], "get").with_args(&[CliArg::new("memory_id").at(1)]).with_examples(&[CliExample::new("Check a memory's source and sync state", "everruns memories get mem_01h9",)]),
@@ -333,7 +333,7 @@ pub struct UpdateMemoryCmd {
     category = "memories",
     description = "Update a workspace memory.",
     method = "PATCH",
-    path = "/v1/memories/{memory_id}",
+    path = "/v1/platform/memories/{memory_id}",
     policy = MEMORY_MANAGE,
     cli = CliRoute::new(&["memories"], "update").with_examples(&[CliExample::new("Rename a memory or change its description", "everruns memories update --memory-id mem_01h9 --description 'Design docs, main branch' --reason 'Clarify scope'",)]),
 )]
@@ -413,7 +413,7 @@ pub struct SyncMemoryNow {
     category = "memories",
     description = "Queue an immediate sync for a source-backed workspace memory.",
     method = "POST",
-    path = "/v1/memories/{memory_id}/sync",
+    path = "/v1/platform/memories/{memory_id}/sync",
     policy = MEMORY_MANAGE,
     cli = CliRoute::new(&["memories"], "sync").with_examples(&[CliExample::new("Pull the latest source changes without waiting for the schedule", "everruns memories sync --memory-id mem_01h9 --reason 'Docs just changed'",)]),
 )]
@@ -469,7 +469,7 @@ pub struct DeleteMemory {
     category = "memories",
     description = "Archive a workspace memory.",
     method = "DELETE",
-    path = "/v1/memories/{memory_id}",
+    path = "/v1/platform/memories/{memory_id}",
     policy = MEMORY_MANAGE,
     cli = CliRoute::new(&["memories"], "delete").with_examples(&[CliExample::new("Archive a memory agents should stop reading", "everruns memories delete --memory-id mem_01h9 --reason 'Docs moved to a new repo'",)]),
 )]

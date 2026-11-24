@@ -45,7 +45,7 @@ so it can never disagree with the page. Source: [`components/home/`](../../apps/
   list collapses to one line.
 - **Charts are Monitoring's.** With Monitoring enabled, Activity is the compact form of Monitoring
   → Timeline: the same `TimeSeriesChart`, series, colors and 5-minute buckets from
-  `GET /v1/monitoring/timeline?range=24h`, whose current and previous summaries also feed the turn
+  `GET /v1/platform/monitoring/timeline?range=24h`, whose current and previous summaries also feed the turn
   and failure-rate comparisons. Without Monitoring, the agents activity buckets draw turns per
   hour. Overview never designs its own chart.
 - **No spend.** Model spend stays in Monitoring. Overview carries no billing framing.

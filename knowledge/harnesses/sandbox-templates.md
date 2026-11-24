@@ -39,8 +39,8 @@ What exists in code today:
 - Agent Sandbox policies with named template bindings, session-time named
   or inline selection, strict target-policy validation, and an immutable resolved
   specification pinned to the logical Sandbox;
-- a control-plane surface, `GET /v1/sessions/{id}/sandbox` and
-  `GET /v1/sandbox-targets`. New sessions report
+- a control-plane surface, `GET /v1/platform/sessions/{id}/sandbox` and
+  `GET /v1/platform/sandbox-targets`. New sessions report
   `resolved_from: "spec"`; legacy sessions retain the pessimistic
   capability-derived compatibility view;
 - durable logical Sandbox state in `sandboxes`, with disposable physical
@@ -191,7 +191,7 @@ and a Session's durable logical runtime **Sandbox**. The Framework keeps its
 internal `Environment` execution-context type; that is not a hosted resource.
 `Containment` remains the explicit security property, so `containment: none` is
 sayable without confusing the template, logical Sandbox, and physical instance.
-The canonical control-plane route is `/v1/sessions/{id}/sandbox`; the former
+The canonical control-plane route is `/v1/platform/sessions/{id}/sandbox`; the former
 `/environment` route remains an input compatibility alias during migration.
 
 The durable resource, generations, checkpoints, and reconciliation from
@@ -657,7 +657,7 @@ generalized past the local process case.
 
 ## Control-plane API
 
-Today the whole surface is `GET`/`POST /v1/sessions/{session_id}/sandbox`
+Today the whole surface is `GET`/`POST /v1/platform/sessions/{session_id}/sandbox`
 (`crates/server/src/api/session_sandbox.rs`), whose response mixes
 configuration, lifecycle, and provider identity into one flat body with
 `configured` and `exists` booleans. Proposed shapes follow
@@ -667,7 +667,7 @@ computed from current state.
 ### Environments are agent configuration
 
 ```http
-POST /v1/agents
+POST /v1/platform/agents
 ```
 
 ```json
@@ -713,7 +713,7 @@ would run. Bashkit happened because `generic` carried the `bashkit_shell`
 capability:
 
 ```http
-POST /v1/sessions
+POST /v1/platform/sessions
 { "harness_name": "generic", "title": "Rename the config module" }
 ```
 
@@ -726,7 +726,7 @@ of how much the caller decides.
 as its default profile, so the caller says nothing:
 
 ```http
-POST /v1/sessions
+POST /v1/platform/sessions
 { "agent_name": "coding", "title": "Rename the config module" }
 ```
 
@@ -734,7 +734,7 @@ POST /v1/sessions
 declares, so a caller cannot reach an environment it does not offer:
 
 ```http
-POST /v1/sessions
+POST /v1/platform/sessions
 { "agent_name": "coding", "environment": { "use": "scratch" } }
 ```
 
@@ -743,7 +743,7 @@ operator authoring a profile, not the model, and it is validated against org
 policy the same way an agent's profiles are:
 
 ```http
-POST /v1/sessions
+POST /v1/platform/sessions
 ```
 
 ```json
@@ -766,14 +766,14 @@ Response:
 
 ```json
 {
-  "self_url": "https://api.example/v1/sessions/session_01933b5a00007000800000000000001",
+  "self_url": "https://api.example/v1/platform/sessions/session_01933b5a00007000800000000000001",
   "view_url": "https://app.example/sessions/session_01933…/chat",
   "id": "session_01933b5a00007000800000000000001",
   "status": "started",
   "harness_id": "harness_01933b5a00007000800000000000002",
   "title": "Rename the config module",
   "environment": {
-    "self_url": "https://api.example/v1/sessions/session_01933…/environment",
+    "self_url": "https://api.example/v1/platform/sessions/session_01933…/environment",
     "name": "inline",
     "target": { "kind": "vfs", "provider": "bashkit" },
     "containment": { "level": "isolated", "network": { "mode": "deny" } },
@@ -809,7 +809,7 @@ affordances, and a client that needs native processes can fail fast or create
 the session on `build` instead.
 
 ```bash
-curl -sS -X POST https://api.example/v1/sessions \
+curl -sS -X POST https://api.example/v1/platform/sessions \
   -H "Authorization: Bearer $EVERRUNS_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -845,12 +845,12 @@ packages: no
 ### Session Sandbox
 
 ```http
-GET /v1/sessions/{session_id}/sandbox
+GET /v1/platform/sessions/{session_id}/sandbox
 ```
 
 ```json
 {
-  "self_url": "https://api.example/v1/sessions/session_.../sandbox",
+  "self_url": "https://api.example/v1/platform/sessions/session_.../sandbox",
   "name": "build",
   "sandbox_id": "sandbox_...",
   "target": { "kind": "managed", "provider": "daytona" },
@@ -904,7 +904,7 @@ permanent (rows are marked deleted, never purged). Two cases drove the rules:
 The UI cannot render an honest picker from provider names alone.
 
 ```http
-GET /v1/sandbox-targets
+GET /v1/platform/sandbox-targets
 ```
 
 ```json
@@ -938,7 +938,7 @@ over the API, which is Yolop's approval gate with an HTTP front end.
 ```
 
 ```http
-POST /v1/sessions/{session_id}/environment/escalations/{escalation_id}
+POST /v1/platform/sessions/{session_id}/environment/escalations/{escalation_id}
 { "decision": "approve_once" }
 ```
 
@@ -982,7 +982,7 @@ This sequences alongside the existing migration plan rather than restarting it.
 **P0, containment field and capability catalog.** Add the containment block,
 the durability class, and the containment capabilities to the profile; promote
 compute and containment to named members of the Framework's existing
-`Environment`; add `GET /v1/sandbox-targets`. No new providers. Exit: a
+`Environment`; add `GET /v1/platform/sandbox-targets`. No new providers. Exit: a
 profile can express `host + none` and `daytona + isolated + allowlist`, and
 validation rejects a durable-agent agent pinned to `durability: none`.
 

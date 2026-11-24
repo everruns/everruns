@@ -94,7 +94,7 @@ See `crates/core/src/builtins/agent_instructions.rs` for `MAX_AGENTS_MD_SIZE` (3
 The capability appears in standard capability endpoints:
 
 ```http
-GET /v1/capabilities
+GET /v1/platform/capabilities
 
 Response includes:
 {
@@ -117,14 +117,14 @@ Response includes:
 Enable on an agent:
 
 ```http
-PATCH /v1/agents/{id}
+PATCH /v1/platform/agents/{id}
 { "capabilities": [{ "ref": "agent_instructions" }, ...] }
 ```
 
 Configure additional instruction files:
 
 ```http
-PATCH /v1/agents/{id}
+PATCH /v1/platform/agents/{id}
 {
   "capabilities": [
     {

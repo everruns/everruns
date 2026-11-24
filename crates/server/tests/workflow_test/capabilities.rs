@@ -20,7 +20,7 @@ async fn test_capability_mounts_applied_on_session_creation() {
     // Step 1: Create an agent with data_knowledge capability
     println!("\nStep 1: Creating agent with data_knowledge capability...");
     let agent_response = client
-        .post(format!("{}/v1/agents", API_BASE_URL))
+        .post(format!("{}/v1/platform/agents", API_BASE_URL))
         .json(&json!({
             "name": "mount-test-agent",
             "display_name": "Mount Test Agent",
@@ -54,7 +54,7 @@ async fn test_capability_mounts_applied_on_session_creation() {
     // Step 2: Create a session (this should trigger mount application)
     println!("\nStep 2: Creating session...");
     let session_response = client
-        .post(format!("{}/v1/sessions", API_BASE_URL))
+        .post(format!("{}/v1/platform/sessions", API_BASE_URL))
         .json(&json!({
             "harness_name": SEED_HARNESS_NAME,
             "agent_id": agent.public_id,
@@ -71,7 +71,7 @@ async fn test_capability_mounts_applied_on_session_creation() {
         .expect("Failed to parse session");
     println!("Created session: {}", session.id);
 
-    let fs_url = format!("{}/v1/sessions/{}/fs", API_BASE_URL, session.id);
+    let fs_url = format!("{}/v1/platform/sessions/{}/fs", API_BASE_URL, session.id);
 
     // Step 3: Verify /knowledge directory exists
     println!("\nStep 3: Verifying /knowledge directory exists...");
@@ -181,7 +181,7 @@ async fn test_capability_mounts_applied_on_session_creation() {
     // Step 8: Create a second session - verify mounts are independent
     println!("\nStep 8: Creating second session...");
     let session2_response = client
-        .post(format!("{}/v1/sessions", API_BASE_URL))
+        .post(format!("{}/v1/platform/sessions", API_BASE_URL))
         .json(&json!({
             "harness_name": SEED_HARNESS_NAME,
             "agent_id": agent.public_id,
@@ -199,7 +199,7 @@ async fn test_capability_mounts_applied_on_session_creation() {
     println!("Created session2: {}", session2.id);
 
     // Verify second session also has mounts
-    let fs_url2 = format!("{}/v1/sessions/{}/fs", API_BASE_URL, session2.id);
+    let fs_url2 = format!("{}/v1/platform/sessions/{}/fs", API_BASE_URL, session2.id);
     let stat2_response = client
         .post(format!("{}/_/stat", fs_url2))
         .json(&json!({"path": "/knowledge"}))
@@ -219,13 +219,13 @@ async fn test_capability_mounts_applied_on_session_creation() {
     println!("\nCleaning up...");
     cleanup_delete(
         &client,
-        format!("{}/v1/sessions/{}", API_BASE_URL, session.id),
+        format!("{}/v1/platform/sessions/{}", API_BASE_URL, session.id),
         "session",
     )
     .await;
     cleanup_delete(
         &client,
-        format!("{}/v1/sessions/{}", API_BASE_URL, session2.id),
+        format!("{}/v1/platform/sessions/{}", API_BASE_URL, session2.id),
         "session2",
     )
     .await;
@@ -253,7 +253,7 @@ async fn test_mcp_server_crud() {
     // Step 1: Create an MCP server
     println!("\nStep 1: Creating MCP server...");
     let create_response = client
-        .post(format!("{}/v1/mcp-servers", API_BASE_URL))
+        .post(format!("{}/v1/platform/mcp-servers", API_BASE_URL))
         .json(&json!({
             "name": "test-mcp-server",
             "description": "A test MCP server for integration testing",
@@ -284,7 +284,7 @@ async fn test_mcp_server_crud() {
     // Step 2: List MCP servers
     println!("\nStep 2: Listing MCP servers...");
     let list_response = client
-        .get(format!("{}/v1/mcp-servers", API_BASE_URL))
+        .get(format!("{}/v1/platform/mcp-servers", API_BASE_URL))
         .send()
         .await
         .expect("Failed to list MCP servers");
@@ -300,7 +300,10 @@ async fn test_mcp_server_crud() {
     // Step 3: Get MCP server by ID
     println!("\nStep 3: Getting MCP server by ID...");
     let get_response = client
-        .get(format!("{}/v1/mcp-servers/{}", API_BASE_URL, server.id))
+        .get(format!(
+            "{}/v1/platform/mcp-servers/{}",
+            API_BASE_URL, server.id
+        ))
         .send()
         .await
         .expect("Failed to get MCP server");
@@ -317,7 +320,10 @@ async fn test_mcp_server_crud() {
     // Step 4: Update MCP server
     println!("\nStep 4: Updating MCP server...");
     let update_response = client
-        .patch(format!("{}/v1/mcp-servers/{}", API_BASE_URL, server.id))
+        .patch(format!(
+            "{}/v1/platform/mcp-servers/{}",
+            API_BASE_URL, server.id
+        ))
         .json(&json!({
             "name": "updated-mcp-server",
             "description": "Updated description",
@@ -343,7 +349,10 @@ async fn test_mcp_server_crud() {
     // Step 5: Update MCP server status to disabled
     println!("\nStep 5: Disabling MCP server...");
     let disable_response = client
-        .patch(format!("{}/v1/mcp-servers/{}", API_BASE_URL, server.id))
+        .patch(format!(
+            "{}/v1/platform/mcp-servers/{}",
+            API_BASE_URL, server.id
+        ))
         .json(&json!({
             "status": "disabled"
         }))
@@ -362,7 +371,7 @@ async fn test_mcp_server_crud() {
     // Step 6: Create MCP server with API key
     println!("\nStep 6: Creating MCP server with API key...");
     let create_with_key_response = client
-        .post(format!("{}/v1/mcp-servers", API_BASE_URL))
+        .post(format!("{}/v1/platform/mcp-servers", API_BASE_URL))
         .json(&json!({
             "name": "mcp-server-with-key",
             "url": "https://secure.mcp.com/v1/mcp",
@@ -386,7 +395,7 @@ async fn test_mcp_server_crud() {
     // Step 7: Create MCP server with custom headers
     println!("\nStep 7: Creating MCP server with custom headers...");
     let create_with_headers_response = client
-        .post(format!("{}/v1/mcp-servers", API_BASE_URL))
+        .post(format!("{}/v1/platform/mcp-servers", API_BASE_URL))
         .json(&json!({
             "name": "mcp-server-with-headers",
             "url": "https://headers.mcp.com/v1/mcp",
@@ -428,7 +437,7 @@ async fn test_mcp_server_crud() {
     // Step 8: Test validation - empty name
     println!("\nStep 8: Testing validation - empty name...");
     let empty_name_response = client
-        .post(format!("{}/v1/mcp-servers", API_BASE_URL))
+        .post(format!("{}/v1/platform/mcp-servers", API_BASE_URL))
         .json(&json!({
             "name": "",
             "url": "https://mcp.example.com/v1/mcp"
@@ -447,7 +456,7 @@ async fn test_mcp_server_crud() {
     // Step 9: Test validation - empty URL
     println!("\nStep 9: Testing validation - empty URL...");
     let empty_url_response = client
-        .post(format!("{}/v1/mcp-servers", API_BASE_URL))
+        .post(format!("{}/v1/platform/mcp-servers", API_BASE_URL))
         .json(&json!({
             "name": "test-server",
             "url": ""
@@ -467,7 +476,7 @@ async fn test_mcp_server_crud() {
     println!("\nStep 10: Testing 404 for non-existent server...");
     let not_found_response = client
         .get(format!(
-            "{}/v1/mcp-servers/mcp_00000000000000000000000000000000",
+            "{}/v1/platform/mcp-servers/mcp_00000000000000000000000000000000",
             API_BASE_URL
         ))
         .send()
@@ -485,13 +494,13 @@ async fn test_mcp_server_crud() {
     println!("\nCleaning up...");
     cleanup_delete(
         &client,
-        format!("{}/v1/mcp-servers/{}", API_BASE_URL, server.id),
+        format!("{}/v1/platform/mcp-servers/{}", API_BASE_URL, server.id),
         "MCP server",
     )
     .await;
     client
         .post(format!(
-            "{}/v1/mcp-servers/{}/delete",
+            "{}/v1/platform/mcp-servers/{}/delete",
             API_BASE_URL, server.id
         ))
         .send()
@@ -499,13 +508,16 @@ async fn test_mcp_server_crud() {
         .expect("Failed to permanently delete MCP server");
     cleanup_delete(
         &client,
-        format!("{}/v1/mcp-servers/{}", API_BASE_URL, server_with_key.id),
+        format!(
+            "{}/v1/platform/mcp-servers/{}",
+            API_BASE_URL, server_with_key.id
+        ),
         "MCP server with key",
     )
     .await;
     client
         .post(format!(
-            "{}/v1/mcp-servers/{}/delete",
+            "{}/v1/platform/mcp-servers/{}/delete",
             API_BASE_URL, server_with_key.id
         ))
         .send()
@@ -513,13 +525,16 @@ async fn test_mcp_server_crud() {
         .expect("Failed to permanently delete MCP server with key");
     cleanup_delete(
         &client,
-        format!("{}/v1/mcp-servers/{}", API_BASE_URL, server_with_headers.id),
+        format!(
+            "{}/v1/platform/mcp-servers/{}",
+            API_BASE_URL, server_with_headers.id
+        ),
         "MCP server with headers",
     )
     .await;
     client
         .post(format!(
-            "{}/v1/mcp-servers/{}/delete",
+            "{}/v1/platform/mcp-servers/{}/delete",
             API_BASE_URL, server_with_headers.id
         ))
         .send()
@@ -528,7 +543,10 @@ async fn test_mcp_server_crud() {
 
     // Verify deletion
     let verify_deleted = client
-        .get(format!("{}/v1/mcp-servers/{}", API_BASE_URL, server.id))
+        .get(format!(
+            "{}/v1/platform/mcp-servers/{}",
+            API_BASE_URL, server.id
+        ))
         .send()
         .await
         .expect("Failed to verify deletion");

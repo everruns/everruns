@@ -45,7 +45,7 @@ delivered across multiple PRs:
   CRUD HTTP API. The `data_knowledge` capability remains the runtime
   ground-truth surface and is unaffected.
 * Shipped since: the agent-facing `search_knowledge` tool and OKF import
-  (`POST /v1/knowledge-bases/{kb_id}/okf_import`).
+  (`POST /v1/platform/knowledge-bases/{kb_id}/okf_import`).
 * Not built yet: capability config UI, KB management UI page, and the
   starter-file import into a default Knowledge Base.
 
@@ -214,16 +214,16 @@ follow-up; the response shape is forward-compatible.
 
 REST endpoints (see `knowledge/execution/apis.md` for conventions and OpenAPI exposure):
 
-* `GET    /v1/knowledge-bases`
-* `POST   /v1/knowledge-bases`
-* `GET    /v1/knowledge-bases/{kb_id}`
-* `PATCH  /v1/knowledge-bases/{kb_id}`
-* `DELETE /v1/knowledge-bases/{kb_id}`, archive per lifecycle
-* `GET    /v1/knowledge-bases/{kb_id}/entries`
-* `POST   /v1/knowledge-bases/{kb_id}/entries`
-* `GET    /v1/knowledge-bases/{kb_id}/entries/{entry_id}`
-* `PATCH  /v1/knowledge-bases/{kb_id}/entries/{entry_id}`
-* `DELETE /v1/knowledge-bases/{kb_id}/entries/{entry_id}`
+* `GET    /v1/platform/knowledge-bases`
+* `POST   /v1/platform/knowledge-bases`
+* `GET    /v1/platform/knowledge-bases/{kb_id}`
+* `PATCH  /v1/platform/knowledge-bases/{kb_id}`
+* `DELETE /v1/platform/knowledge-bases/{kb_id}`, archive per lifecycle
+* `GET    /v1/platform/knowledge-bases/{kb_id}/entries`
+* `POST   /v1/platform/knowledge-bases/{kb_id}/entries`
+* `GET    /v1/platform/knowledge-bases/{kb_id}/entries/{entry_id}`
+* `PATCH  /v1/platform/knowledge-bases/{kb_id}/entries/{entry_id}`
+* `DELETE /v1/platform/knowledge-bases/{kb_id}/entries/{entry_id}`
 
 KB list supports `?search=` and `?include_archived=` query parameters; entry
 list supports `?kind=` and `?search=`.
@@ -247,7 +247,7 @@ do not regress. Planned, not built yet: an opt-in import action:
 
 1. New org auto-provisioning seeds a default Knowledge Base named "Default"
    bound to the data analyst harness.
-2. A one-shot `POST /v1/knowledge-bases/{kb_id}/import_starter_files` action
+2. A one-shot `POST /v1/platform/knowledge-bases/{kb_id}/import_starter_files` action
    walks the in-memory `data_knowledge` scaffold, creating one entry per
    README/file with `kind` derived from the directory (`tables/` → `table`,
    `business/` → `business`, `queries/` → `query`).

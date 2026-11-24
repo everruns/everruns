@@ -1,7 +1,7 @@
 "use client";
 
 // Session header → approval mode switch. Writes the session's reserved
-// `tool_approval/mode` key through PUT /v1/sessions/{id}/approval-mode; the
+// `tool_approval/mode` key through PUT /v1/platform/sessions/{id}/approval-mode; the
 // gate reads it on every call, so a change applies from the next tool call.
 // Modes the organization does not allow are hidden. Off stays listed but
 // disabled when the agent's manager turned approvals on: the gate would run it

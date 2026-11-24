@@ -11,7 +11,7 @@ Checks are advisory only. Findings never block saving, publishing, or version cr
 ## Where Findings Appear
 
 - **Agent editor → Preview tab**: a Checks card lists findings for the current draft, updating as you edit.
-- **API**: `POST /v1/agents/preview` returns a `findings` array alongside the resolved system prompt and tools.
+- **API**: `POST /v1/platform/agents/preview` returns a `findings` array alongside the resolved system prompt and tools.
 - **MCP / platform commands**: the `preview_agent` and `analyze_agent` commands return the same findings, so agents and automations can review configurations programmatically.
 
 ## Findings
@@ -36,7 +36,7 @@ The **Analyze** button on the Checks card runs a deeper on-demand review using t
 | `llm.structure` | Redundancy, verbosity, vague instructions, and structure that buries critical rules |
 | `llm.tool_guidance` | Prompt guidance that misdescribes available tools or assumes functionality no tool provides |
 
-LLM findings can carry a suggested replacement for the offending text; when the finding is anchored to a span of your prompt, an **Apply fix** button replaces it in place. Analysis is available via `POST /v1/agents/analyze`, which returns built-in and LLM findings merged.
+LLM findings can carry a suggested replacement for the offending text; when the finding is anchored to a span of your prompt, an **Apply fix** button replaces it in place. Analysis is available via `POST /v1/platform/agents/analyze`, which returns built-in and LLM findings merged.
 
 The reviewed prompt is treated strictly as data: checker outputs are bounded, severities are clamped, and findings are advisory text only.
 
@@ -53,9 +53,9 @@ Health checks are asynchronous (they run several real sessions and take a minute
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `POST` | `/v1/agents/{agent_id}/health-checks` | Start a run; returns a pending run with an `id` |
-| `GET` | `/v1/agents/{agent_id}/health-checks/{run_id}` | Poll the run; `status` goes `pending → running → completed`/`failed` |
-| `GET` | `/v1/agents/{agent_id}/health-checks` | List recent runs for the agent |
+| `POST` | `/v1/platform/agents/{agent_id}/health-checks` | Start a run; returns a pending run with an `id` |
+| `GET` | `/v1/platform/agents/{agent_id}/health-checks/{run_id}` | Poll the run; `status` goes `pending → running → completed`/`failed` |
+| `GET` | `/v1/platform/agents/{agent_id}/health-checks` | List recent runs for the agent |
 
 Runs are stored per agent and keyed by the resolved config hash. Health checks require the utility LLM (`UTILITY_OPENAI_API_KEY` or `UTILITY_OPENROUTER_API_KEY`) to generate and judge cases, and the agent's own model must be usable. They are advisory: a low score never blocks anything.
 

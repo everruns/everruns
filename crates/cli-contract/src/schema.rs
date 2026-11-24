@@ -336,7 +336,7 @@ mod tests {
             "update_agent",
             "Update an agent.",
             "PATCH",
-            "/v1/agents/{id}",
+            "/v1/platform/agents/{id}",
             &ROUTE,
             &schema(),
         )
@@ -422,7 +422,14 @@ mod tests {
             }
         });
         let route = CliRoute::new(&["agents"], "list");
-        let contract = contract_for("list_agents", "List.", "GET", "/v1/agents", &route, &schema);
+        let contract = contract_for(
+            "list_agents",
+            "List.",
+            "GET",
+            "/v1/platform/agents",
+            &route,
+            &schema,
+        );
 
         let limit = contract
             .args
@@ -449,7 +456,7 @@ mod tests {
             "get_agent",
             "Get.",
             "GET",
-            "/v1/agents/{id}",
+            "/v1/platform/agents/{id}",
             &route,
             &schema,
         );

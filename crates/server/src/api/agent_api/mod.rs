@@ -664,7 +664,7 @@ async fn get_session(state: &ChannelApiState, auth: Authorized, session_id: &str
     Json(view).into_response()
 }
 
-/// Body of `POST …/sessions/{id}/messages`: the `/v1/sessions/{id}/messages`
+/// Body of `POST …/sessions/{id}/messages`: the `/v1/platform/sessions/{id}/messages`
 /// body. Tags and participants remain caller-inaccessible. Work Chat accepts
 /// reasoning effort and refuses a caller-selected model. Other execution
 /// channels ignore controls. `files` carries files
@@ -882,7 +882,7 @@ pub struct StreamEventsQuery {
 
 #[utoipa::path(
     description = "Follow a session's events live, as the channel's visibility allows. \
-        Same framing as `/v1/sessions/{id}/sse`: `connected`, `id:` on durable events \
+        Same framing as `/v1/platform/sessions/{id}/sse`: `connected`, `id:` on durable events \
         (resume with `since_id`), a heartbeat, and `disconnecting` before the server \
         cycles the connection.",
     get,

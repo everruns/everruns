@@ -1,14 +1,14 @@
 // Entity history over REST.
 //
-//   GET  /v1/history                                   changes across the organization
-//   GET  /v1/history/{entity_ref}                      changes to one entity
-//   GET  /v1/history/{entity_ref}/revisions/{revision} the entity at one revision
-//   GET  /v1/history/{entity_ref}/diff                 two revisions compared
-//   POST /v1/history/{entity_ref}/restore              bring a revision back
+//   GET  /v1/platform/history                                   changes across the organization
+//   GET  /v1/platform/history/{entity_ref}                      changes to one entity
+//   GET  /v1/platform/history/{entity_ref}/revisions/{revision} the entity at one revision
+//   GET  /v1/platform/history/{entity_ref}/diff                 two revisions compared
+//   POST /v1/platform/history/{entity_ref}/restore              bring a revision back
 //
 // Thin routes over the history commands (`domains::change_history::commands`
 // and `::revisions`), dispatched through the same pipeline
-// as `/v1/commands`, so policy and output are identical on every surface.
+// as `/v1/platform/commands`, so policy and output are identical on every surface.
 // Mounted by `command_dispatch::routes`, which owns the shared command state.
 
 use axum::{
@@ -114,10 +114,10 @@ pub struct RestoreRequest {
     pub fields: Option<Vec<String>>,
 }
 
-/// GET /v1/history/{entity_ref}/revisions/{revision} - The entity at one revision
+/// GET /v1/platform/history/{entity_ref}/revisions/{revision} - The entity at one revision
 #[utoipa::path(
     get,
-    path = "/v1/history/{entity_ref}/revisions/{revision}",
+    path = "/v1/platform/history/{entity_ref}/revisions/{revision}",
     params(
         ("entity_ref" = String, Path, description = "The entity's public id"),
         ("revision" = i64, Path, description = "Revision number"),
@@ -140,10 +140,10 @@ pub async fn show_entity_revision(
     dispatch(&org, &state, "show_entity_revision", params).await
 }
 
-/// GET /v1/history/{entity_ref}/diff - Two revisions compared field by field
+/// GET /v1/platform/history/{entity_ref}/diff - Two revisions compared field by field
 #[utoipa::path(
     get,
-    path = "/v1/history/{entity_ref}/diff",
+    path = "/v1/platform/history/{entity_ref}/diff",
     params(("entity_ref" = String, Path, description = "The entity's public id"), DiffQuery),
     responses(
         (status = 200, description = "Fields that differ", body = Vec<FieldDiff>),
@@ -163,10 +163,10 @@ pub async fn diff_entity_revisions(
     dispatch(&org, &state, "diff_entity_revisions", params).await
 }
 
-/// POST /v1/history/{entity_ref}/restore - Bring a revision back as a new change
+/// POST /v1/platform/history/{entity_ref}/restore - Bring a revision back as a new change
 #[utoipa::path(
     post,
-    path = "/v1/history/{entity_ref}/restore",
+    path = "/v1/platform/history/{entity_ref}/restore",
     params(("entity_ref" = String, Path, description = "The entity's public id")),
     request_body = RestoreRequest,
     responses(
@@ -189,10 +189,10 @@ pub async fn restore_entity_revision(
     dispatch(&org, &state, "restore_entity_revision", params).await
 }
 
-/// GET /v1/history/{entity_ref} - Changes to one entity
+/// GET /v1/platform/history/{entity_ref} - Changes to one entity
 #[utoipa::path(
     get,
-    path = "/v1/history/{entity_ref}",
+    path = "/v1/platform/history/{entity_ref}",
     params(
         ("entity_ref" = String, Path, description = "The entity's public id, e.g. agent_01933b5a..."),
         EntityHistoryQuery,
@@ -220,10 +220,10 @@ pub async fn list_entity_history(
     dispatch(&org, &state, "list_entity_history", params).await
 }
 
-/// GET /v1/history - Changes across the organization
+/// GET /v1/platform/history - Changes across the organization
 #[utoipa::path(
     get,
-    path = "/v1/history",
+    path = "/v1/platform/history",
     params(OrgHistoryQuery),
     responses(
         (status = 200, description = "Recorded changes, newest first", body = Vec<EntityChange>),

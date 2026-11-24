@@ -38,7 +38,10 @@ describe("SkillsPage server prefetch", () => {
     await SkillsPage();
 
     expect(mockServerGet).toHaveBeenCalledTimes(1);
-    expect(mockServerGet).toHaveBeenCalledWith(expect.anything(), "/v1/orgs/org_1/feature-flags");
+    expect(mockServerGet).toHaveBeenCalledWith(
+      expect.anything(),
+      "/v1/platform/orgs/org_1/feature-flags",
+    );
     expect(mockServerGetList).not.toHaveBeenCalled();
     expect(mockSeedQueryData).toHaveBeenCalledTimes(1);
     // Must match `useOrgFeatureFlags`, or the client refetches what it was handed.
@@ -51,14 +54,14 @@ describe("SkillsPage server prefetch", () => {
 
   it("preserves skill and policy prefetching when skills are enabled", async () => {
     mockServerGet.mockImplementation(async (_context, endpoint) => {
-      if (endpoint === "/v1/orgs/org_1/feature-flags") return { skills: true };
+      if (endpoint === "/v1/platform/orgs/org_1/feature-flags") return { skills: true };
       return {};
     });
 
     await SkillsPage();
 
-    expect(mockServerGetList).toHaveBeenCalledWith(expect.anything(), "/v1/skills");
-    expect(mockServerGet).toHaveBeenCalledWith(expect.anything(), "/v1/skills/config");
+    expect(mockServerGetList).toHaveBeenCalledWith(expect.anything(), "/v1/platform/skills");
+    expect(mockServerGet).toHaveBeenCalledWith(expect.anything(), "/v1/platform/skills/config");
     expect(mockSeedQueryData).toHaveBeenCalledTimes(3);
   });
 });

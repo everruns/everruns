@@ -57,7 +57,7 @@ pub fn agent_trigger_message_metadata(
 ///
 /// `channel_id` is the public identifier the caller addressed, which for a
 /// channel migrated from an App is still that App's public id — that is what
-/// keeps the permanent `/v1/apps/{app_id}/…` ingress aliases resolving. The
+/// keeps the permanent `/v1/platform/apps/{app_id}/…` ingress aliases resolving. The
 /// `AppId` type name is the frozen schema's, not a claim that Apps are live.
 ///
 /// Emits `type: "channel"`: these rows are written on every inbound Slack,

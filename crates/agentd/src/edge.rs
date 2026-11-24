@@ -15,7 +15,7 @@
 //!   CLI need no token code: an explicit one (the `X-Everruns-Org-Token`
 //!   header, the `everruns_org_token` cookie, or a bearer org token), or by
 //!   exchanging the caller's own credential at the control plane's
-//!   `POST /v1/auth/token`. Exchanged tokens are cached by a hash of the
+//!   `POST /v1/platform/auth/token`. Exchanged tokens are cached by a hash of the
 //!   credential and refreshed before they expire; "this org is not on a
 //!   data plane" is cached for a minute. While the control plane is down a
 //!   cached token keeps working until it expires.
@@ -93,7 +93,20 @@ enum Route {
     Session(SessionId),
 }
 
+// The public Platform API keeps its namespace through the edge. Only the
+// downstream gateway uses the native session API shared with standalone agentd.
+fn native_path(path: &str) -> std::borrow::Cow<'_, str> {
+    match path.strip_prefix("/v1/platform/") {
+        Some(rest) => format!("/v1/{rest}").into(),
+        None => path.into(),
+    }
+}
+
 fn route(path: &str) -> Route {
+    if !path.starts_with("/v1/platform/") {
+        return Route::ControlPlane;
+    }
+    let path = native_path(path);
     let parts: Vec<&str> = path.trim_matches('/').split('/').collect();
     match parts.as_slice() {
         // Which plane serves a session route is declared once, in the
@@ -206,7 +219,7 @@ impl Edge {
         let mut request = self
             .http
             .post(format!(
-                "{}{}/v1/auth/token",
+                "{}{}/v1/platform/auth/token",
                 self.control_plane, self.prefix
             ))
             .header(header::CONTENT_TYPE, "application/json")
@@ -343,6 +356,17 @@ impl Edge {
                 *request.uri_mut() = uri;
             }
         }
+        let native = native_path(
+            request
+                .uri()
+                .path_and_query()
+                .map(|p| p.as_str())
+                .unwrap_or("/"),
+        );
+        let uri = native.parse::<axum::http::Uri>();
+        if let Ok(uri) = uri {
+            *request.uri_mut() = uri;
+        }
         match self.app.clone().oneshot(request).await {
             Ok(response) => response,
             Err(never) => match never {},
@@ -350,10 +374,50 @@ impl Edge {
     }
 }
 
-async fn handle(State(edge): State<Arc<Edge>>, request: Request) -> Response {
+async fn handle(State(edge): State<Arc<Edge>>, mut request: Request) -> Response {
+    use everruns_contracts::platform_api::{LEGACY_DEPRECATION, MIGRATION_GUIDE};
     let path = request.uri().path();
     let path = path.strip_prefix(edge.prefix.as_str()).unwrap_or(path);
-    if let Some(name) = path.strip_prefix("/v1/commands/")
+    let legacy = ["sessions", "commands", "workspaces"].iter().any(|root| {
+        let base = format!("/v1/{root}");
+        path == base
+            || path
+                .strip_prefix(&base)
+                .is_some_and(|tail| tail.starts_with('/'))
+    });
+    if !legacy {
+        return handle_canonical(State(edge), request).await;
+    }
+    let suffix = request
+        .uri()
+        .path_and_query()
+        .map(|uri| uri.as_str())
+        .unwrap_or(path);
+    let suffix = suffix.strip_prefix(edge.prefix.as_str()).unwrap_or(suffix);
+    let successor = format!(
+        "{}/v1/platform/{}",
+        edge.prefix,
+        suffix.trim_start_matches("/v1/")
+    );
+    if let Ok(uri) = successor.parse() {
+        *request.uri_mut() = uri;
+    }
+    let mut response = handle_canonical(State(edge), request).await;
+    response
+        .headers_mut()
+        .insert("deprecation", HeaderValue::from_static(LEGACY_DEPRECATION));
+    if let Ok(link) = HeaderValue::from_str(&format!(
+        "<{successor}>; rel=\"successor-version\", <{MIGRATION_GUIDE}>; rel=\"deprecation\"; type=\"text/html\""
+    )) {
+        response.headers_mut().append(header::LINK, link);
+    }
+    response
+}
+
+async fn handle_canonical(State(edge): State<Arc<Edge>>, request: Request) -> Response {
+    let path = request.uri().path();
+    let path = path.strip_prefix(edge.prefix.as_str()).unwrap_or(path);
+    if let Some(name) = path.strip_prefix("/v1/platform/commands/")
         && request.method() == Method::POST
         && edge_commands::is_session_command(name)
     {
@@ -394,6 +458,7 @@ async fn handle(State(edge): State<Arc<Edge>>, request: Request) -> Response {
 
 /// `/v1/sessions/{id}/messages`.
 fn is_messages(path: &str) -> bool {
+    let path = native_path(path);
     matches!(
         path.trim_matches('/')
             .split('/')
@@ -555,9 +620,9 @@ mod tests {
     #[test]
     fn only_a_message_that_refers_to_uploads_goes_through_the_control_plane() {
         let id = SessionId::new();
-        assert!(is_messages(&format!("/v1/sessions/{id}/messages")));
+        assert!(is_messages(&format!("/v1/platform/sessions/{id}/messages")));
         assert!(!is_messages(&format!(
-            "/v1/sessions/{id}/messages/x/feedback"
+            "/v1/platform/sessions/{id}/messages/x/feedback"
         )));
         let body = |parts: serde_json::Value| {
             serde_json::to_vec(&serde_json::json!({ "message": { "content": parts } })).unwrap()
@@ -580,36 +645,44 @@ mod tests {
     #[test]
     fn records_stay_with_the_control_plane_and_data_calls_route_to_the_session() {
         let id = SessionId::new();
-        assert_eq!(route("/v1/sessions"), Route::ControlPlane);
-        assert_eq!(route(&format!("/v1/sessions/{id}")), Route::ControlPlane);
+        assert_eq!(route("/v1/platform/sessions"), Route::ControlPlane);
         assert_eq!(
-            route(&format!("/v1/sessions/{id}/pin")),
+            route(&format!("/v1/platform/sessions/{id}")),
             Route::ControlPlane
         );
         assert_eq!(
-            route(&format!("/v1/sessions/{id}/archive")),
+            route(&format!("/v1/platform/sessions/{id}/pin")),
             Route::ControlPlane
         );
         assert_eq!(
-            route(&format!("/v1/sessions/{id}/resolved-model")),
+            route(&format!("/v1/platform/sessions/{id}/archive")),
             Route::ControlPlane
         );
         assert_eq!(
-            route(&format!("/v1/sessions/{id}/participants")),
+            route(&format!("/v1/platform/sessions/{id}/resolved-model")),
             Route::ControlPlane
         );
         assert_eq!(
-            route(&format!("/v1/sessions/{id}/sandbox")),
+            route(&format!("/v1/platform/sessions/{id}/participants")),
             Route::ControlPlane
         );
-        assert_eq!(route(&format!("/v1/sessions/{id}/sse")), Route::Session(id));
         assert_eq!(
-            route(&format!("/v1/sessions/{id}/messages")),
+            route(&format!("/v1/platform/sessions/{id}/sandbox")),
+            Route::ControlPlane
+        );
+        assert_eq!(
+            route(&format!("/v1/platform/sessions/{id}/sse")),
+            Route::Session(id)
+        );
+        assert_eq!(
+            route(&format!("/v1/platform/sessions/{id}/messages")),
             Route::Session(id)
         );
         for call in ["reactions/%F0%9F%91%8D", "feedback"] {
             assert_eq!(
-                route(&format!("/v1/sessions/{id}/messages/message_1/{call}")),
+                route(&format!(
+                    "/v1/platform/sessions/{id}/messages/message_1/{call}"
+                )),
                 Route::ControlPlane
             );
         }
@@ -625,25 +698,40 @@ mod tests {
             "environment",
         ] {
             assert_eq!(
-                route(&format!("/v1/sessions/{id}/{call}")),
+                route(&format!("/v1/platform/sessions/{id}/{call}")),
                 Route::ControlPlane
             );
         }
         assert_eq!(
-            route(&format!("/v1/sessions/{id}/fs/a.md")),
+            route(&format!("/v1/platform/sessions/{id}/fs/a.md")),
             Route::Session(id)
         );
         let workspace = everruns_contracts::typed_id::WorkspaceId::from_uuid(id.uuid());
         assert_eq!(
-            route(&format!("/v1/workspaces/{workspace}/fs/_/upload/a.png")),
+            route(&format!(
+                "/v1/platform/workspaces/{workspace}/fs/_/upload/a.png"
+            )),
             Route::Session(id)
         );
         assert_eq!(
-            route(&format!("/v1/workspaces/{workspace}")),
+            route(&format!("/v1/platform/workspaces/{workspace}")),
             Route::ControlPlane
         );
-        assert_eq!(route("/v1/sessions/not-an-id/sse"), Route::ControlPlane);
-        assert_eq!(route("/v1/agents"), Route::ControlPlane);
+        assert_eq!(
+            route("/v1/platform/sessions/not-an-id/sse"),
+            Route::ControlPlane
+        );
+        assert_eq!(route("/v1/platform/agents"), Route::ControlPlane);
+        // Routing decisions take canonical paths. The compatibility adapter
+        // normalizes legacy session URLs before this function is called.
+        assert_eq!(
+            route(&format!("/v1/sessions/{id}/messages")),
+            Route::ControlPlane
+        );
+        assert_eq!(
+            route(&format!("/v1/channels/channel_1/sessions/{id}/sse")),
+            Route::ControlPlane
+        );
     }
 
     #[test]

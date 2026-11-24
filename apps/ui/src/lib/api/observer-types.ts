@@ -3,7 +3,7 @@
 // ============================================
 // Hand-written (not generated): the backend exposes a flattened tagged union for
 // scorer configs and a snake_case tagged union for rule scorers. See the
-// `/v1/observers` API contract.
+// `/v1/platform/observers` API contract.
 
 export type ObserverStatus = "active" | "paused" | "archived";
 

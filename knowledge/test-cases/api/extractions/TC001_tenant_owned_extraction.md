@@ -20,7 +20,7 @@ Verify extraction requests use only an authorized organization's enabled model a
 
 ## Steps
 
-1. POST `/v1/extractions` before organization adoption. Expect 403 and no model, provider, credential or upstream lookup. Adopt `extractions`, repeat the request, and verify the native extraction endpoint receives the stored key and catalog model, not a chat request.
+1. POST `/v1/platform/extractions` before organization adoption. Expect 403 and no model, provider, credential or upstream lookup. Adopt `extractions`, repeat the request, and verify the native extraction endpoint receives the stored key and catalog model, not a chat request.
 2. Verify result values, Unicode code-point spans, absent confidence and usage survive unchanged.
 3. Repeat without authentication, as a member, and with read-only owner credentials. Expect 401/403 and no provider call.
 4. Select the other organization's model. Expect 404 and no provider call.

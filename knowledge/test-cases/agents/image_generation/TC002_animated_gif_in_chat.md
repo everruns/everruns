@@ -30,7 +30,7 @@ plays it with a frame badge, pause and download.
 2. Open chat and send: `Make a short looping GIF of a paper lantern swaying at dusk.`
 3. Wait for the turn to finish.
 4. In the tool row, check the player badge, press Pause, then Play, then Download.
-5. Fetch the artifact from `/v1/images/{artifact_id}` in the tool result JSON.
+5. Fetch the artifact from `/v1/platform/images/{artifact_id}` in the tool result JSON.
 
 ## Expected Result
 
@@ -39,7 +39,7 @@ plays it with a frame badge, pause and download.
   an `img_*` `artifact_id`, and `model: gpt-image-2.6-flare`
 - Chat shows the animation at full size with a `GIF · N frames · X s loop` badge, no
   thumbnail strip; Pause shows the first frame, Download saves `<prefix>.gif`
-- `/v1/images/{id}` returns `image/gif` bytes starting with `GIF89a`
+- `/v1/platform/images/{id}` returns `image/gif` bytes starting with `GIF89a`
 - The final reply describes what moves
 
 ## Failure Modes

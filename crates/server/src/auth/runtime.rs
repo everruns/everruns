@@ -178,13 +178,14 @@ where
     type Rejection = AuthError;
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, AuthError> {
         let auth = AuthState::from_ref(state);
-        if let Some(token) = parts
-            .headers
-            .get(header::AUTHORIZATION)
-            .and_then(|h| h.to_str().ok())
-            .and_then(|h| h.split_once(' '))
-            .filter(|(scheme, _)| scheme.eq_ignore_ascii_case("bearer"))
-            .map(|(_, t)| t)
+        if !parts.uri.path().contains("/v1/platform/")
+            && let Some(token) = parts
+                .headers
+                .get(header::AUTHORIZATION)
+                .and_then(|h| h.to_str().ok())
+                .and_then(|h| h.split_once(' '))
+                .filter(|(scheme, _)| scheme.eq_ignore_ascii_case("bearer"))
+                .map(|(_, t)| t)
             && (super::jwt::JwtService::new(auth.config.jwt.clone())
                 .validate_runtime_token(token)
                 .is_ok()

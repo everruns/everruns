@@ -30,7 +30,7 @@ export async function listAuditLogs(
   if (options.eventType) params.set("event_type", options.eventType);
   const query = params.toString();
   const response = await api.get<ListResponse<AuditLogEntry>>(
-    `/v1/orgs/${encodeURIComponent(orgId)}/audit-logs${query ? `?${query}` : ""}`,
+    `/v1/platform/orgs/${encodeURIComponent(orgId)}/audit-logs${query ? `?${query}` : ""}`,
   );
   return response.data.data;
 }

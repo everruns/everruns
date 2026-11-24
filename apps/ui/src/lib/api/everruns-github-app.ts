@@ -21,7 +21,7 @@ export interface EverrunsAppLinks {
 }
 
 function base(org: string): string {
-  return `/v1/orgs/${encodeURIComponent(org)}/github/everruns-app`;
+  return `/v1/platform/orgs/${encodeURIComponent(org)}/github/everruns-app`;
 }
 
 export async function listEverrunsAppLinks(org: string): Promise<EverrunsAppLinks> {

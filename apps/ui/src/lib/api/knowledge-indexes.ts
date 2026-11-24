@@ -22,7 +22,7 @@ function knowledgeIndexQuery(params: ListKnowledgeIndexesParams = {}): string {
     query.set("search", search);
   }
   const suffix = query.toString();
-  return suffix ? `/v1/knowledge-indexes?${suffix}` : "/v1/knowledge-indexes";
+  return suffix ? `/v1/platform/knowledge-indexes?${suffix}` : "/v1/platform/knowledge-indexes";
 }
 
 export async function listKnowledgeIndexes(
@@ -33,14 +33,14 @@ export async function listKnowledgeIndexes(
 }
 
 export async function getKnowledgeIndex(indexId: string): Promise<KnowledgeIndex> {
-  const response = await api.get<KnowledgeIndex>(`/v1/knowledge-indexes/${indexId}`);
+  const response = await api.get<KnowledgeIndex>(`/v1/platform/knowledge-indexes/${indexId}`);
   return response.data;
 }
 
 export async function createKnowledgeIndex(
   request: CreateKnowledgeIndexRequest,
 ): Promise<KnowledgeIndex> {
-  const response = await api.post<KnowledgeIndex>("/v1/knowledge-indexes", request);
+  const response = await api.post<KnowledgeIndex>("/v1/platform/knowledge-indexes", request);
   return response.data;
 }
 
@@ -48,24 +48,27 @@ export async function updateKnowledgeIndex(
   indexId: string,
   request: UpdateKnowledgeIndexRequest,
 ): Promise<KnowledgeIndex> {
-  const response = await api.patch<KnowledgeIndex>(`/v1/knowledge-indexes/${indexId}`, request);
+  const response = await api.patch<KnowledgeIndex>(
+    `/v1/platform/knowledge-indexes/${indexId}`,
+    request,
+  );
   return response.data;
 }
 
 export async function syncKnowledgeIndexNow(indexId: string): Promise<KnowledgeIndex> {
-  const response = await api.post<KnowledgeIndex>(`/v1/knowledge-indexes/${indexId}/sync`);
+  const response = await api.post<KnowledgeIndex>(`/v1/platform/knowledge-indexes/${indexId}/sync`);
   return response.data;
 }
 
 export async function archiveKnowledgeIndex(indexId: string): Promise<void> {
-  await api.delete(`/v1/knowledge-indexes/${indexId}`);
+  await api.delete(`/v1/platform/knowledge-indexes/${indexId}`);
 }
 
 export async function listKnowledgeIndexDocuments(
   indexId: string,
 ): Promise<KnowledgeIndexDocument[]> {
   const response = await api.get<ListResponse<KnowledgeIndexDocument>>(
-    `/v1/knowledge-indexes/${indexId}/documents`,
+    `/v1/platform/knowledge-indexes/${indexId}/documents`,
   );
   return response.data.data;
 }

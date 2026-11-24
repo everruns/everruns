@@ -7,7 +7,7 @@
 //!
 //! Two routes with deliberately different auth:
 //!
-//! * `POST /v1/channels/{channel_id}/slack/install` is authenticated. It spends a
+//! * `POST /v1/platform/channels/{channel_id}/slack/install` is authenticated. It spends a
 //!   connected workspace's app configuration token and creates a real app in
 //!   that workspace, so an unauthenticated caller could exhaust the
 //!   organization's credential and fill its workspace with orphans.
@@ -17,7 +17,7 @@
 //!
 //! The organization's workspace connection itself comes from a pasted
 //! configuration token, or, on a deployment with a Slack manager app, from one
-//! OAuth consent (`/v1/slack/workspaces/oauth`, EVE-1102). Its callback is
+//! OAuth consent (`/v1/platform/slack/workspaces/oauth`, EVE-1102). Its callback is
 //! unauthenticated for the same reason. A per-transaction browser cookie and a
 //! durable single-use ledger bind its encrypted, expiring state to the start.
 
@@ -107,7 +107,7 @@ impl From<OrgSlackConnectionRow> for SlackWorkspace {
     }
 }
 
-/// GET /v1/slack/workspaces — any member: builders choose from this list when
+/// GET /v1/platform/slack/workspaces — any member: builders choose from this list when
 /// putting an agent in Slack, and it holds names, not credentials.
 async fn list_workspaces(
     org: ResolvedOrg,
@@ -123,7 +123,7 @@ async fn list_workspaces(
     Ok(Json(rows.into_iter().map(SlackWorkspace::from).collect()))
 }
 
-/// POST /v1/slack/workspaces — admin only. Connects whichever workspace the
+/// POST /v1/platform/slack/workspaces — admin only. Connects whichever workspace the
 /// refresh token belongs to; Slack tells us which on the first rotation.
 async fn connect_workspace(
     org: ResolvedOrg,
@@ -282,23 +282,35 @@ impl SlackInstallState {
 
 pub fn routes(state: SlackInstallState) -> Router {
     Router::new()
-        .route("/v1/slack/install", get(install_capability))
+        .route("/v1/platform/slack/install", get(install_capability))
         .route(
-            "/v1/slack/workspaces",
+            "/v1/platform/slack/workspaces",
             get(list_workspaces).post(connect_workspace),
         )
-        .route("/v1/slack/workspaces/oauth", post(begin_manager_connect))
+        .route(
+            "/v1/platform/slack/workspaces/oauth",
+            post(begin_manager_connect),
+        )
         .route(
             "/v1/slack/workspaces/oauth/callback",
             get(finish_manager_connect),
         )
-        .route("/v1/slack/workspaces/{id}", delete(disconnect_workspace))
-        .route("/v1/slack/workspaces/{id}/test", post(test_workspace))
         .route(
-            "/v1/channels/{channel_id}/slack/install",
+            "/v1/platform/slack/workspaces/{id}",
+            delete(disconnect_workspace),
+        )
+        .route(
+            "/v1/platform/slack/workspaces/{id}/test",
+            post(test_workspace),
+        )
+        .route(
+            "/v1/platform/channels/{channel_id}/slack/install",
             post(begin_install),
         )
-        .route("/v1/e/{channel_id}/slack/install", post(begin_install))
+        .route(
+            "/v1/platform/e/{channel_id}/slack/install",
+            post(begin_install),
+        )
         .route(
             "/v1/channels/{channel_id}/slack/oauth/callback",
             get(finish_install),
@@ -414,7 +426,7 @@ async fn resolve_install_channel(
     Ok(endpoint)
 }
 
-/// POST /v1/channels/{channel_id}/slack/install
+/// POST /v1/platform/channels/{channel_id}/slack/install
 async fn begin_install(
     org: ResolvedOrg,
     State(state): State<SlackInstallState>,

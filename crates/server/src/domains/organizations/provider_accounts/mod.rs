@@ -70,7 +70,7 @@ pub struct ListOrganizationConnections {
     category = "organizations",
     description = "List the organization's provider accounts (sandbox provider accounts such as Daytona or E2B, and web search accounts): id, name, provider, provider username, and timestamps. Metadata only, never credentials. Use an id as a Sandbox Template's connection or a web search account. Organization admins only.",
     method = "GET",
-    path = "/v1/orgs/{org}/organization-connections",
+    path = "/v1/platform/orgs/{org}/organization-connections",
     policy = ORG_PROVIDER_ACCOUNTS_VIEW,
     cli = CliRoute::new(&["orgs", "provider-accounts"], "list").with_examples(&[CliExample::new("Find the sandbox provider account to point a Sandbox Template at", "everruns orgs provider-accounts list --org org_01h9")]),
 )]
@@ -113,7 +113,7 @@ pub struct OrganizationAccountMetadata {
 pub struct GetOrganizationAccount {
     pub id: Uuid,
 }
-#[command(name = "get_organization_account", http = plain, tag = "Organizations", summary = "Get organization account name", category = "organizations", description = "Read an organization account's editable name. Credentials are never returned.", method = "GET", path = "/v1/organization-accounts/{id}", policy = ORG_PROVIDER_ACCOUNTS_VIEW, cli = CliRoute::new(&["organization-accounts"], "get").with_examples(&[CliExample::new("Read an organization account name without retrieving its credentials", "everruns organization-accounts get --id 00000000-0000-0000-0000-000000000001")]))]
+#[command(name = "get_organization_account", http = plain, tag = "Organizations", summary = "Get organization account name", category = "organizations", description = "Read an organization account's editable name. Credentials are never returned.", method = "GET", path = "/v1/platform/organization-accounts/{id}", policy = ORG_PROVIDER_ACCOUNTS_VIEW, cli = CliRoute::new(&["organization-accounts"], "get").with_examples(&[CliExample::new("Read an organization account name without retrieving its credentials", "everruns organization-accounts get --id 00000000-0000-0000-0000-000000000001")]))]
 impl Command for GetOrganizationAccount {
     type Output = OrganizationAccountMetadata;
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
@@ -140,7 +140,7 @@ pub struct UpdateOrganizationAccountName {
 pub struct OrganizationAccountNameRequest {
     pub name: String,
 }
-#[command(name = "update_organization_account_name", http = plain, request_body(OrganizationAccountNameRequest), tag = "Organizations", summary = "Rename organization account", category = "organizations", description = "Rename an organization account while preserving its current credentials.", method = "PATCH", path = "/v1/organization-accounts/{id}", policy = ORG_PROVIDER_ACCOUNTS_VIEW, cli = CliRoute::new(&["organization-accounts"], "update").with_examples(&[CliExample::new("Rename a connected account while preserving its credential", "everruns organization-accounts update --id 00000000-0000-0000-0000-000000000001 --name 'Northstar sandbox' --reason 'Clarify the account purpose'")]))]
+#[command(name = "update_organization_account_name", http = plain, request_body(OrganizationAccountNameRequest), tag = "Organizations", summary = "Rename organization account", category = "organizations", description = "Rename an organization account while preserving its current credentials.", method = "PATCH", path = "/v1/platform/organization-accounts/{id}", policy = ORG_PROVIDER_ACCOUNTS_VIEW, cli = CliRoute::new(&["organization-accounts"], "update").with_examples(&[CliExample::new("Rename a connected account while preserving its credential", "everruns organization-accounts update --id 00000000-0000-0000-0000-000000000001 --name 'Northstar sandbox' --reason 'Clarify the account purpose'")]))]
 impl Command for UpdateOrganizationAccountName {
     type Output = OrganizationAccountMetadata;
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {

@@ -16,7 +16,7 @@ async fn test_execute_btw_returns_ephemeral_response() {
 
     let session: Session = server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             json!({
                 "harness_id": server.seed_generic_harness_id,
                 "agent_id": agent.public_id,
@@ -28,7 +28,7 @@ async fn test_execute_btw_returns_ephemeral_response() {
         .json();
 
     let messages_before: Value = server
-        .get(&format!("/v1/sessions/{}/messages", session.id))
+        .get(&format!("/v1/platform/sessions/{}/messages", session.id))
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -46,7 +46,7 @@ async fn test_execute_btw_returns_ephemeral_response() {
         .json();
 
     let messages_after: Value = server
-        .get(&format!("/v1/sessions/{}/messages", session.id))
+        .get(&format!("/v1/platform/sessions/{}/messages", session.id))
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -186,7 +186,10 @@ async fn test_update_profile_name() {
 
     // Update profile name
     let resp: Value = server
-        .patch("/v1/users/me", json!({ "name": "New Display Name" }))
+        .patch(
+            "/v1/platform/users/me",
+            json!({ "name": "New Display Name" }),
+        )
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -201,7 +204,10 @@ async fn test_update_profile_trims_whitespace() {
     let server = TestServer::in_memory().await;
 
     let resp: Value = server
-        .patch("/v1/users/me", json!({ "name": "  Trimmed Name  " }))
+        .patch(
+            "/v1/platform/users/me",
+            json!({ "name": "  Trimmed Name  " }),
+        )
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -214,7 +220,7 @@ async fn test_update_profile_rejects_empty_name() {
     let server = TestServer::in_memory().await;
 
     server
-        .patch("/v1/users/me", json!({ "name": "" }))
+        .patch("/v1/platform/users/me", json!({ "name": "" }))
         .await
         .assert_status(StatusCode::BAD_REQUEST);
 }
@@ -224,7 +230,7 @@ async fn test_update_profile_rejects_whitespace_only_name() {
     let server = TestServer::in_memory().await;
 
     server
-        .patch("/v1/users/me", json!({ "name": "   " }))
+        .patch("/v1/platform/users/me", json!({ "name": "   " }))
         .await
         .assert_status(StatusCode::BAD_REQUEST);
 }
@@ -235,7 +241,7 @@ async fn test_update_profile_rejects_too_long_name() {
 
     let long_name = "a".repeat(256);
     server
-        .patch("/v1/users/me", json!({ "name": long_name }))
+        .patch("/v1/platform/users/me", json!({ "name": long_name }))
         .await
         .assert_status(StatusCode::BAD_REQUEST);
 }
@@ -250,7 +256,7 @@ async fn test_cannot_delete_readonly_file() {
 
     let agent: Agent = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": "readonly-delete-test",
                 "display_name": "Readonly Delete Test",
@@ -263,7 +269,7 @@ async fn test_cannot_delete_readonly_file() {
 
     let session: Session = server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             json!({
                 "harness_id": server.seed_base_harness_id,
                 "agent_id": agent.public_id
@@ -273,7 +279,7 @@ async fn test_cannot_delete_readonly_file() {
         .assert_status(StatusCode::CREATED)
         .json();
 
-    let fs_url = format!("/v1/sessions/{}/fs", session.id);
+    let fs_url = format!("/v1/platform/sessions/{}/fs", session.id);
 
     // Create a readonly file
     let _file: SessionFile = server
@@ -309,7 +315,7 @@ async fn test_cannot_recursively_delete_directory_with_readonly_file() {
 
     let agent: Agent = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": "readonly-recursive-delete-test",
                 "display_name": "Readonly Recursive Delete Test",
@@ -322,7 +328,7 @@ async fn test_cannot_recursively_delete_directory_with_readonly_file() {
 
     let session: Session = server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             json!({
                 "harness_id": server.seed_base_harness_id,
                 "agent_id": agent.public_id
@@ -332,7 +338,7 @@ async fn test_cannot_recursively_delete_directory_with_readonly_file() {
         .assert_status(StatusCode::CREATED)
         .json();
 
-    let fs_url = format!("/v1/sessions/{}/fs", session.id);
+    let fs_url = format!("/v1/platform/sessions/{}/fs", session.id);
 
     // Create directory with a readonly file inside
     let _dir: SessionFile = server
@@ -381,7 +387,7 @@ async fn test_export_user_data() {
     let server = TestServer::in_memory().await;
 
     let resp: Value = server
-        .get("/v1/users/me/export")
+        .get("/v1/platform/users/me/export")
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -405,7 +411,7 @@ async fn test_delete_user_account() {
 
     // Delete account
     let resp: Value = server
-        .delete("/v1/users/me")
+        .delete("/v1/platform/users/me")
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -414,7 +420,7 @@ async fn test_delete_user_account() {
 
     // After deletion, export should fail with 404
     server
-        .get("/v1/users/me/export")
+        .get("/v1/platform/users/me/export")
         .await
         .assert_status(StatusCode::NOT_FOUND);
 }
@@ -440,7 +446,7 @@ Content-Type: image/png\r\n\r\n"
     let upload: Value = server
         .request_raw(
             axum::http::Method::POST,
-            "/v1/images",
+            "/v1/platform/images",
             vec![("content-type", content_type.as_str())],
             body,
         )
@@ -455,7 +461,7 @@ Content-Type: image/png\r\n\r\n"
     );
 
     let listed: Vec<Value> = server
-        .get("/v1/images")
+        .get("/v1/platform/images")
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -463,7 +469,7 @@ Content-Type: image/png\r\n\r\n"
     assert_eq!(listed[0]["id"], upload["id"]);
 
     server
-        .get(&format!("/v1/images/{image_id}"))
+        .get(&format!("/v1/platform/images/{image_id}"))
         .await
         .assert_status(StatusCode::OK);
 }
@@ -477,7 +483,7 @@ async fn test_sandbox_targets_say_why_an_absent_target_is_absent() {
     let server = TestServer::in_memory().await;
 
     let targets: Value = server
-        .get("/v1/environment-targets")
+        .get("/v1/platform/environment-targets")
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -519,7 +525,7 @@ async fn test_org_cannot_set_a_platform_managed_feature_flag() {
     for wanted in [true, false] {
         let refused: Value = server
             .patch(
-                &format!("/v1/orgs/{org_id}/feature-flags"),
+                &format!("/v1/platform/orgs/{org_id}/feature-flags"),
                 json!({ "flags": { "skills": wanted } }),
             )
             .await
@@ -535,7 +541,9 @@ async fn test_org_cannot_set_a_platform_managed_feature_flag() {
 
     // And it is absent from the tenant settings catalog, so no toggle exists.
     let settings: Value = server
-        .get(&format!("/v1/orgs/{org_id}/feature-flags/settings"))
+        .get(&format!(
+            "/v1/platform/orgs/{org_id}/feature-flags/settings"
+        ))
         .await
         .assert_status(StatusCode::OK)
         .json();

@@ -256,13 +256,16 @@ describe("VideoPreview", () => {
       <VideoPreview
         content="AAAA"
         extension="mp4"
-        src="/api/v1/workspaces/w/fs/_/download/recordings/a.mp4"
+        src="/api/v1/platform/workspaces/w/fs/_/download/recordings/a.mp4"
         fileName="a.mp4"
       />,
     );
     const video = screen.getByLabelText("a.mp4");
     expect(video.tagName).toBe("VIDEO");
-    expect(video).toHaveAttribute("src", "/api/v1/workspaces/w/fs/_/download/recordings/a.mp4");
+    expect(video).toHaveAttribute(
+      "src",
+      "/api/v1/platform/workspaces/w/fs/_/download/recordings/a.mp4",
+    );
     expect(video).toHaveAttribute("controls");
 
     rerender(<VideoPreview content="AAAA" extension="WEBM" fileName="a.webm" />);
@@ -451,7 +454,7 @@ describe("HtmlPreview", () => {
     expect(screen.getByTitle("HTML preview")).toHaveAttribute("sandbox", "");
   });
   it("loads server previews with the exact sandbox and without srcdoc", () => {
-    const src = "/api/v1/workspaces/wsp_x/fs/_/preview/index.html";
+    const src = "/api/v1/platform/workspaces/wsp_x/fs/_/preview/index.html";
     render(<HtmlPreview content="<p>ignored</p>" src={src} />);
     const iframe = screen.getByTitle("HTML preview");
     expect(iframe).toHaveAttribute("src", src);

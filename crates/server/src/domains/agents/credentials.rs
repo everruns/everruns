@@ -176,7 +176,7 @@ pub struct CreateAgentCredentialBinding {
     category = "agents",
     description = "Create a write-only Agent credential setup requirement: one attached MCP tool parameter, or an HTTP API the agent's shell calls with $ENV_NAME (the value is injected only into requests to the bound URL). This command never accepts a secret value; the user completes setup in the Agent Credentials UI.",
     method = "POST",
-    path = "/v1/agents/{agent_id}/credentials",
+    path = "/v1/platform/agents/{agent_id}/credentials",
     policy = AGENT_MANAGE,
     cli = CliRoute::new(&["agents", "credentials"], "create").with_examples(&[CliExample::new("Declare that an MCP tool needs a secret the model must never see", "everruns agents credentials create --agent-id agent_01h9 --mcp-server-name visti --tool-name visti_send --parameter-name channel_key --label 'Visti channel key' --reason 'Notify the on-call channel'",), CliExample::new("Declare an API key the agent's shell sends to one host without seeing it", "everruns agents credentials create --agent-id agent_01h9 --env-name JEV_API_KEY --url https://api.typesafe.ai --label 'Jev API key' --reason 'Ask Jev for triage decisions'",)]),
 )]

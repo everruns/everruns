@@ -42,7 +42,7 @@
  *
  *   1. Server-backed (`src`, preferred — used by the file viewer): the iframe
  *      loads the sandboxed preview endpoint
- *      (`/v1/workspaces/{id}/fs/_/preview/{path}`), whose RESPONSE carries
+ *      (`/v1/platform/workspaces/{id}/fs/_/preview/{path}`), whose RESPONSE carries
  *      `Content-Security-Policy: sandbox allow-scripts; …`. A network response
  *      does NOT inherit the app's strict `script-src 'self'`, so the page's
  *      JavaScript actually executes (verified under the real app CSP).
