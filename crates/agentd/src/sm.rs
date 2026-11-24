@@ -608,6 +608,7 @@ pub(crate) fn read_snapshot_file(dir: &std::path::Path) -> io::Result<Option<(Me
 }
 
 /// One snapshot copy waiting for the object store.
+#[derive(Clone)]
 struct Copy {
     id: String,
     inc: u64,
@@ -683,6 +684,15 @@ impl Shared {
     /// shard state every few minutes through a NAT whose burst ran out, and
     /// once S3 slowed every spawned upload held its snapshot in memory
     /// until it finished or failed. Now a node holds at most two.
+    ///
+    /// Decision: a failed upload is tried again (backing off to 10 s, the shipping cadence) until
+    /// it lands or a newer snapshot replaces it. While the object store is
+    /// down the shard still snapshots and purges its log, and the shipper
+    /// can then only ship from past the purge (`ship.rs`); restore bridges
+    /// that gap with an archived snapshot at or past it. A copy given up
+    /// on left the shipped log with a hole no snapshot covered, and the
+    /// shard could not be rebuilt (10-minute store outage on the Mac mini,
+    /// 2026-11-24: "shipped log ... has a hole: 565 to 1025").
     pub(crate) fn archive(&self, meta: &Meta, data: bytes::Bytes, inc: u64, clock_ms: i64) {
         if !self.leading.load(Ordering::Relaxed) {
             return;
@@ -702,6 +712,7 @@ impl Shared {
         }
         let (archiver, store, shard) = (self.archiver.clone(), self.store.clone(), self.shard);
         tokio::spawn(async move {
+            let mut backoff = std::time::Duration::from_secs(1);
             loop {
                 let next = archiver.next.lock().take();
                 let Some(copy) = next else {
@@ -721,11 +732,21 @@ impl Shared {
                         copy.inc,
                         copy.index,
                         copy.clock_ms,
-                        copy.parts,
+                        copy.parts.clone(),
                     )
                     .await
                 {
-                    tracing::warn!(%error, "snapshot copy to the object store failed");
+                    tracing::warn!(%error, index = copy.index, "snapshot copy to the object store failed; trying again");
+                    {
+                        let mut next = archiver.next.lock();
+                        if next.is_none() {
+                            *next = Some(copy);
+                        }
+                    }
+                    tokio::time::sleep(backoff).await;
+                    backoff = (backoff * 2).min(std::time::Duration::from_secs(10));
+                } else {
+                    backoff = std::time::Duration::from_secs(1);
                 }
             }
         });

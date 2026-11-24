@@ -11,9 +11,10 @@ shipping catches up when it is back (75k verifier point U11).
    would not stop a root process). Each session then gets a second message;
    a refused one (shedding while the log cannot ship) is retried until the
    store is back and the shard takes it.
-3. After `--outage` seconds the store comes back. The leader's oldest
-   unshipped entry must fall back under `--max-catch-up-s` within that many
-   seconds.
+3. After `--outage` seconds the store comes back. Within
+   `--max-catch-up-s` the leader's oldest unshipped entry must fall back
+   under 15 s and, if the shard purged log it had not shipped, a snapshot
+   must have reached the store to bridge the gap.
 4. Every node of the shard is then lost (SIGKILL, data set aside) and the
    shard rebuilt from the store alone, as `drill.py` does. Every second
    message the shard acknowledged must still be there: `agentd-drive check`
@@ -132,10 +133,22 @@ os.rename(store + ".away", store)
 back_at = time.time()
 print(f"t={round(back_at - t0)}: store back, {acked_during_outage} second messages acknowledged while it was gone", flush=True)
 caught_up_s = None
+
+
+def gap_covered():
+    """The store can rebuild the shard: either the log shipped without a
+    purge gap, or a snapshot reached the store to bridge it (`sm.rs`)."""
+    logs = os.path.join(fleet.STATE, "logs")
+    gap = any("purged into a snapshot before it shipped" in open(os.path.join(logs, n), errors="replace").read()
+              for n in os.listdir(logs))
+    snaps = os.path.join(store, "shards", "0", "snapshots")
+    return not gap or (os.path.isdir(snaps) and any(f.endswith(".snap") for f in os.listdir(snaps)))
+
+
 while time.time() - back_at < a.max_catch_up_s * 3:
     u = unshipped_s()
     timeline.append({"t": round(time.time() - outage_at), "unshipped_s": u, "acked": len(acked)})
-    if u is not None and u <= 15 and caught_up_s is None:
+    if u is not None and u <= 15 and caught_up_s is None and gap_covered():
         caught_up_s = round(time.time() - back_at, 1)
     if caught_up_s is not None and all(f.done() for f in futures):
         break
