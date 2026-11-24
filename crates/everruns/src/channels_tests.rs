@@ -245,7 +245,7 @@ async fn a_slack_file_is_downloaded_into_the_sessions_files() {
 async fn rejected_preparation_clears_its_channel_delivery_without_a_turn_terminal() {
     let engine = InMemoryEngine::new();
     let recorder = Recorder::default();
-    let store = Arc::new(MemoryChannelStore::new());
+    let store = Arc::new(ObservedChannelStore::default());
     let entered = Arc::new(tokio::sync::Notify::new());
     let release = Arc::new(tokio::sync::Notify::new());
     let agent = Agent::builder()
@@ -280,30 +280,109 @@ async fn rejected_preparation_clears_its_channel_delivery_without_a_turn_termina
     tokio::time::timeout(Duration::from_secs(2), entered.notified())
         .await
         .unwrap();
-    tokio::time::timeout(Duration::from_secs(2), async {
-        while store
-            .claim_pending("test", DEFAULT_DELIVERY_LEASE)
+    tokio::time::timeout(Duration::from_secs(2), store.saved.notified())
+        .await
+        .unwrap();
+    assert!(
+        store
+            .claim_pending("competing", DEFAULT_DELIVERY_LEASE)
             .await
             .unwrap()
-            .is_empty()
-        {
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
-    })
-    .await
-    .unwrap();
+            .is_empty(),
+        "a test observer cannot steal the host's live lease"
+    );
     release.notify_one();
-    tokio::time::timeout(Duration::from_secs(2), async {
-        while !store
-            .claim_pending("test", DEFAULT_DELIVERY_LEASE)
+    tokio::time::timeout(Duration::from_secs(2), store.completed.notified())
+        .await
+        .expect("rejection must commit fenced completion without a turn terminal");
+    assert!(
+        store
+            .claim_pending("competing", DEFAULT_DELIVERY_LEASE)
             .await
             .unwrap()
             .is_empty()
-        {
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
-    })
-    .await
-    .expect("rejection has no turn terminal to wait for");
+    );
     assert!(recorder.posts().is_empty());
+}
+
+/// Observe committed store operations without claiming the running host's lease.
+#[derive(Default)]
+struct ObservedChannelStore {
+    inner: MemoryChannelStore,
+    saved: tokio::sync::Notify,
+    completed: tokio::sync::Notify,
+}
+#[async_trait]
+impl ChannelStore for ObservedChannelStore {
+    fn supports_delivery_checkpoints(&self) -> bool {
+        true
+    }
+    async fn session_for(&self, channel: &str, key: &str) -> Result<Option<String>, ChannelError> {
+        self.inner.session_for(channel, key).await
+    }
+    async fn bind(&self, channel: &str, key: &str, session: &str) -> Result<String, ChannelError> {
+        self.inner.bind(channel, key, session).await
+    }
+    async fn first_sighting(&self, channel: &str, key: &str) -> Result<bool, ChannelError> {
+        self.inner.first_sighting(channel, key).await
+    }
+    async fn save_pending(
+        &self,
+        pending: &PendingDelivery,
+        holder: &str,
+        lease: Duration,
+    ) -> Result<(), ChannelError> {
+        self.inner.save_pending(pending, holder, lease).await?;
+        self.saved.notify_one();
+        Ok(())
+    }
+    async fn renew_pending(
+        &self,
+        session: &str,
+        input: &str,
+        holder: &str,
+        lease: Duration,
+    ) -> Result<(), ChannelError> {
+        self.inner
+            .renew_pending(session, input, holder, lease)
+            .await
+    }
+    async fn clear_pending(&self, session: &str, input: &str) -> Result<(), ChannelError> {
+        self.inner.clear_pending(session, input).await
+    }
+    async fn claim_pending(
+        &self,
+        holder: &str,
+        lease: Duration,
+    ) -> Result<Vec<PendingDelivery>, ChannelError> {
+        self.inner.claim_pending(holder, lease).await
+    }
+    async fn delivery_checkpoint(
+        &self,
+        session: &str,
+        input: &str,
+    ) -> Result<Option<DeliveryCheckpoint>, ChannelError> {
+        self.inner.delivery_checkpoint(session, input).await
+    }
+    async fn save_delivery_checkpoint(
+        &self,
+        session: &str,
+        input: &str,
+        holder: &str,
+        checkpoint: &DeliveryCheckpoint,
+    ) -> Result<(), ChannelError> {
+        self.inner
+            .save_delivery_checkpoint(session, input, holder, checkpoint)
+            .await
+    }
+    async fn complete_delivery(
+        &self,
+        session: &str,
+        input: &str,
+        holder: &str,
+    ) -> Result<(), ChannelError> {
+        self.inner.complete_delivery(session, input, holder).await?;
+        self.completed.notify_one();
+        Ok(())
+    }
 }
