@@ -8,7 +8,7 @@ import type { SectionTabItem } from "@/components/layout";
 // "Triggers" and "Integrate" folded into Integrations in EVE-1009: both
 // described how an agent is reached and when it runs. Evals (behind the
 // evals flag) shows the agent's datasets, experiments and findings.
-// "Agents" lists the agents this one hands work to; it shows only when the
+// "Team" lists the agents this one hands work to; it shows only when the
 // agent has the Agents capability, the one opt-in for using other agents.
 export type AgentTab =
   | "agent"
@@ -42,7 +42,7 @@ export function getAgentTabItems(
             value: "agents",
             label: (
               <>
-                {translate("Agents")}
+                {translate("Team")}
                 <span className="bg-muted px-1 text-[11px] font-medium">{agents}</span>
               </>
             ),

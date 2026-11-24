@@ -16,9 +16,10 @@ appliesTo: [platform]
 The Agents capability (`agent_handoff`) lets an agent hand work to other
 first-party Everruns agents. The agents it can use are listed ahead of time,
 so the model can only pick from that list. In the UI, add them from the
-agent's **Agents** tab: link an existing agent, or create a new one there.
-Agents created there are exported and imported together with the agent that
-uses them. The capability adds the `agent` target type
+agent's **Team** tab: link an existing agent, or create a new one there.
+ZIP export includes all direct team agents, so they import together into a
+fresh organization. Text and source exports keep linked agents by name.
+The capability adds the `agent` target type
 to the shared `spawn_agent` tool, the same dispatcher that
 [Sub Agents](/capabilities/sub-agents/) and
 [A2A Agent Delegation](/capabilities/a2a-agent-delegation/) extend. The child runs as its own session, or joins
@@ -26,6 +27,12 @@ the current session as a member.
 
 **Experimental.** Adding the capability to an agent is the opt-in; there is no
 separate feature flag.
+
+Team membership does not inherit the parent's GitHub connection. To use the
+same GitHub bot, give the child the GitHub capability and explicitly bind it
+to the parent's service account under **More → Service account**, with virtual-user management permission.
+Otherwise, configure the child's own connection or use the invoking person's
+connection where the GitHub tool is configured for user access.
 
 For delegation to agents outside Everruns, see
 [A2A Agent Delegation](/capabilities/a2a-agent-delegation/). For ad hoc child
@@ -132,7 +139,7 @@ the organization's Memory list.
 ### Starting with a copy of the files
 
 By default an agent starts with its own files. Set a member's **Files** to
-**A copy of this agent's** on the Agents tab (or `"files": "copy"` on its
+**A copy of this agent's** on the Team tab (or `"files": "copy"` on its
 target) and each hand-off starts with a copy of the handing-off session's
 files. The agent works on the copy; the originals stay as they were, and the
 results come back through the team folder.

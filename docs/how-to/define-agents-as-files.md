@@ -104,8 +104,13 @@ Reproduce the problem and write its scope.
 - In text formats, bundled agents are inlined under `agents`.
 
 On the Platform, import creates the bundled agents as **Created here** under
-this agent and links `members` to existing agents with those names; export
-does the reverse. The Framework builds bundled agents with the lead's
+this agent and links `members` to existing agents with those names. ZIP export
+bundles every direct team agent under `.agents/agents/`, including linked
+agents, so the ZIP can be imported into a fresh organization. These snapshots
+become created children there; credentials and GitHub connections are not copied.
+Text and GitHub source exports retain linked names. Agents with nested teams
+cannot be bundled under the one-level package format. The Framework builds
+bundled agents with the lead's
 providers and asks you to add linked ones with `AgentBuilder::member`.
 
 ## Paths, environments and session files

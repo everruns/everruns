@@ -380,6 +380,39 @@ beforeEach(() => {
   mockExternal = { available: false, endpoint: null };
 });
 
+describe("Agent breadcrumbs", () => {
+  it("links a created child back to its parent and the parent's Team tab", async () => {
+    mockUseAgent.mockImplementation((id) => ({
+      data:
+        id === "agent-parent"
+          ? { ...mockAgent, id, name: "parent", display_name: "Parent agent" }
+          : { ...mockAgent, owner_agent_id: "agent-parent" },
+      isLoading: false,
+    }));
+    await renderPage();
+    const breadcrumb = within(screen.getByRole("navigation", { name: "Breadcrumb" }));
+    expect(breadcrumb.getByText("Parent agent")).toHaveAttribute(
+      "data-href",
+      "/agents/agent-parent",
+    );
+    expect(breadcrumb.getByText("Team")).toHaveAttribute(
+      "data-href",
+      "/agents/agent-parent?tab=agents",
+    );
+  });
+
+  it("keeps a usable breadcrumb when the parent is unavailable", async () => {
+    mockUseAgent.mockImplementation((id) => ({
+      data: id === "agent-parent" ? undefined : { ...mockAgent, owner_agent_id: "agent-parent" },
+      isLoading: false,
+    }));
+    await renderPage();
+    const breadcrumb = within(screen.getByRole("navigation", { name: "Breadcrumb" }));
+    expect(breadcrumb.getByText(mockAgent.display_name!)).toBeInTheDocument();
+    expect(breadcrumb.queryByText("Team")).not.toBeInTheDocument();
+  });
+});
+
 describe("Agent views", () => {
   it("hides view configuration and disables its query before adoption", async () => {
     await renderPage();

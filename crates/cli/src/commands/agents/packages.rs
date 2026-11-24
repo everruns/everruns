@@ -122,8 +122,28 @@ pub(super) async fn run(
             out,
         } => {
             let id = urlencoding::encode(&agent);
-            let response = super::super::api::ApiClient::connect(api_url, api_key, org_id)
-                .await?
+            let client = super::super::api::ApiClient::connect(api_url, api_key, org_id).await?;
+            if export_format == "zip" {
+                let path = out.as_ref().context("--out is required for ZIP export")?;
+                let response = client
+                    .request(
+                        reqwest::Method::GET,
+                        &format!("/v1/platform/agents/{id}/export?format=zip"),
+                    )
+                    .send()
+                    .await?;
+                if !response.status().is_success() {
+                    return Err(super::super::api::ApiError::from_response(
+                        "Export agent ZIP",
+                        response,
+                    )
+                    .await
+                    .into());
+                }
+                write_new(path, &response.bytes().await?)?;
+                return Ok(());
+            }
+            let response = client
                 .get(&format!("/v1/platform/agents/{id}/export?format=json"))
                 .await?;
             let package = everruns_core::agent_package::AgentPackage::parse(
@@ -134,11 +154,6 @@ pub(super) async fn run(
                 package.write_folder(
                     out.as_ref()
                         .context("--out is required for folder export")?,
-                )?;
-            } else if export_format == "zip" {
-                write_new(
-                    out.as_ref().context("--out is required for ZIP export")?,
-                    &package.to_zip()?,
                 )?;
             } else {
                 let text = package.to_string(parse_format(&export_format)?)?;
@@ -174,5 +189,63 @@ pub(super) async fn run(
             Ok(())
         }
         _ => anyhow::bail!("expected a package command"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::commands::api::capture::serve_once;
+
+    #[tokio::test]
+    async fn zip_export_downloads_the_server_archive_with_org_and_auth() {
+        const ARCHIVE: &str = "PK\u{3}\u{4}server-bundled-team";
+        let (url, captured) = serve_once(200, ARCHIVE).await;
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("team.zip");
+        run(
+            AgentsCommand::Export {
+                agent: "coordinator".into(),
+                format: "zip".into(),
+                out: Some(path.clone()),
+            },
+            &url,
+            "test-key",
+            Some("org-test"),
+            OutputFormat::Json,
+        )
+        .await
+        .unwrap();
+        assert_eq!(std::fs::read(path).unwrap(), ARCHIVE.as_bytes());
+        let request = captured.await.unwrap();
+        assert!(request.headers[0].contains("/agents/coordinator/export?format=zip"));
+        assert_eq!(
+            request.header("authorization").as_deref(),
+            Some("Bearer test-key")
+        );
+        assert_eq!(request.header("x-org-id").as_deref(), Some("org-test"));
+    }
+
+    #[tokio::test]
+    async fn zip_export_error_does_not_create_an_archive() {
+        let (url, captured) = serve_once(400, r#"{"detail":"Cannot bundle team agent"}"#).await;
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("team.zip");
+        let error = run(
+            AgentsCommand::Export {
+                agent: "coordinator".into(),
+                format: "zip".into(),
+                out: Some(path.clone()),
+            },
+            &url,
+            "test-key",
+            None,
+            OutputFormat::Json,
+        )
+        .await
+        .unwrap_err();
+        assert!(error.to_string().contains("Cannot bundle team agent"));
+        assert!(!path.exists());
+        captured.await.unwrap();
     }
 }

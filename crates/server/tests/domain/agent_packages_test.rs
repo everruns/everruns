@@ -540,6 +540,48 @@ async fn bundled_agents_import_as_created_here_and_linked_agents_by_name() {
         .json_value();
     assert_eq!(exported["members"], json!(["review"]), "{exported}");
     assert_eq!(exported["agents"][0]["name"], "implement");
+    let archive = server
+        .get("/v1/platform/agents/factory/export?format=zip")
+        .await
+        .assert_success()
+        .bytes()
+        .to_vec();
+    let restored = AgentPackage::from_zip(&archive).unwrap();
+    assert_eq!(
+        restored
+            .manifest
+            .agents
+            .iter()
+            .map(|agent| agent.name.as_str())
+            .collect::<Vec<_>>(),
+        ["implement", "review"]
+    );
+    assert_eq!(restored.manifest.members, None);
+    assert!(
+        restored
+            .folder_entries()
+            .unwrap()
+            .contains_key(".agents/agents/implement/agent.toml")
+    );
+    let destination = TestServer::in_memory().await;
+    let imported = destination
+        .request_raw(
+            Method::POST,
+            "/v1/platform/agents/import?format=zip",
+            vec![("Content-Type", "application/zip")],
+            archive,
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json_value();
+    for name in ["implement", "review"] {
+        let member = destination
+            .get(&format!("/v1/platform/agents/{name}"))
+            .await
+            .assert_success()
+            .json_value();
+        assert_eq!(member["owner_agent_id"], imported["id"]);
+    }
     assert!(
         exported["capabilities"]
             .as_array()
@@ -584,4 +626,50 @@ async fn bundled_agents_import_as_created_here_and_linked_agents_by_name() {
         .get("/v1/platform/agents/other")
         .await
         .assert_status(StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn zip_export_rejects_incomplete_or_nested_teams() {
+    let server = TestServer::in_memory().await;
+    for definition in [
+        json!({"schema_version":1,"name":"leaf","instructions":"Review."}),
+        json!({"schema_version":1,"name":"coordinator","instructions":"Route.","members":["leaf"]}),
+        json!({"schema_version":1,"name":"lead","instructions":"Route.","members":["coordinator"]}),
+    ] {
+        server
+            .post(
+                "/v1/platform/agents/import",
+                &json!({"content":definition.to_string(),"format":"json"}),
+            )
+            .await
+            .assert_status(StatusCode::CREATED);
+    }
+    // The one-level package contract must fail explicitly, never strip a
+    // linked agent's own team to make its snapshot fit.
+    let nested = server
+        .get("/v1/platform/agents/lead/export?format=zip")
+        .await
+        .assert_status(StatusCode::BAD_REQUEST);
+    assert!(
+        nested
+            .text()
+            .contains("a bundled agent cannot have agents of its own")
+    );
+    let coordinator = server
+        .get("/v1/platform/agents/coordinator")
+        .await
+        .assert_success()
+        .json_value();
+    server
+        .delete(&format!(
+            "/v1/platform/agents/{}",
+            coordinator["id"].as_str().unwrap()
+        ))
+        .await
+        .assert_success();
+    let incomplete = server
+        .get("/v1/platform/agents/lead/export?format=zip")
+        .await
+        .assert_status(StatusCode::BAD_REQUEST);
+    assert!(incomplete.text().contains("agent is not active"));
 }

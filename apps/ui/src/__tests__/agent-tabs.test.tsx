@@ -24,11 +24,11 @@ describe("agent tab definitions", () => {
     expect(labels(getAgentTabItems())).not.toContain("Evals");
   });
 
-  it("shows Agents after Agent only for an agent that uses other agents", () => {
+  it("shows Team after Agent only for an agent that uses other agents", () => {
     expect(labels(getAgentTabItems(undefined, undefined, undefined, { agents: 3 }))[1]).toBe(
-      "Agents3",
+      "Team3",
     );
-    expect(labels(getAgentTabItems())).not.toContain("Agents");
+    expect(labels(getAgentTabItems())).not.toContain("Team");
   });
 
   it.each([

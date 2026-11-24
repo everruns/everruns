@@ -11,7 +11,7 @@ tags:
 # Agents That Use Other Agents
 
 Status: accepted (2026-11-02). All three parts are built (2026-11-03):
-members, created-here agents, package format and the Agents tab; approvals
+members, created-here agents, package format and the Team tab; approvals
 and questions on the first session, the shared team folder, copy-of-files
 and the run conversation; whole-run costs and traces. Framework and serve
 apps get members too. The mechanism underneath is
@@ -21,15 +21,17 @@ apps get members too. The mechanism underneath is
 
 Everruns agents were flat: any agent could be configured to hand work to
 another, but the setup was raw ids, nothing travelled in an export, and costs
-were per session. An agent can now have **Agents**: other agents it hands work
+were per session. An agent can now have a **Team**: other agents it hands work
 to. A member is a real agent. It is either **linked** (any agent in the
 organization) or **created here** (made as part of this agent: it is listed
 under it on Agents home and travels in its export).
 
-The platform imposes no names or roles. There is no "team", "lead" or "worker"
-in the product: the agent page has an **Agents** tab, members are shown and
-addressed by their own agent name, and "used when" is the member's own
-description. "Team" and "member" are words for code and these notes only.
+The platform imposes no names or roles. The agent page calls its list of
+agents **Team**, so it is distinct from the organization-wide Agents list.
+Members are addressed by their own agent name, and "used when" is the member's
+own description. A created child's breadcrumb links to its parent and the
+parent's Team tab; linked agents keep their own location because they can be
+used by several teams.
 
 ## Why this shape (state of the art, 2025-2026)
 
@@ -56,7 +58,7 @@ What the field agrees on, and what Everruns does by default:
 
 - **Opt-in.** The Agents capability (`agent_handoff`) is the one switch, with no
   feature flag: anything opt-in through a capability needs none. An agent
-  without it shows no Agents tab.
+  without it shows no Team tab.
 - **Members** are the capability's `targets` (alias `members`). Each entry needs
   only `agent_id`. On save the platform fills `id` (the agent's name, which the
   model uses as `spawn_agent` `target.id`), `name` and `description` from the
@@ -81,7 +83,7 @@ What the field agrees on, and what Everruns does by default:
 | Team folder | A `team/` folder every agent in the run reads and writes | Always on |
 | Sandbox | Own, from its own harness | Not shared in v1: git branches carry code work |
 | Memory, tools, model, harness | Its own | n/a |
-| Connections and credentials | Resolved for the person; never passed | n/a |
+| Connections and credentials | Resolved for the active agent or invoking person; never passed from the parent | See [GitHub identities](../integrations/github-model.md) |
 | Spend | One pool per run (the existing root pool) | Per-hand-off cap (part 3) |
 
 ## Package format
@@ -102,7 +104,9 @@ factory/
   inline them as `agents = [...]`.
 - `members = [...]` lists linked agents by name; they must exist at the
   destination. An explicit `members = []` turns discovery off.
-- Platform export bundles created-here members and lists the rest by name.
+- Platform ZIP export bundles every direct team member, including linked agents,
+  so a fresh destination does not need pre-existing member agents. Text and
+  continuous-source exports bundle created-here members and list the rest by name.
   Import creates or updates the bundled agents (a name taken by an agent that
   was not created as part of this one is a conflict), resolves linked names,
   writes the Agents capability, and marks the bundled agents as created here.
@@ -168,7 +172,7 @@ migration `20261103075442_run_team_folder`.
 ## Copy of the files
 
 A member set to **A copy of this agent's** (`files: "copy"` on its entry in
-the Agents capability, the Files control on the Agents tab) starts each
+the Agents capability, the Files control on the Team tab) starts each
 hand-off with a copy of the handing-off session's files, the existing
 `workspace` seed. It changes the copy without touching the originals and
 hands results back through the team folder or a git branch. "The same files"

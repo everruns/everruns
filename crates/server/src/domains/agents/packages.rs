@@ -266,8 +266,21 @@ async fn read_folder(
     AgentPackage::from_entries(entries).map_err(package_error)
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum TeamExport {
+    Authored,
+    BundleAll,
+    Leaf,
+}
+
 pub async fn export(ctx: &Ctx, id: &str) -> Result<AgentPackage, CommandError> {
-    Box::pin(export_inner(ctx, id, false, None)).await
+    Box::pin(export_inner(ctx, id, false, None, TeamExport::Authored)).await
+}
+
+/// A download must import into a fresh organization, without linked agents
+/// already installed there. Source/text exports keep their authored links.
+pub async fn export_zip(ctx: &Ctx, id: &str) -> Result<AgentPackage, CommandError> {
+    Box::pin(export_inner(ctx, id, false, None, TeamExport::BundleAll)).await
 }
 
 /// Source ownership excludes destination-only channels before package validation.
@@ -276,7 +289,7 @@ pub(crate) async fn export_source(
     id: &str,
     managed: Option<&[String]>,
 ) -> Result<AgentPackage, CommandError> {
-    Box::pin(export_inner(ctx, id, true, managed)).await
+    Box::pin(export_inner(ctx, id, true, managed, TeamExport::Authored)).await
 }
 
 async fn export_inner(
@@ -284,6 +297,7 @@ async fn export_inner(
     id: &str,
     source_only: bool,
     managed: Option<&[String]>,
+    team: TeamExport,
 ) -> Result<AgentPackage, CommandError> {
     let agent = GetAgent { id: id.into() }.run(ctx).await?;
     let mut value = serde_json::to_value(&agent).map_err(|e| CommandError::internal(e.into()))?;
@@ -449,30 +463,70 @@ async fn export_inner(
                 },
             );
         } else if cap.capability_id() == AGENTS_CAPABILITY {
-            // Agents created here travel inside the package; any other agent
-            // is linked by name and must exist wherever the package lands.
+            // ZIPs snapshot every direct team agent. Source exports retain
+            // links to agents owned elsewhere rather than taking ownership.
             let targets = cap
                 .config_value()
                 .get("targets")
+                .or_else(|| cap.config_value().get("members"))
                 .and_then(Value::as_array)
                 .cloned()
                 .unwrap_or_default();
+            // Enforce the one-level format before traversing another team.
+            // Rejecting here also bounds cycles and recursive export work.
+            if team == TeamExport::Leaf && !targets.is_empty() {
+                return Err(CommandError::bad_request(format!(
+                    "{}: a bundled agent cannot have agents of its own",
+                    agent.name
+                )));
+            }
+            let bundle_linked = team == TeamExport::BundleAll;
+            if bundle_linked && targets.len() > everruns_core::agent_package::MAX_MEMBERS {
+                return Err(CommandError::bad_request(
+                    "A ZIP can bundle at most 32 team agents",
+                ));
+            }
             for target in targets {
                 let Some(id) = target
                     .get("agent_id")
                     .and_then(Value::as_str)
                     .and_then(|id| id.parse::<AgentId>().ok())
                 else {
+                    if bundle_linked {
+                        return Err(CommandError::bad_request(
+                            "Cannot bundle a team agent with an invalid agent_id",
+                        ));
+                    }
                     continue;
                 };
                 let Some(member) = ctx.db.get_agent(ctx.org_id(), id).await? else {
+                    if bundle_linked {
+                        return Err(CommandError::bad_request(format!(
+                            "Cannot bundle team agent {id}: agent is unavailable"
+                        )));
+                    }
                     continue;
                 };
                 if member.status != "active" {
+                    if bundle_linked {
+                        return Err(CommandError::bad_request(format!(
+                            "Cannot bundle team agent {}: agent is not active",
+                            member.name
+                        )));
+                    }
                     continue;
                 }
-                if member.owner_agent_id.map(|owner| owner.uuid()) == Some(agent.internal_id) {
-                    let bundled = Box::pin(export_inner(ctx, &member.name, false, None)).await?;
+                if bundle_linked
+                    || member.owner_agent_id.map(|owner| owner.uuid()) == Some(agent.internal_id)
+                {
+                    let bundled = Box::pin(export_inner(
+                        ctx,
+                        &member.name,
+                        false,
+                        None,
+                        TeamExport::Leaf,
+                    ))
+                    .await?;
                     manifest.agents.push(bundled.manifest);
                 } else {
                     linked.push(member.name);
@@ -1021,7 +1075,11 @@ impl Command for ExportAgent {
         Some("id")
     }
     async fn execute(self, ctx: &Ctx) -> Result<Value, CommandError> {
-        let package = export(ctx, &self.id).await?;
+        let package = if self.format.as_deref() == Some("zip") {
+            export_zip(ctx, &self.id).await?
+        } else {
+            export(ctx, &self.id).await?
+        };
         if let Some(path) = self.out {
             let session = ctx.acting_for_session.ok_or_else(|| {
                 CommandError::bad_request("out requires a current session workspace")
