@@ -1,4 +1,0 @@
-{"agent": "chat", "sessions": 200, "turns": 2000, "executors": 2, "turns_per_sec": 41.2, "turn_p50_ms": 2310.0, "turn_p99_ms": 4100.0,
- "leader_cpu_ms_per_turn": 9.8, "follower_cpu_ms_per_turn": 3.1, "executor_cpu_ms_per_turn": 21.4,
- "calls_per_turn": {"propose": 6.1}, "waited_round_trips_per_turn": 2.0, "raft_entries_per_turn": 4.2, "fsyncs_per_turn": 1.1,
- "budgets": {"leader_cpu_ms_per_turn": {"value": 9.8, "budget": 12.0, "ok": true}}}

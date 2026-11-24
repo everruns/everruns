@@ -16,8 +16,6 @@ from . import Check, Output
 TESTKIT = {  # test file -> point
     "durability": "A1",
     "recovery": "A2",
-    "stream": "B5",
-    "executors": "E4",
     "control_plane": "E5",
 }
 AGENTD = {

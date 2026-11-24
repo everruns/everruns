@@ -1,5 +1,0 @@
-{"sessions": 50000, "shards": 2, "inflight": 3000,
- "load": {"turns_completed": 50000, "errors": 0, "turns_per_sec": 612.0, "turn": {"p50_ms": 900.0, "p99_ms": 2100.0}},
- "ship_lag_s": {"count": 4812, "p50": 4.1, "p99": 10.2}, "ship_first_s": {"count": 3000, "p50": 0.02, "p99": 0.09},
- "rebuilt": {"sessions": 25012}, "rebuild_s": 3.7, "kill_to_leader_s": 6.2, "second_messages_lost": 0,
- "check": {"second": {"ok": true, "failed_sessions": 0}, "first": {"ok": true, "failed_sessions": 0}}, "wall_s": 1880}

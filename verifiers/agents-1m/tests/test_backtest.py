@@ -41,11 +41,6 @@ class Backtest(unittest.TestCase):
             self.assertEqual(failed, want, rid)
             self.assertEqual(CFG.hooks.proven_agents(CFG, [run]), 0 if want else out.agents, rid)
 
-    def test_store_lag_of_the_old_shipping(self):
-        # Before group commit and all-replica acks, Nov 16 runs had no ship
-        # gauge in their samples; the new storage keeps it under 15 s.
-        out, _ = imported("45197793040")
-        self.assertLess({e["point"]: e["value"] for e in out.entries}["F3"], 15)
 
 
 if __name__ == "__main__":

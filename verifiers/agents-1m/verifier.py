@@ -90,10 +90,6 @@ class AgentsVerifier(Hooks):
             return f"shared part from a run of {n:,} agents, below {size:,}"
         return None
 
-    def skip_validity(self, cfg, run, point):
-        # The coding realism check (G6) only judges runs that played the coding load.
-        return point.id == "G6" and not run.get("coding_load", True)
-
     def command(self, cfg, a, env):
         from checks import cloud
         level = env["level"]
@@ -141,7 +137,6 @@ class AgentsVerifier(Hooks):
             "resources": latest_metric(runs, "resources")[0],
             "model_inputs": latest_metric(runs, "model_inputs")[0],
             "assumptions": latest_metric(runs, "model_assumptions")[0],
-            "realism": latest_metric(runs, "realism")[0],
             "coding_profile": latest_metric(runs, "coding_profile")[0],
         }
 
@@ -181,7 +176,7 @@ class AgentsVerifier(Hooks):
         for k, v in (rep.get("model_inputs") or {}).items():
             L.append(f"- measured {k} = {fmt(v['value'])} ({v['level']}, {v['from']})")
         for k, v in (rep.get("assumptions") or {}).items():
-            L.append(f"- assumed {k} = {fmt(v)} (until G1/G2 measure it)")
+            L.append(f"- assumed {k} = {fmt(v)} (until agents-75k measures it, G1/G2)")
         cp = rep.get("coding_profile")
         if cp:
             L.append(f"- coding profile: {cp['sessions']} sessions, {cp['turns']} turns, captured {cp['captured']}"

@@ -48,6 +48,22 @@ prove (see [Reliability at 75k](#reliability-at-75k)).
   reliability) verify different goals, so each keeps its own copy of the
   agentd checks and the coding workload. A check moves to `lib/` only when
   a verifier outside agentd would use it.
+- **Points split by goal, not shared (owner, 2026-11-24).** agents-1m
+  scores only what appears when there are many cells: scaling out, cells
+  working together (the directory and edge router at 1M sessions, routing a
+  turn to its cell, sessions moving between cells under load, rebalancing,
+  membership at hundreds of shards, the directory under churn, subagents on
+  another cell returning to their parent), the control plane link at 1M
+  rate, fleet-wide failures (a zone lost, a rolling upgrade) and fleet fit.
+  agents-75k scores per-agent efficiency, with the most weight on cost per
+  agent, plus speed, 1-to-3 shard scaling, endurance, coding sessions,
+  reliability and durability. The correctness gates stay in both. Per-agent
+  costs measured by agents-75k feed agents-1m's model and cluster
+  simulation as inputs (read from its journal) and score nothing there.
+  Session moves and subagents were chosen as the cross-cell paths to score
+  because both happen constantly at scale; org moves are rare operator work
+  and are left out. Moving points did not change either `goal.toml`, so
+  earlier results kept counting.
 - **A locked goal.** `goal.toml` pins every number that changes the answer
   (pace per agent, peak, ramp, failures during the run, the share of coding
   agents, error and cost bars), so the score cannot rise by quietly
@@ -123,8 +139,8 @@ needs in machines and money.
 A gate run proves the fleet held its load with the failures the workflow
 injects. It cannot show that agentd stays correct under the other things
 that go wrong, that its restores do what they promise, or that a pass was
-not luck. The 75k verifier keeps every 1M point that applies at 75k and
-adds two groups (owner, 2026-11-23):
+not luck. Beside its efficiency points the 75k verifier has two groups of
+its own (owner, 2026-11-23):
 
 - **Reliability (R).** The existing fault proofs, run on a local fleet: a
   leader killed mid model call, a follower left behind and healed by a

@@ -129,10 +129,6 @@ def run(ctx):
         out.add("B1", "L0", round(capacity, 1),
                 note=f"{per_shard:,.0f} work turns/s per shard x {n} shards")
         out.metrics["capacity_turns_per_sec"] = round(capacity, 1)
-    if "store_puts_per_turn" in inp:
-        per_prefix = pk["turns_per_sec"] * inp["store_puts_per_turn"] / ld["shards"]
-        margin = cfg.layout["store"]["prefix_puts_per_s"] / per_prefix
-        out.add("D5", "L0", round(margin, 2), note=f"{per_prefix:,.0f} writes/s per shard prefix at the peak")
     if all(k in inp for k in ("executor_core_ms_per_turn", "store_puts_per_turn")):
         cost = fleet_cost(cfg, inp, ld)
         out.add("C6", "L0", cost["usd_per_agent_hour"],
@@ -141,5 +137,5 @@ def run(ctx):
     return out
 
 
-CHECKS = [Check("model", "L0", ["B1", "C6", "D5"], minutes=0.1,
+CHECKS = [Check("model", "L0", ["B1", "C6"], minutes=0.1,
                 command="verify (runs with every default run)", run=run)]

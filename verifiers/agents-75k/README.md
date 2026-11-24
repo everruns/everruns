@@ -26,11 +26,11 @@ In this order; nothing outside this folder is needed except the engine.
 |---|---|
 | `README.md` | this page: the goal, how to climb, the rules |
 | `goal.toml` | what 75k means: agents, pace, density, failures, limits (owner only, fingerprinted) |
-| `points.toml` | the 58 points: target, weight, gate or validity, the files each watches |
+| `points.toml` | the 53 points: target, weight, gate or validity, the files each watches |
 | `levels.toml` | the four levels and their certainty |
 | `layout.toml` | the fleet the goal is projected onto (a lever) |
 | `verifier.py` | what this verifier adds to the engine: agents and shards as target names, the density and run-size rules, proven agents, gate run import and the paid dispatch, its report sections |
-| `checks/` | one module per kind of evidence: `model`, `cluster`, `realism`, `fleettests`, `formal`, `local`, `reliability`, `cloud`; `__init__.py` lists them and the points not built yet |
+| `checks/` | one module per kind of evidence: `model`, `realism`, `fleettests`, `formal`, `local`, `reliability`, `cloud`; `__init__.py` lists them and the points not built yet |
 | `workload/` | the coding profile (numbers only) and the llmsim scenarios generated from it |
 | `results.jsonl`, `attempts.jsonl`, `checkpoints/` | the committed climbing record |
 | `tests/`, `verify` | `python3 -m unittest discover -s tests -t .`, and the entry point |
@@ -60,9 +60,15 @@ has its own copy of the agentd checks, because its goal is a different one.
 
 ## Points
 
-58 points, weights 157 scaled to 100. The A-G points are about efficiency
-and general scalability at 75k (3 shards at 25,000 sessions), without the
-points about growing past it (those are agents-1m's), plus:
+53 points, weights 157 scaled to 100. The A-G points are about efficiency
+and general scalability at 75k (3 shards at 25,000 sessions). Cost per agent
+(C1-C6) carries the most weight, 30 of 157, because cheaper agents are what
+make 1M affordable; B6 asks that throughput grows in step from 1 to 3
+shards (`scale.py`, efficiency at least 0.9). What only shows across many
+cells is agents-1m's: growing past 75k, the control plane link at 1M rate,
+fleet fit on real machines, a zone lost, fleet-wide upgrades and cells
+working together. agents-1m reads the per-agent costs measured here as its
+model's inputs. Plus:
 
 | Group | Points | Proven by |
 |---|---|---|
@@ -78,7 +84,7 @@ points about growing past it (those are agents-1m's), plus:
 | Level | What runs | Certainty |
 |---|---|---|
 | L0 model | arithmetic from measured per-agent costs | 0.15 |
-| L1 simulation | fleet tests, protocol models and simulations, cluster simulation, realism | 0.30 |
+| L1 simulation | fleet tests, protocol models and simulations, realism | 0.30 |
 | L2 local | the agentd harnesses and fault proofs on one machine | 0.50 |
 | L2 scaled | a shard soak below goal density whose Raft log reached about the gate's share of the limit (`levels.toml` `[L2.scaled]`) | 0.35 x its agreement with later gate runs |
 | L4 full | the 75k gate on EKS (`saas dataplane-load`) | 1.00 |
