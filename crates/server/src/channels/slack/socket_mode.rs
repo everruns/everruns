@@ -246,9 +246,7 @@ pub(crate) async fn serve(
     mut on_hello: impl FnMut(),
     mut on_envelope: impl FnMut(Envelope),
 ) -> Result<(), SocketError> {
-    let (socket, _) = tokio_tungstenite::connect_async(url)
-        .await
-        .map_err(|error| SocketError::Transport(error.to_string()))?;
+    let socket = super::socket_transport::connect(url).await?;
     let (mut sink, mut stream) = socket.split();
     let mut ping = tokio::time::interval(PING_EVERY);
     ping.tick().await;

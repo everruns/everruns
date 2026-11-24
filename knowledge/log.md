@@ -2,9 +2,11 @@
 
 ## 2026-11-24
 
+- [Slack modernization](integrations/slack-modernization.md): Socket Mode follows host HTTP proxy/TLS settings through a validated upgrade, bounds provider frames and omits ticket-bearing URLs from connection diagnostics.
+
 - [Channels](integrations/channels.md#output-delivery-checkpoints): protocol-marked pending rows survive the pre-intent crash window under legacy adapters; missing channels retain reconciliation evidence. Deploy the shared-host compatibility baseline before rolling the Channelkit bridge.
 
-- [Channelkit migration](integrations/channelkit-migration.md): pin Rust alpha.4 and move shared/server Slack ingress, history, delivery, media and actions through the scoped bridge; retain host egress, native file references, durable approvals and action receipts. Preserve legacy pending deliveries for reconciliation during cutover.
+- [Channelkit migration](integrations/channelkit-migration.md): pin verified Rust alpha.5 and move shared/server Slack ingress, history, delivery, media and actions through the scoped bridge; retain host egress, native file references, durable approvals and action receipts. Preserve legacy pending deliveries for reconciliation during cutover.
 
 - [Channels](integrations/channels.md#output-delivery-checkpoints): structured provider outcomes, fenced write-ahead output intents, restartable native handles and split receipts, persistent retry advice, and retained uncertainty for the Channelkit migration. Slack transport cutover follows separately.
 

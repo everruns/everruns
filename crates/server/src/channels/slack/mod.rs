@@ -28,3 +28,4 @@ mod provider;
 pub mod provisioning;
 pub(crate) mod scheduled;
 pub(crate) mod socket_mode;
+mod socket_transport;

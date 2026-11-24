@@ -40,6 +40,8 @@ Each Slack channel picks how Slack delivers messages, under **How Slack reaches 
 - **Socket Mode**: Everruns opens a connection out to Slack and receives messages over it. It needs no public address, so it works on your own computer behind a home router or a firewall. The channel needs an app-level token (`xapp-...`) in addition to the bot token. New channels default to Socket Mode when the Everruns page is not served over public HTTPS.
 - **Request URL**: Slack sends each message to Everruns over HTTPS. Set `PUBLIC_APP_URL` to a public HTTPS origin and restart Everruns. On your own computer, `everruns docker up --tunnel tailscale` gives the instance a stable public address and sets `PUBLIC_APP_URL` for you; see [Give it a public address](/getting-started/run-locally/#give-it-a-public-address).
 
+For networks that require an outbound proxy, configure `HTTPS_PROXY` and `NO_PROXY` on the Everruns server. Socket Mode uses those HTTP client settings for its connection to Slack.
+
 Slack offers no API to create an app-level token, so Socket Mode always takes one paste per agent:
 
 1. Open the channel's Slack app in [Slack API Apps](https://api.slack.com/apps). The channel editor links to it once the app exists.

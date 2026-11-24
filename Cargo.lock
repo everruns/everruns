@@ -1795,9 +1795,9 @@ dependencies = [
 
 [[package]]
 name = "channelkit"
-version = "0.1.0-alpha.4"
+version = "0.1.0-alpha.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5e5d9728f046bd0681b27d31870b4600d8941144b8f251c677f4d70f9b8fa778"
+checksum = "c3df70a683dace28749bb5d90e0d4c67c4778798752fd7bd56f5fac8026108e6"
 dependencies = [
  "async-trait",
  "futures-util",
@@ -1815,9 +1815,9 @@ dependencies = [
 
 [[package]]
 name = "channelkit-slack"
-version = "0.1.0-alpha.4"
+version = "0.1.0-alpha.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4840497f05b9f43f9a36ef1bff668e9ec452f76cf3bb01949f181c8efc53b02d"
+checksum = "dd4a99263e8e415fc70f1fad05e9d0efce7f8e30e805eaaea357d8643ebbf4ef"
 dependencies = [
  "async-trait",
  "channelkit",
