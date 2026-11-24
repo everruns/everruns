@@ -2,9 +2,9 @@
 //! They inspect this turn's durable transcript; they never execute tools or accept
 //! an assistant's claim as proof. Continuation uses the host's existing budget.
 
-#[cfg(any(test, feature = "host"))]
+#[cfg(any(test, feature = "host", feature = "execution-host"))]
 use crate::{RuntimeMessage, RuntimeMessageRole};
-#[cfg(any(test, feature = "host"))]
+#[cfg(any(test, feature = "host", feature = "execution-host"))]
 use everruns_contracts::typed_id::MessageId;
 use serde::Deserialize;
 use serde_json::Value;
@@ -19,7 +19,10 @@ pub struct CompletionRequirements {
 
 #[derive(Debug, Deserialize)]
 // Builtins-only consumers validate configuration; the host evaluates evidence.
-#[cfg_attr(not(any(test, feature = "host")), allow(dead_code))]
+#[cfg_attr(
+    not(any(test, feature = "host", feature = "execution-host")),
+    allow(dead_code)
+)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 enum Requirement {
     ToolResult {
@@ -62,7 +65,7 @@ impl CompletionRequirements {
 
     /// Returns the first unmet requirement. The latest matching call decides:
     /// an older passing result cannot hide a later failure or missing result.
-    #[cfg(any(test, feature = "host"))]
+    #[cfg(any(test, feature = "host", feature = "execution-host"))]
     pub fn unmet(
         &self,
         messages: &[RuntimeMessage],
