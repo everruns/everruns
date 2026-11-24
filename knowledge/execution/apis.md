@@ -91,6 +91,12 @@ compatibility cohorts. The schema and generated resource links advertise the
 canonical paths. Embedders declare their own namespaces and preserved public
 receivers through `ServerAppBuilder::legacy_api_paths`.
 
+Self-hosted launcher sign-in and published-image smoke checks probe public
+authentication configuration before sending credentials. They prefer canonical
+management URLs and select legacy routes only when the older image lacks that
+namespace. Denials and server errors do not trigger fallback; credential requests
+and writes are never retried across namespaces.
+
 ### Reverse Proxy Contract
 
 Production and local reverse proxies must preserve this route split:

@@ -44,6 +44,8 @@ pub async fn ensure_profile(
     switch: SwitchPolicy,
 ) -> Result<SignedIn> {
     let http = reqwest::Client::new();
+    let management_url = management_url(&http, api_url).await?;
+    let api_url = management_url.as_str();
     let mut store = CredentialStore::load().unwrap_or_default();
 
     let existing = store
@@ -123,9 +125,34 @@ fn decide_current(store: &CredentialStore, profile: &str, switch: SwitchPolicy) 
     })
 }
 
+// Published self-hosted images can predate the Platform namespace. Select a
+// namespace with an unauthenticated read before sending credentials or writes.
+async fn management_url(http: &reqwest::Client, api_url: &str) -> Result<String> {
+    let base = api_url.trim_end_matches('/');
+    for prefix in ["v1/platform", "v1"] {
+        let url = format!("{base}/{prefix}");
+        let response = http
+            .get(format!("{url}/auth/config"))
+            .timeout(std::time::Duration::from_secs(10))
+            .send()
+            .await
+            .context("Failed to reach the server's authentication configuration")?;
+        if response.status().is_success() {
+            return Ok(url);
+        }
+        if prefix != "v1/platform" || response.status() != reqwest::StatusCode::NOT_FOUND {
+            bail!(
+                "authentication configuration refused ({})",
+                response.status()
+            );
+        }
+    }
+    bail!("the server provides no supported management configuration endpoint")
+}
+
 async fn me(http: &reqwest::Client, api_url: &str, token: &str) -> Result<Me> {
     let resp = http
-        .get(format!("{api_url}/v1/platform/auth/me"))
+        .get(format!("{api_url}/auth/me"))
         .bearer_auth(token)
         .send()
         .await
@@ -135,7 +162,7 @@ async fn me(http: &reqwest::Client, api_url: &str, token: &str) -> Result<Me> {
     }
     resp.json()
         .await
-        .context("Failed to parse /v1/platform/auth/me")
+        .context("Failed to parse the current user")
 }
 
 fn token_name() -> String {
@@ -170,7 +197,7 @@ async fn mint_token(
     };
 
     let mut req = http
-        .post(format!("{api_url}/v1/platform/auth/personal-access-tokens"))
+        .post(format!("{api_url}/auth/personal-access-tokens"))
         .json(&serde_json::json!({ "name": token_name() }));
     if let Some(session) = session {
         req = req.bearer_auth(session);
@@ -195,7 +222,7 @@ async fn ensure_organization(http: &reqwest::Client, api_url: &str, session: &st
         return Ok(());
     }
     let resp = http
-        .post(format!("{api_url}/v1/platform/orgs"))
+        .post(format!("{api_url}/orgs"))
         .bearer_auth(session)
         .json(&serde_json::json!({ "name": "Everruns" }))
         .send()
@@ -209,7 +236,7 @@ async fn ensure_organization(http: &reqwest::Client, api_url: &str, session: &st
 
 async fn login(http: &reqwest::Client, api_url: &str, creds: &Credentials<'_>) -> Result<String> {
     let resp = http
-        .post(format!("{api_url}/v1/platform/auth/login"))
+        .post(format!("{api_url}/auth/login"))
         .json(&serde_json::json!({ "email": creds.email, "password": creds.password }))
         .send()
         .await
@@ -232,7 +259,7 @@ async fn login(http: &reqwest::Client, api_url: &str, creds: &Credentials<'_>) -
 
 async fn register(http: &reqwest::Client, api_url: &str, creds: &Credentials<'_>) -> Result<()> {
     let resp = http
-        .post(format!("{api_url}/v1/platform/auth/register"))
+        .post(format!("{api_url}/auth/register"))
         .json(&serde_json::json!({ "email": creds.email, "password": creds.password }))
         .send()
         .await
@@ -247,6 +274,79 @@ async fn register(http: &reqwest::Client, api_url: &str, creds: &Credentials<'_>
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    async fn configuration_server(
+        statuses: &[u16],
+    ) -> (String, tokio::task::JoinHandle<Vec<String>>) {
+        use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}/api", listener.local_addr().unwrap());
+        let statuses = statuses.to_vec();
+        let task = tokio::spawn(async move {
+            let mut requests = Vec::new();
+            for status in statuses {
+                let (socket, _) = listener.accept().await.unwrap();
+                let mut socket = BufReader::new(socket);
+                let mut request = String::new();
+                loop {
+                    let mut line = String::new();
+                    assert!(socket.read_line(&mut line).await.unwrap() > 0);
+                    request.push_str(&line);
+                    if line == "\r\n" {
+                        break;
+                    }
+                }
+                requests.push(request);
+                socket.get_mut().write_all(format!("HTTP/1.1 {status} X\r\ncontent-length: 2\r\nconnection: close\r\n\r\n{{}}").as_bytes()).await.unwrap();
+            }
+            requests
+        });
+        (url, task)
+    }
+
+    #[tokio::test]
+    async fn launcher_prefers_platform_before_sending_credentials() {
+        let (url, requests) = configuration_server(&[200]).await;
+        assert_eq!(
+            management_url(&reqwest::Client::new(), &format!("{url}/"))
+                .await
+                .unwrap(),
+            format!("{url}/v1/platform")
+        );
+        let requests = requests.await.unwrap();
+        assert!(requests[0].starts_with("GET /api/v1/platform/auth/config "));
+        assert!(!requests[0].to_lowercase().contains("authorization:"));
+    }
+
+    #[tokio::test]
+    async fn launcher_selects_legacy_for_older_published_images() {
+        let (url, requests) = configuration_server(&[404, 200]).await;
+        assert_eq!(
+            management_url(&reqwest::Client::new(), &url).await.unwrap(),
+            format!("{url}/v1")
+        );
+        let requests = requests.await.unwrap();
+        assert_eq!(requests.len(), 2);
+        assert!(requests[0].starts_with("GET /api/v1/platform/auth/config "));
+        assert!(requests[1].starts_with("GET /api/v1/auth/config "));
+        assert!(
+            requests
+                .iter()
+                .all(|r| !r.to_lowercase().contains("authorization:"))
+        );
+    }
+
+    #[tokio::test]
+    async fn launcher_does_not_fall_back_on_denial_or_server_errors() {
+        for status in [401, 403, 500] {
+            let (url, requests) = configuration_server(&[status]).await;
+            let error = management_url(&reqwest::Client::new(), &url)
+                .await
+                .unwrap_err();
+            assert!(error.to_string().contains(&status.to_string()));
+            assert_eq!(requests.await.unwrap().len(), 1);
+        }
+    }
 
     fn store(current: &str, names: &[&str]) -> CredentialStore {
         let mut store = CredentialStore::default();
