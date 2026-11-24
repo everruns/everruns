@@ -156,11 +156,13 @@ pub fn derived_route(wire_name: &str, http_path: &str) -> Option<(Vec<String>, S
         return None;
     }
     let verb = wire_name.split('_').next()?.to_string();
-    let mut nouns: Vec<String> = http_path
-        .trim_matches('/')
-        .split('/')
-        // Skip the version segment; drop path parameters.
-        .skip(1)
+    // Transport namespaces do not add nouns to the command line. Skip the
+    // version and at most one leading Platform segment; nested nouns stay.
+    let mut segments = http_path.trim_matches('/').split('/').skip(1).peekable();
+    if segments.peek() == Some(&"platform") {
+        segments.next();
+    }
+    let mut nouns: Vec<String> = segments
         .filter(|segment| !segment.is_empty() && !segment.starts_with('{'))
         // REST paths are not uniformly spelled; a CLI is. `plugin_marketplaces`
         // is a path segment, `plugin-marketplaces` is a command.
@@ -228,6 +230,20 @@ mod tests {
                 "get".into()
             ))
         );
+    }
+
+    #[test]
+    fn management_namespace_preserves_the_command_spelling() {
+        let expected = Some((vec!["agents".into(), "platform".into()], "get".into()));
+        assert_eq!(
+            derived_route("get_agent_platform", "/v1/agents/{id}/platform"),
+            expected
+        );
+        assert_eq!(
+            derived_route("get_agent_platform", "/v1/platform/agents/{id}/platform"),
+            expected
+        );
+        assert_eq!(derived_route("get_platform", "/v1/platform"), None);
     }
 
     /// A command whose path carries no noun has to say what it is called.
