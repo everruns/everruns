@@ -31,6 +31,7 @@
 * [AG-UI Capability](ag-ui-capability.md) - AG-UI outbound delegation: configured external AG-UI agents as spawn_agent targets backed by session tasks.
 * [FCP (Free Communication Protocol) channel](fcp-channel.md) - FCP inbound channel.
 * [Channels](channels.md) - One channel implementation for the Framework, serve and the server: definitions, platform drivers and one channel host in core.
+* [Channelkit Migration](channelkit-migration.md) - Proposal: preserve the channel host, move Slack wire operations to Channelkit, qualify gaps upstream, and add providers after Slack parity.
 * [Messaging Integrations](messaging-integrations.md) - Messaging integrations.
 * [Explicit Communication](explicit-communication.md) - Agent setting where assistant text is private notes and the agent talks only through send_message and no_reply; partly built.
 * [Slack Bot Integration](slack-integration.md) - Slack channel: per-agent Slack app, webhook flow, session routing, delivery, security review.
