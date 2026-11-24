@@ -78,7 +78,7 @@ async function mockAppApi(page: Page) {
       json = { policies: { "model.view": true, "model.manage": true } };
     } else if (pathname === "/api/v1/platform/models") {
       json = { data: models, has_more: false, total: models.length };
-    } else if (/^\/api\/v1\/orgs\/[^/]+$/.test(pathname)) {
+    } else if (/^\/api\/v1\/platform\/orgs\/[^/]+$/.test(pathname)) {
       json = {
         id: DEFAULT_ORG_ID,
         name: "Default",

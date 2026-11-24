@@ -140,7 +140,7 @@ async function mockAgentDetailApi(page: Page, displayName = "Jokes Agent") {
       pathname === "/api/v1/platform/harnesses"
     ) {
       json = { data: [], has_more: false, total: 0 };
-    } else if (/^\/api\/v1\/orgs\/[^/]+$/.test(pathname)) {
+    } else if (/^\/api\/v1\/platform\/orgs\/[^/]+$/.test(pathname)) {
       json = {
         id: DEFAULT_ORG_ID,
         name: "Default",

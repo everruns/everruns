@@ -154,7 +154,7 @@ export async function mockKnowledgeApi(
       };
     } else if (pathname.endsWith("/switch-org")) {
       json = { success: true, org_id: DEFAULT_ORG_ID };
-    } else if (/^\/api\/v1\/orgs\/[^/]+$/.test(pathname)) {
+    } else if (/^\/api\/v1\/platform\/orgs\/[^/]+$/.test(pathname)) {
       json = { id: DEFAULT_ORG_ID, name: "Default" };
     } else if (pathname === "/api/v1/platform/knowledge") {
       json = { data: [docs, playbooks], next_cursor: null };
@@ -228,7 +228,7 @@ export async function mockKnowledgeApi(
       });
       return;
     } else {
-      const match = pathname.match(/^\/api\/v1\/knowledge\/([^/]+)(\/files)?$/);
+      const match = pathname.match(/^\/api\/v1\/platform\/knowledge\/([^/]+)(\/files)?$/);
       if (match) {
         const collection = match[1] === DOCS_ID ? docs : playbooks;
         if (match[2]) {

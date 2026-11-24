@@ -141,7 +141,7 @@ const STARTUP_API_ALLOWLIST = new Set([
 function isStartupApi(pathname: string) {
   return (
     STARTUP_API_ALLOWLIST.has(pathname) ||
-    /^\/api\/v1\/orgs\/[^/]+(?:\/feature-flags)?$/.test(pathname)
+    /^\/api\/v1\/platform\/orgs\/[^/]+(?:\/feature-flags)?$/.test(pathname)
   );
 }
 

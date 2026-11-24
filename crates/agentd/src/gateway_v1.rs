@@ -1104,7 +1104,7 @@ mod route_tests {
         let spec: Value = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
         let mut routes = Vec::new();
         for (path, item) in spec["paths"].as_object().unwrap() {
-            let Some(rest) = path.strip_prefix("/v1/sessions/{session_id}/") else {
+            let Some(rest) = path.strip_prefix("/v1/platform/sessions/{session_id}/") else {
                 continue;
             };
             for method in item.as_object().unwrap().keys() {

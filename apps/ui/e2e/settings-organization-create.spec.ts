@@ -64,7 +64,7 @@ async function mockAppApi(page: Page) {
       };
     } else if (pathname.endsWith("/quality-monitoring/scores")) {
       json = [];
-    } else if (/^\/api\/v1\/orgs\/[^/]+$/.test(pathname)) {
+    } else if (/^\/api\/v1\/platform\/orgs\/[^/]+$/.test(pathname)) {
       json = {
         id: DEFAULT_ORG_ID,
         name: "Default",

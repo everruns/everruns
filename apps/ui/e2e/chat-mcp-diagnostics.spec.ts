@@ -13,7 +13,7 @@ test("chat explains catalog MCP blockers without mistaking them for sign-in", as
     { name: "access_token", value: "e2e-only", domain: new URL(baseURL!).hostname, path: "/" },
   ]);
   await mockKnowledgeApi(page);
-  await page.route("**/api/v1/sessions/*/mcp-servers", (route) =>
+  await page.route("**/api/v1/platform/sessions/*/mcp-servers", (route) =>
     route.fulfill({
       json: [
         {
