@@ -120,8 +120,9 @@ pub async fn run_select(profile: &str) -> Result<()> {
 /// Fetch orgs from /v1/platform/auth/me
 async fn fetch_orgs(api_url: &str, api_key: &str) -> Result<Vec<OrgInfo>> {
     let client = reqwest::Client::new();
+    let management_api = super::api::management_base_url(&client, api_url).await?;
     let resp = client
-        .get(format!("{}/v1/platform/auth/me", api_url))
+        .get(format!("{management_api}/auth/me"))
         .header("Authorization", api_key)
         .send()
         .await

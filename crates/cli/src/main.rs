@@ -272,7 +272,7 @@ async fn run() -> anyhow::Result<()> {
     let api_url = creds.api_url;
     let org_id = creds.org_id;
 
-    let client = commands::api::ApiClient::new(&api_url, &api_key, org_id.as_deref());
+    let client = commands::api::ApiClient::connect(&api_url, &api_key, org_id.as_deref()).await?;
 
     // Each arm's future is boxed rather than awaited inline. Without it every
     // command's state machine is inlined into main's, which the optimizer then
@@ -294,7 +294,7 @@ async fn run() -> anyhow::Result<()> {
         Commands::Connections { command } => {
             Box::pin(commands::connections::run(
                 command,
-                &api_url,
+                client.management_url(),
                 &api_key,
                 output_format,
                 cli.quiet,

@@ -145,7 +145,7 @@ pub async fn dispatch(
     org_id: Option<&str>,
     output: OutputFormat,
 ) -> Result<()> {
-    let client = ApiClient::new(api_url, api_key, org_id);
+    let client = ApiClient::connect(api_url, api_key, org_id).await?;
     run(&client, contract, matches, output).await
 }
 

@@ -36,6 +36,8 @@ without an output flag. An external MCP connection does not require a local CLI.
 Platform management REST calls use `/api/v1/platform/`. Keep the installed
 CLI's `--api-url` or profile URL at the API base, such as
 `https://everruns.example.com/api`; the CLI adds `/v1/platform` itself.
+The CLI detects older servers through public configuration before sending
+credentials, and uses their legacy management routes when needed.
 This changes the wire URL, not command names: keep using `everruns agents`,
 `everruns sessions`, and the command tree returned by the current host.
 Legacy management URLs remain supported and become deprecated on December 22,

@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use reqwest::{Method, StatusCode};
 use serde_json::Value;
 
@@ -96,22 +96,65 @@ pub fn with_change_reason(
     }
 }
 
+// Published self-hosted images can predate the Platform namespace. Select a
+// namespace with an unauthenticated read before sending credentials or writes.
+pub async fn management_base_url(http: &reqwest::Client, api_url: &str) -> Result<String> {
+    let base = api_url.trim_end_matches('/');
+    for prefix in ["v1/platform", "v1"] {
+        let url = format!("{base}/{prefix}");
+        let response = http
+            .get(format!("{url}/auth/config"))
+            .timeout(std::time::Duration::from_secs(10))
+            .send()
+            .await
+            .context("Failed to reach the server's authentication configuration")?;
+        if response.status().is_success() {
+            return Ok(url);
+        }
+        if prefix != "v1/platform" || response.status() != reqwest::StatusCode::NOT_FOUND {
+            bail!(
+                "authentication configuration refused ({})",
+                response.status()
+            );
+        }
+    }
+    bail!("the server provides no supported management configuration endpoint")
+}
+
 #[derive(Clone)]
 pub struct ApiClient<'a> {
     api_url: &'a str,
+    management_url: String,
     api_key: &'a str,
     org_id: Option<&'a str>,
     http: reqwest::Client,
 }
 
 impl<'a> ApiClient<'a> {
+    /// Construct a client for a known canonical server; use `connect` for CLI targets.
     pub fn new(api_url: &'a str, api_key: &'a str, org_id: Option<&'a str>) -> Self {
         Self {
             api_url,
+            management_url: format!("{}/v1/platform", api_url.trim_end_matches('/')),
             api_key,
             org_id,
             http: reqwest::Client::new(),
         }
+    }
+
+    /// Connect to a canonical or legacy server before sending credentials or writes.
+    pub async fn connect(
+        api_url: &'a str,
+        api_key: &'a str,
+        org_id: Option<&'a str>,
+    ) -> Result<Self> {
+        let mut client = Self::new(api_url, api_key, org_id);
+        client.management_url = management_base_url(&client.http, api_url).await?;
+        Ok(client)
+    }
+
+    pub fn management_url(&self) -> &str {
+        &self.management_url
     }
 
     pub async fn get(&self, path: &str) -> Result<Value> {
@@ -136,7 +179,10 @@ impl<'a> ApiClient<'a> {
     /// An authenticated request to `path` under the API URL, for callers that
     /// need the raw response (a stream, a file).
     pub fn request(&self, method: Method, path: &str) -> reqwest::RequestBuilder {
-        let url = format!("{}{}", self.api_url.trim_end_matches('/'), path);
+        let url = match path.strip_prefix("/v1/platform/") {
+            Some(tail) => format!("{}/{tail}", self.management_url),
+            None => format!("{}{}", self.api_url.trim_end_matches('/'), path),
+        };
         let request = self
             .http
             .request(method, &url)
@@ -282,7 +328,7 @@ pub(crate) mod capture {
         }
     }
 
-    /// Answer one request with `status` and `body`, reporting what was sent.
+    /// Serve canonical discovery when requested, then answer and capture one operation.
     pub async fn serve_once(
         status: u16,
         body: &'static str,
@@ -291,50 +337,61 @@ pub(crate) mod capture {
         let url = format!("http://{}", listener.local_addr().unwrap());
         let (sender, received) = tokio::sync::oneshot::channel();
         tokio::spawn(async move {
-            let (mut socket, _) = listener.accept().await.unwrap();
-            let mut buffer = Vec::new();
-            let mut chunk = vec![0u8; 8192];
-            let (head_len, content_length) = loop {
-                let read = socket.read(&mut chunk).await.unwrap();
-                assert!(read > 0, "connection closed before the request ended");
-                buffer.extend_from_slice(&chunk[..read]);
-                let Some(end) = buffer.windows(4).position(|w| w == b"\r\n\r\n") else {
-                    continue;
+            loop {
+                let (mut socket, _) = listener.accept().await.unwrap();
+                let mut buffer = Vec::new();
+                let mut chunk = vec![0u8; 8192];
+                let (head_len, content_length) = loop {
+                    let read = socket.read(&mut chunk).await.unwrap();
+                    assert!(read > 0, "connection closed before the request ended");
+                    buffer.extend_from_slice(&chunk[..read]);
+                    let Some(end) = buffer.windows(4).position(|w| w == b"\r\n\r\n") else {
+                        continue;
+                    };
+                    let head = String::from_utf8_lossy(&buffer[..end]).to_lowercase();
+                    let length = head
+                        .lines()
+                        .find_map(|line| line.strip_prefix("content-length: "))
+                        .and_then(|value| value.trim().parse::<usize>().ok())
+                        .unwrap_or(0);
+                    break (end + 4, length);
                 };
-                let head = String::from_utf8_lossy(&buffer[..end]).to_lowercase();
-                let length = head
+                // This fixture advertises a canonical server to production command factories.
+                if String::from_utf8_lossy(&buffer[..head_len])
+                    .starts_with("GET /v1/platform/auth/config ")
+                {
+                    socket.write_all(b"HTTP/1.1 200 OK\r\ncontent-type: application/json\r\nconnection: close\r\ncontent-length: 2\r\n\r\n{}").await.unwrap();
+                    continue;
+                }
+                while buffer.len() < head_len + content_length {
+                    let read = socket.read(&mut chunk).await.unwrap();
+                    assert!(read > 0, "connection closed before the body ended");
+                    buffer.extend_from_slice(&chunk[..read]);
+                }
+                // Names lowercased for lookup; values kept as sent.
+                let headers = String::from_utf8_lossy(&buffer[..head_len])
                     .lines()
-                    .find_map(|line| line.strip_prefix("content-length: "))
-                    .and_then(|value| value.trim().parse::<usize>().ok())
-                    .unwrap_or(0);
-                break (end + 4, length);
-            };
-            while buffer.len() < head_len + content_length {
-                let read = socket.read(&mut chunk).await.unwrap();
-                assert!(read > 0, "connection closed before the body ended");
-                buffer.extend_from_slice(&chunk[..read]);
+                    .map(|line| match line.split_once(':') {
+                        Some((name, value)) => format!("{}:{value}", name.to_lowercase()),
+                        None => line.to_owned(),
+                    })
+                    .collect();
+                let request_body =
+                    String::from_utf8_lossy(&buffer[head_len..head_len + content_length])
+                        .into_owned();
+                let reply = format!(
+                    "HTTP/1.1 {status} X\r\ncontent-type: application/json\r\nconnection: close\r\ncontent-length: {}\r\n\r\n{body}",
+                    body.len()
+                );
+                socket.write_all(reply.as_bytes()).await.unwrap();
+                sender
+                    .send(Captured {
+                        headers,
+                        body: request_body,
+                    })
+                    .ok();
+                break;
             }
-            // Names lowercased for lookup; values kept as sent.
-            let headers = String::from_utf8_lossy(&buffer[..head_len])
-                .lines()
-                .map(|line| match line.split_once(':') {
-                    Some((name, value)) => format!("{}:{value}", name.to_lowercase()),
-                    None => line.to_owned(),
-                })
-                .collect();
-            let request_body =
-                String::from_utf8_lossy(&buffer[head_len..head_len + content_length]).into_owned();
-            let reply = format!(
-                "HTTP/1.1 {status} X\r\ncontent-type: application/json\r\nconnection: close\r\ncontent-length: {}\r\n\r\n{body}",
-                body.len()
-            );
-            socket.write_all(reply.as_bytes()).await.unwrap();
-            sender
-                .send(Captured {
-                    headers,
-                    body: request_body,
-                })
-                .ok();
         });
         (url, received)
     }

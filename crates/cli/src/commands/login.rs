@@ -125,8 +125,9 @@ async fn run_oauth_login(api_url: &str, profile: &str) -> Result<()> {
 
     // 2. Call POST /v1/platform/auth/cli/start to get the auth URL
     let client = reqwest::Client::new();
+    let management_api = super::api::management_base_url(&client, api_url).await?;
     let start_resp = client
-        .post(format!("{}/v1/platform/auth/cli/start", api_url))
+        .post(format!("{management_api}/auth/cli/start"))
         .json(&CliStartRequest {
             redirect_port: port,
         })
@@ -228,7 +229,7 @@ async fn run_oauth_login(api_url: &str, profile: &str) -> Result<()> {
     let hostname = hostname::get().ok().and_then(|h| h.into_string().ok());
 
     let exchange_resp = client
-        .post(format!("{}/v1/platform/auth/cli/exchange", api_url))
+        .post(format!("{management_api}/auth/cli/exchange"))
         .json(&CliExchangeRequest {
             code,
             hostname: hostname.clone(),
@@ -305,8 +306,9 @@ async fn run_token_login(api_url: &str, profile: &str) -> Result<()> {
 
     // Validate the token by calling /v1/platform/auth/me
     let client = reqwest::Client::new();
+    let management_api = super::api::management_base_url(&client, api_url).await?;
     let me_resp = client
-        .get(format!("{}/v1/platform/auth/me", api_url))
+        .get(format!("{management_api}/auth/me"))
         .header("Authorization", &api_key)
         .send()
         .await

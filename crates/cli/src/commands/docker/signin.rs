@@ -11,6 +11,7 @@ use serde::Deserialize;
 
 use super::AuthChoice;
 use crate::auth::{CredentialStore, Profile};
+use crate::commands::api::management_base_url;
 use crate::commands::login::{OrgInfo, select_org};
 
 pub struct SignedIn {
@@ -44,7 +45,7 @@ pub async fn ensure_profile(
     switch: SwitchPolicy,
 ) -> Result<SignedIn> {
     let http = reqwest::Client::new();
-    let management_url = management_url(&http, api_url).await?;
+    let management_url = management_base_url(&http, api_url).await?;
     let api_url = management_url.as_str();
     let mut store = CredentialStore::load().unwrap_or_default();
 
@@ -123,31 +124,6 @@ fn decide_current(store: &CredentialStore, profile: &str, switch: SwitchPolicy) 
             .interact()
             .context("Failed to read the answer")?,
     })
-}
-
-// Published self-hosted images can predate the Platform namespace. Select a
-// namespace with an unauthenticated read before sending credentials or writes.
-async fn management_url(http: &reqwest::Client, api_url: &str) -> Result<String> {
-    let base = api_url.trim_end_matches('/');
-    for prefix in ["v1/platform", "v1"] {
-        let url = format!("{base}/{prefix}");
-        let response = http
-            .get(format!("{url}/auth/config"))
-            .timeout(std::time::Duration::from_secs(10))
-            .send()
-            .await
-            .context("Failed to reach the server's authentication configuration")?;
-        if response.status().is_success() {
-            return Ok(url);
-        }
-        if prefix != "v1/platform" || response.status() != reqwest::StatusCode::NOT_FOUND {
-            bail!(
-                "authentication configuration refused ({})",
-                response.status()
-            );
-        }
-    }
-    bail!("the server provides no supported management configuration endpoint")
 }
 
 async fn me(http: &reqwest::Client, api_url: &str, token: &str) -> Result<Me> {
@@ -278,7 +254,7 @@ mod tests {
     async fn configuration_server(
         statuses: &[u16],
     ) -> (String, tokio::task::JoinHandle<Vec<String>>) {
-        use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+        use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let url = format!("http://{}/api", listener.local_addr().unwrap());
         let statuses = statuses.to_vec();
@@ -296,6 +272,17 @@ mod tests {
                         break;
                     }
                 }
+                let length = request
+                    .lines()
+                    .find_map(|line| {
+                        line.to_lowercase()
+                            .strip_prefix("content-length: ")
+                            .and_then(|n| n.parse::<usize>().ok())
+                    })
+                    .unwrap_or(0);
+                let mut body = vec![0; length];
+                socket.read_exact(&mut body).await.unwrap();
+                request.push_str(&String::from_utf8(body).unwrap());
                 requests.push(request);
                 socket.get_mut().write_all(format!("HTTP/1.1 {status} X\r\ncontent-length: 2\r\nconnection: close\r\n\r\n{{}}").as_bytes()).await.unwrap();
             }
@@ -308,7 +295,7 @@ mod tests {
     async fn launcher_prefers_platform_before_sending_credentials() {
         let (url, requests) = configuration_server(&[200]).await;
         assert_eq!(
-            management_url(&reqwest::Client::new(), &format!("{url}/"))
+            management_base_url(&reqwest::Client::new(), &format!("{url}/"))
                 .await
                 .unwrap(),
             format!("{url}/v1/platform")
@@ -322,7 +309,9 @@ mod tests {
     async fn launcher_selects_legacy_for_older_published_images() {
         let (url, requests) = configuration_server(&[404, 200]).await;
         assert_eq!(
-            management_url(&reqwest::Client::new(), &url).await.unwrap(),
+            management_base_url(&reqwest::Client::new(), &url)
+                .await
+                .unwrap(),
             format!("{url}/v1")
         );
         let requests = requests.await.unwrap();
@@ -340,12 +329,45 @@ mod tests {
     async fn launcher_does_not_fall_back_on_denial_or_server_errors() {
         for status in [401, 403, 500] {
             let (url, requests) = configuration_server(&[status]).await;
-            let error = management_url(&reqwest::Client::new(), &url)
+            let error = management_base_url(&reqwest::Client::new(), &url)
                 .await
                 .unwrap_err();
             assert!(error.to_string().contains(&status.to_string()));
             assert_eq!(requests.await.unwrap().len(), 1);
         }
+    }
+
+    #[tokio::test]
+    async fn a_connected_client_uses_one_namespace_for_writes_and_streams() {
+        use crate::commands::api::{ApiClient, ApiError};
+        let (url, requests) = configuration_server(&[404, 200, 404]).await;
+        let client = ApiClient::connect(&url, "key", None).await.unwrap();
+        let stream = client
+            .request(reqwest::Method::GET, "/v1/platform/sessions/s/sse")
+            .build()
+            .unwrap();
+        assert_eq!(stream.url().path(), "/api/v1/sessions/s/sse");
+        let error = client
+            .post_command(
+                "/v1/platform/commands/create_agent",
+                &serde_json::json!({"params":{"name":"helper"}}),
+                "one-write",
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(
+            error.downcast_ref::<ApiError>().unwrap().status,
+            reqwest::StatusCode::NOT_FOUND
+        );
+        let requests = requests.await.unwrap();
+        assert_eq!(requests.len(), 3);
+        assert!(requests[2].starts_with("POST /api/v1/commands/create_agent "));
+        assert!(requests[2].contains("helper"));
+        assert!(
+            requests[..2]
+                .iter()
+                .all(|r| !r.to_lowercase().contains("authorization:"))
+        );
     }
 
     fn store(current: &str, names: &[&str]) -> CredentialStore {
