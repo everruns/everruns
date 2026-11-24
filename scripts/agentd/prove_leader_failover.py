@@ -51,17 +51,19 @@ def main():
         active = None
         for _ in range(100):
             view = call("GET", f"{base}/v1/sessions/{session}")
-            if view["active"]:
+            # The session's holder names the node running the turn (it was
+            # `executor` before the authority holder replaced it).
+            if view["active"] and view["active"].get("node") is not None:
                 active = view["active"]
                 break
             time.sleep(0.05)
-        if active and active["executor"] != leader:
+        if active and active["node"] != leader:
             break
         call("GET", f"{base}/v1/sessions/{session}/wait?turns=1")
     else:
         sys.exit("could not place a turn on a follower")
 
-    executor = active["executor"]
+    executor = active["node"]
     # Wait until the model call is in flight.
     while True:
         events = call("GET", f"{base}/v1/sessions/{session}/events")["data"]

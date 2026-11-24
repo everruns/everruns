@@ -209,7 +209,7 @@ def up(shards, nodes, base, executors=0):
     return topo
 
 
-def seed(per_shard, shards=None):
+def seed(per_shard, which=None):
     """Give each shard `per_shard` sessions (one finished turn each) before a
     proof injects its fault, and return the sessions each shard holds.
 
@@ -220,18 +220,18 @@ def seed(per_shard, shards=None):
     less than it seems to. Proofs take `--seed-per-shard` and report
     `sessions_per_shard`; the verifier passes the goal's density.
     """
-    shards = [int(c) for c in shards()] if shards is None else list(shards)
+    which = [int(c) for c in shards()] if which is None else list(which)
     if per_shard <= 0:
         return {}
-    gws = ",".join(f"http://{addr(c, n)}" for c in shards for n in nodes_of(c))
+    gws = ",".join(f"http://{addr(c, n)}" for c in which for n in nodes_of(c))
     drive = os.environ.get("AGENTD_DRIVE_BIN", os.path.join(
         ROOT, os.environ.get("AGENTD_BIN_DIR", os.path.join("target", "release")), "agentd-drive"))
     started = time.time()
     out = subprocess.run([drive, "load", "--gateways", gws, "--agent", "sim", "--scenarios", "chat",
-                          "--sessions", str(per_shard * len(shards)), "--turns", "1",
+                          "--sessions", str(per_shard * len(which)), "--turns", "1",
                           "--concurrency", "500"], capture_output=True, text=True)
     held = {}
-    for c in shards:
+    for c in which:
         for n in nodes_of(c):
             try:
                 with urllib.request.urlopen(f"http://{addr(c, n)}/shard/inspect", timeout=5) as r:
