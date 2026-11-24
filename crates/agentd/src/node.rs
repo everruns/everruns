@@ -811,7 +811,7 @@ impl Node {
     }
 
     pub fn leader(&self) -> Option<NodeId> {
-        self.raft.metrics().borrow().current_leader
+        crate::pressure::live_leader(&self.raft)
     }
 
     /// The address of this shard's leader, as this node knows it.

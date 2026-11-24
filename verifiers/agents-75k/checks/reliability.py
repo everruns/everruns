@@ -77,6 +77,12 @@ def proof(point, script, args, what, minutes, seed=True):
             out = Output()
             out.add(point, "L2", False, note=f"{script} printed no result (crashed? see its log)", evidence=cmd)
             return out
+        if res.get("skipped"):
+            # The proof could not run here (prove_disk_full.py needs mount
+            # rights): no evidence either way, not a failure.
+            out = Output()
+            out.notes.append(f"{point} skipped: {res['skipped']}")
+            return out
         out = leader_failover(res) if point == "R1" else adapt(point, res, what)
         out.density = density(res)
         for e in out.entries:
@@ -102,4 +108,6 @@ CHECKS = [
           "an hour of production-shaped load with a node killed every 5 minutes", 70),
     proof("U11", "prove_store_outage.py", ["--sessions", 1000, "--outage", 600],
           "object store down for 10 minutes, then the shard lost and rebuilt from the store", 20),
+    proof("U12", "prove_disk_full.py", ["--node", "leader"],
+          "the leader's disk filled under load: it fenced itself, the shard carried on", 15),
 ]

@@ -197,6 +197,14 @@ class Adapters(unittest.TestCase):
         self.assertIn("L2", S.states(CFG, [run(25_000)], fresh())["R1"].cells)
         self.assertEqual(reliability.density({"sessions_per_shard": {"0": 25_010, "1": 24_990}}), 24_990)
 
+    def test_a_proof_that_cannot_run_here_records_nothing(self):
+        from unittest import mock
+        ch = next(c for c in reliability.CHECKS if "U12" in c.points)
+        ctx = mock.Mock(cfg=CFG, size=0.01, evidence="/tmp")
+        with mock.patch.object(reliability, "harness", return_value=('{"skipped": "needs mount rights"}', "cmd")):
+            out = ch.run(ctx)
+        self.assertEqual(out.entries, [])
+
     def test_every_proof_reads_a_script_that_exists(self):
         for ch in reliability.CHECKS:
             script = ch.command.split()[0]
