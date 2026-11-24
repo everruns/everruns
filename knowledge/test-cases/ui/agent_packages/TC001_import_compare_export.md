@@ -30,6 +30,11 @@ Checks legacy Markdown, complete ZIP assets, destination diffs and invalid input
 6. Import a malformed definition and confirm a useful diagnostic appears with Import disabled.
 7. Import a ZIP of the triage folder and inspect its initial files, including the skill script.
 8. Compare that exported ZIP with its agent and confirm no semantic changes.
+9. Give an agent one created child and one linked agent on its Team tab. Export
+   its ZIP and import it into a fresh organization with the required non-agent
+   dependencies configured. Verify both definitions appear under `.agents/agents/`
+   and both imports are created children of the new parent. Open a child and use
+   its Team breadcrumb to return to the parent roster.
 
 ## Expected Result
 
@@ -38,6 +43,8 @@ Checks legacy Markdown, complete ZIP assets, destination diffs and invalid input
 - Simple Markdown remains supported; ZIP preserves complete skills and binary files.
 - Exports contain stable names and Instructions, with no deployment resource IDs or credentials.
 - Declared channels default to disabled; explicit enablement creates drafts, not public ingress.
+- Team ZIPs include linked definitions; text and source exports retain linked names.
+- Missing or inactive team agents and nested teams produce errors instead of incomplete ZIPs.
 
 ## Root-relative file contract
 

@@ -228,6 +228,9 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
   const evalsEnabled = useFeatureFlag("evals");
   const agentViewsEnabled = useFeatureFlag("agent_views");
   const { data: agent, isLoading: agentLoading } = useAgent(agentId);
+  const { data: parentAgent } = useAgent(
+    agent?.owner_agent_id !== agentId ? (agent?.owner_agent_id ?? undefined) : undefined,
+  );
   const sourceQuery = useAgentSource(agentId);
   const sourceManaged = !!sourceQuery.data && sourceQuery.data.mode !== "two_way";
   const { data: harnesses } = useHarnesses();
@@ -666,7 +669,7 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
         ["localization", "branding", "service", "tracing", "usage", "external"].includes(row.id),
       )
     : allMoreRows;
-  // Preview and Agents describe Everruns execution; an external agent has neither.
+  // Preview and Team describe Everruns execution; an external agent has neither.
   const shownTab: AgentTab =
     isExternal && (activeTab === "preview" || activeTab === "agents") ? "agent" : activeTab;
 
@@ -820,7 +823,19 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
         <div className="min-h-full bg-brand-dots">
           <PageContainer>
             <PageBreadcrumb
-              items={[{ label: ui("Agents"), href: "/agents" }, { label: displayName }]}
+              items={[
+                { label: ui("Agents"), href: "/agents" },
+                ...(parentAgent && parentAgent.id === agent.owner_agent_id
+                  ? [
+                      {
+                        label: getDisplayName(parentAgent, displayLocale),
+                        href: `/agents/${parentAgent.id}`,
+                      },
+                      { label: ui("Team"), href: `/agents/${parentAgent.id}?tab=agents` },
+                    ]
+                  : []),
+                { label: displayName },
+              ]}
             />
 
             <PageMasthead

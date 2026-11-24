@@ -1,6 +1,6 @@
 "use client";
 
-// Agents tab: the agents this agent hands work to.
+// Team tab: the agents this agent hands work to.
 //
 // The list is the Agents capability's members. Each member is a real agent:
 // "Created here" ones were made as part of this agent (they group under it on
@@ -87,7 +87,7 @@ export function AgentMembersTab({ agent, canEdit }: { agent: Agent; canEdit: boo
     <section className="border bg-card">
       <header className="flex flex-wrap items-start justify-between gap-3 border-b px-5 py-4">
         <div>
-          <h2 className="font-semibold">{ui("Agents")}</h2>
+          <h2 className="font-semibold">{ui("Team")}</h2>
           <p className="text-sm text-muted-foreground">
             {ui(
               "This agent hands work to these agents. Each runs in its own conversation with its own model and tools.",
