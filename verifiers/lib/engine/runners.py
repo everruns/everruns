@@ -16,10 +16,10 @@ from .config import REPO
 CARGO_ENV = {"CARGO_PROFILE_DEV_DEBUG": "0", "CARGO_PROFILE_TEST_DEBUG": "0", "CARGO_INCREMENTAL": "0"}
 
 
-def run_logged(cmd, log, cwd=REPO):
+def run_logged(cmd, log, cwd=REPO, env=None):
     """Run cmd; stderr then stdout go to log; return (stdout, return code)."""
     with open(log, "w") as f:
-        r = subprocess.run(cmd, cwd=cwd, stdout=subprocess.PIPE, stderr=f, text=True)
+        r = subprocess.run(cmd, cwd=cwd, env=env, stdout=subprocess.PIPE, stderr=f, text=True)
     with open(log, "a") as f:
         f.write(r.stdout)
     return r.stdout, r.returncode

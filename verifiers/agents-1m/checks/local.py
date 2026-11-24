@@ -141,7 +141,11 @@ def many_sessions(res, shards):
 
 def harness(ctx, script, args, name):
     cmd = [sys.executable, os.path.join(SCRIPTS, script), *map(str, args)]
-    text, _ = X.run_logged(cmd, os.path.join(ctx.evidence, f"{name}.log"))
+    # The release build this module's notes ask for: scripts that would
+    # otherwise default to target/debug (memory_bench.py) use it too.
+    env = dict(os.environ)
+    env.setdefault("AGENTD_BIN_DIR", os.path.join("target", "release"))
+    text, _ = X.run_logged(cmd, os.path.join(ctx.evidence, f"{name}.log"), env=env)
     return text, " ".join(cmd[1:])
 
 
