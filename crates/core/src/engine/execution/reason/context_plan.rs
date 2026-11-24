@@ -236,6 +236,122 @@ fn tokens(messages: &[RuntimeMessage]) -> usize {
         .sum()
 }
 
+impl Planner<'_> {
+    /// One paid summary call, recorded as a generation even when validation
+    /// later rejects it.
+    async fn summarize(
+        &self,
+        request: Vec<Message>,
+        config: &LlmCallConfig,
+    ) -> Result<(LlmResponse, Option<crate::engine::events::TokenUsage>)> {
+        let started = Instant::now();
+        let response = self
+            .driver
+            .chat_completion_non_streaming(
+                &crate::engine::ProviderEndpoint::default(),
+                request,
+                config,
+            )
+            .await?;
+        let duration_ms = started.elapsed().as_millis() as u64;
+        let usage = super::hosted_tools::completion_usage(
+            &response.metadata,
+            &everruns_contracts::DriverId::external(self.provider),
+            &config.model,
+        );
+        self.emitter
+            .emit(EventRequest::new(
+                self.session_id,
+                self.event_context.clone(),
+                LlmGenerationData::success(
+                    Vec::new(),
+                    Vec::new(),
+                    None,
+                    Vec::new(),
+                    config.model.clone(),
+                    Some(self.provider.to_string()),
+                    usage.clone(),
+                    Some(duration_ms),
+                    None,
+                )
+                .with_provider_id(Some(self.provider_id.to_string()))
+                .with_request_options(crate::events::LlmRequestOptions {
+                    metadata: std::collections::HashMap::from([(
+                        "purpose".into(),
+                        "continuity_summary".into(),
+                    )]),
+                    max_tokens: config.max_tokens,
+                    stream: Some(!self.driver.supports_native_non_streaming()),
+                    ..Default::default()
+                }),
+            ))
+            .await?;
+        Ok((response, usage))
+    }
+}
+
+fn request_text_len(request: &[Message]) -> usize {
+    request
+        .iter()
+        .map(|message| match &message.content {
+            everruns_contracts::driver_registry::MessageContent::Text(text) => text.len(),
+            _ => 0,
+        })
+        .sum()
+}
+
+/// The output cap ran out before the summary finished: `length` and the
+/// provider spellings of it, or an empty answer after hidden reasoning.
+fn summary_ran_out_of_output(response: &LlmResponse) -> bool {
+    let cut = response
+        .metadata
+        .finish_reason
+        .as_deref()
+        .is_some_and(|reason| {
+            matches!(
+                reason,
+                "length" | "max_tokens" | "max_output_tokens" | "MAX_TOKENS"
+            )
+        });
+    let reasoned_away = response.text.trim().is_empty()
+        && response.metadata.reasoning_tokens.is_some_and(|n| n > 0);
+    (cut || reasoned_away)
+        && response.tool_calls.as_ref().is_none_or(Vec::is_empty)
+        && response.metadata.tool_calls_dropped == 0
+}
+
+/// Most a retried summary may request. Bounds the spend of one retry.
+const SUMMARY_RETRY_MAX_OUTPUT: usize = 32_768;
+
+/// Config for the single retry after a summary ran out of output, or `None`
+/// when the window leaves no more room than the first attempt had.
+pub(super) fn summary_retry_config(
+    first: &LlmCallConfig,
+    response: &LlmResponse,
+    window: usize,
+    input_estimate: usize,
+) -> Option<LlmCallConfig> {
+    if !summary_ran_out_of_output(response) {
+        return None;
+    }
+    let first_cap = first.max_tokens.unwrap_or(0) as usize;
+    let room = window
+        .saturating_sub(input_estimate)
+        .min(SUMMARY_RETRY_MAX_OUTPUT);
+    if room <= first_cap {
+        return None;
+    }
+    let mut retry = first.clone();
+    retry.max_tokens = Some(room as u32);
+    // Only lower reasoning the model demonstrably used; a request field a
+    // non-reasoning model never needed is not added.
+    if response.metadata.reasoning_tokens.is_some_and(|n| n > 0) || response.text.trim().is_empty()
+    {
+        retry.reasoning_effort = Some(everruns_contracts::model::ReasoningEffort::Low);
+    }
+    Some(retry)
+}
+
 pub(super) fn valid_summary(response: &LlmResponse) -> bool {
     !response.text.trim().is_empty()
         && response.tool_calls.as_ref().is_none_or(Vec::is_empty)
@@ -624,54 +740,24 @@ impl Planner<'_> {
                     .metadata
                     .insert("purpose".into(), "continuity_summary".into());
                 let summary_prompt = self.policy.summarization_prompt();
-                let started = Instant::now();
-                let response = self
-                    .driver
-                    .chat_completion_non_streaming(
-                        &crate::engine::ProviderEndpoint::default(),
-                        vec![
-                            Message::text(MessageRole::System, &summary_prompt),
-                            Message::text(MessageRole::User, transcript),
-                        ],
-                        &config,
-                    )
-                    .await?;
-                let duration_ms = started.elapsed().as_millis() as u64;
-                let usage = super::hosted_tools::completion_usage(
-                    &response.metadata,
-                    &everruns_contracts::DriverId::external(self.provider),
-                    &config.model,
-                );
-                // This is a real paid call, even when validation subsequently rejects it.
-                self.emitter
-                    .emit(EventRequest::new(
-                        self.session_id,
-                        self.event_context.clone(),
-                        LlmGenerationData::success(
-                            Vec::new(),
-                            Vec::new(),
-                            None,
-                            Vec::new(),
-                            config.model.clone(),
-                            Some(self.provider.to_string()),
-                            usage.clone(),
-                            Some(duration_ms),
-                            None,
-                        )
-                        .with_provider_id(Some(self.provider_id.to_string()))
-                        .with_request_options(
-                            crate::events::LlmRequestOptions {
-                                metadata: std::collections::HashMap::from([(
-                                    "purpose".into(),
-                                    "continuity_summary".into(),
-                                )]),
-                                max_tokens: config.max_tokens,
-                                stream: Some(!self.driver.supports_native_non_streaming()),
-                                ..Default::default()
-                            },
-                        ),
-                    ))
-                    .await?;
+                let request = vec![
+                    Message::text(MessageRole::System, &summary_prompt),
+                    Message::text(MessageRole::User, transcript),
+                ];
+                let (mut response, mut usage) = self.summarize(request.clone(), &config).await?;
+                // Reasoning models (DeepSeek V4.1 Flash on OpenRouter, 2026-11-24)
+                // can spend the whole output cap on hidden reasoning and return
+                // a truncated or empty summary, which failed long scheduled runs.
+                // One bounded retry with low effort and the room the window
+                // actually leaves; a second rejection still fails closed.
+                let input_estimate =
+                    (summary_prompt.len() + request_text_len(&request)).div_ceil(4) + 32;
+                if let Some(retry) =
+                    summary_retry_config(&config, &response, summary_window, input_estimate)
+                {
+                    config = retry;
+                    (response, usage) = self.summarize(request, &config).await?;
+                }
                 if !valid_summary(&response) {
                     return Err(AgentLoopError::config(
                         "continuity summary was empty, truncated, or requested tools; history was not replaced",

@@ -464,9 +464,113 @@ mod lifecycle_tests {
             vec![
                 "context.compacting",
                 "llm.generation",
+                "llm.generation",
                 "context.compaction.failed"
-            ]
+            ],
+            "one bounded retry with more output room, then fail closed"
         );
+        assert_eq!(driver.calls.load(Ordering::SeqCst), 2);
+    }
+
+    /// Spends the first, capped call on hidden reasoning; answers once given
+    /// low effort and more room (DeepSeek V4.1 Flash, 2026-11-24).
+    struct ReasoningSummarizer {
+        caps: std::sync::Mutex<
+            Vec<(
+                Option<u32>,
+                Option<everruns_contracts::model::ReasoningEffort>,
+            )>,
+        >,
+    }
+    #[async_trait::async_trait]
+    impl ChatDriver for ReasoningSummarizer {
+        async fn chat_completion_stream(
+            &self,
+            _: &crate::engine::ProviderEndpoint,
+            _: Vec<Message>,
+            config: &LlmCallConfig,
+        ) -> Result<LlmResponseStream> {
+            let first = {
+                let mut caps = self.caps.lock().unwrap();
+                caps.push((config.max_tokens, config.reasoning_effort));
+                caps.len() == 1
+            };
+            let mut metadata = LlmCompletionMetadata::default();
+            metadata.prompt_tokens = Some(100);
+            metadata.completion_tokens = config.max_tokens;
+            metadata.reasoning_tokens = Some(3_900);
+            metadata.finish_reason = Some(if first { "length" } else { "stop" }.into());
+            let text = if first {
+                String::new()
+            } else {
+                "User task: continue work.".into()
+            };
+            Ok(LlmResponse {
+                text,
+                tool_calls: None,
+                reasoning: Vec::new(),
+                metadata,
+            }
+            .into_stream())
+        }
+    }
+
+    #[tokio::test]
+    async fn a_summary_cut_off_by_reasoning_retries_once_with_low_effort_and_more_room() {
+        let store: Arc<dyn CompactionCheckpointStore> =
+            Arc::new(InMemoryCompactionCheckpointStore::default());
+        let driver = ReasoningSummarizer {
+            caps: Default::default(),
+        };
+        let emitter = TestEventEmitter::new();
+        let session = SessionId::new();
+        run(&store, &history(100), &driver, &emitter, session, 100)
+            .await
+            .unwrap();
+        assert!(
+            store
+                .get_latest_format(session, PROVIDER, MODEL, FORMAT)
+                .await
+                .unwrap()
+                .is_some()
+        );
+        let caps = driver.caps.lock().unwrap().clone();
+        assert_eq!(caps.len(), 2);
+        assert_eq!(
+            caps[0].1, None,
+            "the first attempt keeps the provider default"
+        );
+        assert!(caps[1].0.unwrap() > caps[0].0.unwrap());
+        assert!(
+            caps[1].0.unwrap() as usize <= 16_000,
+            "the retry stays inside the window"
+        );
+        assert_eq!(
+            caps[1].1,
+            Some(everruns_contracts::model::ReasoningEffort::Low)
+        );
+    }
+
+    #[test]
+    fn no_retry_without_more_room_or_for_a_normal_stop() {
+        let config = {
+            let mut c = LlmCallConfig::new("m");
+            c.max_tokens = Some(4_096);
+            c
+        };
+        let mut response = LlmResponse {
+            text: String::new(),
+            reasoning: vec![],
+            tool_calls: None,
+            metadata: LlmCompletionMetadata::default(),
+        };
+        response.metadata.finish_reason = Some("length".into());
+        assert!(summary_retry_config(&config, &response, 8_000, 4_000).is_none());
+        let retry = summary_retry_config(&config, &response, 200_000, 4_000).unwrap();
+        assert_eq!(retry.max_tokens, Some(32_768));
+        response.metadata.finish_reason = Some("stop".into());
+        response.text = "done".into();
+        assert!(summary_retry_config(&config, &response, 200_000, 4_000).is_none());
     }
 
     #[tokio::test]
