@@ -93,9 +93,16 @@ Raft or turn admission under load.
 ## Importing gate runs
 
 ```bash
-verify --import-run <saas dataplane-load run id> --commit <everruns sha> --record
+verify --import-new --record     # the oldest gate run not yet recorded; repeat until none is left
+verify --import-run <saas dataplane-load run id or artifact dir> --record
 ```
 
-Import in the order the runs happened: R10 counts the imported runs in a
-row, newest first, whose gate results all pass. `results.jsonl` starts with
-the seven gate runs of 2026-11-16 to 2026-11-23.
+`--import-new` keeps the order the runs happened in, which R10 needs: it
+counts the imported runs in a row, newest first, whose gate results all
+pass. It takes finished runs newer than every recorded one, passes over
+cancelled runs and runs below 90% of the goal's agents, and finds each
+run's everruns commit from the revision label of the agentd image it
+deployed (`--commit` overrides). The saas workflow prints the verifier's
+verdict on each run in its summary; recording stays a commit here, made with
+the change it measured. `results.jsonl` starts with the seven gate runs of
+2026-11-16 to 2026-11-23.

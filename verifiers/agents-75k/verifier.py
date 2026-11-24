@@ -10,12 +10,38 @@ verify different goals and may diverge, so each owns its copy.
 import datetime as dt
 import math
 import os
+import re
 
 import checks as K
 from engine import score as S
 from engine.cli import gate_streak
 from engine.hooks import Hooks
 from engine.report import fmt, latest_metric
+
+
+def imported_ids(runs):
+    """saas run ids already in the journal."""
+    ids = set()
+    for r in runs:
+        rid = re.sub(r"\D", "", str(r.get("imported") or ""))
+        if rid:
+            ids.add(int(rid))
+    return ids
+
+
+def next_gate_run(cfg, env):
+    """The oldest finished gate run newer than every imported one: R10
+    counts passing runs in a row, so runs go into the journal in the order
+    they happened. Smaller runs on the way are passed over."""
+    from checks import cloud
+    done = imported_ids(env["runs"])
+    for rid in cloud.gate_runs(max(done, default=0)):
+        path = cloud.fetch(rid, os.path.join(env["evidence"], f"artifact-{rid}"))
+        data = cloud.read_run(path)
+        if cloud.is_gate(data, cfg.goal["agents"]["total"]):
+            return str(rid), path, data
+        print(f"run {rid}: not at the gate's size, passed over")
+    return None
 
 
 class AgentsVerifier(Hooks):
@@ -64,7 +90,11 @@ class AgentsVerifier(Hooks):
         ap.add_argument("--spend", help="reason for a paid cloud run (needed by cloud-slice and full)")
         ap.add_argument("--dry-run", action="store_true", help="print the paid dispatch, start nothing")
         ap.add_argument("--import-run", metavar="RUN", help="score a finished saas dataplane-load run (id or dir)")
-        ap.add_argument("--commit", help="everruns commit an imported run's image was built from")
+        ap.add_argument("--commit", help="everruns commit an imported run's image was built from "
+                        "(default: the revision label of the agentd image the run deployed)")
+        ap.add_argument("--run-id", help="the saas run id of an --import-run directory (default: its digits)")
+        ap.add_argument("--import-new", action="store_true",
+                        help="import the oldest gate run not yet recorded (repeat until none is left)")
 
     # Runs and scoring
     def stamp(self, outputs, run):
@@ -161,13 +191,26 @@ class AgentsVerifier(Hooks):
             print(("would run: " if a.dry_run else "started: ") + " ".join(cmd))
             print("when it finishes: verify --import-run <run id> --record")
             return 0
-        if not a.import_run:
+        if a.import_new:
+            found = next_gate_run(cfg, env)
+            if found is None:
+                print("no gate run left to import")
+                return 0
+            run_id, path, data = found
+        elif a.import_run:
+            path = a.import_run
+            if not os.path.isdir(path):
+                path = cloud.fetch(a.import_run, os.path.join(env["evidence"], "artifact"))
+            run_id = a.run_id or re.sub(r"\D", "", os.path.basename(os.path.normpath(a.import_run))) or a.import_run
+            data = cloud.read_run(path)
+        else:
             return None
-        path = a.import_run
-        if not os.path.isdir(path):
-            path = cloud.fetch(a.import_run, os.path.join(env["evidence"], "artifact"))
-        run_id = os.path.basename(os.path.normpath(a.import_run))
-        data = cloud.read_run(path)
+        commit = a.commit
+        if commit is None:
+            digest = cloud.run_image(path)
+            commit = cloud.image_commit(digest) if digest else None
+            if commit is None:
+                print("warning: no agentd image commit found; freshness will treat this run as old code")
         agents = (data["summary"] or {}).get("sessions") or 0
         lvl = level or ("L4" if agents >= self.full_size(cfg) or "L3" not in cfg.levels else "L3")
         out = cloud.import_run(data, run_id, lvl, cfg.goal["agents"]["total"])
@@ -178,7 +221,7 @@ class AgentsVerifier(Hooks):
         if data.get("finished"):  # the run's own time, so "newest result wins" holds
             extra["at"] = dt.datetime.fromtimestamp(data["finished"], dt.timezone.utc).isoformat().replace("+00:00", "Z")
         run = env["make_run"](cfg, [out], [lvl], f"import: saas dataplane-load run {run_id}", env["started"],
-                              commit=a.commit or "", extra=extra)
+                              commit=commit or "", extra=extra)
         run["run"] = f"{run['at']}-{lvl}-saas-{run_id}"
         return run
 

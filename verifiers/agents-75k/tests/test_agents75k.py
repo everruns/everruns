@@ -215,3 +215,59 @@ class Backtest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class GateImport(unittest.TestCase):
+    """Gate runs go into the journal in order, each with the commit its
+    agentd image was built from."""
+
+    DIGEST = "sha256:" + "a" * 64
+
+    def test_image_commit_reads_the_revision_label_through_an_index(self):
+        amd, arm = "sha256:" + "1" * 64, "sha256:" + "2" * 64
+        answers = {
+            "token": {"token": "t"},
+            f"manifests/{self.DIGEST}": {"manifests": [
+                {"digest": arm, "platform": {"architecture": "arm64"}},
+                {"digest": amd, "platform": {"architecture": "amd64"}}]},
+            f"manifests/{amd}": {"config": {"digest": "sha256:cfg"}},
+            "blobs/sha256:cfg": {"config": {"Labels": {"org.opencontainers.image.revision": "c78b62d7"}}},
+        }
+        seen = []
+
+        def get(url, token=None, accept=None):
+            seen.append(url)
+            return next(v for k, v in answers.items() if url.endswith(k) or (k == "token" and "/token?" in url))
+
+        self.assertEqual(cloud.image_commit(self.DIGEST, get), "c78b62d7")
+        self.assertFalse(any(arm in u for u in seen))
+
+    def test_run_image_finds_the_agentd_digest(self):
+        import json
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            self.assertIsNone(cloud.run_image(d))
+            with open(os.path.join(d, "pods.json"), "w") as f:
+                json.dump({"items": [{"spec": {"containers": [
+                    {"image": "timberio/vector:0.50"}, {"image": f"ghcr.io/everruns/agentd@{self.DIGEST}"}]}}]}, f)
+            self.assertEqual(cloud.run_image(d), self.DIGEST)
+
+    def test_only_gate_sized_runs_are_gate_attempts(self):
+        self.assertTrue(cloud.is_gate({"summary": {"peak_sessions": 79_197, "sessions": 72_027}}, 75_000))
+        self.assertFalse(cloud.is_gate({"summary": {"sessions": 12_000}}, 75_000))
+        self.assertFalse(cloud.is_gate({"summary": None}, 75_000))
+
+    def test_next_gate_run_takes_the_oldest_new_gate_run(self):
+        import tempfile
+        from unittest import mock
+        V = type(CFG.hooks).command.__globals__  # this verifier's verifier.py, as config loaded it
+        runs = [{"imported": "45197793040"}, {"imported": "run-45313187555"}, {"source": "verify"}]
+        self.assertEqual(V["imported_ids"](runs), {45197793040, 45313187555})
+        sizes = {1: 10_000, 2: 75_000, 3: 75_000}
+        with tempfile.TemporaryDirectory() as d, \
+                mock.patch.object(cloud, "gate_runs", return_value=[1, 2, 3]) as listed, \
+                mock.patch.object(cloud, "fetch", side_effect=lambda rid, dest: str(rid)), \
+                mock.patch.object(cloud, "read_run", side_effect=lambda p: {"summary": {"sessions": sizes[int(p)]}}):
+            rid, path, data = V["next_gate_run"](CFG, {"runs": runs, "evidence": d})
+        listed.assert_called_once_with(45313187555)
+        self.assertEqual(rid, "2")
