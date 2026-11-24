@@ -110,12 +110,70 @@ class AgentsVerifier(Hooks):
         run["agents"] = agents
         run["coding_load"] = coding
 
+    # Scaled shard soaks (levels.toml [L2.scaled]): below goal density a soak
+    # counts when its Raft log reached about the gate's share of the limit,
+    # at a certainty scaled by how often a soak's out-of-memory verdict
+    # matched the next imported gate run's.
+    _gate_share = None
+    _agreement = (0, 0)
+
+    def _scaled(self, cfg):
+        return cfg.levels.get("L2", {}).get("scaled")
+
+    def _below_density(self, cfg, run, entry):
+        density = entry.get("density", run.get("density"))
+        return density is None or density < 0.95 * cfg.goal["density"]["sessions_per_shard"]
+
+    def prepare(self, cfg, runs):
+        sc = self._scaled(cfg)
+        if not sc:
+            return
+        gates, soaks = [], []
+        for run in sorted(runs, key=lambda r: r["at"]):
+            for e in run.get("entries", []):
+                if e["point"] != "A4":
+                    continue
+                if e["level"] == "L4":
+                    gates.append((run["at"], e))
+                elif e["level"] == "L2" and "log_share" in e and self._below_density(cfg, run, e):
+                    soaks.append((run["at"], e))
+        self._gate_share = sc["gate_log_share"]
+        for _, e in reversed(gates):
+            if e.get("peak_log_mb"):
+                self._gate_share = e["peak_log_mb"] / sc["gate_limit_mb"]
+                break
+        agree = n = 0
+        for at, g in gates:
+            before = [e for t, e in soaks if t < at]
+            if before:
+                n += 1
+                agree += (before[-1]["value"] == 0) == (g["value"] == 0)
+        self._agreement = (agree, n)
+
+    def _calibrated(self, cfg, entry):
+        sc = self._scaled(cfg)
+        share, gate = entry.get("log_share"), self._gate_share
+        if not sc or share is None or not gate or entry["level"] != "L2":
+            return False
+        return abs(share - gate) <= sc["log_share_tolerance"] * gate
+
+    def certainty(self, cfg, run, point, entry):
+        c = cfg.certainty(entry["level"])
+        if point.scales == "per_shard" and entry["level"] == "L2" and self._below_density(cfg, run, entry):
+            agree, n = self._agreement
+            c = self._scaled(cfg)["certainty"] * (agree + 1) / (n + 1)
+        return c
+
     def exclusion(self, cfg, run, point, entry, size):
         lvl = int(entry["level"][1:])
         density = entry.get("density", run.get("density"))
         want = cfg.goal["density"]["sessions_per_shard"]
         if point.scales == "per_shard" and lvl >= 2 and (density is None or density < 0.95 * want):
-            return f"below goal density ({density or 0:,.0f} < {want:,} sessions per shard)"
+            if not self._calibrated(cfg, entry):
+                share = entry.get("log_share")
+                why = (f"; log at {share:.1%} of its limit, the gate's {self._gate_share:.1%}"
+                       if share is not None and self._gate_share else "")
+                return f"below goal density ({density or 0:,.0f} < {want:,} sessions per shard){why}"
         n = entry.get("agents", run.get("agents")) or 0
         if point.scales == "shared" and lvl >= 3 and n < self.full_size(cfg, size):
             return f"shared part from a run of {n:,} agents, below {size:,}"

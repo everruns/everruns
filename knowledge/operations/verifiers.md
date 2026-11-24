@@ -76,6 +76,7 @@ to 100. Rules that keep it honest:
 | A failed gate (lost or doubled work, replicas disagree, an out-of-memory kill) caps the score at 25; the newest gate result wins | an OOM kill on the Mac mini today outweighs a clean cloud run last week |
 | Freshness halves when the files a point watches change (a digest of their contents, so squash merges do not reset it), and again after 30 days | evidence about old code is weaker |
 | Per-shard points count only at the goal's density (25,000 sessions per shard); shared parts only from a run of the goal's (or a milestone's) full size | density, not size, is what lets a small run speak for 1M; shared parts do not scale out |
+| In agents-75k, a shard soak below goal density still counts for per-shard points when its Raft log reached about the gate's share of the memory limit, at certainty 0.35 scaled by how often a soak's out-of-memory verdict matched the next imported gate run (`levels.toml` `[L2.scaled]`) | a 1/8 soak at snapshot 60,000 reproduced the gate's kills on the Mac mini, where a full-density soak does not fit; its own track record decides how much it is trusted |
 | A run with a saturated load generator or a coding load off its profile is invalid | a slow generator makes the system look fast |
 | The model level gives at most 0.15 per point | arithmetic alone tops out at 15 |
 
