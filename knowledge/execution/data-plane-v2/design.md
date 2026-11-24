@@ -2494,6 +2494,14 @@ times their encoded size. `agentd_memory_bytes{source}` reports the
 ledger; the remainder (`unaccounted`) is the number the soak gates on. The
 local soak at the gate's snapshot spacing (`--snapshot-every 60000`) now
 reproduces the phase 2 kills on the pre-fix build (6 kills at scale 0.125).
+The 75k gate on the merged work (2026-11-24, c78b62d7, saas run
+45313187555) passed: 72,027 agents, 0 errors, no restarts, peak node memory
+10.0 GB against 11.5 GB on 4e2953d0. Refusals for memory, all retried, rose
+from 9,940 to 30,597 (4% of turns). Two jemalloc tunings (`narenas:4`,
+`dirty_decay_ms:0`) halved the pages the allocator holds but did not lower
+peak memory in same-commit soaks and cost 6-7% shard CPU, so the defaults
+stay. The next memory lever is live heap: the journal's event copies are
+about 60% of it at the peak.
 
 ### Corrections after the architecture review (2026-11-09)
 
