@@ -15,7 +15,10 @@ fn disabled_background_pool_adds_no_connections() {
         background_max_connections: 0,
         ..DatabasePoolConfig::default()
     };
-    assert_eq!(config.total_max_connections(), config.max_connections);
+    assert_eq!(
+        config.total_max_connections(),
+        config.max_connections + config.liveness_max_connections
+    );
 }
 
 /// The liveness pool counts against the connection budget, and `0` (renew on
