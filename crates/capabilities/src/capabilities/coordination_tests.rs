@@ -567,6 +567,20 @@ async fn redirect_posts_a_structured_message_to_the_coordinator() {
 }
 
 #[test]
+fn a_coordinator_supersedes_agent_handoff_so_threads_are_the_only_handoff() {
+    let capability = CoordinationCapability;
+    assert_eq!(
+        capability.supersedes_with_config(&Value::Null),
+        vec!["agent_handoff"]
+    );
+    assert!(
+        capability
+            .supersedes_with_config(&json!({"role": "worker"}))
+            .is_empty()
+    );
+}
+
+#[test]
 fn config_validation_and_roles() {
     let capability = CoordinationCapability;
     assert!(capability.validate_config(&Value::Null).is_ok());

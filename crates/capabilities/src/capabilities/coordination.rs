@@ -27,7 +27,9 @@
 //   coordinator answers and plans, and hands a thread to the member built for
 //   the work, by the member's name or agent id. Membership is read from the
 //   coordinator's agent when the thread starts, so editing the team needs no
-//   second edit here.
+//   second edit here. A coordinator supersedes the Agents capability, so
+//   `spawn_agent` never competes with `start_thread`: a model given both
+//   called spawn_agent with a bad target 36 times instead of starting a thread.
 // Decision: relays reach a thread as plain user-role text with a framing line.
 //   A tool-based reply channel is being designed separately; keeping relay text
 //   in `frame_*` helpers keeps that swap local to this file.
@@ -298,6 +300,16 @@ impl Capability for CoordinationCapability {
         Some(COORDINATOR_SYSTEM_PROMPT)
     }
 
+    /// A coordinator hands work off through threads only: the Agents
+    /// capability then just names the team (read by `start_thread`), and its
+    /// `spawn_agent` would be a second, competing way to delegate.
+    fn supersedes_with_config(&self, config: &Value) -> Vec<&'static str> {
+        match CoordinationConfig::parse(config).map(|config| config.role) {
+            Ok(Role::Worker) => Vec::new(),
+            _ => vec![super::agent_handoff::AGENT_HANDOFF_CAPABILITY_ID],
+        }
+    }
+
     fn tools_with_config(&self, config: &Value) -> Vec<Box<dyn Tool>> {
         let config = CoordinationConfig::parse(config).unwrap_or_default();
         if config.role == Role::Worker {
@@ -439,7 +451,7 @@ fn narrate_coordination(
     Some(labeled_phrase(verbs.0, verbs.1, verbs.2, title, phase))
 }
 
-const COORDINATOR_SYSTEM_PROMPT: &str = "You coordinate work through threads. Answer quick questions yourself. For real work (research, a change, a report, anything multi-step) call start_thread with a short title and a complete brief (to run it on one of your team's agents, pass that agent's name as worker; use start_thread rather than spawn_agent, so the work is tracked as a thread); the thread works in the background and you are told when it finishes, asks something, or stops. Once work is in a thread, do not do it yourself as well: tell the person in a sentence where it went, and give the result when the automatic update arrives. One thread per piece of work: a follow-up that extends, corrects or asks about existing work (\"also add the dates\", \"make it shorter\") goes to that thread with message_thread, even right after it finished; start a new thread only for new work, and check list_threads when unsure. Threads only talk to each other through you. Notices marked as automatic task updates come from the platform, not the person: relay what matters to the person in a sentence or two and link nothing you did not read. Never answer a thread's question on the person's behalf unless the person already told you the answer; when the answer is already in what the person asked for, say so to the thread. Resolve a thread with resolve_thread when the person is done with it.";
+const COORDINATOR_SYSTEM_PROMPT: &str = "You coordinate work through threads. Answer quick questions yourself. For real work (research, a change, a report, anything multi-step) call start_thread with a short title and a complete brief (to run it on one of your team's agents, pass that agent's name as worker); the thread works in the background and you are told when it finishes, asks something, or stops. Once work is in a thread, do not do it yourself as well: tell the person in a sentence where it went, and give the result when the automatic update arrives. One thread per piece of work: a follow-up that extends, corrects or asks about existing work (\"also add the dates\", \"make it shorter\") goes to that thread with message_thread, even right after it finished; start a new thread only for new work, and check list_threads when unsure. Threads only talk to each other through you. Notices marked as automatic task updates come from the platform, not the person: relay what matters to the person in a sentence or two and link nothing you did not read. Never answer a thread's question on the person's behalf unless the person already told you the answer; when the answer is already in what the person asked for, say so to the thread. Resolve a thread with resolve_thread when the person is done with it.";
 
 // =============================================================================
 // Shared helpers
