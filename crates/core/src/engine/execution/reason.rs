@@ -68,6 +68,7 @@ mod stream_state;
 mod tool_changes;
 mod transcript;
 mod truncation_gate;
+mod turn_limit;
 mod types;
 use types::default_max_iterations;
 pub use types::{NativeExecutionCounts, ReasonInput, ReasonResult};
@@ -486,6 +487,14 @@ impl ReasonAtom {
         // 9d. Replay reference-data changes at their recorded positions.
         let context_updates =
             context_updates::apply(&mut context_messages, &turn_agent, volatile_suffix_len);
+
+        // 9e. Near the per-turn call limit, tell the model so it can wrap up.
+        let volatile_suffix_len = volatile_suffix_len
+            + turn_limit::append_notice(
+                &mut context_messages,
+                iteration,
+                turn_agent.max_iterations,
+            );
 
         // 10. Resolve images from image_file references (if any)
         //

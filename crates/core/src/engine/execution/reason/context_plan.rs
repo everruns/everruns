@@ -16,6 +16,8 @@ use sha2::{Digest, Sha256};
 const PAGE_MESSAGES: usize = 256;
 const MIN_RECENT_MESSAGES: usize = 10;
 const CANDIDATE_MODEL: &str = "continuity-candidate-v1";
+/// First-attempt output ceiling for a continuity summary.
+const SUMMARY_MAX_OUTPUT: usize = 16_384;
 
 pub(super) fn raw_history_allowed(
     driver: &dyn ChatDriver,
@@ -449,7 +451,10 @@ impl Planner<'_> {
             .unwrap_or(self.fallback_summary_window);
         // Reserve the output actually requested. A fixed 8K reservation starves
         // small models; a fixed 4K output can itself exceed their whole window.
-        let summary_output_tokens = (summary_window / 4).clamp(1, 4096);
+        // The ceiling is 16K, not 4K: reasoning models count hidden reasoning
+        // against it, and DeepSeek V4.1 Flash spent all of 4K on every summary
+        // (2026-11-24). A cap bills only what is used.
+        let summary_output_tokens = (summary_window / 4).clamp(1, SUMMARY_MAX_OUTPUT);
         // The two role envelopes also consume estimated request tokens.
         let summary_input_budget = summary_window.saturating_sub(summary_output_tokens + 32);
         let mut current = self
