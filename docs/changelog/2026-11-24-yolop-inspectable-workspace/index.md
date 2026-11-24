@@ -7,7 +7,7 @@ significance: notable
 products: [yolop]
 surfaces: [cli, ui]
 links:
-  prs: [966]
+  prs: [everruns/yolop#966]
   docs: [https://github.com/everruns/yolop/blob/main/docs/features/terminal-workflows.md]
 ---
 
