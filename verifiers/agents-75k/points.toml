@@ -639,7 +639,7 @@ weight = 3
 direction = "pass"
 cheapest = "L2"
 scales = "per_shard"
-built_from = "store outage proof (new)"
+built_from = "scripts/agentd/prove_store_outage.py"
 watches = ["crates/agentd/src/ship.rs", "crates/agentd/src/store_throttle.rs"]
 
 [[point]]
