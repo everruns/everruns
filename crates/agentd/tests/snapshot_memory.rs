@@ -79,7 +79,14 @@ async fn added_by_build(machine: &mut StateMachine) -> usize {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_snapshot_costs_about_one_copy_of_the_unstored_events() {
-    let shared = Shared::new(Store::open("memory://").unwrap(), 0);
+    // Decision: a store on disk, not `memory://`. The in-memory store joins
+    // an upload's parts into one more copy of the snapshot, on the heap
+    // this test counts, whenever the upload task happens to run; on a slow
+    // runner that landed inside the leader's measurement (main 81a8f692:
+    // 121 MB over a 118 MB bound). A real store streams the parts.
+    let objects = tempfile::tempdir().unwrap();
+    let store = Store::open(&format!("file://{}", objects.path().display())).unwrap();
+    let shared = Shared::new(store.clone(), 0);
     let dir = tempfile::tempdir().unwrap();
     let mut machine = StateMachine::open(dir.path(), shared.clone()).unwrap();
 
@@ -94,10 +101,23 @@ async fn a_snapshot_costs_about_one_copy_of_the_unstored_events() {
     let held = LIVE.load(Ordering::Relaxed) - empty;
 
     let follower = added_by_build(&mut machine).await;
-    // A new leader copies its current snapshot at once; let that copy
-    // finish so it is not counted against the build.
+    // A new leader copies its current snapshot at once; wait until that
+    // copy is stored (not a fixed sleep) so it is not counted against the
+    // build.
     shared.set_leading(true);
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    for _ in 0..1_000 {
+        if !store.snapshot_copies(0).await.unwrap().is_empty() {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    assert_eq!(
+        store.snapshot_copies(0).await.unwrap().len(),
+        1,
+        "the new leader copied its current snapshot"
+    );
+    // The upload frees its buffer just after the copy is listed; freed
+    // during the build it only lowers what the build is charged.
     let leader = added_by_build(&mut machine).await;
     println!(
         "state {} KB; a build adds {} KB on a follower, {} KB on the leader",
