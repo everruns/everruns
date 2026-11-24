@@ -69,6 +69,7 @@ fn reason_result() -> ReasonResult {
         waiting_for_tool_results: false,
         truncation_retry: false,
         review_tool_free_answers: false,
+        has_completion_requirements: false,
     }
 }
 

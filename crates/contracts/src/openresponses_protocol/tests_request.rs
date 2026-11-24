@@ -43,10 +43,10 @@ fn explicit_cache_wire_options_are_model_gated() {
     });
     let original = json!({"instructions": "Stable policy", "input": [{"role": "user", "content": "Changing question"}]});
     let mut body = original.clone();
-    apply_cache_options(&mut body, &config, true, true);
+    apply_cache_options(&mut body, &config, true, true, config.volatile_suffix_len);
     assert_eq!(
         body["prompt_cache_options"],
-        json!({"ttl":"12h","mode":"explicit"})
+        json!({"ttl":"30m","mode":"explicit"})
     );
     assert!(body.get("instructions").is_none());
     assert_eq!(
@@ -55,17 +55,29 @@ fn explicit_cache_wire_options_are_model_gated() {
     );
     assert_eq!(body["input"][1], original["input"][0]);
     let mut gateway = original.clone();
-    apply_cache_options(&mut gateway, &config, false, true);
+    apply_cache_options(
+        &mut gateway,
+        &config,
+        false,
+        true,
+        config.volatile_suffix_len,
+    );
     assert_eq!(gateway, original);
     config.model = "gpt-5.5".into();
     let mut older = original.clone();
-    apply_cache_options(&mut older, &config, true, true);
+    apply_cache_options(&mut older, &config, true, true, config.volatile_suffix_len);
     assert_eq!(older, original);
     config.model = "gpt-5.6-sol".into();
     config.prompt_cache.as_mut().unwrap().strategy =
         crate::driver_registry::PromptCacheStrategy::Auto;
     let mut implicit = original.clone();
-    apply_cache_options(&mut implicit, &config, true, true);
+    apply_cache_options(
+        &mut implicit,
+        &config,
+        true,
+        true,
+        config.volatile_suffix_len,
+    );
     assert_eq!(implicit["instructions"], original["instructions"]);
     assert_eq!(implicit["prompt_cache_options"]["mode"], "implicit");
 }
@@ -840,10 +852,10 @@ async fn retry_after_longer_than_budget_still_retries_within_budget() {
 }
 
 #[test]
-fn cache_retention_defaults_to_twelve_hours_only_for_openai() {
+fn cache_retention_defaults_to_short_tier() {
     use crate::driver_registry::{PromptCacheConfig, PromptCacheRetention, PromptCacheStrategy};
     for (retention, ttl, anthropic) in [
-        (PromptCacheRetention::Default, "12h", None),
+        (PromptCacheRetention::Default, "30m", None),
         (PromptCacheRetention::FiveMinutes, "30m", None),
         (PromptCacheRetention::ThirtyMinutes, "30m", None),
         (PromptCacheRetention::OneHour, "30m", Some("1h")),
@@ -864,14 +876,20 @@ fn cache_retention_defaults_to_twelve_hours_only_for_openai() {
             });
             let original = json!({"instructions":"policy", "input":[]});
             let mut body = original.clone();
-            apply_cache_options(&mut body, &config, true, true);
+            apply_cache_options(&mut body, &config, true, true, config.volatile_suffix_len);
             assert_eq!(body["prompt_cache_options"]["ttl"], ttl);
             let mut azure = original.clone();
-            apply_cache_options(&mut azure, &config, true, false);
+            apply_cache_options(&mut azure, &config, true, false, config.volatile_suffix_len);
             assert_eq!(azure["prompt_cache_options"]["ttl"], "30m");
             config.prompt_cache.as_mut().unwrap().enabled = false;
             let mut disabled = original.clone();
-            apply_cache_options(&mut disabled, &config, true, true);
+            apply_cache_options(
+                &mut disabled,
+                &config,
+                true,
+                true,
+                config.volatile_suffix_len,
+            );
             assert_eq!(disabled, original);
         }
     }
@@ -889,11 +907,11 @@ fn unconfigured_cache_defaults_require_native_model_and_endpoint() {
         ("gpt-6.1-sol", true, false, false),
     ] {
         let mut body = original.clone();
-        apply_cache_options(&mut body, &LlmCallConfig::new(model), native, official);
+        apply_cache_options(&mut body, &LlmCallConfig::new(model), native, official, 0);
         if expected {
             assert_eq!(
                 body["prompt_cache_options"],
-                json!({"ttl":"12h", "mode":"implicit"})
+                json!({"ttl":"30m", "mode":"implicit"})
             );
             assert_eq!(body["instructions"], original["instructions"]);
         } else {
@@ -902,13 +920,9 @@ fn unconfigured_cache_defaults_require_native_model_and_endpoint() {
     }
 }
 
-/// GPT-6.2 caches only at explicit breakpoints: an implicit-mode request
-/// reads and writes nothing (live probe 2026-11-18: GPT-6.1 Sol wrote and
-/// re-read a 6.5k-token prefix, GPT-6.2 Sol and Astra wrote 0 implicitly
-/// and 6.5k with a breakpoint). `Auto` must place the prefix breakpoint
-/// there, configured or by the native-endpoint default.
+/// Auto caches growing history while keeping reusable instructions in input.
 #[test]
-fn auto_cache_places_explicit_breakpoints_for_models_without_implicit_caching() {
+fn auto_cache_keeps_instructions_cacheable_and_history_implicit() {
     use crate::driver_registry::{PromptCacheConfig, PromptCacheStrategy};
     let original = json!({"instructions":"policy", "input":[{"role":"user","content":"q"}]});
     for model in ["gpt-6.2-sol", "gpt-6.2-astra"] {
@@ -920,27 +934,167 @@ fn auto_cache_places_explicit_breakpoints_for_models_without_implicit_caching() 
         });
         for config in [configured, LlmCallConfig::new(model)] {
             let mut body = original.clone();
-            apply_cache_options(&mut body, &config, true, true);
-            assert_eq!(body["prompt_cache_options"]["mode"], "explicit", "{model}");
+            apply_cache_options(&mut body, &config, true, true, config.volatile_suffix_len);
+            assert_eq!(body["prompt_cache_options"]["mode"], "implicit", "{model}");
             assert!(body.get("instructions").is_none(), "{model}");
             assert_eq!(
                 body["input"][0]["content"][0]["prompt_cache_breakpoint"],
                 json!({"mode":"explicit"}),
                 "{model}"
             );
-            assert!(uses_explicit_breakpoints(&config, true, true), "{model}");
+            assert!(uses_cacheable_instructions(&config, true, true), "{model}");
         }
     }
     // Models that cache implicitly keep implicit mode under `Auto`.
     let config = LlmCallConfig::new("gpt-6.1-sol");
     let mut body = original.clone();
-    apply_cache_options(&mut body, &config, true, true);
+    apply_cache_options(&mut body, &config, true, true, config.volatile_suffix_len);
     assert_eq!(body["prompt_cache_options"]["mode"], "implicit");
-    assert!(!uses_explicit_breakpoints(&config, true, true));
+    assert!(!uses_cacheable_instructions(&config, true, true));
     // Gateways get no cache options at all, so nothing moves.
-    assert!(!uses_explicit_breakpoints(
+    assert!(!uses_cacheable_instructions(
         &LlmCallConfig::new("gpt-6.2-sol"),
         false,
         true
     ));
+}
+
+#[test]
+fn auto_explicit_cache_covers_history_and_skips_volatile_facts() {
+    let mut config = LlmCallConfig::new("gpt-6.2-sol");
+    config.volatile_suffix_len = 1;
+    let original = json!({"instructions":"policy", "input":[
+        {"role":"user","content":"original task"},
+        {"type":"function_call","call_id":"c","name":"read","arguments":"{}"},
+        {"type":"function_call_output","call_id":"c","output":"large immutable result"},
+        {"role":"user","content":"volatile clock"}
+    ]});
+    let mut body = original.clone();
+    apply_cache_options(&mut body, &config, true, true, config.volatile_suffix_len);
+    assert_eq!(
+        body["input"][1]["content"][0]["prompt_cache_breakpoint"],
+        json!({"mode":"explicit"})
+    );
+    assert_eq!(
+        body["input"][3]["output"][0]["prompt_cache_breakpoint"],
+        json!({"mode":"explicit"})
+    );
+    assert_eq!(body["input"][4], original["input"][3]);
+    assert_eq!(body["input"][2], original["input"][1]);
+
+    // Stable-prefix-only remains an intentional, separate choice.
+    config.prompt_cache = Some(crate::driver_registry::PromptCacheConfig {
+        enabled: true,
+        strategy: crate::driver_registry::PromptCacheStrategy::Explicit,
+        ..Default::default()
+    });
+    let mut prefix_only = original.clone();
+    apply_cache_options(
+        &mut prefix_only,
+        &config,
+        true,
+        true,
+        config.volatile_suffix_len,
+    );
+    assert_eq!(prefix_only["input"][1], original["input"][0]);
+    assert_eq!(prefix_only["input"][3], original["input"][2]);
+}
+
+#[test]
+fn auto_explicit_cache_works_without_instructions() {
+    let config = LlmCallConfig::new("gpt-6.2-sol");
+    let mut body = json!({"input":[{"role":"user","content":"large input"}]});
+    apply_cache_options(&mut body, &config, true, true, config.volatile_suffix_len);
+    assert_eq!(
+        body["input"][0]["content"][0]["prompt_cache_breakpoint"],
+        json!({"mode":"explicit"})
+    );
+}
+
+#[test]
+fn history_breakpoints_are_bounded_and_preserve_opaque_items() {
+    let mut config = LlmCallConfig::new("gpt-6.2-sol");
+    config.volatile_suffix_len = 1;
+    let mut body = json!({"instructions":"policy", "input":[
+        {"role":"user","content":"first"},
+        {"type":"compaction","encrypted_content":"opaque"},
+        {"role":"assistant","content":[{"type":"output_text","text":"answer"}]},
+        {"type":"function_call_output","call_id":"a","output":"a"},
+        {"type":"function_call_output","call_id":"b","output":"b"},
+        {"role":"user","content":[{"type":"input_image","image_url":"image"},{"type":"input_text","text":"next"}]},
+        {"role":"user","content":"clock"}
+    ]});
+    let before = body.clone();
+    apply_cache_options(&mut body, &config, true, true, config.volatile_suffix_len);
+    assert_eq!(
+        body.to_string().matches("prompt_cache_breakpoint").count(),
+        3
+    );
+    assert!(
+        body["input"][1]["content"][0]
+            .get("prompt_cache_breakpoint")
+            .is_none()
+    );
+    assert!(
+        body["input"][4]["output"][0]
+            .get("prompt_cache_breakpoint")
+            .is_none()
+    );
+    assert!(
+        body["input"][5]["output"][0]
+            .get("prompt_cache_breakpoint")
+            .is_some()
+    );
+    assert!(
+        body["input"][6]["content"][1]
+            .get("prompt_cache_breakpoint")
+            .is_some()
+    );
+    for i in [1, 2, 6] {
+        assert_eq!(body["input"][i + 1], before["input"][i]);
+    }
+    assert_eq!(
+        body["input"][6]["content"][0],
+        before["input"][5]["content"][0]
+    );
+}
+
+#[test]
+fn volatile_boundary_counts_serialized_items_including_inline_changes() {
+    let mut volatile = Message::text(MessageRole::User, "volatile facts");
+    volatile.tool_changes = Some(crate::tool_changes::ToolChanges {
+        note: Some("new tool instructions".into()),
+        ..Default::default()
+    });
+    let messages = vec![Message::text(MessageRole::User, "stable task"), volatile];
+    let mode = Some(super::tool_changes::InlineToolChanges {
+        hosted_search: false,
+    });
+    let (_, input) =
+        OpenResponsesProtocolChatDriver::build_input_with_reasoning(&messages, false, mode, None);
+    let (_, tail) = OpenResponsesProtocolChatDriver::build_input_with_reasoning(
+        &messages[1..],
+        false,
+        mode,
+        None,
+    );
+    assert_eq!(tail.len(), 2);
+    let mut body = json!({"input":input});
+    apply_cache_options(
+        &mut body,
+        &LlmCallConfig::new("gpt-6.2-sol"),
+        true,
+        true,
+        tail.len(),
+    );
+    assert!(
+        body["input"][0]["content"][0]
+            .get("prompt_cache_breakpoint")
+            .is_some()
+    );
+    assert_eq!(body["input"][1]["content"], "volatile facts");
+    assert_eq!(
+        body.to_string().matches("prompt_cache_breakpoint").count(),
+        1
+    );
 }

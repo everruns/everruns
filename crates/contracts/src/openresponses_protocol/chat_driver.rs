@@ -129,6 +129,21 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
             inline_tool_changes,
             self.plaintext_reasoning_provider,
         );
+        // One message can render several input items (for example tool output
+        // followed by an inline tool change). Exclude the entire volatile message,
+        // not just its last serialized item, from explicit cache boundaries.
+        let volatile_input_items = if config.volatile_suffix_len == 0 {
+            0
+        } else {
+            Self::build_input_with_reasoning(
+                &sent[sent.len().saturating_sub(config.volatile_suffix_len)..],
+                supports_phases,
+                inline_tool_changes,
+                self.plaintext_reasoning_provider,
+            )
+            .1
+            .len()
+        };
         let computer_call_ids = if native_computer.is_some() {
             super::computer::computer_call_ids(&transcript_input_items)
         } else {
@@ -171,10 +186,10 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
             None
         };
 
-        // Explicit breakpoints move instructions into input. Replaying the full
+        // Cacheable instructions move into input. Replaying the full
         // transcript avoids appending that developer prefix again on every
         // previous_response_id continuation (instructions normally do not persist).
-        if uses_explicit_breakpoints(
+        if uses_cacheable_instructions(
             config,
             self.native_prompt_cache_options,
             crate::openai_protocol::is_openai_api_url(&api_url),
@@ -289,6 +304,7 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
             config,
             self.native_prompt_cache_options,
             crate::openai_protocol::is_openai_api_url(&api_url),
+            volatile_input_items,
         );
         let mut background = self.background_mode && super::background::wants_background(config);
         super::background::mark(&mut request_body, background);
@@ -411,6 +427,7 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                     config,
                     self.native_prompt_cache_options,
                     crate::openai_protocol::is_openai_api_url(&api_url),
+                    volatile_input_items,
                 );
                 super::background::mark(&mut request_body, background);
                 crate::openai_compat::validate_body(&request_body, endpoint, true)?;

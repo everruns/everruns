@@ -60,6 +60,8 @@ pub mod parallel_tool_calls;
 pub use native_async_tools::NativeAsyncToolsCapability;
 pub mod artifact_inspection;
 mod claude_message_threads;
+pub mod completion_requirements;
+pub mod gemini_stateless;
 pub mod progress_guard;
 pub mod prompt_caching;
 pub mod prompt_canary_guardrail;
@@ -344,6 +346,8 @@ fn capabilities_with_ask_user(ask_user: AskUserCapability) -> Vec<Arc<dyn Capabi
         Arc::new(ToolSearchCapability::new()),
         Arc::new(AutoToolSearchCapability::new()),
         Arc::new(PromptCachingCapability::new()),
+        Arc::new(gemini_stateless::GeminiStatelessCapability),
+        Arc::new(completion_requirements::CompletionRequirementsCapability),
         Arc::new(ClaudeMessageThreadsCapability),
         Arc::new(ParallelToolCallsCapability),
         Arc::new(OutputTruncationCapability),
@@ -365,7 +369,7 @@ fn capabilities_with_ask_user(ask_user: AskUserCapability) -> Vec<Arc<dyn Capabi
 mod bundle_tests {
     use super::*;
 
-    const RUNTIME_IDS: [&str; 34] = [
+    const RUNTIME_IDS: [&str; 36] = [
         "human_intent",
         "ask_user",
         "infinity_context",
@@ -386,6 +390,8 @@ mod bundle_tests {
         "tool_search",
         "auto_tool_search",
         "prompt_caching",
+        "completion_requirements",
+        "gemini_stateless",
         "claude_message_threads",
         "parallel_tool_calls",
         "output_truncation",

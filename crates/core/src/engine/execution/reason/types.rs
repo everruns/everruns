@@ -119,6 +119,9 @@ pub struct ReasonResult {
     /// loading the session to read the setting.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub review_tool_free_answers: bool,
+    /// Configured deterministic evidence checks also inspect tool-free finals.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub has_completion_requirements: bool,
 }
 
 impl ReasonResult {
@@ -127,6 +130,10 @@ impl ReasonResult {
     pub(crate) fn for_snapshot(snapshot: &crate::ResolvedExecutionSnapshot) -> Self {
         Self {
             review_tool_free_answers: snapshot.completion_check.reviews_tool_free_answers(),
+            has_completion_requirements: snapshot
+                .capabilities
+                .iter()
+                .any(|c| c.capability_id() == "completion_requirements"),
             ..Self::default()
         }
     }

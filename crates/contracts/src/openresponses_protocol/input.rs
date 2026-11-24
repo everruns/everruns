@@ -224,16 +224,16 @@ fn effective_cache(
     }
 }
 
-/// Whether the request carries explicit breakpoints (instructions move into
-/// `input`): requested, or the only way the model caches at all.
-pub(crate) fn uses_explicit_breakpoints(
+/// Whether reusable instructions move into `input`, requiring full replay so
+/// a stateful continuation cannot append the developer prefix a second time.
+pub(crate) fn uses_cacheable_instructions(
     config: &LlmCallConfig,
     native_openai: bool,
     extended_retention: bool,
 ) -> bool {
     effective_cache(config, native_openai, extended_retention).is_some_and(|cache| {
         cache.strategy == crate::driver_registry::PromptCacheStrategy::Explicit
-            || crate::openai_compat::requires_explicit_cache(&config.model)
+            || crate::openai_compat::requires_cacheable_instructions(&config.model)
     })
 }
 
@@ -246,13 +246,14 @@ pub(crate) fn apply_cache_options(
     config: &LlmCallConfig,
     native_openai: bool,
     extended_retention: bool,
+    volatile_input_items: usize,
 ) {
     let Some(cache) = effective_cache(config, native_openai, extended_retention) else {
         return;
     };
-    let explicit = uses_explicit_breakpoints(config, native_openai, extended_retention);
+    let explicit = cache.strategy == crate::driver_registry::PromptCacheStrategy::Explicit;
     body["prompt_cache_options"] = json!({"ttl": if extended_retention { cache.retention.openai_responses_ttl() } else { "30m" }, "mode": if explicit { "explicit" } else { "implicit" }});
-    if explicit
+    if uses_cacheable_instructions(config, native_openai, extended_retention)
         && let Some(instructions) = body
             .get("instructions")
             .and_then(Value::as_str)
@@ -268,6 +269,63 @@ pub(crate) fn apply_cache_options(
                 }]
             }),
         );
+    }
+    if !explicit && crate::openai_compat::requires_cacheable_instructions(&config.model) {
+        mark_stable_history(body, volatile_input_items);
+    }
+}
+
+/// Keep the last stable tool/user boundaries available when an implicit write
+/// ends on volatile facts. Two history writes, the developer prefix and the
+/// implicit write fit the provider's four-write limit. Normalize all stable
+/// eligible items, so sliding the markers never changes their content shape.
+fn mark_stable_history(body: &mut Value, volatile_suffix_len: usize) {
+    let Some(input) = body.get_mut("input").and_then(Value::as_array_mut) else {
+        return;
+    };
+    let stable_end = input.len().saturating_sub(volatile_suffix_len);
+    let mut candidates = Vec::new();
+    for index in 0..stable_end {
+        let tool_output = input[index]["type"] == "function_call_output";
+        let field = if tool_output {
+            "output"
+        } else if input[index]["role"] == "user"
+            && input[index]
+                .get("type")
+                .is_none_or(|kind| kind == "message")
+        {
+            "content"
+        } else {
+            continue;
+        };
+        let Some(content) = input[index].get_mut(field) else {
+            continue;
+        };
+        if let Some(text) = content.as_str() {
+            *content = json!([{"type":"input_text", "text":text}]);
+        }
+        let Some(blocks) = content.as_array() else {
+            continue;
+        };
+        // Never edit opaque provider items, assistant reasoning, images, or
+        // caller JSON nested inside a tool result. Only input text is marked.
+        let Some(block) = blocks
+            .iter()
+            .rposition(|block| block["type"] == "input_text")
+        else {
+            continue;
+        };
+        // A parallel tool batch needs one boundary after its final result.
+        if tool_output
+            && index + 1 < stable_end
+            && input[index + 1]["type"] == "function_call_output"
+        {
+            continue;
+        }
+        candidates.push((index, field, block));
+    }
+    for (index, field, block) in candidates.into_iter().rev().take(2) {
+        input[index][field][block]["prompt_cache_breakpoint"] = json!({"mode":"explicit"});
     }
 }
 

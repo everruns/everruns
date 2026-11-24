@@ -78,10 +78,10 @@ mira --bin prompt_cache_growth run --preset smoke
 ```
 
 `EVERRUNS_EVAL_TARGETS` takes server models (a `model_…` id, `model_id` or
-display name), comma-separated. The default pair,
-`meta/muse-spark-1.3-contributor,gpt-6-luna`, covers both ways tool changes
+display name), comma-separated. The default targets,
+`meta/muse-spark-1.3-contributor,gpt-6-luna,gpt-6.2-sol`, cover both ways tool changes
 reach a model: Muse through OpenRouter receives the whole tool list, and GPT-6
-Luna receives tool changes inline. `--run` plays cases one at a time, because
+Luna receives tool changes inline. GPT-6.2 Sol also exercises cacheable developer instructions and stable history boundaries. `--run` plays cases one at a time, because
 concurrent sessions share the provider's cache and would blur each other's
 rates. `EVERRUNS_API_KEY` (default `dev`) and `EVERRUNS_EVAL_TURN_TIMEOUT_SECS`
 (default 300) apply as in the platform study.

@@ -468,6 +468,21 @@
       "tools": []
     },
     {
+      "category": "Quality",
+      "dependencies": [],
+      "docs_slug": "completion-requirements",
+      "feature_flag": null,
+      "features": [],
+      "grades": [
+        "prod",
+        "dev"
+      ],
+      "id": "completion_requirements",
+      "name": "Completion Requirements",
+      "status": "available",
+      "tools": []
+    },
+    {
       "category": "Browser",
       "dependencies": [
         "session_storage"
@@ -717,6 +732,21 @@
       ],
       "id": "error_disclosure",
       "name": "Error Disclosure",
+      "status": "available",
+      "tools": []
+    },
+    {
+      "category": "Model",
+      "dependencies": [],
+      "docs_slug": "gemini-stateless",
+      "feature_flag": null,
+      "features": [],
+      "grades": [
+        "prod",
+        "dev"
+      ],
+      "id": "gemini_stateless",
+      "name": "Gemini Stateless",
       "status": "available",
       "tools": []
     },

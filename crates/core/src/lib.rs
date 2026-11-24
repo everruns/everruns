@@ -85,6 +85,8 @@ pub use everruns_contracts::runtime::dreaming;
 pub use everruns_contracts::runtime::egress;
 pub use everruns_contracts::runtime::exec_tool_result;
 pub use everruns_contracts::runtime::execution_context;
+#[cfg(any(feature = "host", feature = "execution-host", feature = "builtins"))]
+pub(crate) mod completion_requirements;
 pub mod execution_snapshot;
 pub use everruns_contracts::runtime::utility_llm;
 

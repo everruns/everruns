@@ -40,7 +40,7 @@ const DEFAULT_MIN_HIT_RATE: f64 = 0.6;
 fn targets() -> Vec<Target> {
     let spec = std::env::var("EVERRUNS_EVAL_TARGETS").unwrap_or_default();
     let spec = if spec.trim().is_empty() {
-        "meta/muse-spark-1.3-contributor,gpt-6-luna".to_string()
+        "meta/muse-spark-1.3-contributor,gpt-6-luna,gpt-6.2-sol".to_string()
     } else {
         spec
     };
