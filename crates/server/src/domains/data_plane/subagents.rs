@@ -17,6 +17,14 @@
 //! - The record is marked as the data plane's (`dp_session_summaries`), so
 //!   nothing sends its messages to the platform's workers.
 //! - A replayed record finds the child there and changes nothing.
+//! - A parent not recorded yet holds the record back rather than drop it: a
+//!   grandchild started on one shard can reach the feed before its parent,
+//!   a child of another shard, does (codex review, 2026-11-24). The record
+//!   fails, so the feed stops there and the shard sends it again
+//!   (`feed.rs`). Only for [`PARENT_WAIT`] after the record was made: a
+//!   parent that never arrives must not stall its shard's feed forever, so
+//!   after that the record is skipped and logged. A parent of another org
+//!   is skipped at once.
 
 use everruns_contracts::dataplane::SubagentOrigin;
 use everruns_contracts::typed_id::{AgentId, HarnessId, SessionId};
@@ -24,28 +32,43 @@ use everruns_contracts::typed_id::{AgentId, HarnessId, SessionId};
 use super::ControlPlane;
 use crate::storage::{CreateSessionRow, DpSessionSummary};
 
-/// Give the child `session_id` a session record under its id.
+/// How long after it was made a record waits for its parent's (module notes).
+pub const PARENT_WAIT_MS: i64 = 10 * 60 * 1000;
+
+/// Give the child `session_id` a session record under its id. `at_unix_ms`:
+/// when the shard made the feed record.
 pub async fn record(
     cp: &ControlPlane,
     org_id: i64,
     session_id: &str,
     origin: &SubagentOrigin,
+    at_unix_ms: i64,
 ) -> anyhow::Result<()> {
     let child: SessionId = session_id.parse()?;
     let parent: SessionId = origin.parent_session_id.parse()?;
     let harness_id: HarnessId = origin.harness_id.parse()?;
     let agent_id: Option<AgentId> = origin.agent_id.as_deref().map(str::parse).transpose()?;
-    if cp.db.dp_session_org(&parent.to_string()).await? != Some(org_id)
-        || !super::sessions::runs_on_data_plane(cp, org_id, parent).await?
-    {
-        tracing::warn!(org_id, session_id, "a subagent of a session not the org's");
-        return Ok(());
-    }
     if cp.db.get_session(org_id, child).await?.is_some() {
         return Ok(());
     }
-    let Some(parent_row) = cp.db.get_session(org_id, parent).await? else {
-        tracing::warn!(org_id, session_id, "a subagent of a session with no record");
+    let parent_org = cp.db.dp_session_org(&parent.to_string()).await?;
+    if parent_org.is_some_and(|org| org != org_id) {
+        tracing::warn!(org_id, session_id, "a subagent of a session not the org's");
+        return Ok(());
+    }
+    let parent_row = match parent_org {
+        Some(_) if super::sessions::runs_on_data_plane(cp, org_id, parent).await? => {
+            cp.db.get_session(org_id, parent).await?
+        }
+        _ => None,
+    };
+    let Some(parent_row) = parent_row else {
+        if chrono::Utc::now().timestamp_millis() - at_unix_ms < PARENT_WAIT_MS {
+            anyhow::bail!(
+                "subagent {session_id}: parent {parent} has no record yet; the feed sends it again"
+            );
+        }
+        tracing::warn!(org_id, session_id, %parent, "a subagent whose parent never got a record; skipped");
         return Ok(());
     };
     let plane = cp
