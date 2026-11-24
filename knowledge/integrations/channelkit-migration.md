@@ -53,7 +53,8 @@ reconciliation rather than automatic event replay. See the
 [cutover runbook](../../docs/sre/runbooks/channel-delivery-cutover.md).
 
 Local deterministic bridge, signature, scope, receipt, native-file and history
-qualification is tracked with the source tests. Final server parity, real-model
+qualification is tracked with the source tests and the
+[acceptance case](../test-cases/agents/slack_channels/TC001_migration_parity_and_recovery.md). Final server parity, real-model
 turns, native user-origin messages/approval clicks and deployed-host adoption are
 separate gates; do not infer them from library live API checks or signed fixtures.
 The dependency publication does not itself complete the Everruns cutover.
@@ -81,11 +82,12 @@ expiry. Treat private response URLs and interaction tokens as secrets; validate
 provider destinations and reject redirects before using them. Never store bearer
 headers in the inbox or trust a webhook body to select an outbound credential.
 
-## Slack parity analysis
+## Initial Slack parity analysis
 
 Everruns has more than a mention-to-reply bot. Its implementation, rather than older
-Slack overview prose, is the reference for current behavior. The table distinguishes
-library mechanics from Everruns policies that should remain here.
+Slack overview prose, is the reference for behavior. This original fit/gap analysis
+explains the upstream work below; the pinned dependency now supplies those
+mechanics. Everruns retains the host policies and qualification responsibilities.
 
 | Behavior | Channelkit fit / gap | Migration requirement |
 | --- | --- | --- |
@@ -135,19 +137,19 @@ and dedup identity before ACK, then drain through the existing host. Keep this a
 separate, measurable durability change with overload/failure responses within the
 provider deadline. Do not add a second autonomous worker inside Channelkit.
 
-**Do not flatten provider errors into generic transient failures.** The current
-delivery result discards retry advice and partial/ambiguous acceptance. Add a
-structured delivery outcome and persist confirmed message references plus a
-per-output-part checkpoint. A rate-limit rejection can be retried after provider
+**Do not flatten provider errors into generic transient failures.** The bridge
+preserves structured retry advice and partial/ambiguous acceptance, with confirmed
+message references and a per-output-part checkpoint. A rate-limit rejection can be retried after provider
 advice; unknown acceptance must remain pending for reconciliation. Never replay
 all parts after some were accepted. A checkpoint written after a remote send cannot
 close the send/commit crash window: record intent first, mark uncertain on interrupted
 attempts, and reconcile without claiming exactly-once remote delivery. A confirmed
 stream reference is not proof that its last append succeeded.
 
-**Shared host recovery needs qualified output checkpoints.** Existing pending state
-records the input/target/event sequence, not a complete remote-output ledger. Test
-crashes before dispatch, after acceptance/before checkpoint, between split parts,
+**Shared host recovery needs qualified output checkpoints.** Pending input and
+event cursors alone cannot establish remote-output acceptance. The host combines
+those records with a write-ahead output ledger. Qualify crashes before dispatch,
+after acceptance/before checkpoint, between split parts,
 mid-stream and during stop/edit replacement. Retain lease fencing and both data-plane
 session ports; a steered input must not acquire a second reply delivery.
 
