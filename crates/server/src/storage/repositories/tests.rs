@@ -18,6 +18,25 @@ fn disabled_background_pool_adds_no_connections() {
     assert_eq!(config.total_max_connections(), config.max_connections);
 }
 
+/// The liveness pool counts against the connection budget, and `0` (renew on
+/// the request pool) opens nothing extra.
+#[test]
+fn liveness_pool_counts_against_the_connection_budget() {
+    let config = DatabasePoolConfig::default();
+    assert_eq!(
+        config.total_max_connections(),
+        config.max_connections + config.background_max_connections + 1
+    );
+    let disabled = DatabasePoolConfig {
+        liveness_max_connections: 0,
+        ..DatabasePoolConfig::default()
+    };
+    assert_eq!(
+        disabled.total_max_connections(),
+        disabled.max_connections + disabled.background_max_connections
+    );
+}
+
 #[test]
 fn database_pool_config_invalid_values_use_defaults() {
     let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());

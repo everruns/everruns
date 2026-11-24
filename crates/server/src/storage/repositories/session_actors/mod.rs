@@ -553,9 +553,10 @@ impl Database {
         .bind(fence)
         .bind(ttl_millis(ttl))
         .bind(consumed_seq)
-        // The raw pool: the relaxed commit above must never reach a caller's
-        // command transaction.
-        .fetch_optional(self.pool.raw())
+        // The liveness pool: never queued behind API requests, and never a
+        // caller's command transaction (the relaxed commit above must not
+        // reach one).
+        .fetch_optional(self.liveness_pool())
         .await?)
     }
 
@@ -633,9 +634,8 @@ impl Database {
         .bind(&ids)
         .bind(&fences)
         .bind(&consumed)
-        // The raw pool: the relaxed commit above must never reach a caller's
-        // command transaction.
-        .fetch_all(self.pool.raw())
+        // As for one renewal: the liveness pool.
+        .fetch_all(self.liveness_pool())
         .await?;
         let outcomes: std::collections::HashMap<(SessionId, i64), ActorLeaseRenewalOutcome> = rows
             .into_iter()

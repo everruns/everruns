@@ -77,6 +77,9 @@ def parse_args():
     p.add_argument("--run-dir")
     p.add_argument("--seed", type=int, default=7)
     p.add_argument("--keep-running", action="store_true", help="leave the topology up (debugging)")
+    p.add_argument("--api-pressure", type=int, default=0, metavar="N",
+                   help="N threads reading the public API for the whole load phase, "
+                        "so running turns share the servers' request pools with clients")
     a = p.parse_args()
     pre = a.port_prefix
     a.database_url = a.database_url or f"postgres://everruns:everruns@localhost:{pre}32/everruns"
@@ -198,6 +201,42 @@ def setup_fixtures(api: Api, args) -> tuple[dict, dict]:
     return model_ids, agents
 
 
+def api_pressure_thread(api: Api, stop: threading.Event, stats: dict):
+    """Keep the servers' request pools busy the way a few open consoles and
+    synthetic checks do in production: list reads, back to back. A running
+    turn must not depend on this traffic leaving it a connection."""
+    paths = ["/v1/platform/sessions", "/v1/platform/agents"]
+    i = 0
+    while not stop.is_set():
+        try:
+            api.request("GET", paths[i % len(paths)], query={"limit": 50}, retries=0, retry_5xx=False)
+            stats["ok"] = stats.get("ok", 0) + 1
+        except Exception:  # noqa: BLE001
+            stats["errors"] = stats.get("errors", 0) + 1
+        i += 1
+
+
+def lease_losses(run_dir: str, workers: int) -> dict[str, int]:
+    """Worker log lines that mean a turn lost its lease or was sealed. Without
+    chaos nothing kills a holder, so any of them is a control-plane failure."""
+    patterns = {
+        "lease_renewal_timed_out": "lease renewal timed out",
+        "lease_lost": "Actor lease lost; stopping the turn",
+        "turn_sealed": "Sealing a session turn that keeps failing",
+    }
+    out = {k: 0 for k in patterns}
+    for j in range(workers):
+        path = os.path.join(run_dir, f"worker-{j}.log")
+        if not os.path.exists(path):
+            continue
+        with open(path, errors="replace") as f:
+            for line in f:
+                for key, needle in patterns.items():
+                    if needle in line:
+                        out[key] += 1
+    return out
+
+
 def chaos_thread(topo: Topology, schedule: list, t0: float, log: list, stop: threading.Event):
     for action, name, at in schedule:
         while time.time() < t0 + at:
@@ -283,6 +322,9 @@ def main():
                 daemon=True,
             )
             ct.start()
+        pressure_stats: dict = {}
+        for _ in range(args.api_pressure):
+            threading.Thread(target=api_pressure_thread, args=(Api(topo.base_urls), stop, pressure_stats), daemon=True).start()
         with cf.ThreadPoolExecutor(max_workers=args.concurrency) as pool:
             futs = []
             for i, k in enumerate(kinds):
@@ -294,6 +336,8 @@ def main():
                 if done % 25 == 0:
                     print(f"[load] +{time.time() - t0:5.1f}s {done}/{len(futs)} sessions done", flush=True)
         t_load_end = time.time()
+        if args.api_pressure:
+            print(f"[pressure] {pressure_stats}", flush=True)
         if ct:
             ct.join()  # finish the schedule (restarts) even if load ended early
         stop.set()
@@ -366,6 +410,12 @@ def main():
         if not spans and not sampler:
             rep.notes.append("two-worker check: no task spans in worker logs and no session_actors table; not checked")
 
+        losses = lease_losses(run_dir, args.workers)
+        for key, n in losses.items():
+            rep.counts[key] = n
+            if n and args.no_chaos:
+                rep.fail(key, "workers", f"{n} without chaos: a running turn lost its lease to control-plane contention")
+
         # Work per worker, to show the kills hit workers that were busy.
         per_worker = {}
         for w in topo.workers:
@@ -395,6 +445,7 @@ def main():
             "api_conn_errors": api.conn_errors,
             "api_retries": api.retries,
             "driver_errors": sum(len(r.errors) for r in driver.runs),
+            "api_pressure": dict(pressure_stats, threads=args.api_pressure),
             "per_worker": per_worker,
         }
         lat = {}
