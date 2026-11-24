@@ -56,11 +56,25 @@ def memory_bench(result):
 def shard_soak(summary, samples):
     cfg = summary["config"]
     out = Output(density=cfg["sessions"])
-    out.add("A4", "L2", len(summary["oom_kills"]), note=f"limit {cfg['limit_mb']} MB, peak share {summary['peak_rss_share_of_limit']}")
+    # Decision: a crash fails the gate like an out-of-memory kill; a controlled
+    # restart (exit 75, before the limit) is counted apart, as the soak does.
+    ooms, crashes = len(summary["oom_kills"]), len(summary.get("crashes") or [])
+    restarts = summary.get("restarts") or []
+    out.add("A4", "L2", ooms + crashes,
+            note=f"limit {cfg['limit_mb']} MB, peak share {summary['peak_rss_share_of_limit']}, "
+                 f"{ooms} out-of-memory kills, {crashes} crashes, {len(restarts)} controlled restarts, "
+                 f"snapshot every {cfg.get('snapshot_every', '?')} entries")
     peak = summary["peak_rss_mb"]
-    shares = [summary["peak_unaccounted_mb"][n] / peak[n] for n in peak if peak[n]]
+    # The memory ledger's remainder (what no source accounts for) when the
+    # harness reports it; before the ledger, the resident set less events and log.
+    held = summary.get("peak_remainder_mb") or summary["peak_unaccounted_mb"]
+    shares = [held[n] / peak[n] for n in peak if peak[n] and n in held]
     if shares:
-        out.add("C3", "L2", round(max(shares), 3))
+        out.add("C3", "L2", round(max(shares), 3),
+                note="memory ledger remainder" if summary.get("peak_remainder_mb") else "resident set less events and Raft log")
+    if restarts:
+        out.add("U13", "L2", (summary.get("turns_missing") or 0) == 0 and (summary.get("errors") or 0) == 0 and not crashes,
+                note=f"{len(restarts)} controlled restarts, {summary.get('turns_missing', '?')} turns missing, {summary.get('errors')} errors")
     killed = {k.split()[-1] for c in summary.get("chaos", []) for k in c["killed"] if k.startswith("node")}
     if summary.get("chaos"):
         out.add("E1", "L2", (summary.get("errors") or 0) == 0, note=f"killed {summary['chaos'][0]['killed']}, {summary.get('errors')} errors")
@@ -143,9 +157,22 @@ def run_memory_bench(ctx):
     return out
 
 
+def snapshot_every(size):
+    """Entries between snapshots for a shard soak at `size` of goal density.
+
+    Decision: at full density the gate's own interval (20,000). Below it the
+    Raft log would stay a far smaller share of the memory limit than on the
+    gate, and a log-driven out-of-memory kill would not show: at 1/8 density
+    the gate's interval kept the log near 3% of the limit and the pre-fix
+    build passed, while 60,000 put it at 11-14% (gate: about 9%) and
+    reproduced the gate's kills (Mac mini, 2026-11-23).
+    """
+    return 20_000 if size >= 0.95 else 60_000
+
+
 def run_shard_soak(ctx):
     d = os.path.join(ctx.evidence, "shard-soak")
-    _, cmd = harness(ctx, "shard_soak.py", ["--scale", ctx.size, "--out", d], "shard_soak")
+    _, cmd = harness(ctx, "shard_soak.py", ["--scale", ctx.size, "--snapshot-every", snapshot_every(ctx.size), "--out", d], "shard_soak")
     with open(os.path.join(d, "summary.json")) as f:
         summary = json.load(f)
     with open(os.path.join(d, "samples.jsonl")) as f:
@@ -182,7 +209,7 @@ CARGO = ("cargo",)
 CHECKS = [
     Check("memory-bench", "L2", ["C1", "C5"], minutes=60, needs=CARGO, run=run_memory_bench,
           command="scripts/agentd/memory_bench.py --sessions 25000 --turns 4 --no-baseline"),
-    Check("shard-soak", "L2", ["A4", "C3", "E1", "F1"], minutes=75, needs=CARGO, run=run_shard_soak,
+    Check("shard-soak", "L2", ["A4", "C3", "E1", "F1", "U13"], minutes=75, needs=CARGO, run=run_shard_soak,
           command="scripts/agentd/shard_soak.py --scale 1.0"),
     Check("bench", "L2", ["C4"], minutes=10, needs=CARGO, run=run_bench,
           command="scripts/agentd/bench.py --sessions 200 --turns 10 --agent chat --no-baseline"),

@@ -1,0 +1,80 @@
+{
+  "scale": 0.125,
+  "config": {
+    "sessions": 3125,
+    "budget_mb": 1152,
+    "limit_mb": 1792,
+    "snapshot_every": 60000,
+    "pressure_turns": 128
+  },
+  "secs": 3265,
+  "sessions_started": 3060,
+  "turns": 30600,
+  "turns_missing": 0,
+  "stalled": [],
+  "errors": 0,
+  "chaos": [
+    {
+      "t": 600.1,
+      "killed": [
+        "node 1",
+        "executor 1"
+      ]
+    }
+  ],
+  "oom_kills": [],
+  "restarts": [],
+  "crashes": [],
+  "peak_rss_mb": {
+    "1": 1289,
+    "2": 1273,
+    "3": 1268
+  },
+  "peak_rss_share_of_limit": 0.719,
+  "peak_log_mb": {
+    "1": 84,
+    "2": 83,
+    "3": 90
+  },
+  "peak_unaccounted_mb": {
+    "1": 987,
+    "2": 1010,
+    "3": 1115
+  },
+  "peak_remainder_mb": {
+    "1": 527,
+    "2": 633,
+    "3": 556
+  },
+  "peak_remainder_share_of_limit": 0.353,
+  "peak_memory_mb_by_source": {
+    "1": {
+      "events": 961,
+      "raft_log": 82,
+      "unaccounted": 352,
+      "fragmentation": 952
+    },
+    "2": {
+      "events": 1027,
+      "raft_log": 83,
+      "unaccounted": 570,
+      "fragmentation": 817
+    },
+    "3": {
+      "events": 816,
+      "raft_log": 89,
+      "unaccounted": 493,
+      "fragmentation": 788
+    }
+  },
+  "peak_memory_level": {
+    "1": 0,
+    "2": 0,
+    "3": 2
+  },
+  "memory_actions": {
+    "1": {},
+    "2": {},
+    "3": {}
+  }
+}

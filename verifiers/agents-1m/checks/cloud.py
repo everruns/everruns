@@ -69,6 +69,33 @@ def unshipped_p99_s(rows):
     return vals[min(len(vals) - 1, int(0.99 * len(vals)))] / 1000
 
 
+def restart_kinds(restarts):
+    """Container restarts by cause, from the workflow's "N (reason)" strings.
+
+    Decision: an out-of-memory kill and a crash with a known exit code fail the
+    gate; exit 75 is agentd restarting itself before its limit
+    (`memwatch::RESTART_EXIT`) and is counted apart. A restart whose reason is
+    a bare "Error" says nothing of its exit code, so it is noted, not counted:
+    the workflow records "exit N" only when the reason is missing.
+    """
+    kinds = {"oom": 0, "controlled": 0, "crash": 0, "unknown": 0}
+    for v in restarts.values():
+        m = re.match(r"(\d+) \((.*)\)", str(v))
+        if not m:
+            continue
+        n, why = int(m.group(1)), m.group(2)
+        code = re.search(r"exit (\d+)", why)
+        if "OOMKilled" in why:
+            kinds["oom"] += n
+        elif code and code.group(1) == "75":
+            kinds["controlled"] += n
+        elif code:
+            kinds["crash"] += n
+        else:
+            kinds["unknown"] += n
+    return kinds
+
+
 def import_run(run, run_id, level, goal_agents):
     s = run["summary"]
     rows = condense(run["samples"])
@@ -78,9 +105,11 @@ def import_run(run, run_id, level, goal_agents):
     ev = f"saas dataplane-load run {run_id}"
     errors = s.get("errors") or 0
     restarts = s.get("restarts") or {}
-    ooms = sum(int(m.group(1)) for v in restarts.values() for m in [re.match(r"(\d+) \(OOMKilled\)", str(v))] if m)
+    kinds = restart_kinds(restarts)
+    ooms = kinds["oom"] + kinds["crash"]
     out.add("A1", level, errors == 0, note=f"{errors:,} errors over {s.get('turns_completed', 0):,} turns", evidence=ev)
-    out.add("A4", level, ooms, note=", ".join(f"{k} {v}" for k, v in restarts.items()) or "no restarts", evidence=ev)
+    out.add("A4", level, ooms, note=(", ".join(f"{k} {v}" for k, v in restarts.items()) or "no restarts")
+            + (f"; {kinds['controlled']} controlled restarts (exit 75) not counted" if kinds["controlled"] else ""), evidence=ev)
     out.add("E1", level, errors == 0 and bool(run["chaos"].strip()),
             note=(run["chaos"].strip().splitlines() or ["no chaos"])[0], evidence=ev)
     per_shard = peak_sessions / shards

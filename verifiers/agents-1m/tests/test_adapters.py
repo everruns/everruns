@@ -107,7 +107,7 @@ class Drift(unittest.TestCase):
 
     KEYS = {
         "memory_bench.py": ["gated", "node_rss_mb_per_1k_sessions", "puts_per_turn", "rss_mb", "idle", "sessions", "--no-baseline"],
-        "shard_soak.py": ["config", "oom_kills", "peak_rss_mb", "peak_unaccounted_mb", "peak_rss_share_of_limit", "chaos", "killed", "errors", "rss_mb", "samples.jsonl", "summary.json"],
+        "shard_soak.py": ["config", "oom_kills", "crashes", "restarts", "peak_remainder_mb", "--snapshot-every", "peak_rss_mb", "peak_unaccounted_mb", "peak_rss_share_of_limit", "chaos", "killed", "errors", "rss_mb", "samples.jsonl", "summary.json"],
         "bench.py": ["leader_cpu_ms_per_turn", "follower_cpu_ms_per_turn", "executor_cpu_ms_per_turn", "--no-baseline"],
         "scale.py": ["shards", "turns_per_sec"],
         "drill.py": ["ship_lag_s", "rebuild_s", "kill_to_leader_s", "second_messages_lost", "check", "rebuilt", "p99"],
