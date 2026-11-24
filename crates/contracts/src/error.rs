@@ -466,6 +466,17 @@ impl AgentLoopError {
         }
     }
 
+    /// Whether this is the session's event store being unreachable (an
+    /// object store outage behind a data plane), not something wrong with
+    /// the turn: `EventLogError::Backend`, carried as a message-store error.
+    /// Such a failure ends when the store is back, so a turn waits it out
+    /// rather than counting it as a failure without progress
+    /// (`session_actor::turn`).
+    pub fn is_backend_unavailable(&self) -> bool {
+        matches!(self, AgentLoopError::MessageStore(msg) if msg.contains("event log backend failure"))
+            && !self.is_non_retryable()
+    }
+
     /// Get user-facing error message based on error classification
     pub fn user_facing_message(&self) -> String {
         self.user_facing_error(UserFacingErrorContext::default())

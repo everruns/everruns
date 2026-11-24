@@ -656,6 +656,13 @@ pub trait SessionHosting: Send + Sync + 'static {
         holder: &str,
         ttl: Duration,
     ) -> Result<Option<SessionActivation>>;
+    /// Whether this host's event store is down as a whole (an object store
+    /// outage), judged from its own calls rather than one session's error.
+    /// Engine then hands back a claim whose setup could not read the store
+    /// instead of letting it count toward the poison guard (`Engine::activate`).
+    fn event_store_down(&self) -> bool {
+        false
+    }
     /// Local profiles may also use Engine's process scheduler for latency.
     /// Durable profiles must arrange independent startup/expiry/retry wakeups;
     /// this optimization never supplies their persistence guarantee.

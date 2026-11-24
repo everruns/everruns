@@ -66,6 +66,7 @@ pub(super) struct MemoryActors {
     failing_renews: AtomicUsize,
     /// Journal reads still to fail with a store error (a pool timeout).
     failing_reads: AtomicUsize,
+    backend_down_reads: AtomicUsize,
     /// Fail every journal read of more than one event the way an oversized
     /// gRPC reply does (a tail too large to transfer).
     oversized_reads: AtomicBool,
@@ -84,6 +85,7 @@ impl MemoryActors {
             renews: AtomicUsize::new(0),
             failing_renews: AtomicUsize::new(0),
             failing_reads: AtomicUsize::new(0),
+            backend_down_reads: AtomicUsize::new(0),
             hand_offs: AtomicUsize::new(0),
             oversized_reads: AtomicBool::new(false),
             detached: Mutex::new(HashMap::new()),
@@ -118,6 +120,12 @@ impl MemoryActors {
     /// Fail the next `count` journal reads with a store error.
     pub(super) fn fail_reads(&self, count: usize) {
         self.failing_reads.store(count, Ordering::SeqCst);
+    }
+
+    /// Fail the next `count` journal reads as an unreachable event store
+    /// (an object store outage behind a data plane).
+    pub(super) fn backend_down_for(&self, count: usize) {
+        self.backend_down_reads.store(count, Ordering::SeqCst);
     }
 
     /// Fail every journal read of more than one event from now on.
@@ -481,6 +489,17 @@ impl SessionActorStore for MemoryActors {
         {
             return Err(AgentLoopError::store(
                 "Failed to read actor journal: pool timed out while waiting for an open connection",
+            ));
+        }
+        if self
+            .backend_down_reads
+            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |left| {
+                left.checked_sub(1)
+            })
+            .is_ok()
+        {
+            return Err(AgentLoopError::store(
+                "event log backend failure: Generic S3 error: object store unreachable",
             ));
         }
         if limit != 1 && self.oversized_reads.load(Ordering::SeqCst) {

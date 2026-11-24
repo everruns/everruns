@@ -641,6 +641,33 @@ async fn failures_that_outlast_the_retries_still_reach_the_poison_guard() {
     fixture.assert_idle();
 }
 
+// An unreachable event store outlasting the retries and the poison window
+// (three leases' worth of failures here) is waited out on one lease: the turn
+// is not sealed, and runs once the store is back.
+#[tokio::test]
+async fn an_event_store_outage_longer_than_the_poison_window_does_not_seal_the_turn() {
+    let mut fixture = Fixture::new(model("Done.", vec![])).await;
+    // As in `failures_that_outlast_the_retries_still_reach_the_poison_guard`:
+    // four failures would seal a turn failing any other retryable way.
+    fixture.poison_attempts = 1;
+    fixture.control_plane_retries = 1;
+    let (worker, _) = fixture.worker("w1");
+    fixture.send("Hello.").await;
+    fixture.store.backend_down_for(8);
+
+    assert_eq!(
+        run_until_idle(&worker).await,
+        1,
+        "one lease waits the outage out"
+    );
+    let types = fixture.types().await;
+    assert_eq!(fixture.count("turn.sealed").await, 0, "{types:?}");
+    assert_eq!(fixture.count("turn.completed").await, 1, "{types:?}");
+    assert_eq!(fixture.answers().await, vec!["Done."]);
+    fixture.assert_idle();
+    assert_eq!(fixture.store.row(fixture.session_id).attempts, 0);
+}
+
 #[tokio::test]
 async fn two_workers_never_run_one_session_at_once() {
     let fixture = Fixture::new(model("Ok.", vec![vec![call("c1", "read_inbox")]])).await;

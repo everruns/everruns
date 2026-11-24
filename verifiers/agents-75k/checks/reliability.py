@@ -67,7 +67,7 @@ def density(res):
     return min(held.values()) if held else 0
 
 
-def proof(point, script, args, what, minutes, seed=True):
+def proof(point, script, args, what, minutes, seed=True, also=()):
     def run(ctx):
         full = [*args, "--seed-per-shard", density_sessions(ctx)] if seed else list(args)
         text, cmd = harness(ctx, script, full, point.lower() + "-" + script.removesuffix(".py"))
@@ -84,6 +84,12 @@ def proof(point, script, args, what, minutes, seed=True):
             out.notes.append(f"{point} skipped: {res['skipped']}")
             return out
         out = leader_failover(res) if point == "R1" else adapt(point, res, what)
+        if point == "U11" and "accepted_not_completed" in res:
+            # An input the shard accepted during the outage that never ran is
+            # an accepted message not handled: A1, not only U11.
+            missing = res["accepted_not_completed"]
+            out.add("A1", "L2", missing == 0 and bool(res.get("ok")),
+                    note=f"store outage: {missing} accepted inputs never completed a turn")
         out.density = density(res)
         for e in out.entries:
             e["evidence"] = cmd
@@ -91,7 +97,7 @@ def proof(point, script, args, what, minutes, seed=True):
         return out
     command = "scripts/agentd/" + " ".join([script, *map(str, args)])
     return Check(script.removesuffix(".py").replace("_", "-") + ("-executors" if "--executor-kills" in args else ""),
-                 "L2", [point], minutes=minutes, needs=("cargo",), run=run, command=command)
+                 "L2", [point, *also], minutes=minutes, needs=("cargo",), run=run, command=command)
 
 
 CHECKS = [
@@ -107,7 +113,8 @@ CHECKS = [
     proof("R9", "soak.py", ["--minutes", 60, "--rate", 20, "--think", 20, "--turns", 5, "--kill-every", 300],
           "an hour of production-shaped load with a node killed every 5 minutes", 70),
     proof("U11", "prove_store_outage.py", ["--sessions", 1000, "--outage", 600],
-          "object store down for 10 minutes, then the shard lost and rebuilt from the store", 20),
+          "object store down for 10 minutes, then the shard lost and rebuilt from the store", 20,
+          also=("A1",)),
     proof("U12", "prove_disk_full.py", ["--node", "leader"],
           "the leader's disk filled under load: it fenced itself, the shard carried on", 15),
 ]
