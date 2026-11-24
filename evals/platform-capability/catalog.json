@@ -13923,7 +13923,7 @@
           ]
         },
         "state": {
-          "description": "Comma-separated states: `running`, `paused`, `lost`, `starting`,\n`failed`, `not_started`, `deleted`, or `live` for the first five.",
+          "description": "Comma-separated states: `running`, `paused`, `recoverable`, `lost`,\n`starting`, `failed`, `not_started`, `deleted`, or `live` for\nrunning, paused and starting instances.",
           "type": [
             "string",
             "null"
@@ -14084,7 +14084,7 @@
           ]
         },
         "state": {
-          "description": "Comma-separated states: `running`, `paused`, `lost`, `starting`,\n`failed`, `not_started`, `deleted`, or `live` for the first five.",
+          "description": "Comma-separated states: `running`, `paused`, `recoverable`, `lost`,\n`starting`, `failed`, `not_started`, `deleted`, or `live` for\nrunning, paused and starting instances.",
           "type": [
             "string",
             "null"
@@ -18149,7 +18149,7 @@
           ]
         },
         "state": {
-          "description": "Comma-separated states: `running`, `paused`, `lost`, `starting`,\n`failed`, `not_started`, `deleted`, or `live` for the first five.",
+          "description": "Comma-separated states: `running`, `paused`, `recoverable`, `lost`,\n`starting`, `failed`, `not_started`, `deleted`, or `live` for\nrunning, paused and starting instances.",
           "type": [
             "string",
             "null"

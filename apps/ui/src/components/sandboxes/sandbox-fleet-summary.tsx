@@ -100,10 +100,7 @@ export function SandboxFleetSummary({
         label={ui("Live now")}
         value={String(live)}
         active={state === "live" && !needsAttention}
-        onClick={() => {
-          onNeedsAttention(false);
-          onState("live");
-        }}
+        onClick={() => onState("live")}
         hint={`${running} running, ${paused} paused`}
       >
         {live > 0 ? (
@@ -145,10 +142,7 @@ export function SandboxFleetSummary({
         value={String(stats?.needs_attention ?? 0)}
         tone="attention"
         active={needsAttention}
-        onClick={() => {
-          onNeedsAttention(!needsAttention);
-          onState("all");
-        }}
+        onClick={() => onNeedsAttention(!needsAttention)}
         hint="Lost, failed, idle or stuck in cleanup"
       />
       <div
@@ -160,10 +154,7 @@ export function SandboxFleetSummary({
           label={ui("All")}
           count={stats?.by_state.reduce((sum, entry) => sum + entry.count, 0)}
           active={state === "all" && !needsAttention}
-          onClick={() => {
-            onNeedsAttention(false);
-            onState("all");
-          }}
+          onClick={() => onState("all")}
         />
         {SANDBOX_STATE_ORDER.map((s) => (
           <StateChip
@@ -172,10 +163,7 @@ export function SandboxFleetSummary({
             tone={sandboxStateTone(s)}
             count={countOf(stats, s)}
             active={state === s && !needsAttention}
-            onClick={() => {
-              onNeedsAttention(false);
-              onState(s);
-            }}
+            onClick={() => onState(s)}
           />
         ))}
       </div>

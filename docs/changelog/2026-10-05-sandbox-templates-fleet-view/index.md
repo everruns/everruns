@@ -39,3 +39,5 @@ Provider status refreshes automatically, with a five-minute cooldown.
 Idle sessions with a saved workspace checkpoint show as **Recoverable** when
 their provider instance is gone. They stay outside **Live now** and **Needs
 attention**; active-session losses and unavailable recovery still need attention.
+
+The attention filter keeps its selection.
