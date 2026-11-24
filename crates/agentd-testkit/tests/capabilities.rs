@@ -73,6 +73,9 @@ fn deployment_flags() {
 /// The smallest valid config of a capability that has required settings.
 fn config_for(id: &str) -> Option<Value> {
     Some(match id {
+        "completion_requirements" => json!({
+            "checks": [{ "type": "final_json", "schema": {} }]
+        }),
         "dreaming" => json!({
             "destinations": [{ "mount": "/memory/user", "path": "/notes.md" }]
         }),
