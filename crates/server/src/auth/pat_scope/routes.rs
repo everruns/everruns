@@ -1446,5 +1446,7 @@ pub const REVIEWED_NON_GET_READ: &[(&str, &str)] = &[
 
 /// Path prefixes that are `Never` unless a row above says otherwise: the auth
 /// surface (login, registration, refresh, recovery, OAuth, CLI login and
-/// personal access token management). `GET /v1/auth/me` is the one `Read` row.
-pub const NEVER_PREFIXES: &[&str] = &["/v1/platform/auth/"];
+/// personal access token management). `GET /v1/platform/auth/me` is the one `Read` row.
+// Published identity callbacks retain their original prefix. Neither auth
+// namespace may become available to scoped tokens.
+pub const NEVER_PREFIXES: &[&str] = &["/v1/platform/auth/", "/v1/auth/"];

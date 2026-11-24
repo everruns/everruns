@@ -124,11 +124,11 @@ fn registration_paths_survive_a_proxy_prefix() {
     );
     assert_eq!(
         relative_path("/v1/auth/callback/google", REGISTER_PATH),
-        "../dbsc/start"
+        "../../platform/auth/dbsc/start"
     );
     assert_eq!(
         relative_path("/v1/auth/oidc/callback", REGISTER_PATH),
-        "../dbsc/start"
+        "../../platform/auth/dbsc/start"
     );
     assert_eq!(relative_path(REGISTER_PATH, REFRESH_PATH), "refresh");
     assert_eq!(
