@@ -148,6 +148,72 @@ def fetch(run_id, dest):
     return dest
 
 
+AGENTD_IMAGE = re.compile(r"ghcr\.io/everruns/agentd@(sha256:[0-9a-f]{64})")
+MANIFEST_TYPES = ", ".join([
+    "application/vnd.oci.image.index.v1+json", "application/vnd.oci.image.manifest.v1+json",
+    "application/vnd.docker.distribution.manifest.list.v2+json",
+    "application/vnd.docker.distribution.manifest.v2+json"])
+
+
+def run_image(path):
+    """The agentd image digest a run deployed, from its pods.json."""
+    f = os.path.join(path, "pods.json")
+    if not os.path.exists(f):
+        return None
+    with open(f) as fh:
+        found = AGENTD_IMAGE.findall(fh.read())
+    return found[0] if found else None
+
+
+def image_commit(digest, get=None):
+    """The everruns commit an agentd image was built from: its
+    org.opencontainers.image.revision label (agentd-image.yml sets it).
+
+    Decision: read anonymously from ghcr.io, where the agentd images are
+    public, so an import needs no registry credentials and the commit comes
+    from the image itself rather than from whoever imports the run.
+    """
+    import urllib.request
+
+    def fetch(url, token=None, accept=None):
+        req = urllib.request.Request(url)
+        if token:
+            req.add_header("Authorization", f"Bearer {token}")
+        if accept:
+            req.add_header("Accept", accept)
+        with urllib.request.urlopen(req, timeout=30) as r:
+            return json.load(r)
+
+    get = get or fetch
+    base = "https://ghcr.io/v2/everruns/agentd"
+    token = get("https://ghcr.io/token?scope=repository:everruns/agentd:pull")["token"]
+    m = get(f"{base}/manifests/{digest}", token, MANIFEST_TYPES)
+    if m.get("manifests"):  # an index: the linux/amd64 image, else the first
+        pick = next((x for x in m["manifests"] if (x.get("platform") or {}).get("architecture") == "amd64"),
+                    m["manifests"][0])
+        m = get(f"{base}/manifests/{pick['digest']}", token, MANIFEST_TYPES)
+    config = get(f"{base}/blobs/{m['config']['digest']}", token)
+    return ((config.get("config") or {}).get("Labels") or {}).get("org.opencontainers.image.revision")
+
+
+def gate_runs(after=0):
+    """Finished saas dataplane-load runs newer than run id `after`, oldest
+    first. Cancelled runs are not gate attempts and are left out."""
+    r = subprocess.run(["gh", "api", "repos/everruns/saas/actions/workflows/dataplane-load.yml/runs?status=completed&per_page=50"],
+                       capture_output=True, text=True, check=True)
+    runs = json.loads(r.stdout)["workflow_runs"]
+    keep = [x["id"] for x in runs if x["id"] > after and x.get("conclusion") in ("success", "failure")]
+    return sorted(keep)
+
+
+def is_gate(run, goal_agents):
+    """A run at the gate's size: its sessions peaked at 90% of the goal or
+    more. A smaller run (a probe, a slice) is not a gate attempt, so it
+    neither extends nor breaks the streak."""
+    s = run.get("summary") or {}
+    return (s.get("peak_sessions") or s.get("sessions") or 0) >= 0.9 * goal_agents
+
+
 def dispatch_inputs(cfg, agents):
     lay, g = cfg.layout, cfg.goal
     shards = math.ceil(agents / g["density"]["sessions_per_shard"])
