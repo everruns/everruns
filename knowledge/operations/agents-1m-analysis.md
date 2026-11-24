@@ -1,7 +1,7 @@
 ---
 type: Investigation
 title: agents-1m analysis
-description: Evidence behind the 1M agents validator - what 1M means, the 75k backtest, the coding-session analysis and the first baseline.
+description: Evidence behind the 1M agents verifier - what 1M means, the 75k backtest, the coding-session analysis and the first baseline.
 tags:
   - operations
   - load-testing
@@ -10,9 +10,9 @@ tags:
 
 # agents-1m analysis
 
-Research and first results behind the [1M agents validator](validators.md)
-([`validators/agents-1m`](../../validators/agents-1m/README.md)). The design
-page says how the validator works; this page records why its numbers are what
+Research and first results behind the [1M agents verifier](verifiers.md)
+([`verifiers/agents-1m`](../../verifiers/agents-1m/README.md)). The design
+page says how the verifier works; this page records why its numbers are what
 they are, and what the first runs found.
 
 ## What "1M agents" means
@@ -61,7 +61,7 @@ there, because the drivers ran without a CPU limit.
 `workload/capture.py` reads Claude Code session records and keeps numbers
 only (durations, token counts, tool-call counts and kinds), never content.
 The first profile is thin: 2 sessions and 15 turns, this project's
-validator session and a bashkit issue session. What it shows already:
+verifier session and a bashkit issue session. What it shows already:
 
 - A coding turn makes a median of 5 model calls (p90 about 22), against 3 for
   the general mix.

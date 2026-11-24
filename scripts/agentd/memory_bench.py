@@ -199,7 +199,7 @@ def main():
     p.add_argument("--think", type=float, default=0.5, help="mean pause between a session's turns, seconds")
     p.add_argument("--record", action="store_true", help="write the result as the baseline")
     p.add_argument("--no-baseline", action="store_true",
-                   help="print the result without comparing it (another load, e.g. the 1M validator's)")
+                   help="print the result without comparing it (another load, e.g. the 1M verifier's)")
     p.add_argument("--keep", action="store_true", help="leave the fleet running")
     a = p.parse_args()
     try:

@@ -69,9 +69,9 @@ test:
 test-shell:
     ./scripts/run-shell-tests.sh
 
-# Run a validator, e.g. `just validate agents-1m --plan` (validators/<name>/validate).
-validate name *args:
-    validators/{{name}}/validate {{args}}
+# Run a verifier, e.g. `just verify agents-1m --plan` (verifiers/<name>/verify).
+verify name *args:
+    verifiers/{{name}}/verify {{args}}
 
 # Validate the canonical knowledge/ OKF v0.2 bundle. The upstream linter is
 # optional locally and pinned in CI; install it with `just install-okf-lint`.
