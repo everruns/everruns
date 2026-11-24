@@ -35,6 +35,7 @@ def main():
     p.add_argument("--moves", type=int, default=0)
     p.add_argument("--executors", type=int, default=0)
     p.add_argument("--executor-kills", type=int, default=0)
+    p.add_argument("--seed-per-shard", type=int, default=0, help="sessions each shard holds before the fault (the verifier: goal density)")
     a = p.parse_args()
 
     subprocess.run([sys.executable, os.path.join(ROOT, "scripts/agentd/fleet.py"), "down"])
@@ -45,6 +46,7 @@ def main():
     os.environ["AGENTD_LEDGER"] = ledger
     os.environ["AGENTD_WORK_MS"] = a.work_ms
     fleet.up(a.shards, 3, 7100, a.executors)
+    seeded = fleet.seed(a.seed_per_shard)
     time.sleep(1)
 
     gateways = ",".join(f"http://{fleet.addr(c, n)}" for c in range(a.shards) for n in (1, 2, 3))
@@ -149,6 +151,7 @@ def main():
     load_report = json.load(open(load_out))
     check_report = json.loads(check.stdout) if check.stdout.strip() else {"ok": False, "stderr": check.stderr}
     summary = {
+        "sessions_per_shard": seeded,
         "kills": len(kills),
         "leader_kills": sum(1 for k in kills if k["leader"]),
         "executor_kills": len(executor_kills),

@@ -64,6 +64,7 @@ def main():
     p.add_argument("--scale", default="1", help="AGENTD_TOOL_SCALE (1 = real tool durations)")
     p.add_argument("--memory-mb", default="128", help="memory budget per node")
     p.add_argument("--kill-every", type=float, default=0, help="seconds between kills (0: none)")
+    p.add_argument("--seed-per-shard", type=int, default=0, help="sessions each shard holds before the fault (the verifier: goal density)")
     a = p.parse_args()
 
     subprocess.run([sys.executable, os.path.join(ROOT, "scripts/agentd/fleet.py"), "down"])
@@ -74,6 +75,7 @@ def main():
     os.environ.update({"AGENTD_LEDGER": ledger, "AGENTD_TOOL_SCALE": a.scale,
                        "AGENTD_MEMORY_BUDGET_MB": a.memory_mb})
     fleet.up(a.shards, 3, 7100)
+    seeded = fleet.seed(a.seed_per_shard)
     time.sleep(1)
 
     gateways = ",".join(f"http://{fleet.addr(c, n)}" for c in range(a.shards) for n in (1, 2, 3))
@@ -132,6 +134,7 @@ def main():
     peak = lambda key: max((sum((s or {}).get(key) or 0 for s in r["shards"].values()) for r in timeline), default=0)  # noqa: E731
     rss = [v for r in timeline for v in r["rss_mb"].values() if v]
     summary = {
+        "sessions_per_shard": seeded,
         "minutes": a.minutes, "rate": a.rate, "turns_per_session": a.turns, "think_secs": a.think,
         "tool_scale": a.scale, "shards": a.shards,
         "sessions": report["sessions"], "turns": report["turns_completed"], "errors": report["errors"],

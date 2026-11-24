@@ -54,6 +54,7 @@ def main():
     p.add_argument("--down", type=int, default=90)
     p.add_argument("--turns", type=int, default=10)
     p.add_argument("--think", type=float, default=10)
+    p.add_argument("--seed-per-shard", type=int, default=0, help="sessions each shard holds before the fault (the verifier: goal density)")
     a = p.parse_args()
 
     subprocess.run([sys.executable, os.path.join(ROOT, "scripts/agentd/fleet.py"), "down"])
@@ -62,6 +63,7 @@ def main():
     os.environ["AGENTD_NODE_ARGS"] = "--snapshot-every 2000 --keep-log 256"
     os.environ.setdefault("AGENTD_MEMORY_BUDGET_MB", "3000")
     fleet.up(1, 3, 7100, 2)
+    seeded = fleet.seed(a.seed_per_shard)
     time.sleep(2)
     leader = fleet.leader(0)
     follower = next(n for n in (1, 2, 3) if n != leader)
@@ -106,6 +108,7 @@ def main():
     lead_applied = metric(leader, "agentd_shard_raft_applied_index") or 0
     follower_applied = metric(follower, "agentd_shard_raft_applied_index") or 0
     result = {
+        "sessions_per_shard": seeded,
         "sessions": report.get("sessions"),
         "turns_completed": report.get("turns_completed"),
         "errors": report.get("errors"),

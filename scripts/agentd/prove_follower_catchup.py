@@ -55,6 +55,7 @@ def applied(node):
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--sessions", type=int, default=42000)
+    p.add_argument("--seed-per-shard", type=int, default=0, help="sessions each shard holds before the fault (the verifier: goal density)")
     a = p.parse_args()
 
     subprocess.run([sys.executable, os.path.join(ROOT, "scripts/agentd/fleet.py"), "down"])
@@ -63,6 +64,7 @@ def main():
     os.environ["AGENTD_NODE_ARGS"] = "--snapshot-every 500 --keep-log 200"
     os.environ.setdefault("AGENTD_WORK_MS", "20")
     fleet.up(1, 3, 7100)
+    seeded = fleet.seed(a.seed_per_shard)
     time.sleep(1)
 
     leader = fleet.leader(0)
@@ -111,6 +113,7 @@ def main():
 
     stats = {n: fleet.stats(0, n) for n in (leader, lagging) if applied(n) is not None}
     result = {
+        "sessions_per_shard": seeded or {"0": a.sessions},
         "sessions": a.sessions,
         "entries_behind": behind,
         "caught_up_secs": caught_up,
