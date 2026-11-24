@@ -31,6 +31,9 @@ pub const PERMANENT_SLACK_ERRORS: &[&str] = &[
     "invalid_blocks",
     "unknown_method",
     "channel_type_not_supported",
+    // Channelkit's definite refusal of the one-time file-upload URL. Retrying
+    // the entire upload flow cannot repair that rejected transfer.
+    "file_upload_failed",
 ];
 
 /// Slack error codes that describe the workspace's own install, not a fault
@@ -297,6 +300,7 @@ mod tests {
             "missing_scope",
             "no_permission",
             "invalid_arguments",
+            "file_upload_failed",
         ] {
             let error = SlackApiError::from_code(code, None);
             assert!(

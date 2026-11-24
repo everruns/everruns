@@ -418,10 +418,15 @@ async fn bots_and_other_workspaces_start_nothing() {
     elsewhere["team_id"] = json!("T_OTHER");
     let mut join = message("C1", "3.0", None);
     join["event"]["subtype"] = json!("channel_join");
-    for body in [bot, elsewhere, join] {
+    for body in [bot, join] {
         let response = slack.send(body).await.unwrap();
         assert!(response.body.get("session_id").is_none());
     }
+    // A valid app signature cannot authorize another workspace's installation.
+    assert!(matches!(
+        slack.send(elsewhere).await,
+        Err(ChannelError::Unauthorized(_))
+    ));
     assert_eq!(slack.bindings().await, 0);
     assert!(slack.runner.started.lock().unwrap().is_empty());
 }

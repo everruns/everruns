@@ -1205,7 +1205,8 @@ mod tests {
             Mock::given(method("POST"))
                 .and(path("/chat.postMessage"))
                 .respond_with(
-                    ResponseTemplate::new(200).set_body_json(serde_json::json!({"ok": true})),
+                    ResponseTemplate::new(200)
+                        .set_body_json(serde_json::json!({"ok": true, "ts": "1.2"})),
                 )
                 .mount(&mock_server)
                 .await;

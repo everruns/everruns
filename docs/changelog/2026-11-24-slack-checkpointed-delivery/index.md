@@ -28,7 +28,9 @@ Memory, SQLite and PostgreSQL stores do. Host egress governs provider requests a
 file downloads. Channel-wide and user-group notifications are neutralized in agent
 output.
 
-**For operators**, drain and stop old delivery hosts before cutover, reconcile
-legacy pending rows, and use a checkpoint-aware build for rollback. See
+**For operators**, first deploy the protocol-aware compatibility baseline to every
+delivery host and drain older owners, then roll out the Channelkit adapter.
+Reconcile legacy pending rows and keep that compatibility baseline as the rollback
+floor. See
 [Slack services](/framework/slack-services/) and the
 [delivery cutover runbook](/sre/runbooks/channel-delivery-cutover/).
