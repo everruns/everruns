@@ -29,9 +29,9 @@ Channelkit Rust `0.1.0-alpha.1` public API and the upstream development checkout
 New upstream APIs must be merged and available in a qualified dependency revision
 before adoption; an alpha API inventory is not production integration evidence.
 The library prerequisites are implemented on Channelkit main at
-[`c5e4903`](https://github.com/everruns/channelkit/commit/c5e4903aefcad0fefa4e3a763196dc58426a4848),
+[`1367eeb`](https://github.com/everruns/channelkit/commit/1367eebb1b48219b7ce4d66e505130ff6dbe3b9a),
 with passing branch quality, live API and native-package checks. The owning
-[adoption contract](https://github.com/everruns/channelkit/blob/c5e4903aefcad0fefa4e3a763196dc58426a4848/knowledge/operations/everruns-adoption.md)
+[adoption contract](https://github.com/everruns/channelkit/blob/1367eebb1b48219b7ce4d66e505130ff6dbe3b9a/knowledge/operations/everruns-adoption.md)
 records the provider work and evidence limits. This is a qualified source revision,
 not a claim that the existing registry alpha contains the new APIs. The next Everruns
 implementation steps are delivery outcomes/checkpoints and the integrations bridge.
