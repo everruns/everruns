@@ -17,13 +17,21 @@ from .local import harness, last_json
 def verdict(res):
     """ok from a proof's result: its own ok, a nested check's ok, no errors."""
     ok = res.get("ok")
+    if ok is None and "check" not in res:
+        # Proofs that check in phases report each (prove_topology.py: check_a, check_b).
+        phases = [v for k, v in res.items() if k.startswith("check_") and isinstance(v, dict)]
+        if phases:
+            ok = all(v.get("ok") for v in phases)
     if ok is None:
         check = res.get("check")
         if isinstance(check, dict) and "ok" in check:
             ok = check["ok"]
         elif isinstance(check, dict):
             ok = all((c or {}).get("ok") for c in check.values()) if check else False
-    errors = res.get("errors", res.get("load_errors")) or 0
+    errors = res.get("errors", res.get("load_errors"))
+    if errors is None:
+        errors = sum((v.get("errors") or 0) for k, v in res.items() if k.startswith("load_") and isinstance(v, dict))
+    errors = errors or 0
     return bool(ok) and errors == 0, errors
 
 

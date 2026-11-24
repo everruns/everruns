@@ -9,6 +9,10 @@
 # scales:    per_shard points count from any run at goal density; shared points
 #            only from a run of the goal's (or milestone's) full size, or at
 #            the levels below L3, from a check aimed at full-size traffic.
+#            None: a fault proof (R, U11-U13) that checks behaviour, not a
+#            size, so it counts at any size: whether a shard survives a killed
+#            leader or a store outage does not depend on how many sessions it
+#            holds (the drill's timings U7-U10 do, and stay per_shard).
 # gate:      a failing newest result caps the score at 25.
 # validity:  decides whether a run counts (D7 also carries weight).
 # watches:   code the evidence depends on; a change since halves freshness.
@@ -426,7 +430,6 @@ title = "Leader killed mid model call: turn completes, the call is not repeated"
 weight = 3
 direction = "pass"
 cheapest = "L2"
-scales = "per_shard"
 built_from = "scripts/agentd/prove_leader_failover.py"
 watches = ["crates/agentd/src/node.rs", "crates/agentd/src/executor.rs", "crates/agentd/src/sm.rs"]
 
@@ -436,7 +439,6 @@ title = "A follower left far behind heals from a snapshot"
 weight = 2
 direction = "pass"
 cheapest = "L2"
-scales = "per_shard"
 built_from = "scripts/agentd/prove_follower_catchup.py"
 watches = ["crates/agentd/src/catchup.rs", "crates/agentd/src/sm.rs"]
 
@@ -446,7 +448,6 @@ title = "A follower killed under load rejoins with 0 errors"
 weight = 2
 direction = "pass"
 cheapest = "L2"
-scales = "per_shard"
 built_from = "scripts/agentd/prove_rejoin_under_load.py"
 watches = ["crates/agentd/src/node.rs", "crates/agentd/src/catchup.rs"]
 
@@ -456,7 +457,6 @@ title = "Random kill -9 of nodes with live moves: every session finishes once"
 weight = 3
 direction = "pass"
 cheapest = "L2"
-scales = "per_shard"
 built_from = "scripts/agentd/chaos.py --kills 15 --moves 100"
 watches = ["crates/agentd/src/node.rs", "crates/agentd/src/moves.rs", "crates/agentd/src/sm.rs"]
 
@@ -466,7 +466,6 @@ title = "Executors killed again and again: turns finish on others"
 weight = 2
 direction = "pass"
 cheapest = "L2"
-scales = "per_shard"
 built_from = "scripts/agentd/chaos.py --executor-kills 10"
 watches = ["crates/agentd/src/executor.rs", "crates/agentd/src/dispatch.rs"]
 
@@ -506,7 +505,6 @@ title = "An hour of production-shaped load with a node killed every 5 minutes"
 weight = 3
 direction = "pass"
 cheapest = "L2"
-scales = "per_shard"
 built_from = "scripts/agentd/soak.py --minutes 60 --kill-every 300"
 watches = ["crates/agentd/src"]
 
@@ -638,7 +636,6 @@ title = "Object store down for 10 minutes: no acknowledged write lost, shipping 
 weight = 3
 direction = "pass"
 cheapest = "L2"
-scales = "per_shard"
 built_from = "scripts/agentd/prove_store_outage.py"
 watches = ["crates/agentd/src/ship.rs", "crates/agentd/src/store_throttle.rs"]
 
@@ -648,7 +645,6 @@ title = "Disk full on a shard node: it fences itself, the shard carries on"
 weight = 2
 direction = "pass"
 cheapest = "L2"
-scales = "per_shard"
 built_from = "disk full proof (new)"
 watches = ["crates/agentd/src/wal.rs", "crates/agentd/src/node.rs"]
 
@@ -658,6 +654,5 @@ title = "Memory at 98%: a controlled restart hands leadership over, no turn lost
 weight = 2
 direction = "pass"
 cheapest = "L2"
-scales = "per_shard"
 built_from = "shard_soak.py restarts (exit 75), when a soak restarts a node"
 watches = ["crates/agentd/src/memwatch.rs", "crates/agentd/src/pressure.rs"]
