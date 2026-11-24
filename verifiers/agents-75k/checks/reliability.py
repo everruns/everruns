@@ -81,4 +81,6 @@ CHECKS = [
     proof("R8", "prove_topology.py", [], "nodes and shards added and removed under load", 10),
     proof("R9", "soak.py", ["--minutes", 60, "--rate", 20, "--think", 20, "--turns", 5, "--kill-every", 300],
           "an hour of production-shaped load with a node killed every 5 minutes", 70),
+    proof("U11", "prove_store_outage.py", ["--sessions", 1000, "--outage", 600],
+          "object store down for 10 minutes, then the shard lost and rebuilt from the store", 20),
 ]
