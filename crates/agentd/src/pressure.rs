@@ -38,6 +38,20 @@
 //! Kubernetes starts it again from its disk. Decision: only while every
 //! peer answers, so a restart never takes the shard's second node down
 //! with the first; a node whose peer is already gone waits for it instead.
+//!
+//! Decision: the restart is exclusive across the shard's replicas, not only
+//! within a process. All of a shard's nodes hold the same sessions, so they
+//! tend to run hot together, and each answering "every peer is up" in the
+//! same second would restart them all (codex review, 2026-11-24). A node
+//! whose restart is due first announces it in its reading (`pending`) and
+//! waits [`ANNOUNCE`], longer than two rounds of asking plus a read's
+//! timeout, so every peer has seen it. It restarts only if every peer still
+//! answers and none is restarting, catching up after a restart, or pending
+//! with a lower node id. Of nodes due together the lowest id goes; the
+//! others wait until it is back and caught up. Not a Raft-committed grant:
+//! that would add a command older replicas cannot apply mid-upgrade, and a
+//! restart already needs every peer answering, which is stricter than a
+//! quorum. A peer that predates these fields never blocks.
 //! A restart frees what a kill frees, without a kill's torn writes, and
 //! shows as its own count (`agentd_memory_actions_total{action="restart"}`)
 //! rather than as an out-of-memory kill. Only the `node` binary exits
@@ -92,6 +106,9 @@ const EMERG_CLEAR: u64 = 920;
 const RESTART_AT: u64 = 980;
 /// How long a node's own reading may stay at Emergency before it restarts.
 pub const EMERGENCY_FOR: Duration = Duration::from_secs(30);
+/// How long a due restart is announced before it happens: two rounds of
+/// asking peers (1 s each) plus a read's timeout, so every peer has read it.
+pub const ANNOUNCE: Duration = Duration::from_secs(3);
 
 /// Set by the `node` binary: a node that wants a restart may exit.
 static RESTART_ENABLED: AtomicBool = AtomicBool::new(false);
@@ -157,10 +174,19 @@ impl Level {
 }
 
 /// One node's reading, as `/shard/pressure` answers it.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
 pub struct Reading {
     pub rss: u64,
     pub limit: u64,
+    /// A restart is due here and announced (module notes).
+    #[serde(default)]
+    pub pending: bool,
+    /// This node is restarting itself.
+    #[serde(default)]
+    pub restarting: bool,
+    /// This node is catching up (after a restart, say).
+    #[serde(default)]
+    pub behind: bool,
 }
 
 impl Reading {
@@ -192,6 +218,12 @@ pub struct Pressure {
     hot_since: Mutex<Option<Instant>>,
     /// This node asked to restart itself.
     restarting: AtomicBool,
+    /// Since when this node's restart has been due and announced.
+    pending_since: Mutex<Option<Instant>>,
+    /// This node is catching up (`catchup`), as its reading tells peers.
+    behind: AtomicBool,
+    /// Each peer's restart flags from its last reading, and when.
+    peer_flags: Mutex<BTreeMap<NodeId, (Reading, Instant)>>,
     /// What memory made the node do, by `action`.
     pub actions: crate::prom::Counters,
 }
@@ -209,6 +241,9 @@ impl Pressure {
             shed_inputs: AtomicU64::new(0),
             hot_since: Mutex::new(None),
             restarting: AtomicBool::new(false),
+            pending_since: Mutex::new(None),
+            behind: AtomicBool::new(false),
+            peer_flags: Mutex::default(),
             actions: crate::prom::Counters::default(),
         }
     }
@@ -217,7 +252,15 @@ impl Pressure {
         Reading {
             rss: self.own.load(Ordering::Relaxed),
             limit: self.limit,
+            pending: self.pending_since.lock().is_some(),
+            restarting: self.restarting.load(Ordering::Relaxed),
+            behind: self.behind.load(Ordering::Relaxed),
         }
+    }
+
+    /// Whether this node is catching up, for its reading.
+    pub fn set_behind(&self, behind: bool) {
+        self.behind.store(behind, Ordering::Relaxed);
     }
 
     /// Record this node's memory in use and recompute the shard's level.
@@ -227,6 +270,9 @@ impl Pressure {
     }
 
     pub fn record_peer(&self, node: NodeId, reading: Reading) -> Level {
+        self.peer_flags
+            .lock()
+            .insert(node, (reading, Instant::now()));
         self.peers
             .lock()
             .insert(node, (reading.permille(), Instant::now()));
@@ -254,14 +300,16 @@ impl Pressure {
         level
     }
 
-    /// Whether this node should restart itself now (level 4), from its own
-    /// reading: at [`RESTART_AT`], or at Emergency for [`EMERGENCY_FOR`];
-    /// and only while every peer answers (`peers_answer`). Once.
-    pub fn restart_due(&self, peers_answer: bool) -> bool {
-        self.restart_due_at(peers_answer, Instant::now())
+    /// Whether this node (`me`) should restart itself now (level 4), from
+    /// its own reading: at [`RESTART_AT`], or at Emergency for
+    /// [`EMERGENCY_FOR`]; announced for [`ANNOUNCE`] first, and only while
+    /// every peer answers (`peers_answer`) and none holds the restart
+    /// (module notes). Once.
+    pub fn restart_due(&self, peers_answer: bool, me: NodeId) -> bool {
+        self.restart_due_at(peers_answer, me, Instant::now())
     }
 
-    fn restart_due_at(&self, peers_answer: bool, now: Instant) -> bool {
+    fn restart_due_at(&self, peers_answer: bool, me: NodeId, now: Instant) -> bool {
         let own = self.own().permille();
         let hot = {
             let mut since = self.hot_since.lock();
@@ -273,7 +321,28 @@ impl Pressure {
             *since
         };
         let due = own >= RESTART_AT || hot.is_some_and(|t| now.duration_since(t) >= EMERGENCY_FOR);
-        due && peers_answer && !self.restarting.swap(true, Ordering::Relaxed)
+        let since = {
+            let mut pending = self.pending_since.lock();
+            if !due {
+                *pending = None;
+                return false;
+            }
+            *pending.get_or_insert(now)
+        };
+        if !peers_answer || now.duration_since(since) < ANNOUNCE || self.peer_holds_restart(me, now)
+        {
+            return false;
+        }
+        !self.restarting.swap(true, Ordering::Relaxed)
+    }
+
+    /// A fresh peer reading that rules this node's restart out: the peer is
+    /// restarting, catching up, or announced a restart with a lower id.
+    fn peer_holds_restart(&self, me: NodeId, now: Instant) -> bool {
+        self.peer_flags.lock().iter().any(|(id, (r, at))| {
+            now.saturating_duration_since(*at) < PEER_STALE
+                && (r.restarting || r.behind || (r.pending && *id < me))
+        })
     }
 
     pub fn restarting(&self) -> bool {
@@ -408,6 +477,7 @@ impl Node {
         let mut was_stalled = false;
         loop {
             tick.tick().await;
+            self.pressure.set_behind(self.catchup.behind());
             self.pressure
                 .record_own(crate::memwatch::reading(self.cfg.memory_limit).0);
             let stalled = {
@@ -454,7 +524,10 @@ impl Node {
                 answered += 1;
                 level = self.pressure.record_peer(id, reading);
             }
-            if self.pressure.restart_due(answered == asked) {
+            if self
+                .pressure
+                .restart_due(answered == asked, self.cfg.node_id)
+            {
                 self.restart_for_memory().await;
             }
             if level != was {
@@ -653,20 +726,86 @@ mod tests {
         let t0 = Instant::now();
         let at = |secs| t0 + Duration::from_secs(secs);
         p.record_own(960);
-        assert!(!p.restart_due_at(true, at(0)));
-        assert!(!p.restart_due_at(true, at(29)));
+        assert!(!p.restart_due_at(true, 1, at(0)));
+        assert!(!p.restart_due_at(true, 1, at(29)));
         // A dip below Emergency's clear starts the clock over.
         p.record_own(900);
-        assert!(!p.restart_due_at(true, at(30)));
+        assert!(!p.restart_due_at(true, 1, at(30)));
         p.record_own(960);
-        assert!(!p.restart_due_at(true, at(31)));
-        assert!(!p.restart_due_at(false, at(61)), "not while a peer is gone");
-        assert!(p.restart_due_at(true, at(62)));
-        assert!(!p.restart_due_at(true, at(63)), "once");
+        assert!(!p.restart_due_at(true, 1, at(31)));
+        assert!(
+            !p.restart_due_at(false, 1, at(61)),
+            "due and announced, but not while a peer is gone"
+        );
+        assert!(p.own().pending, "the due restart is announced");
+        assert!(p.restart_due_at(true, 1, at(64)));
+        assert!(!p.restart_due_at(true, 1, at(65)), "once");
         let p = Pressure::new(1000);
         p.record_own(985);
-        assert!(p.restart_due_at(true, t0), "at 98% at once");
+        assert!(!p.restart_due_at(true, 1, t0), "at 98%, announced first");
+        assert!(p.restart_due_at(true, 1, t0 + ANNOUNCE), "then restarts");
         assert_eq!(p.actions.get(&[("action", "emergency")]), 1);
+    }
+
+    #[test]
+    fn replicas_hot_together_restart_one_at_a_time() {
+        // Three replicas of one shard at 98% in the same second, each asking
+        // the others every second: the review's race. Only the lowest id
+        // restarts; the others wait while it is down and catching up.
+        let nodes: Vec<(NodeId, Pressure)> = (1..=3).map(|id| (id, Pressure::new(1000))).collect();
+        let t0 = Instant::now();
+        let mut restarted = vec![];
+        for tick in 0..20u64 {
+            let now = t0 + Duration::from_secs(tick);
+            for (_, p) in &nodes {
+                p.record_own(990);
+            }
+            let readings: Vec<(NodeId, Reading)> =
+                nodes.iter().map(|(id, p)| (*id, p.own())).collect();
+            for (id, p) in &nodes {
+                for (peer, r) in &readings {
+                    if peer != id {
+                        p.peer_flags.lock().insert(*peer, (*r, now));
+                    }
+                }
+            }
+            for (id, p) in &nodes {
+                if p.restart_due_at(true, *id, now) {
+                    restarted.push((*id, tick));
+                }
+            }
+        }
+        assert_eq!(
+            restarted,
+            vec![(1, 3)],
+            "one replica, the lowest id, after the announcement"
+        );
+    }
+
+    #[test]
+    fn a_peer_catching_up_holds_the_restart() {
+        let p = Pressure::new(1000);
+        let t0 = Instant::now();
+        p.record_own(990);
+        let behind = Reading {
+            rss: 100,
+            limit: 1000,
+            behind: true,
+            ..Default::default()
+        };
+        p.peer_flags.lock().insert(2, (behind, t0));
+        assert!(!p.restart_due_at(true, 1, t0));
+        assert!(
+            !p.restart_due_at(true, 1, t0 + ANNOUNCE),
+            "a peer is catching up"
+        );
+        let caught_up = Reading {
+            rss: 100,
+            limit: 1000,
+            ..Default::default()
+        };
+        p.peer_flags.lock().insert(2, (caught_up, t0 + ANNOUNCE));
+        assert!(p.restart_due_at(true, 1, t0 + ANNOUNCE + Duration::from_secs(1)));
     }
 
     #[test]
@@ -678,7 +817,8 @@ mod tests {
                 2,
                 Reading {
                     rss: 900,
-                    limit: 1000
+                    limit: 1000,
+                    ..Default::default()
                 }
             ),
             Level::Full
@@ -690,7 +830,8 @@ mod tests {
                 3,
                 Reading {
                     rss: 930,
-                    limit: 1000
+                    limit: 1000,
+                    ..Default::default()
                 }
             ),
             Level::Shedding
