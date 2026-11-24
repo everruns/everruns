@@ -20,6 +20,18 @@ certainty = 0.50
 what = "Real processes on a local machine (the Mac mini): one shard at full density, and the fault proofs"
 paid = false
 
+# A shard soak below goal density counts for per-shard points only when its
+# Raft log reaches about the share of the memory limit the gate's did, so a
+# log-driven out-of-memory kill can show at that size (Mac mini, 2026-11-23:
+# 1/8 density at snapshot 60,000 put the log at 11-14% of the limit, the gate
+# at about 9%, and reproduced the gate's kills). It earns at most `certainty`,
+# scaled by how often a soak's verdict matched the next imported gate run's.
+[L2.scaled]
+certainty = 0.35
+log_share_tolerance = 0.6     # soak log share within gate share x (1 +/- this)
+gate_limit_mb = 14336         # the gate's shard container limit (dataplane-load cell_memory)
+gate_log_share = 0.09         # until an imported gate run carries samples: 1.3 GB of 14 GiB, run 45197793040
+
 [L4]
 name = "full"
 certainty = 1.00

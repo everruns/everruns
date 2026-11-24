@@ -143,6 +143,7 @@ class Freshness:
 
 def states(cfg, runs, fresh, size=None):
     size = size or cfg.default_size()
+    cfg.hooks.prepare(cfg, runs)
     out = {}
     for p in cfg.points:
         target = cfg.target(p, size)
@@ -157,7 +158,7 @@ def states(cfg, runs, fresh, size=None):
                     st.excluded.append((e["level"], run["run"], why))
                     continue
                 m = closeness(p, e, target)
-                c = cfg.certainty(e["level"])
+                c = min(cfg.certainty(e["level"]), cfg.hooks.certainty(cfg, run, p, e))
                 st.cells[e["level"]] = Cell(e["level"], e, run, m, c, fresh(p, run, e), target)
                 if p.gate:
                     newest_gate = (e, m)

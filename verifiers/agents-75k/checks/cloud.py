@@ -108,7 +108,8 @@ def import_run(run, run_id, level, goal_agents):
     kinds = restart_kinds(restarts)
     ooms = kinds["oom"] + kinds["crash"]
     out.add("A1", level, errors == 0, note=f"{errors:,} errors over {s.get('turns_completed', 0):,} turns", evidence=ev)
-    out.add("A4", level, ooms, note=(", ".join(f"{k} {v}" for k, v in restarts.items()) or "no restarts")
+    peak_log = max((n["log"] for r in rows for n in r["nodes"]), default=None)
+    out.add("A4", level, ooms, peak_log_mb=peak_log, note=(", ".join(f"{k} {v}" for k, v in restarts.items()) or "no restarts")
             + (f"; {kinds['controlled']} controlled restarts (exit 75) not counted" if kinds["controlled"] else ""), evidence=ev)
     out.add("E1", level, errors == 0 and bool(run["chaos"].strip()),
             note=(run["chaos"].strip().splitlines() or ["no chaos"])[0], evidence=ev)

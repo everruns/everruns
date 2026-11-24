@@ -52,6 +52,13 @@ class Hooks:
         """Why this entry earns nothing under the verifier's rules, or None."""
         return None
 
+    def prepare(self, cfg, runs):
+        """See every run before scoring (calibration that compares runs)."""
+
+    def certainty(self, cfg, run, point, entry):
+        """c for this entry; the engine caps it at its level's certainty."""
+        return cfg.certainty(entry["level"])
+
     def skip_validity(self, cfg, run, point):
         """True when a validity point does not apply to this run."""
         return False
