@@ -566,6 +566,33 @@ async fn redirect_posts_a_structured_message_to_the_coordinator() {
     )));
 }
 
+#[tokio::test]
+async fn list_threads_names_the_team_a_coordinator_can_hand_threads_to() {
+    // A coordinator supersedes agent_handoff, so its prompt never lists the
+    // team; list_threads is where the model finds the worker names.
+    let mut store = MockPlatformStore::new();
+    let member = AgentId::new();
+    store.session.agent_id = Some(store.agent.id);
+    store.agent.capabilities = vec![everruns_contracts::CapabilityRef::with_config(
+        "agent_handoff",
+        json!({"members": [{"id": "everruns-developer", "name": "Everruns Developer", "description": "Ships pull requests", "agent_id": member.to_string()}]}),
+    )];
+    let fixture = Fixture::with_store(store);
+    let result = run(
+        &ListThreadsTool,
+        json!({}),
+        &fixture.context(fixture.coordinator()),
+    )
+    .await;
+    let ToolExecutionResult::Success(value) = result else {
+        panic!("expected success, got {result:?}");
+    };
+    assert_eq!(
+        value["team"],
+        json!([{"worker": "everruns-developer", "name": "Everruns Developer", "description": "Ships pull requests"}])
+    );
+}
+
 #[test]
 fn a_coordinator_supersedes_agent_handoff_so_threads_are_the_only_handoff() {
     let capability = CoordinationCapability;

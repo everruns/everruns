@@ -451,7 +451,7 @@ fn narrate_coordination(
     Some(labeled_phrase(verbs.0, verbs.1, verbs.2, title, phase))
 }
 
-const COORDINATOR_SYSTEM_PROMPT: &str = "You coordinate work through threads. Answer quick questions yourself. For real work (research, a change, a report, anything multi-step) call start_thread with a short title and a complete brief (to run it on one of your team's agents, pass that agent's name as worker); the thread works in the background and you are told when it finishes, asks something, or stops. Once work is in a thread, do not do it yourself as well: tell the person in a sentence where it went, and give the result when the automatic update arrives. One thread per piece of work: a follow-up that extends, corrects or asks about existing work (\"also add the dates\", \"make it shorter\") goes to that thread with message_thread, even right after it finished; start a new thread only for new work, and check list_threads when unsure. Threads only talk to each other through you. Notices marked as automatic task updates come from the platform, not the person: relay what matters to the person in a sentence or two and link nothing you did not read. Never answer a thread's question on the person's behalf unless the person already told you the answer; when the answer is already in what the person asked for, say so to the thread. Resolve a thread with resolve_thread when the person is done with it.";
+const COORDINATOR_SYSTEM_PROMPT: &str = "You coordinate work through threads. Answer quick questions yourself. For real work (research, a change, a report, anything multi-step) call start_thread with a short title and a complete brief (to run it on one of your team's agents, pass that agent's name as worker; list_threads lists your team); the thread works in the background and you are told when it finishes, asks something, or stops. Once work is in a thread, do not do it yourself as well: tell the person in a sentence where it went, and give the result when the automatic update arrives. One thread per piece of work: a follow-up that extends, corrects or asks about existing work (\"also add the dates\", \"make it shorter\") goes to that thread with message_thread, even right after it finished; start a new thread only for new work, and check list_threads when unsure. Threads only talk to each other through you. Notices marked as automatic task updates come from the platform, not the person: relay what matters to the person in a sentence or two and link nothing you did not read. Never answer a thread's question on the person's behalf unless the person already told you the answer; when the answer is already in what the person asked for, say so to the thread. Resolve a thread with resolve_thread when the person is done with it.";
 
 // =============================================================================
 // Shared helpers
@@ -819,7 +819,7 @@ async fn start_thread(
             None => {
                 let agent_id = worker.parse().map_err(|_| {
                     ToolExecutionResult::tool_error(format!(
-                        "worker must be \"self\", a team member's name, or an agent id, got \"{worker}\""
+                        "worker must be \"self\", a team member's name, or an agent id, got \"{worker}\". list_threads lists your team."
                     ))
                 })?;
                 if !config.allows_agent(worker) {
@@ -896,33 +896,75 @@ async fn start_thread(
     })))
 }
 
-/// The agent id of `worker` when it names one of `agent`'s team members (its
-/// `agent_handoff` members) by name or agent id.
-fn team_member(agent: &everruns_core::AgentDefinition, worker: &str) -> Option<AgentId> {
+/// One of the coordinator agent's team members (its `agent_handoff` members).
+#[derive(Deserialize)]
+struct TeamMember {
+    #[serde(default)]
+    id: String,
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    description: Option<String>,
+    agent_id: AgentId,
+}
+
+/// `agent`'s team. Read from the agent definition, not from the turn's
+/// collected capabilities: a coordinator supersedes `agent_handoff`, which
+/// then contributes no prompt, so the team is surfaced through list_threads.
+fn team(agent: &everruns_core::AgentDefinition) -> Vec<TeamMember> {
     #[derive(Deserialize)]
     struct Team {
         #[serde(default, alias = "members")]
-        targets: Vec<Member>,
+        targets: Vec<TeamMember>,
     }
-    #[derive(Deserialize)]
-    struct Member {
-        #[serde(default)]
-        id: String,
-        #[serde(default)]
-        name: String,
-        agent_id: AgentId,
-    }
-    let capability = agent
+    agent
         .capabilities
         .iter()
-        .find(|capability| capability.id() == super::agent_handoff::AGENT_HANDOFF_CAPABILITY_ID)?;
-    let team: Team = serde_json::from_value(capability.config_value().clone()).ok()?;
-    team.targets
+        .find(|capability| capability.id() == super::agent_handoff::AGENT_HANDOFF_CAPABILITY_ID)
+        .and_then(|capability| {
+            serde_json::from_value::<Team>(capability.config_value().clone()).ok()
+        })
+        .map(|team| team.targets)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|mut member| {
+            if member.id.trim().is_empty() {
+                member.id = member.agent_id.to_string();
+            }
+            member
+        })
+        .collect()
+}
+
+/// The agent id of `worker` when it names one of `agent`'s team members by
+/// name or agent id.
+fn team_member(agent: &everruns_core::AgentDefinition, worker: &str) -> Option<AgentId> {
+    team(agent)
         .into_iter()
         .find(|member| {
             member.id == worker || member.name == worker || member.agent_id.to_string() == worker
         })
         .map(|member| member.agent_id)
+}
+
+/// The team of the agent this session runs, or none when it cannot be read.
+async fn session_team(context: &ToolContext) -> Vec<TeamMember> {
+    let (Some(store), Ok(delegate)) = (
+        context.session_store.as_ref(),
+        get_subagent_delegate(context),
+    ) else {
+        return Vec::new();
+    };
+    let Ok(Some(session)) = store.get_session(context.session_id).await else {
+        return Vec::new();
+    };
+    let Some(agent_id) = session.agent_id else {
+        return Vec::new();
+    };
+    match delegate.get_agent_by_id(agent_id).await {
+        Ok(Some(agent)) => team(&agent),
+        _ => Vec::new(),
+    }
 }
 
 struct MessageThreadTool;
@@ -1156,8 +1198,20 @@ impl Tool for ListThreadsTool {
             })
             .collect();
         rows.sort_by_key(|row| std::cmp::Reverse(row.0));
+        let team: Vec<Value> = session_team(context)
+            .await
+            .into_iter()
+            .map(|member| {
+                json!({
+                    "worker": member.id,
+                    "name": member.name,
+                    "description": member.description,
+                })
+            })
+            .collect();
         ToolExecutionResult::success(json!({
             "threads": rows.into_iter().map(|(_, row)| row).collect::<Vec<_>>(),
+            "team": team,
         }))
     }
 }

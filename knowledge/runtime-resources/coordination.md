@@ -38,7 +38,9 @@ decisions; this concept owns the contract.
   name or agent id, so a coordinator without a sandbox can hand coding work to
   the member built for it without a second list to keep in sync. A coordinator
   supersedes the Agents capability: it still names the team, but its
-  `spawn_agent` is withheld, so threads are the only way to hand off work. Either way the
+  `spawn_agent` is withheld, so threads are the only way to hand off work.
+  Because the Agents prompt is withheld too, `list_threads` returns the team
+  (worker name and description) and the coordinator prompt points there. Either way the
   thread runs on the worker agent's current harness, never the coordinator
   session's: a long-lived coordinator can predate a harness move (old Platform
   Chats stayed on `generic` after the agent moved to Bashkit Worker), and
