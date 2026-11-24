@@ -11,6 +11,9 @@ pub enum DeliveryOutcome {
     Succeeded,
     Transient,
     Permanent,
+    RateLimited,
+    Unknown,
+    Partial,
 }
 
 impl DeliveryOutcome {
@@ -20,6 +23,9 @@ impl DeliveryOutcome {
             Self::Succeeded => None,
             Self::Transient => Some("transient_delivery"),
             Self::Permanent => Some("permanent_delivery"),
+            Self::RateLimited => Some("rate_limited_delivery"),
+            Self::Unknown => Some("unknown_delivery"),
+            Self::Partial => Some("partial_delivery"),
         }
     }
 
@@ -38,6 +44,9 @@ impl From<&DeliveryResult> for DeliveryOutcome {
             DeliveryResult::Ok => Self::Succeeded,
             DeliveryResult::TransientError(_) => Self::Transient,
             DeliveryResult::PermanentError(_) => Self::Permanent,
+            DeliveryResult::RateLimited { .. } => Self::RateLimited,
+            DeliveryResult::Unknown { .. } => Self::Unknown,
+            DeliveryResult::Partial { .. } => Self::Partial,
         }
     }
 }

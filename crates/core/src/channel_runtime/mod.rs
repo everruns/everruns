@@ -20,6 +20,7 @@ use everruns_contracts::runtime::channel::*;
 
 mod approval;
 mod attachments;
+mod checkpoint;
 mod delivery;
 mod delivery_telemetry;
 mod host;
@@ -31,6 +32,7 @@ pub use attachments::{
     AttachmentIntake, AttachmentPolicy, AttachmentStore, DOWNLOAD_TIMEOUT, MAX_DOWNLOAD_REDIRECTS,
     ReceivedAttachment, not_received_note,
 };
+pub use checkpoint::{DeliveryAttempt, DeliveryCheckpoint};
 
 pub use delivery::{
     DeliveryEvent, DeliveryOptions, DeliveryStep, STREAM_FLUSH_CHARS, TurnDelivery,

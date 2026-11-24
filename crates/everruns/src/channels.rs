@@ -75,7 +75,8 @@ pub use everruns_core::channel_runtime::{
     StreamTurn,
 };
 pub use everruns_core::channel_runtime::{
-    ChannelStore, DEFAULT_DELIVERY_LEASE, DeliveryOptions, MemoryChannelStore, PendingDelivery,
+    ChannelStore, DEFAULT_DELIVERY_LEASE, DeliveryCheckpoint, DeliveryOptions, MemoryChannelStore,
+    PendingDelivery,
 };
 pub use everruns_integrations::slack_channel::{Participation, Slack, SlackAdmission};
 pub use everruns_integrations::webhook_channel::Webhook;

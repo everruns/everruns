@@ -29,6 +29,50 @@ fn interval_secs(lease: Duration) -> f64 {
 }
 
 impl Database {
+    pub async fn channel_delivery_checkpoint(
+        &self,
+        session_id: Uuid,
+        input_message_id: &str,
+    ) -> Result<Option<serde_json::Value>> {
+        Ok(sqlx::query_scalar::<_, Option<serde_json::Value>>(
+            "SELECT checkpoint FROM channel_pending_deliveries WHERE session_id = $1 AND input_message_id = $2",
+        ).bind(session_id).bind(input_message_id).fetch_optional(&self.pool).await?.flatten())
+    }
+
+    pub async fn save_channel_delivery_checkpoint(
+        &self,
+        session_id: Uuid,
+        input_message_id: &str,
+        holder: &str,
+        checkpoint: &serde_json::Value,
+    ) -> Result<()> {
+        // THREAT[TM-DURABLE-016]: an expired owner cannot checkpoint or send another part.
+        let result = sqlx::query(
+            "UPDATE channel_pending_deliveries SET checkpoint = $4 WHERE session_id = $1 AND input_message_id = $2 AND holder = $3 AND lease_until > NOW()",
+        ).bind(session_id).bind(input_message_id).bind(holder).bind(checkpoint).execute(&self.pool).await?;
+        anyhow::ensure!(
+            result.rows_affected() == 1,
+            "delivery lease is no longer held"
+        );
+        Ok(())
+    }
+
+    pub async fn complete_channel_delivery(
+        &self,
+        session_id: Uuid,
+        input_message_id: &str,
+        holder: &str,
+    ) -> Result<()> {
+        let result = sqlx::query(
+            "DELETE FROM channel_pending_deliveries WHERE session_id = $1 AND input_message_id = $2 AND holder = $3 AND lease_until > NOW()",
+        ).bind(session_id).bind(input_message_id).bind(holder).execute(&self.pool).await?;
+        anyhow::ensure!(
+            result.rows_affected() == 1,
+            "delivery lease is no longer held"
+        );
+        Ok(())
+    }
+
     /// The session bound to `binding_key` on a channel. A binding to a
     /// deleted session reads as no binding, so the next message starts a new
     /// session.
@@ -116,11 +160,7 @@ impl Database {
             INSERT INTO channel_pending_deliveries
                 (session_id, input_message_id, channel_id, target, after_sequence, holder, lease_until)
             VALUES ($1, $2, $3, $4, $5, $6, NOW() + make_interval(secs => $7))
-            ON CONFLICT (session_id, input_message_id) DO UPDATE SET
-                target = EXCLUDED.target,
-                after_sequence = EXCLUDED.after_sequence,
-                holder = EXCLUDED.holder,
-                lease_until = EXCLUDED.lease_until
+            ON CONFLICT (session_id, input_message_id) DO NOTHING
             "#,
         )
         .bind(row.session_id)
@@ -143,11 +183,11 @@ impl Database {
         holder: &str,
         lease: Duration,
     ) -> Result<()> {
-        sqlx::query(
+        let result = sqlx::query(
             r#"
             UPDATE channel_pending_deliveries
             SET lease_until = NOW() + make_interval(secs => $4)
-            WHERE session_id = $1 AND input_message_id = $2 AND holder = $3
+            WHERE session_id = $1 AND input_message_id = $2 AND holder = $3 AND lease_until > NOW()
             "#,
         )
         .bind(session_id)
@@ -156,6 +196,10 @@ impl Database {
         .bind(interval_secs(lease))
         .execute(&self.pool)
         .await?;
+        anyhow::ensure!(
+            result.rows_affected() == 1,
+            "delivery lease is no longer held"
+        );
         Ok(())
     }
 

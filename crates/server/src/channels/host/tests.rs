@@ -231,11 +231,101 @@ async fn pending_deliveries_are_leased_to_one_holder() {
     assert_eq!(store.claim_pending("c", LEASE).await.unwrap().len(), 1);
 
     store.clear_pending(&session, "msg_1").await.unwrap();
+    assert!(
+        store
+            .renew_pending(&session, "msg_1", "c", Duration::ZERO)
+            .await
+            .is_err()
+    );
+    assert!(store.claim_pending("d", LEASE).await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn output_receipts_are_fenced_with_the_pending_delivery_and_removed_on_completion() {
+    use everruns_core::channel_runtime::{DeliveryAttempt, DeliveryCheckpoint};
+    let fixture = Fixture::new("slack").await;
+    let store = fixture.store();
+    let session = fixture.session().await;
+    let pending = PendingDelivery {
+        channel: fixture.name(),
+        session_id: session.clone(),
+        input_message_id: "output-checkpoint".into(),
+        target: DeliveryTarget::new("C1", "1.0"),
+        after_sequence: 0,
+    };
     store
-        .renew_pending(&session, "msg_1", "c", Duration::ZERO)
+        .save_pending(&pending, "owner-a", LEASE)
         .await
         .unwrap();
-    assert!(store.claim_pending("d", LEASE).await.unwrap().is_empty());
+    let checkpoint = DeliveryCheckpoint {
+        state: json!({"streams":{"out-1":{"handle":"same-handle","sent":6}}}),
+        in_flight: Some(DeliveryAttempt {
+            key: "reply:out-1:post".into(),
+            confirmed: vec!["C1:accepted-part".into()],
+            idempotent: false,
+            outcome: None,
+        }),
+        ..Default::default()
+    };
+    store
+        .save_delivery_checkpoint(&session, "output-checkpoint", "owner-a", &checkpoint)
+        .await
+        .unwrap();
+    // A repeated admission cannot replace the owner or discard its output ledger.
+    store
+        .save_pending(&pending, "owner-b", LEASE)
+        .await
+        .unwrap();
+    assert!(
+        store
+            .save_delivery_checkpoint(&session, "output-checkpoint", "owner-b", &checkpoint)
+            .await
+            .is_err()
+    );
+    store
+        .release_pending(&session, "output-checkpoint", "owner-a")
+        .await
+        .unwrap();
+    assert_eq!(
+        store.claim_pending("owner-b", LEASE).await.unwrap(),
+        [pending]
+    );
+    let restored = store
+        .delivery_checkpoint(&session, "output-checkpoint")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(restored.state, checkpoint.state);
+    assert_eq!(restored.in_flight.unwrap().confirmed, ["C1:accepted-part"]);
+    assert!(
+        store
+            .save_delivery_checkpoint(&session, "output-checkpoint", "owner-a", &checkpoint)
+            .await
+            .is_err()
+    );
+    assert!(
+        store
+            .complete_delivery(&session, "output-checkpoint", "owner-a")
+            .await
+            .is_err()
+    );
+    assert!(
+        store
+            .renew_pending(&session, "output-checkpoint", "owner-a", LEASE)
+            .await
+            .is_err()
+    );
+    store
+        .complete_delivery(&session, "output-checkpoint", "owner-b")
+        .await
+        .unwrap();
+    assert!(
+        store
+            .delivery_checkpoint(&session, "output-checkpoint")
+            .await
+            .unwrap()
+            .is_none()
+    );
 }
 
 #[tokio::test]

@@ -279,9 +279,7 @@ impl Reported {
         };
         let error = match result {
             DeliveryResult::Ok => None,
-            DeliveryResult::TransientError(error) | DeliveryResult::PermanentError(error) => {
-                Some(error.clone())
-            }
+            error => Some(error.to_string()),
         };
         let _ = self.notices.send(Notice::Delivered {
             session_id,
@@ -293,6 +291,10 @@ impl Reported {
 
 #[async_trait]
 impl ChannelDeliveryAdapter for Reported {
+    fn requires_checkpoint(&self) -> bool {
+        self.inner.requires_checkpoint()
+    }
+
     fn platform(&self) -> &str {
         self.inner.platform()
     }

@@ -39,6 +39,8 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 
+use super::checkpoint::DeliveryJournal;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tracing::warn;
 
@@ -125,6 +127,9 @@ impl Default for DeliveryOptions {
     }
 }
 
+#[path = "delivery_checkpoint.rs"]
+mod checkpoint_state;
+
 /// One session event, as reply delivery reads it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct DeliveryEvent {
@@ -196,12 +201,14 @@ pub enum DeliveryStep {
     Finished(String),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct Stream {
     handle: String,
     text: String,
     /// Bytes of `text` already sent; always a previous `text.len()`.
     sent: usize,
+    #[serde(default)]
+    replacement: Option<String>,
 }
 
 /// Delivers one turn's output to one conversation.
@@ -234,6 +241,9 @@ pub struct TurnDelivery {
     keys: HashMap<String, String>,
     /// Links made since the host last took them, for it to persist.
     new_links: Vec<(String, String)>,
+    journal: Option<Arc<DeliveryJournal>>,
+    last_sequence: Option<i64>,
+    effects_done: HashSet<String>,
 }
 
 impl TurnDelivery {
@@ -265,6 +275,9 @@ impl TurnDelivery {
             failure_code: None,
             keys: HashMap::new(),
             new_links: Vec::new(),
+            journal: None,
+            last_sequence: None,
+            effects_done: HashSet::new(),
         }
     }
 
@@ -291,7 +304,9 @@ impl TurnDelivery {
     }
 
     fn link(&mut self, message_id: &str, key: String) {
-        self.keys.insert(message_id.to_string(), key.clone());
+        self.keys
+            .entry(message_id.to_string())
+            .or_insert_with(|| key.clone());
         self.new_links.push((key, message_id.to_string()));
     }
 
@@ -330,6 +345,45 @@ impl TurnDelivery {
 
     /// Feed one event.
     pub async fn observe(&mut self, event: &DeliveryEvent) -> DeliveryStep {
+        // Recover the authority's trace anchor even when its already-processed
+        // start event is skipped by the output checkpoint.
+        if event.event_type == TURN_STARTED
+            && event.sequence.is_some_and(|sequence| sequence > 0)
+            && event.input_message_id.as_deref() == Some(self.input_message_id.as_str())
+            && let Some(carrier) = &event.turn_traceparent
+        {
+            self.telemetry.anchor(carrier);
+        }
+        if self.journal.is_some()
+            && event
+                .sequence
+                .zip(self.last_sequence)
+                .is_some_and(|(sequence, last)| sequence <= last)
+            && !matches!(
+                event.event_type.as_str(),
+                OUTPUT_MESSAGE_COMPLETED
+                    | CONVERSATION_MESSAGE
+                    | TOOL_COMPLETED
+                    | TURN_COMPLETED
+                    | TURN_FAILED
+                    | TURN_CANCELLED
+                    | TURN_SEALED
+            )
+        {
+            return DeliveryStep::Continue;
+        }
+        let step = self.observe_event(event).await;
+        if let Some(sequence) = event.sequence {
+            self.last_sequence = Some(
+                self.last_sequence
+                    .map_or(sequence, |last| last.max(sequence)),
+            );
+        }
+        self.checkpoint().await;
+        step
+    }
+
+    async fn observe_event(&mut self, event: &DeliveryEvent) -> DeliveryStep {
         if self.finished {
             return DeliveryStep::Finished(String::new());
         }
@@ -409,6 +463,11 @@ impl TurnDelivery {
     /// Push text that open streams have not sent yet. Hosts call this on a
     /// timer so streamed text reaches the platform at a rate it absorbs.
     pub async fn flush(&mut self) {
+        self.flush_pending().await;
+        self.checkpoint().await;
+    }
+
+    async fn flush_pending(&mut self) {
         let ids: Vec<String> = self
             .streams
             .iter()
@@ -427,10 +486,14 @@ impl TurnDelivery {
     /// nothing reached the platform. Called by [`observe`](Self::observe) on a
     /// terminal event; hosts call it directly when the event stream ends early.
     pub async fn finish(&mut self, event_type: &str) {
+        self.finish_turn(event_type).await;
+        self.checkpoint().await;
+    }
+
+    async fn finish_turn(&mut self, event_type: &str) {
         if self.finished {
             return;
         }
-        self.finished = true;
         let ids: Vec<String> = self.streams.keys().cloned().collect();
         for id in ids {
             self.close_stream(&id).await;
@@ -444,12 +507,13 @@ impl TurnDelivery {
         // before failing; the person still needs to know the request ended.
         let explicit_failure =
             self.sent_explicitly && matches!(event_type, TURN_FAILED | TURN_CANCELLED);
-        if !self.delivered || explicit_failure {
+        if (!self.delivered || explicit_failure) && !self.needs_recovery().await {
             let notice = self.notice(event_type);
             if let Err(error) = self.post(notice).await {
                 warn!(session_id = %self.session_id, %error, "channel: could not post the end-of-turn notice");
             }
         }
+        self.finished = true;
     }
 
     async fn on_delta(&mut self, data: &Value) {
@@ -463,10 +527,20 @@ impl TurnDelivery {
         let accumulated = data.get("accumulated").and_then(Value::as_str);
 
         if !self.streams.contains_key(message_id) {
+            let operation = format!("reply:{message_id}:start");
+            if self.before_write(operation, false).await.is_err() {
+                return;
+            }
             let started = match self.adapter.streaming() {
-                Some(stream) => stream.start(&self.context).await,
+                Some(stream) => stream.start_checked(&self.context).await,
                 None => return,
             };
+            self.after_write(
+                &started
+                    .as_ref()
+                    .map_or_else(Clone::clone, |_| DeliveryResult::Ok),
+            )
+            .await;
             match started {
                 Ok(handle) => {
                     if let Some(reactions) = self.adapter.reactions() {
@@ -479,12 +553,20 @@ impl TurnDelivery {
                             handle,
                             text: String::new(),
                             sent: 0,
+                            replacement: None,
                         },
                     );
                 }
                 Err(error) => {
                     warn!(session_id = %self.session_id, %error, "channel: could not open a stream, posting the message whole");
-                    self.unstreamable.insert(message_id.to_string());
+                    if self.journal.is_none()
+                        || !matches!(
+                            error,
+                            DeliveryResult::RateLimited { .. } | DeliveryResult::TransientError(_)
+                        )
+                    {
+                        self.unstreamable.insert(message_id.to_string());
+                    }
                     return;
                 }
             }
@@ -516,7 +598,10 @@ impl TurnDelivery {
         ) else {
             return;
         };
-        let Some(stream) = self.streams.remove(message_id) else {
+        if let Some(stream) = self.streams.get_mut(message_id) {
+            stream.replacement = Some(replacement.to_string());
+        }
+        let Some(stream) = self.streams.get(message_id).cloned() else {
             return;
         };
         let Some(streaming) = self.adapter.streaming() else {
@@ -525,9 +610,17 @@ impl TurnDelivery {
         // `replace` closes the stream. When it fails the stream is still open,
         // and every start must end in a stop.
         let started = self.telemetry.start();
+        if self
+            .before_write(format!("reply:{message_id}:replace"), true)
+            .await
+            .is_err()
+        {
+            return;
+        }
         let result = streaming
             .replace(&stream.handle, replacement, &self.context)
             .await;
+        self.after_write(&result).await;
         let outcome = DeliveryOutcome::from(&result);
         self.telemetry.finish(
             self.adapter.platform(),
@@ -537,8 +630,31 @@ impl TurnDelivery {
         );
         if let Some(error_type) = outcome.error_type() {
             warn!(session_id = %self.session_id, error_type, "channel: could not replace a streamed message");
-            let _ = streaming.stop(&stream.handle, &self.context).await;
+            if self
+                .before_write(format!("reply:{message_id}:replacement-stop"), true)
+                .await
+                .is_ok()
+            {
+                let stopped = streaming.stop(&stream.handle, &self.context).await;
+                self.after_write(&stopped).await;
+            }
+            if self.journal.is_some()
+                && matches!(
+                    result,
+                    DeliveryResult::RateLimited { .. }
+                        | DeliveryResult::TransientError(_)
+                        | DeliveryResult::Unknown { .. }
+                )
+            {
+                return;
+            }
         }
+        if let Some(journal) = &self.journal {
+            journal
+                .resolve_retries(&format!("reply:{message_id}:"))
+                .await;
+        }
+        self.streams.remove(message_id);
         self.done.insert(message_id.to_string());
         self.delivered = true;
     }
@@ -555,6 +671,19 @@ impl TurnDelivery {
             return;
         }
         let text = response_text(data);
+        if let (Some(id), Some(text), Some(journal)) = (&message_id, &text, &self.journal)
+            && !self.streams.contains_key(id)
+            && self.streaming()
+            && journal.retrying(&format!("reply:{id}:start")).await
+        {
+            let id = id.clone();
+            let text = text.clone();
+            self.on_delta(&serde_json::json!({"message_id":id,"delta":text}))
+                .await;
+            if !self.streams.contains_key(&id) {
+                return;
+            }
+        }
 
         if let Some(id) = &message_id
             && let Some(stream) = self.streams.get_mut(id)
@@ -627,8 +756,16 @@ impl TurnDelivery {
         else {
             return;
         };
-        if let Err(error) = self.post(text.to_string()).await {
-            warn!(session_id = %self.session_id, %error, "channel: could not post a sent message");
+        let key = effect_key("explicit", data);
+        if self.done.contains(&key) {
+            return;
+        }
+        if self
+            .post_scoped_message(text.to_string(), None, format!("explicit:{key}"))
+            .await
+            .is_ok()
+        {
+            self.done.insert(key);
         }
     }
 
@@ -641,7 +778,7 @@ impl TurnDelivery {
         let Some(stream) = self.streams.get_mut(message_id) else {
             return DeliveryOutcome::Succeeded;
         };
-        if stream.sent >= stream.text.len() {
+        if stream.replacement.is_some() || stream.sent >= stream.text.len() {
             return DeliveryOutcome::Succeeded;
         }
         let pending = &stream.text[stream.sent..];
@@ -654,29 +791,74 @@ impl TurnDelivery {
             return DeliveryOutcome::Succeeded;
         }
         let pending = pending[..end].to_string();
-        let result = streaming
-            .append(&stream.handle, &pending, &self.context)
-            .await;
+        let handle = stream.handle.clone();
+        let offset = stream.sent;
+        if let Err(error) = self
+            .before_write(format!("reply:{message_id}:append:{offset}"), false)
+            .await
+        {
+            return DeliveryOutcome::from(&error);
+        }
+        let result = streaming.append(&handle, &pending, &self.context).await;
+        self.after_write(&result).await;
         let outcome = DeliveryOutcome::from(&result);
         if let Some(error_type) = outcome.error_type() {
             warn!(session_id = %self.session_id, error_type, "channel: could not append to a stream");
         } else {
-            stream.sent += end;
+            if let Some(stream) = self.streams.get_mut(message_id) {
+                stream.sent += end;
+            }
             self.delivered = true;
         }
         outcome
     }
 
     async fn close_stream(&mut self, message_id: &str) -> DeliveryOutcome {
+        if let Some(replacement) = self
+            .streams
+            .get(message_id)
+            .and_then(|stream| stream.replacement.clone())
+        {
+            self.on_replaced(
+                &serde_json::json!({"message_id":message_id,"replacement":replacement}),
+            )
+            .await;
+            return if self.streams.contains_key(message_id) {
+                DeliveryOutcome::Transient
+            } else {
+                DeliveryOutcome::Succeeded
+            };
+        }
         let flushed = self.flush_stream(message_id, true).await;
-        let Some(stream) = self.streams.remove(message_id) else {
+        if matches!(
+            flushed,
+            DeliveryOutcome::Transient | DeliveryOutcome::RateLimited
+        ) {
+            return flushed;
+        }
+        let Some(stream) = self.streams.get(message_id).cloned() else {
             return flushed;
         };
-        self.done.insert(message_id.to_string());
         let Some(streaming) = self.adapter.streaming() else {
             return flushed;
         };
-        let stopped = DeliveryOutcome::from(&streaming.stop(&stream.handle, &self.context).await);
+        if let Err(error) = self
+            .before_write(format!("reply:{message_id}:stop"), true)
+            .await
+        {
+            return DeliveryOutcome::from(&error);
+        }
+        let result = streaming.stop(&stream.handle, &self.context).await;
+        self.after_write(&result).await;
+        let stopped = DeliveryOutcome::from(&result);
+        if matches!(
+            stopped,
+            DeliveryOutcome::Transient | DeliveryOutcome::RateLimited | DeliveryOutcome::Unknown
+        ) {
+            return stopped;
+        }
+        self.streams.remove(message_id);
+        self.done.insert(message_id.to_string());
         if let Some(error_type) = stopped.error_type() {
             warn!(session_id = %self.session_id, error_type, "channel: could not stop a stream");
         }
@@ -712,9 +894,14 @@ impl TurnDelivery {
         {
             return;
         }
-        match surface.set_status(&status, &self.context).await {
+        if self.before_write("status", true).await.is_err() {
+            return;
+        }
+        let result = surface.set_status(&status, &self.context).await;
+        self.after_write(&result).await;
+        match result {
             DeliveryResult::Ok => self.last_status = Some(status),
-            DeliveryResult::TransientError(error) | DeliveryResult::PermanentError(error) => {
+            error => {
                 warn!(session_id = %self.session_id, %error, "channel: could not set the status");
             }
         }
@@ -724,8 +911,16 @@ impl TurnDelivery {
         let Some(surface) = self.agent_surface() else {
             return;
         };
-        if let DeliveryResult::TransientError(error) | DeliveryResult::PermanentError(error) =
-            surface.set_title(title, &self.context).await
+        if self.before_write("title", true).await.is_err() {
+            return;
+        }
+        let result = surface.set_title(title, &self.context).await;
+        self.after_write(&result).await;
+        if let error @ (DeliveryResult::TransientError(_)
+        | DeliveryResult::PermanentError(_)
+        | DeliveryResult::Unknown { .. }
+        | DeliveryResult::RateLimited { .. }
+        | DeliveryResult::Partial { .. }) = result
         {
             warn!(session_id = %self.session_id, %error, "channel: could not set the title");
         }
@@ -738,11 +933,19 @@ impl TurnDelivery {
         let Some(prompt) = approval_prompt(data) else {
             return;
         };
+        let key = effect_key("approval", data);
+        if self.effects_done.contains(&key) || self.before_write(&key, false).await.is_err() {
+            return;
+        }
         let started = self.telemetry.start();
         let result = approvals
             .prompt(self.session_id, &prompt, &self.context)
             .await;
+        self.after_write(&result).await;
         let outcome = DeliveryOutcome::from(&result);
+        if matches!(result, DeliveryResult::Ok) {
+            self.effects_done.insert(key);
+        }
         self.telemetry.finish(
             self.adapter.platform(),
             started,
@@ -763,9 +966,18 @@ impl TurnDelivery {
         let Some(view) = app_view(data) else {
             return;
         };
-        match surface.show(self.session_id, &view, &self.context).await {
+        let key = format!("app:{}", view.tool_call_id);
+        if self.effects_done.contains(&key) || self.before_write(&key, false).await.is_err() {
+            return;
+        }
+        let result = surface.show(self.session_id, &view, &self.context).await;
+        self.after_write(&result).await;
+        if matches!(result, DeliveryResult::Ok) {
+            self.effects_done.insert(key);
+        }
+        match result {
             DeliveryResult::Ok => {}
-            DeliveryResult::TransientError(error) | DeliveryResult::PermanentError(error) => {
+            error => {
                 warn!(session_id = %self.session_id, %error, "channel: could not show an MCP App view");
             }
         }
@@ -797,36 +1009,50 @@ impl TurnDelivery {
         }
         let text = self.progress.render(last);
         match self.progress.handle().map(str::to_string) {
-            Some(handle) => match surface.update(&handle, &text, &self.context).await {
-                DeliveryResult::Ok => {
-                    self.progress.mark_updated();
-                    self.delivered = true;
+            Some(handle) => {
+                if self.before_write("progress:update", true).await.is_err() {
+                    return;
                 }
-                DeliveryResult::TransientError(error) | DeliveryResult::PermanentError(error) => {
-                    warn!(session_id = %self.session_id, %error, "channel: could not update task progress");
+                let result = surface.update(&handle, &text, &self.context).await;
+                self.after_write(&result).await;
+                match result {
+                    DeliveryResult::Ok => {
+                        self.progress.mark_updated();
+                        self.delivered = true;
+                    }
+                    error => {
+                        warn!(session_id = %self.session_id, %error, "channel: could not update task progress");
+                    }
                 }
-            },
-            None => match surface.post(&text, &self.context).await {
-                Ok(handle) => {
-                    self.progress.mark_posted(handle);
-                    self.delivered = true;
+            }
+            None => {
+                if self.before_write("progress:post", false).await.is_err() {
+                    return;
                 }
-                Err(error) => {
-                    warn!(session_id = %self.session_id, %error, "channel: could not post task progress");
+                let result = surface.post_checked(&text, &self.context).await;
+                self.after_write(
+                    &result
+                        .as_ref()
+                        .map_or_else(Clone::clone, |_| DeliveryResult::Ok),
+                )
+                .await;
+                match result {
+                    Ok(handle) => {
+                        self.progress.mark_posted(handle);
+                        self.delivered = true;
+                    }
+                    Err(error) => {
+                        warn!(session_id = %self.session_id, %error, "channel: could not post task progress");
+                    }
                 }
-            },
+            }
         }
     }
 
     async fn post(&mut self, text: String) -> Result<(), String> {
         self.post_message(text, None)
             .await
-            .map_err(|error| match error {
-                DeliveryResult::TransientError(error) | DeliveryResult::PermanentError(error) => {
-                    error
-                }
-                DeliveryResult::Ok => unreachable!("successful delivery is not an error"),
-            })
+            .map_err(|error| error.to_string())
     }
 
     /// Post text; a reply's message id links the posted message to it.
@@ -835,6 +1061,21 @@ impl TurnDelivery {
         text: String,
         message_id: Option<&str>,
     ) -> Result<(), DeliveryResult> {
+        self.post_scoped_message(
+            text,
+            message_id,
+            format!("reply:{}:post", message_id.unwrap_or("notice")),
+        )
+        .await
+    }
+
+    async fn post_scoped_message(
+        &mut self,
+        text: String,
+        message_id: Option<&str>,
+        operation: String,
+    ) -> Result<(), DeliveryResult> {
+        self.before_write(operation, false).await?;
         let message = OutboundChannelMessage {
             session_id: self.session_id,
             text,
@@ -842,7 +1083,14 @@ impl TurnDelivery {
             correlation_id: Some(self.input_message_id.clone()),
         };
         if let (Some(message_id), Some(reactions)) = (message_id, self.adapter.reactions()) {
-            return match reactions.post_keyed(&message, &self.context).await {
+            let result = reactions.post_keyed(&message, &self.context).await;
+            self.after_write(
+                &result
+                    .as_ref()
+                    .map_or_else(Clone::clone, |_| DeliveryResult::Ok),
+            )
+            .await;
+            return match result {
                 Ok(key) => {
                     self.delivered = true;
                     if let Some(key) = key {
@@ -854,10 +1102,17 @@ impl TurnDelivery {
                     self.delivered = true;
                     Ok(())
                 }
-                Err(error) => Err(error),
+                Err(error) => {
+                    for reference in error.confirmed() {
+                        self.link(message_id, reference.clone());
+                    }
+                    Err(error)
+                }
             };
         }
-        match self.adapter.deliver(&message, &self.context).await {
+        let result = self.adapter.deliver(&message, &self.context).await;
+        self.after_write(&result).await;
+        match result {
             DeliveryResult::Ok => {
                 self.delivered = true;
                 Ok(())
@@ -887,8 +1142,20 @@ impl TurnDelivery {
         let Some(key) = self.keys.get(message_id) else {
             return;
         };
-        if let DeliveryResult::TransientError(error) | DeliveryResult::PermanentError(error) =
-            reactions.react(key, emoji, added, &self.context).await
+        if self
+            .before_write(format!("reaction:{message_id}:{emoji}:{added}"), true)
+            .await
+            .is_err()
+        {
+            return;
+        }
+        let result = reactions.react(key, emoji, added, &self.context).await;
+        self.after_write(&result).await;
+        if let error @ (DeliveryResult::TransientError(_)
+        | DeliveryResult::PermanentError(_)
+        | DeliveryResult::Unknown { .. }
+        | DeliveryResult::RateLimited { .. }
+        | DeliveryResult::Partial { .. }) = result
         {
             warn!(session_id = %self.session_id, %error, "channel: could not mirror a reaction");
         }
@@ -982,3 +1249,32 @@ fn open_token_start(pending: &str) -> usize {
 #[cfg(test)]
 #[path = "delivery_tests.rs"]
 mod tests;
+
+fn effect_key(kind: &str, data: &Value) -> String {
+    use base64::Engine;
+    use sha2::{Digest, Sha256};
+    if let Some(id) = ["tool_call_id", "message_id", "id"]
+        .into_iter()
+        .find_map(|name| data.get(name).and_then(Value::as_str))
+    {
+        return format!("{kind}:{id}");
+    }
+    fn canonical(value: &Value) -> Value {
+        match value {
+            Value::Object(object) => {
+                let sorted = object
+                    .iter()
+                    .map(|(key, value)| (key.clone(), canonical(value)))
+                    .collect::<BTreeMap<_, _>>();
+                Value::Object(sorted.into_iter().collect())
+            }
+            Value::Array(values) => Value::Array(values.iter().map(canonical).collect()),
+            value => value.clone(),
+        }
+    }
+    format!(
+        "{kind}:{}",
+        base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .encode(Sha256::digest(canonical(data).to_string().as_bytes()))
+    )
+}

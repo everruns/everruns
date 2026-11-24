@@ -19,7 +19,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use everruns::channels::{ChannelError, ChannelStore, PendingDelivery};
+use everruns::channels::{ChannelError, ChannelStore, DeliveryCheckpoint, PendingDelivery};
 use rusqlite::{Connection, OptionalExtension, params};
 use serde_json::Value;
 
@@ -57,7 +57,7 @@ impl Store {
         Self::init(rusqlite::open_in_memory()?)
     }
 
-    fn init(conn: Connection) -> crate::Result<Self> {
+    fn init(mut conn: Connection) -> crate::Result<Self> {
         conn.execute_batch("PRAGMA journal_mode = WAL;")?;
         let version: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
         if version < SCHEMA_VERSION {
@@ -103,6 +103,26 @@ impl Store {
              );
              PRAGMA user_version = {SCHEMA_VERSION};"
         ))?;
+        // Additive upgrade: never discard existing channel bindings or pending replies.
+        let transaction =
+            conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        for (name, definition) in [
+            ("holder", "TEXT NOT NULL DEFAULT ''"),
+            ("lease_until", "INTEGER NOT NULL DEFAULT 0"),
+            ("checkpoint", "TEXT"),
+        ] {
+            let present: bool = transaction.query_row(
+                "SELECT COUNT(*) > 0 FROM pragma_table_info('channel_pending') WHERE name = ?1",
+                params![name],
+                |row| row.get(0),
+            )?;
+            if !present {
+                transaction.execute_batch(&format!(
+                    "ALTER TABLE channel_pending ADD COLUMN {name} {definition}"
+                ))?;
+            }
+        }
+        transaction.commit()?;
         Ok(Self {
             conn: Mutex::new(conn),
         })
@@ -267,6 +287,81 @@ fn store_error(error: impl std::fmt::Display) -> ChannelError {
 
 #[async_trait]
 impl ChannelStore for Store {
+    fn supports_delivery_checkpoints(&self) -> bool {
+        true
+    }
+
+    async fn delivery_checkpoint(
+        &self,
+        session_id: &str,
+        input_message_id: &str,
+    ) -> Result<Option<DeliveryCheckpoint>, ChannelError> {
+        let state: Option<String> = self.conn().query_row("SELECT checkpoint FROM channel_pending WHERE session_id = ?1 AND input_message_id = ?2", params![session_id, input_message_id], |row| row.get(0)).optional().map_err(store_error)?.flatten();
+        state
+            .map(|state| serde_json::from_str(&state).map_err(store_error))
+            .transpose()
+    }
+
+    async fn save_delivery_checkpoint(
+        &self,
+        session_id: &str,
+        input_message_id: &str,
+        holder: &str,
+        checkpoint: &DeliveryCheckpoint,
+    ) -> Result<(), ChannelError> {
+        let state = serde_json::to_string(checkpoint).map_err(store_error)?;
+        let updated = self.conn().execute("UPDATE channel_pending SET checkpoint = ?4 WHERE session_id = ?1 AND input_message_id = ?2 AND holder = ?3 AND lease_until > ?5", params![session_id, input_message_id, holder, state, chrono::Utc::now().timestamp_millis()]).map_err(store_error)?;
+        if updated != 1 {
+            return Err(ChannelError::Session(
+                "delivery lease is no longer held".into(),
+            ));
+        }
+        Ok(())
+    }
+
+    async fn complete_delivery(
+        &self,
+        session_id: &str,
+        input_message_id: &str,
+        holder: &str,
+    ) -> Result<(), ChannelError> {
+        let updated = self.conn().execute("DELETE FROM channel_pending WHERE session_id = ?1 AND input_message_id = ?2 AND holder = ?3 AND lease_until > ?4", params![session_id, input_message_id, holder, chrono::Utc::now().timestamp_millis()]).map_err(store_error)?;
+        if updated != 1 {
+            return Err(ChannelError::Session(
+                "delivery lease is no longer held".into(),
+            ));
+        }
+        Ok(())
+    }
+
+    async fn renew_pending(
+        &self,
+        session_id: &str,
+        input_message_id: &str,
+        holder: &str,
+        lease: Duration,
+    ) -> Result<(), ChannelError> {
+        let now = chrono::Utc::now().timestamp_millis();
+        let until = now.saturating_add(i64::try_from(lease.as_millis()).unwrap_or(i64::MAX));
+        let updated = self.conn().execute("UPDATE channel_pending SET lease_until = ?4 WHERE session_id = ?1 AND input_message_id = ?2 AND holder = ?3 AND lease_until > ?5", params![session_id, input_message_id, holder, until, now]).map_err(store_error)?;
+        if updated != 1 {
+            return Err(ChannelError::Session(
+                "delivery lease is no longer held".into(),
+            ));
+        }
+        Ok(())
+    }
+
+    async fn release_pending(
+        &self,
+        session_id: &str,
+        input_message_id: &str,
+        holder: &str,
+    ) -> Result<(), ChannelError> {
+        self.conn().execute("UPDATE channel_pending SET lease_until = 0 WHERE session_id = ?1 AND input_message_id = ?2 AND holder = ?3", params![session_id, input_message_id, holder]).map_err(store_error)?;
+        Ok(())
+    }
+
     async fn session_for(&self, channel: &str, key: &str) -> Result<Option<String>, ChannelError> {
         self.thread_session(channel, key).map_err(store_error)
     }
@@ -298,19 +393,23 @@ impl ChannelStore for Store {
         Ok(inserted == 1)
     }
 
-    // One process owns the file: leases have nobody to exclude.
+    // Fenced leases also cover overlapping processes during a restart.
     async fn save_pending(
         &self,
         pending: &PendingDelivery,
-        _holder: &str,
-        _lease: Duration,
+        holder: &str,
+        lease: Duration,
     ) -> Result<(), ChannelError> {
         let delivery = serde_json::to_string(pending).map_err(store_error)?;
+        let until = chrono::Utc::now()
+            .timestamp_millis()
+            .saturating_add(i64::try_from(lease.as_millis()).unwrap_or(i64::MAX));
         self.conn()
             .execute(
-                "INSERT OR REPLACE INTO channel_pending (session_id, input_message_id, delivery)
-                 VALUES (?1, ?2, ?3)",
-                params![pending.session_id, pending.input_message_id, delivery],
+                "INSERT INTO channel_pending (session_id, input_message_id, delivery, holder, lease_until)
+                 VALUES (?1, ?2, ?3, ?4, ?5)
+                 ON CONFLICT (session_id, input_message_id) DO NOTHING",
+                params![pending.session_id, pending.input_message_id, delivery, holder, until],
             )
             .map_err(store_error)?;
         Ok(())
@@ -332,15 +431,17 @@ impl ChannelStore for Store {
 
     async fn claim_pending(
         &self,
-        _holder: &str,
-        _lease: Duration,
+        holder: &str,
+        lease: Duration,
     ) -> Result<Vec<PendingDelivery>, ChannelError> {
         let conn = self.conn();
+        let now = chrono::Utc::now().timestamp_millis();
+        let until = now.saturating_add(i64::try_from(lease.as_millis()).unwrap_or(i64::MAX));
         let mut statement = conn
-            .prepare("SELECT delivery FROM channel_pending")
+            .prepare("UPDATE channel_pending SET holder = ?1, lease_until = ?2 WHERE lease_until <= ?3 RETURNING delivery")
             .map_err(store_error)?;
         let rows = statement
-            .query_map([], |row| row.get::<_, String>(0))
+            .query_map(params![holder, until, now], |row| row.get::<_, String>(0))
             .map_err(store_error)?
             .collect::<Result<Vec<_>, _>>()
             .map_err(store_error)?;
@@ -433,6 +534,7 @@ mod tests {
                 .await
                 .unwrap();
             store.save_pending(&pending, "p", LEASE).await.unwrap();
+            store.release_pending("s1", "m1", "p").await.unwrap();
         }
         let store = Store::open(&path).unwrap();
         assert!(!store.first_sighting("slack", "Ev1").await.unwrap());
@@ -450,6 +552,133 @@ mod tests {
         );
         store.clear_pending("s1", "m1").await.unwrap();
         assert!(store.claim_pending("p", LEASE).await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn output_checkpoint_and_receipts_survive_reopen_with_fenced_takeover() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("serve.db");
+        let pending = PendingDelivery {
+            channel: "installation-a".into(),
+            session_id: "s1".into(),
+            input_message_id: "m1".into(),
+            target: everruns::channels::DeliveryTarget::new("C1", "1.0"),
+            after_sequence: 3,
+        };
+        let checkpoint = DeliveryCheckpoint {
+            state: json!({"stream":"known-handle","sent":6}),
+            ..Default::default()
+        };
+        {
+            let store = Store::open(&path).unwrap();
+            store
+                .save_pending(&pending, "owner-a", LEASE)
+                .await
+                .unwrap();
+            store
+                .save_delivery_checkpoint("s1", "m1", "owner-a", &checkpoint)
+                .await
+                .unwrap();
+            store
+                .save_pending(&pending, "owner-b", LEASE)
+                .await
+                .unwrap();
+            assert!(
+                store
+                    .complete_delivery("s1", "m1", "owner-b")
+                    .await
+                    .is_err()
+            );
+            assert!(
+                store
+                    .claim_pending("owner-b", LEASE)
+                    .await
+                    .unwrap()
+                    .is_empty()
+            );
+            store.release_pending("s1", "m1", "owner-a").await.unwrap();
+        }
+        let store = Store::open(&path).unwrap();
+        assert_eq!(
+            store.claim_pending("owner-b", LEASE).await.unwrap(),
+            [pending]
+        );
+        assert_eq!(
+            store
+                .delivery_checkpoint("s1", "m1")
+                .await
+                .unwrap()
+                .unwrap()
+                .state,
+            checkpoint.state
+        );
+        assert!(
+            store
+                .save_delivery_checkpoint("s1", "m1", "owner-a", &checkpoint)
+                .await
+                .is_err()
+        );
+        assert!(
+            store
+                .complete_delivery("s1", "m1", "owner-a")
+                .await
+                .is_err()
+        );
+        store
+            .save_delivery_checkpoint("s1", "m1", "owner-b", &checkpoint)
+            .await
+            .unwrap();
+        store
+            .complete_delivery("s1", "m1", "owner-b")
+            .await
+            .unwrap();
+        assert!(
+            store
+                .delivery_checkpoint("s1", "m1")
+                .await
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[tokio::test]
+    async fn checkpoint_schema_upgrade_preserves_existing_bindings_and_pending_work() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("serve.db");
+        let pending = PendingDelivery {
+            channel: "slack".into(),
+            session_id: "s1".into(),
+            input_message_id: "m1".into(),
+            target: everruns::channels::DeliveryTarget::new("C1", "1.0"),
+            after_sequence: 3,
+        };
+        {
+            let connection = rusqlite::open(&path).unwrap();
+            connection.execute_batch("PRAGMA user_version=2; CREATE TABLE channel_threads (channel TEXT, thread TEXT, session_id TEXT, PRIMARY KEY(channel,thread)); INSERT INTO channel_threads VALUES('slack','C1:1.0','s1'); CREATE TABLE channel_pending (session_id TEXT, input_message_id TEXT, delivery TEXT, PRIMARY KEY(session_id,input_message_id));").unwrap();
+            connection
+                .execute(
+                    "INSERT INTO channel_pending VALUES('s1','m1',?1)",
+                    params![serde_json::to_string(&pending).unwrap()],
+                )
+                .unwrap();
+        }
+        let store = Store::open(&path).unwrap();
+        assert_eq!(
+            store
+                .session_for("slack", "C1:1.0")
+                .await
+                .unwrap()
+                .as_deref(),
+            Some("s1")
+        );
+        assert_eq!(
+            store.claim_pending("owner", LEASE).await.unwrap(),
+            [pending]
+        );
+        store
+            .save_delivery_checkpoint("s1", "m1", "owner", &DeliveryCheckpoint::default())
+            .await
+            .unwrap();
     }
 
     #[test]

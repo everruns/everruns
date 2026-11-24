@@ -182,7 +182,7 @@ message services.
 - **Decisions.** `Inbound::Decision` carries an approval or a declined tool
   call from a platform button; the host checks the decider against the
   session's policy through the port and resumes the turn. Slack's buttons are
-  the first user; the same shape serves Teams or Telegram later.
+  the first user; the same shape serves Teams or Discord later.
 - **Streams end at a park.** `stream_turn` and a new events-only `follow`
   (resume after answering a question, no new message) end at a terminal event
   or at a park (`tool.call_requested` waiting on a person or the client),
@@ -290,3 +290,41 @@ title/view state belongs to an application ConversationStore; view data enters t
 next input as untrusted reference context. Platform events cannot change executable
 agent configuration. Slack bindings are always thread-scoped. See the
 [public guide](../../docs/framework/slack-services.md) for explicit lifetime limits.
+
+## Output delivery checkpoints
+
+A driver can require host-owned output checkpoints. The shared delivery loop then
+commits an intent before provider writes, saves its consumer state after settlement,
+and records every confirmed split reference before another part is sent. Memory,
+serve SQLite and server PostgreSQL fence checkpoint writes and completion by the
+current unexpired holder. Known stores check ownership before dispatch, including
+legacy delivery. Renewal runs while provider I/O is awaiting a response;
+loss of ownership cancels delivery and prevents further writes.
+
+A crash between send and settlement cannot prove whether a provider accepted the
+request. That intent remains uncertain. Unknown and partial outcomes never become
+ordinary transport retries, never replay all parts, and never trigger a second
+fallback notice. Confirmed stream handles/prefixes and progress handles survive a
+restart. Known-handle closure and replacement are idempotent cleanup; uncertain
+content is not appended again. Definite rate-limit advice is retained across
+restarts. Unpublished/unavailable channels retain output ledgers for reconciliation.
+
+The checkpoint is versioned, bounded to eight MiB, and contains no delivery token or
+private response URL. Adapters persist scoped references through the receipt sink;
+a callback failure stops further output. An old custom store without checkpoint
+support fails before a requiring driver's first provider write. Ledger-capable stores
+advertise that capability even when a legacy driver is active: the host refuses to
+replay or clear any existing checkpoint through that driver, before admission or
+provider I/O. Known stores also fence legacy completion. Legacy deliveries without
+a ledger retain their delivery policy. See the
+[contract](../../crates/contracts/src/runtime/channel.rs),
+[checkpoint runtime](../../crates/core/src/channel_runtime/checkpoint.rs),
+[delivery loop](../../crates/core/src/channel_runtime/delivery.rs) and
+[Channelkit migration](channelkit-migration.md).
+
+Reconciliation is an operator/application responsibility: inspect provider state
+and the confirmed references before settling an uncertain delivery. Deleting a
+ledger and replaying the turn is not reconciliation. Rollback must use a build that
+understands and enforces the ledger, or drain/fence deliveries before switching implementations;
+an older binary must not resume these pending rows. This output contract does not
+close the existing inbound ACK-before-background-acceptance crash window.

@@ -767,6 +767,7 @@ mod tests {
                 channel_id: "C123".to_string(),
                 thread_ref: String::new(),
                 extra: HashMap::new(),
+                receipts: None,
             };
             adapter.deliver(&message, &ctx).await
         }

@@ -441,6 +441,11 @@ pub trait ChannelDeliveryAdapter: Send + Sync {
     /// Platform identifier (e.g. "slack", "discord").
     fn platform(&self) -> &str;
 
+    /// Require a host-owned, fenced output checkpoint before provider writes.
+    fn requires_checkpoint(&self) -> bool {
+        false
+    }
+
     /// Deliver a message to the platform channel.
     ///
     /// Called by the generic delivery dispatcher when agent output is ready.
@@ -610,6 +615,20 @@ pub trait ChannelProgressSurface: Send + Sync {
     /// Post the message. Returns a handle for later edits.
     async fn post(&self, text: &str, context: &DeliveryContext) -> Result<String, String>;
 
+    /// Preserve ambiguous acceptance and provider retry advice when opening a message.
+    /// Legacy string errors cannot prove refusal, so the default fails closed.
+    async fn post_checked(
+        &self,
+        text: &str,
+        context: &DeliveryContext,
+    ) -> Result<String, DeliveryResult> {
+        self.post(text, context)
+            .await
+            .map_err(|_| DeliveryResult::Unknown {
+                confirmed: Vec::new(),
+            })
+    }
+
     /// Replace the text of a posted message.
     async fn update(&self, handle: &str, text: &str, context: &DeliveryContext) -> DeliveryResult;
 }
@@ -637,6 +656,16 @@ pub trait ChannelAgentSurface: Send + Sync {
 pub trait ChannelStreamDelivery: Send + Sync {
     /// Open a stream. The returned handle identifies it until `stop`.
     async fn start(&self, context: &DeliveryContext) -> Result<String, String>;
+
+    /// Preserve ambiguous acceptance and provider retry advice when opening a stream.
+    /// Override to retain definite refusal/rate advice; legacy strings are uncertain.
+    async fn start_checked(&self, context: &DeliveryContext) -> Result<String, DeliveryResult> {
+        self.start(context)
+            .await
+            .map_err(|_| DeliveryResult::Unknown {
+                confirmed: Vec::new(),
+            })
+    }
 
     /// Append newly produced text to an open stream.
     async fn append(&self, handle: &str, text: &str, context: &DeliveryContext) -> DeliveryResult;
@@ -690,6 +719,7 @@ impl DeliveryTarget {
             channel_id: self.channel_id.clone(),
             thread_ref: self.thread_ref.clone(),
             extra: self.extra.clone(),
+            receipts: None,
         }
     }
 }
@@ -708,6 +738,17 @@ pub struct DeliveryContext {
     pub thread_ref: String,
     /// Platform-specific extra context (e.g. team_id, workspace URL).
     pub extra: HashMap<String, String>,
+    /// Host-scoped receipt recorder. Contains no credentials and is never serialized.
+    /// An adapter records every accepted split part before attempting the next one.
+    pub receipts: Option<std::sync::Arc<dyn DeliveryReceiptSink>>,
+}
+
+/// Durable receipts for the operation the host has already checkpointed.
+#[async_trait]
+pub trait DeliveryReceiptSink: Send + Sync {
+    /// Record only a scoped provider message reference, never tokens or response URLs.
+    /// A failure stops the operation before another part is sent.
+    async fn confirmed(&self, reference: &str) -> Result<(), ChannelError>;
 }
 
 impl std::fmt::Debug for DeliveryContext {
@@ -722,7 +763,7 @@ impl std::fmt::Debug for DeliveryContext {
 }
 
 /// Result of a delivery attempt.
-#[derive(Debug)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum DeliveryResult {
     /// Message delivered successfully.
     Ok,
@@ -730,6 +771,52 @@ pub enum DeliveryResult {
     TransientError(String),
     /// Permanent failure — do not retry (e.g. invalid token, channel deleted).
     PermanentError(String),
+    /// Definite refusal; no output was accepted. Honor the provider's retry advice.
+    RateLimited { retry_after: std::time::Duration },
+    /// Acceptance is unknown. Keep the intent pending; never resend it blindly.
+    Unknown { confirmed: Vec<String> },
+    /// Earlier parts were accepted. Keep all their references and the final cause.
+    Partial {
+        confirmed: Vec<String>,
+        cause: Box<DeliveryResult>,
+    },
+}
+
+impl DeliveryResult {
+    pub fn is_uncertain(&self) -> bool {
+        match self {
+            Self::Unknown { .. } => true,
+            Self::Partial { cause, .. } => cause.is_uncertain(),
+            _ => false,
+        }
+    }
+
+    pub fn confirmed(&self) -> &[String] {
+        match self {
+            Self::Unknown { confirmed } | Self::Partial { confirmed, .. } => confirmed,
+            _ => &[],
+        }
+    }
+
+    pub fn retry_after(&self) -> Option<std::time::Duration> {
+        match self {
+            Self::RateLimited { retry_after } => Some(*retry_after),
+            Self::Partial { cause, .. } => cause.retry_after(),
+            _ => None,
+        }
+    }
+}
+
+impl std::fmt::Display for DeliveryResult {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Ok => f.write_str("delivered"),
+            Self::TransientError(message) | Self::PermanentError(message) => f.write_str(message),
+            Self::RateLimited { .. } => f.write_str("provider rate limited delivery"),
+            Self::Unknown { .. } => f.write_str("provider acceptance requires reconciliation"),
+            Self::Partial { .. } => f.write_str("partial delivery requires reconciliation"),
+        }
+    }
 }
 
 // ============================================

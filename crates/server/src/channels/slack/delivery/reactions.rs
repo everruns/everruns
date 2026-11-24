@@ -175,6 +175,7 @@ mod tests {
             channel_id: "C1".into(),
             thread_ref: "1700.1".into(),
             extra: HashMap::new(),
+            receipts: None,
         };
         (adapter, context)
     }

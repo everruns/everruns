@@ -9,6 +9,7 @@
 //!   cost one edit, not twenty.
 //! - A turn that spawns no tasks posts nothing.
 
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 use everruns_contracts::runtime::session_task::SessionTaskState;
@@ -25,7 +26,7 @@ const MAX_NAMED_TASKS: usize = 5;
 const MAX_NAME_CHARS: usize = 48;
 
 /// What one task contributes to the summary.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 struct TaskEntry {
     display_name: String,
     state: SessionTaskState,
@@ -35,7 +36,7 @@ struct TaskEntry {
 }
 
 /// Live task state for one turn's fan-out.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TaskProgress {
     tasks: HashMap<String, TaskEntry>,
     next_seq: usize,
