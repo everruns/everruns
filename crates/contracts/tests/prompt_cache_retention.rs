@@ -55,7 +55,7 @@ impl HttpTransport for Capture {
 }
 
 #[tokio::test]
-async fn twelve_hour_retention_round_trips_through_qualified_responses_endpoint() {
+async fn retention_round_trips_through_qualified_responses_endpoint() {
     for base in [
         "https://api.openai.com/v1",
         "https://account.openai.azure.com/openai/v1",
@@ -101,7 +101,7 @@ async fn twelve_hour_retention_round_trips_through_qualified_responses_endpoint(
                     assert_eq!(
                         requests[0]["prompt_cache_options"]["ttl"],
                         if base == "https://api.openai.com/v1"
-                            && retention != PromptCacheRetention::ThirtyMinutes
+                            && retention == PromptCacheRetention::TwelveHours
                         {
                             "12h"
                         } else {
@@ -124,6 +124,8 @@ async fn twelve_hour_retention_round_trips_through_qualified_responses_endpoint(
 #[tokio::test]
 async fn automatic_defaults_and_disable_are_endpoint_and_model_scoped() {
     for (base, model, native, expected) in [
+        ("https://api.openai.com/v1", "gpt-6.2-sol", true, true),
+        ("https://api.openai.com/v1", "gpt-6.2-astra", true, true),
         ("https://api.openai.com/v1", "gpt-6.1-sol", true, true),
         ("https://api.openai.com/v1", "gpt-5.6-sol", true, true),
         ("https://api.openai.com/v1", "gpt-5.5", true, false),
@@ -175,7 +177,7 @@ async fn automatic_defaults_and_disable_are_endpoint_and_model_scoped() {
                 if expected && !disabled {
                     assert_eq!(
                         requests[0]["prompt_cache_options"],
-                        json!({"ttl":"12h", "mode":"implicit"})
+                        json!({"ttl":"30m", "mode":"implicit"})
                     );
                 } else {
                     assert!(
