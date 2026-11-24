@@ -76,7 +76,7 @@ everruns sandboxes list [OPTIONS]
 | `--provider <PROVIDER>` | Comma-separated provider ids, such as `daytona,modal`. |
 | `--sandbox-template-id <SANDBOX_TEMPLATE_ID>` | Only Sandboxes created from this Sandbox Template. |
 | `--search <SEARCH>` | Case-insensitive match on Session title, Agent, provider or provider resource id. |
-| `--state <STATE>` | Comma-separated states: `running`, `paused`, `lost`, `starting`, `failed`, `not_started`, `de... |
+| `--state <STATE>` | Comma-separated states: `running`, `paused`, `recoverable`, `lost`, `starting`, `failed`, `no... |
 
 Example:
 
@@ -142,7 +142,7 @@ everruns sandboxes stats get [OPTIONS]
 | `--provider <PROVIDER>` | Comma-separated provider ids, such as `daytona,modal`. |
 | `--sandbox-template-id <SANDBOX_TEMPLATE_ID>` | Only Sandboxes created from this Sandbox Template. |
 | `--search <SEARCH>` | Case-insensitive match on Session title, Agent, provider or provider resource id. |
-| `--state <STATE>` | Comma-separated states: `running`, `paused`, `lost`, `starting`, `failed`, `not_started`, `de... |
+| `--state <STATE>` | Comma-separated states: `running`, `paused`, `recoverable`, `lost`, `starting`, `failed`, `no... |
 
 Example:
 
@@ -169,7 +169,7 @@ everruns sandboxes timeline get [OPTIONS]
 | `--provider <PROVIDER>` | Comma-separated provider ids, such as `daytona,modal`. |
 | `--sandbox-template-id <SANDBOX_TEMPLATE_ID>` | Only Sandboxes created from this Sandbox Template. |
 | `--search <SEARCH>` | Case-insensitive match on Session title, Agent, provider or provider resource id. |
-| `--state <STATE>` | Comma-separated states: `running`, `paused`, `lost`, `starting`, `failed`, `not_started`, `de... |
+| `--state <STATE>` | Comma-separated states: `running`, `paused`, `recoverable`, `lost`, `starting`, `failed`, `no... |
 | `--to <TO>` | Window end (RFC 3339). |
 
 Example:
