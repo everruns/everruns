@@ -88,3 +88,23 @@ class Runners(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BrokenCheck(unittest.TestCase):
+    def test_a_check_that_breaks_does_not_end_the_run(self):
+        from engine import cli
+        from engine.checks import Check, Output
+
+        def boom(ctx):
+            raise ValueError("no JSON result in the output")
+
+        def fine(ctx):
+            out = Output()
+            out.add("P1", "L0", 1)
+            return out
+
+        checks = [Check("broken", "L0", ["P1"], 0.1, "broken", run=boom),
+                  Check("fine", "L0", ["P1"], 0.1, "fine", run=fine)]
+        with mock.patch("sys.stderr"):
+            outs = cli.run_checks(None, checks)
+        self.assertEqual([e["value"] for o in outs for e in o.entries], [1])

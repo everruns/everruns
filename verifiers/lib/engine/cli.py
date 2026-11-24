@@ -134,7 +134,14 @@ def run_checks(ctx, checks, points=None):
             print(f"skip {ch.name}: {why}", file=sys.stderr)
             continue
         print(f"run {ch.name} ({ch.level})", file=sys.stderr)
-        outs.append(ch.run(ctx))
+        # Decision: a check that breaks (a harness that printed no result, a
+        # missing binary) is reported and skipped; the other checks of the run
+        # still run and are recorded. One bad harness used to end a run of
+        # hours at its first check.
+        try:
+            outs.append(ch.run(ctx))
+        except Exception as error:  # noqa: BLE001 - any check failure
+            print(f"check {ch.name} failed, no evidence recorded: {error!r}", file=sys.stderr)
     return outs
 
 
