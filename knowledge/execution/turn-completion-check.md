@@ -60,6 +60,24 @@ Every check records `turn.completion_checked` with the verdict, the action
 (`finished`, `continued`, `budget_exhausted`, `review_failed`) and the budget
 used. A failed review never blocks the turn: it finishes.
 
+## Explicit evidence requirements
+
+The opt-in completion requirements capability addresses a different failure:
+a fluent final answer and even a semantic reviewer can call failed work done.
+[Configured deterministic checks](../../crates/core/src/completion_requirements.rs)
+therefore inspect the current turn's actual tool results or validate its final
+JSON before any semantic review. The newest matching invocation decides; an
+old success, a prior turn, or assistant prose cannot establish a tool outcome.
+A missing current-turn boundary cannot establish a tool outcome; final JSON
+validation needs only the candidate answer.
+
+These checks use the existing continuation budget and event, without an extra
+model call. They remain active when semantic review is off. Human questions,
+refusals, execution failures, and pending background work retain the gate's
+stop behavior. Exhausting the budget records unfinished work and ends the turn;
+transport success must not be interpreted as a passed requirement. There is no
+new persistence path or outcome promise beyond the recorded verdict.
+
 ## Continuation input
 
 The continuation is an `input.message` with origin `turn_continuation`. The

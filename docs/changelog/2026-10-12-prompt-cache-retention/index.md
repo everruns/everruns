@@ -37,3 +37,8 @@ default to `12h`. Set `retention: "30m"` for the shorter write tier or
 `enabled: false` to remove Everruns-managed controls.
 See [12-hour prompt caching](/changelog/2026-11-03-twelve-hour-prompt-cache/)
 for endpoint restrictions and write costs.
+
+## Update 2026-11-23
+
+Qualified OpenAI Responses calls now default to thirty minutes. Select `12h`
+explicitly for longer reuse; see [Prompt Caching](/capabilities/prompt-caching/).

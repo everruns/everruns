@@ -187,3 +187,93 @@ async fn an_empty_final_with_the_budget_spent_finishes() {
         ["continued", "budget_exhausted"]
     );
 }
+
+#[tokio::test]
+async fn completion_requirements_continue_until_tool_evidence_matches_without_a_judge() {
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
+    let calls = Arc::new(AtomicUsize::new(0));
+    let counter = calls.clone();
+    let verify = FunctionTool::new(
+        "verify",
+        "Verify the result",
+        json!({"type":"object","properties":{}}),
+        move |_: Value| {
+            let passed = counter.fetch_add(1, Ordering::SeqCst) > 0;
+            async move { Ok::<_, String>(ToolResponse::json(json!({"passed":passed}))) }
+        },
+    );
+    let call = || {
+        SimTurn::ToolCalls(vec![SimToolCall {
+            name: "verify".into(),
+            arguments: json!({}),
+            id: None,
+        }])
+    };
+    let agent = Agent::builder()
+        .instructions("Finish and verify the work.")
+        .model(Model::simulated_with_config(LlmSimConfig::scripted(vec![
+            call(),
+            SimTurn::Assistant("Done without proof.".into()),
+            call(),
+            SimTurn::Assistant("Verified.".into()),
+        ])))
+        .tool(verify)
+        .completion_check(CompletionCheck::Off)
+        .capability(everruns::CapabilityRef::with_config(
+            "completion_requirements",
+            json!({"checks":[
+                {"type":"tool_result", "tool":"verify", "pointer":"/passed", "equals":true}
+            ]}),
+        ))
+        .build()
+        .expect("valid agent");
+    let result = InMemoryEngine::new()
+        .create(agent)
+        .run("Finish.")
+        .await
+        .unwrap();
+    assert!(result.success, "{:?}", result.error);
+    assert_eq!(result.response, "Verified.");
+    assert_eq!(calls.load(Ordering::SeqCst), 2);
+}
+
+#[tokio::test]
+async fn completion_requirements_validate_a_tool_free_final_and_preserve_questions() {
+    let requirements = || {
+        everruns::CapabilityRef::with_config(
+            "completion_requirements",
+            json!({"checks":[
+                {"type":"final_json", "schema":{"type":"object","required":["answer"],"properties":{"answer":{"type":"integer"}}}}
+            ]}),
+        )
+    };
+    let session = InMemoryEngine::new().create(
+        Agent::builder()
+            .instructions("Follow the user request and completion requirements.")
+            .model(Model::simulated_with_config(LlmSimConfig::scripted(vec![
+                SimTurn::Assistant("{\"answer\":\"wrong type\"}".into()),
+                SimTurn::Assistant("{\"answer\":42}".into()),
+            ])))
+            .capability(requirements())
+            .completion_check(CompletionCheck::Off)
+            .build()
+            .unwrap(),
+    );
+    let result = session.run("Answer in JSON.").await.unwrap();
+    assert_eq!(result.response, "{\"answer\":42}");
+    let session = InMemoryEngine::new().create(
+        Agent::builder()
+            .instructions("Follow the user request and completion requirements.")
+            .model(Model::simulated_with_config(LlmSimConfig::scripted(vec![
+                SimTurn::Assistant("Which repository should I use?".into()),
+            ])))
+            .capability(requirements())
+            .build()
+            .unwrap(),
+    );
+    let result = session.run("Inspect the repository.").await.unwrap();
+    assert_eq!(result.response, "Which repository should I use?");
+}

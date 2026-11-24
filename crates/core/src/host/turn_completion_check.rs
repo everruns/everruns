@@ -124,7 +124,8 @@ pub(crate) async fn check_finishing_turn<A: RuntimeHostAdapter>(
     // agent set to `always`: there an announcement made without the call
     // ("Running the tests now") is reviewed too. The reason carries that
     // setting, so no other agent loads the session for a tool-free answer.
-    let tool_free_answer = reason_result.review_tool_free_answers
+    let tool_free_answer = (reason_result.review_tool_free_answers
+        || reason_result.has_completion_requirements)
         && summary.tool_calls_count == 0
         && gate == GateDecision::Conclusive(CompletionState::Achieved);
     // A turn the gate already calls unfinished needs no review: it continues
@@ -136,7 +137,12 @@ pub(crate) async fn check_finishing_turn<A: RuntimeHostAdapter>(
     }
     let resolved = adapter.load_resolved_turn(org_id, session_id).await?;
     let snapshot = &resolved.snapshot;
-    if !snapshot.completion_check.applies(snapshot.unattended) {
+    let requirements = snapshot
+        .capabilities
+        .iter()
+        .find(|c| c.capability_id() == crate::completion_requirements::CAPABILITY_ID);
+    let semantic_review = snapshot.completion_check.applies(snapshot.unattended);
+    if !semantic_review && requirements.is_none() {
         return Ok(None);
     }
     if has_pending_background(adapter, org_id, session_id).await {
@@ -168,9 +174,20 @@ pub(crate) async fn check_finishing_turn<A: RuntimeHostAdapter>(
             tokens_now.saturating_sub(spent.tokens_before.unwrap_or(tokens_now)),
             (now - window_started_at).to_std().unwrap_or_default(),
         );
-    let review = match stopped {
-        Some(reason) => Ok((CompletionVerdict::InProgress, reason.to_string())),
-        None => {
+    let unmet = requirements.and_then(|c| {
+        match crate::completion_requirements::CompletionRequirements::parse(c.config_value()) {
+            Ok(checks) => checks.unmet(messages, input_message_id, candidate),
+            Err(error) => Some(format!("Invalid completion requirements: {error}")),
+        }
+    });
+    let review = match (unmet, stopped) {
+        (Some(reason), _) => Ok((CompletionVerdict::InProgress, reason)),
+        (_, Some(reason)) => Ok((CompletionVerdict::InProgress, reason.to_string())),
+        (None, None) if !semantic_review => Ok((
+            CompletionVerdict::Achieved,
+            "Configured completion requirements satisfied.".into(),
+        )),
+        (None, None) => {
             review(
                 &command_host(adapter, org_id, session_id),
                 messages,

@@ -26,6 +26,7 @@ mod computer_use;
 pub mod decisions;
 mod driver;
 mod grounding;
+pub mod options;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub use decisions::GeminiDecisionDriver;

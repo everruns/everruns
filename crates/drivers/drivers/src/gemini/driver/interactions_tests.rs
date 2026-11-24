@@ -402,3 +402,68 @@ async fn gemini_computer_actions_run_as_computer_calls_and_replay_natively() {
     );
     assert_eq!(input[2]["result"][1]["type"], "image");
 }
+
+#[test]
+fn stateless_interactions_replay_signed_history_and_reject_invalid_storage_options() {
+    let mut config = LlmCallConfig::new("gemini-4-hydrogen");
+    config
+        .driver_options
+        .insert("gemini/interactions".into(), json!({"store":false}));
+    let (request, _) = driver()
+        .interaction_request(&tool_turn(), &config, false, Some("old-id"))
+        .unwrap();
+    let body = serde_json::to_value(request).unwrap();
+    assert_eq!(body["store"], false);
+    assert!(body.get("previous_interaction_id").is_none());
+    assert_eq!(body["input"].as_array().unwrap().len(), 3);
+    assert!(body["input"].to_string().contains("sig-call"));
+    for invalid in [
+        json!({"store":"false"}),
+        json!({"stroe":false}),
+        Value::Null,
+    ] {
+        config
+            .driver_options
+            .insert("gemini/interactions".into(), invalid);
+        assert!(
+            driver()
+                .interaction_request(&tool_turn(), &config, false, None)
+                .is_err()
+        );
+    }
+}
+
+#[tokio::test]
+async fn stateless_storage_policy_reaches_both_transports() {
+    for stream in [false, true] {
+        let server = MockServer::start().await;
+        let finished = json!({"id":"not-reused", "status":"completed", "steps":[{"type":"model_output","content":[{"type":"text","text":"OK"}]}]});
+        Mock::given(method("POST"))
+            .and(path("/v1beta/interactions"))
+            .and(body_partial_json(json!({"store":false,"stream":stream})))
+            .respond_with(if stream {
+                sse(&[json!({"event_type":"interaction.completed","interaction":finished})])
+            } else {
+                ResponseTemplate::new(200).set_body_json(finished)
+            })
+            .expect(1)
+            .mount(&server)
+            .await;
+        let mut config = LlmCallConfig::new("gemini-4-hydrogen");
+        config.prefer_non_streaming = !stream;
+        config.previous_response_id = Some("must-not-use".into());
+        config
+            .driver_options
+            .insert("gemini/interactions".into(), json!({"store":false}));
+        let response = driver()
+            .chat_completion(&endpoint(&server), tool_turn(), &config)
+            .await
+            .unwrap();
+        assert!(response.metadata.finish_reason.is_some());
+        let body: Value = server.received_requests().await.unwrap()[0]
+            .body_json()
+            .unwrap();
+        assert!(body.get("previous_interaction_id").is_none());
+        assert_eq!(body["input"].as_array().unwrap().len(), 3);
+    }
+}

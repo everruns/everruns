@@ -68,6 +68,10 @@ and you can delete it in AI Studio's Logs), Everruns sends the whole
 transcript once and continues from the new interaction.
 
 Stored interactions appear in AI Studio's Logs for the API key's project.
+Add [Gemini Stateless](/capabilities/gemini-stateless/) to send `store: false`
+and replay the full transcript, including thought signatures, on every call.
+Prior response IDs are ignored in this mode. This controls conversation storage;
+it does not change the project's provider logging or training policy.
 Calls that need a feature Interactions does not offer yet use
 `generateContent` and resend the transcript as before: batch requests, an
 explicit cached-content resource, long decode above 65,536 output tokens, and

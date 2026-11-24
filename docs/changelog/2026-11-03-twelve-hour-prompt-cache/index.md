@@ -32,10 +32,7 @@ reported lifetime split and served service tier.
 This does not enable twelve-hour caching on Chat Completions or native batches.
 
 Set `enabled: false` to remove Everruns-managed cache controls and routing hints;
-it cannot disable the provider's implicit caching. OpenAI documents prompt
-caching as Zero Data Retention compatible, with encrypted KV tensors retained
-for up to 24 hours. Twelve hours is a minimum reuse lifetime, not a deletion
-deadline; response storage and organization data controls are unchanged.
+it cannot disable the provider's implicit caching. Retention is a minimum reuse lifetime, not a deletion deadline.
 
 In Framework code, explicitly keep thirty minutes with `everruns-contracts`:
 
@@ -47,3 +44,9 @@ let cache = PromptCacheConfig {
     ..Default::default()
 };
 ```
+
+## Update 2026-11-23
+
+The default is now thirty minutes to reduce write cost in growing agent loops.
+Twelve hours remains available with `retention: "12h"`. See
+[agent loop evidence and caching](/changelog/2026-11-23-agent-loop-evidence-caching/).

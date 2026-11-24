@@ -37,8 +37,8 @@ pub enum PromptCacheStrategy {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub enum PromptCacheRetention {
-    /// Everruns' default: 12 hours for qualified OpenAI Responses calls;
-    /// otherwise the provider's existing default.
+    /// The provider's short retention tier: 30 minutes for qualified OpenAI
+    /// Responses calls, otherwise the provider's existing default.
     #[default]
     #[serde(rename = "default")]
     Default,
@@ -59,7 +59,7 @@ impl PromptCacheRetention {
 
     /// Retention for qualified OpenAI Responses models and endpoints only.
     pub fn openai_responses_ttl(self) -> &'static str {
-        if matches!(self, Self::Default | Self::TwelveHours) {
+        if matches!(self, Self::TwelveHours) {
             "12h"
         } else {
             "30m"

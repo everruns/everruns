@@ -37,10 +37,14 @@ the stored turn's id and only what is new since the model answered:
 ```
 
 OpenAI agents have worked this way through the Responses API; Gemini agents
-now do too, with nothing to configure. The system prompt and tools still go
-with every call, so editing an agent takes effect on its next step. If Google
+now do too, with nothing to configure. The system prompt and tools still go with every call. If Google
 no longer has the stored turn, Everruns sends the full transcript once and
 carries on.
 
 Batch requests, explicit cached content, long decode past 65,536 output
 tokens and custom base URLs stay on `generateContent`.
+
+## Update 2026-11-23
+
+The [Gemini Stateless](/capabilities/gemini-stateless/) capability opts out of
+interaction storage and replays the full signed transcript on each call.

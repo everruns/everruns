@@ -3,7 +3,7 @@
 //! Decision: interactive chat calls on Google's own endpoint go through the
 //! Interactions API, Google's recommended interface since June 2026, so
 //! Gemini keeps the conversation on its side the way OpenAI Responses does.
-//! Every interaction is stored (`store` defaults to true; Google keeps it 55
+//! By default an interaction is stored (`store` is true; Google keeps it 55
 //! days on paid projects) and its id becomes the response id. The next turn
 //! sends `previous_interaction_id` plus only what happened since the model
 //! last answered (tool results, new user messages). Thought signatures and
@@ -12,6 +12,8 @@
 //!
 //! `system_instruction`, `tools` and `generation_config` are scoped to one
 //! interaction, so they are sent on every request.
+//! `gemini/interactions: {"store":false}` opts out of conversation storage:
+//! every call replays the full signed transcript and ignores prior response IDs.
 //!
 //! When the stored interaction is gone (deleted, expired, a free-tier project
 //! keeps it one day) Google answers 404, or 400 for an id it cannot parse. The
@@ -43,6 +45,7 @@ pub(super) struct InteractionRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     previous_interaction_id: Option<String>,
     stream: bool,
+    store: bool,
 }
 
 impl GeminiChatDriver {
@@ -70,6 +73,8 @@ impl GeminiChatDriver {
         stream: bool,
         continue_from: Option<&str>,
     ) -> Result<(InteractionRequest, bool)> {
+        let storage = crate::gemini::options::GeminiInteractionOptions::for_call(config)?;
+        let continue_from = continue_from.filter(|_| storage.store);
         // Reuse the generateContent encoder for tools and generation settings,
         // so both transports decide them in one place.
         let (legacy, grounded) = self.prepare_request(messages, config, true)?;
@@ -138,6 +143,7 @@ impl GeminiChatDriver {
                 generation_config,
                 previous_interaction_id: continue_from.map(str::to_string),
                 stream,
+                store: storage.store,
             },
             grounded,
         ))
@@ -153,10 +159,11 @@ impl GeminiChatDriver {
         let url = endpoint
             .url("interactions")
             .ok_or_else(|| AgentLoopError::config("Gemini provider has no base URL"))?;
+        let storage = crate::gemini::options::GeminiInteractionOptions::for_call(config)?;
         let continue_from = config
             .previous_response_id
             .as_deref()
-            .filter(|id| !id.is_empty());
+            .filter(|id| storage.store && !id.is_empty());
         let (request, grounded) =
             self.interaction_request(messages, config, stream, continue_from)?;
         let (request, response, retries) = match self

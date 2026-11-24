@@ -36,14 +36,6 @@ pub(super) fn build_request_options(
                 "openai" => Some(
                     if everruns_contracts::openai_compat::supports_cache_options(&config.model) {
                         match cfg.strategy {
-                            // GPT-6.2 caches only at breakpoints, so auto places them.
-                            everruns_contracts::driver_registry::PromptCacheStrategy::Auto
-                                if everruns_contracts::openai_compat::requires_explicit_cache(
-                                    &config.model,
-                                ) =>
-                            {
-                                "explicit"
-                            }
                             everruns_contracts::driver_registry::PromptCacheStrategy::Auto => {
                                 "implicit"
                             }
@@ -96,15 +88,20 @@ pub(super) fn build_request_options(
         });
 
     let mut provider_options = HashMap::new();
-    let explicit_openai_cache = provider == "openai"
+    let cacheable_openai_instructions = provider == "openai"
         && everruns_contracts::openai_compat::supports_cache_options(&config.model)
         && config.prompt_cache.as_ref().is_some_and(|cache| {
             cache.enabled
                 && (cache.strategy
                     == everruns_contracts::driver_registry::PromptCacheStrategy::Explicit
-                    || everruns_contracts::openai_compat::requires_explicit_cache(&config.model))
+                    || everruns_contracts::openai_compat::requires_cacheable_instructions(
+                        &config.model,
+                    ))
         });
-    if provider == "openai" && config.previous_response_id.is_some() && !explicit_openai_cache {
+    if provider == "openai"
+        && config.previous_response_id.is_some()
+        && !cacheable_openai_instructions
+    {
         provider_options.insert(
             "openai".to_string(),
             json!({ "previous_response_id": true }),
@@ -189,9 +186,9 @@ pub(super) fn build_request_options(
             .and_then(|state| state.effective)
             .or(config.reasoning_effort)
             .map(|effort| effort.as_str().to_string()),
-        // The reason atom always drives the provider through its streaming
-        // endpoint (`chat_completion_stream`).
-        stream: Some(true),
+        // The stream interface can carry a non-streaming provider response.
+        // Completed generations override this intent from the captured wire.
+        stream: Some(!config.prefer_non_streaming || config.limits.needs_incremental_events()),
         prompt_cache,
         tool_search,
         provider_options,
@@ -208,7 +205,7 @@ pub(super) fn with_completed_request_options(
     meta: Option<&crate::engine::driver_registry::LlmCompletionMetadata>,
 ) -> crate::engine::events::LlmGenerationData {
     let mut options = build_request_options(config, provider).unwrap_or_default();
-    record_wire_cache_retention(
+    record_wire_request_options(
         &mut options,
         meta.and_then(|m| m.request_body.as_ref()),
         provider,
@@ -222,20 +219,46 @@ pub(super) fn with_completed_request_options(
 /// Endpoint and protocol gates can shorten or omit the requested retention.
 /// Completed generations record the sent body rather than inferring it from a
 /// provider name (which can also represent Azure or Chat Completions).
-pub(super) fn record_wire_cache_retention(
+pub(super) fn record_wire_request_options(
     options: &mut LlmRequestOptions,
     body: Option<&serde_json::Value>,
     provider: &str,
 ) {
-    if provider == "openai"
-        && let Some(body) = body
+    let Some(body) = body else { return };
+    if let Some(stream) = body.get("stream").and_then(serde_json::Value::as_bool) {
+        options.stream = Some(stream);
+    }
+    if provider == "gemini"
+        && let Some(store) = body.get("store").and_then(serde_json::Value::as_bool)
     {
+        let gemini = options
+            .provider_options
+            .entry("gemini".into())
+            .or_insert_with(|| json!({}));
+        gemini["conversation_store"] = json!(store);
+        gemini["conversation_continuation"] = json!(body.get("previous_interaction_id").is_some());
+    }
+    if provider == "openai" {
+        let openai = options
+            .provider_options
+            .entry("openai".into())
+            .or_insert_with(|| json!({}));
+        openai["previous_response_id"] = json!(body.get("previous_response_id").is_some());
         let retention = body
             .pointer("/prompt_cache_options/ttl")
             .and_then(serde_json::Value::as_str)
             .map(str::to_owned);
         if let Some(cache) = &mut options.prompt_cache {
             cache.retention = retention;
+            cache.provider_mode = body
+                .pointer("/prompt_cache_options/mode")
+                .and_then(serde_json::Value::as_str)
+                .or_else(|| {
+                    body.get("prompt_cache_key")
+                        .and_then(serde_json::Value::as_str)
+                        .map(|_| "prompt_cache_key")
+                })
+                .map(str::to_owned);
         } else if let Some(mode @ ("implicit" | "explicit")) = body
             .pointer("/prompt_cache_options/mode")
             .and_then(serde_json::Value::as_str)
@@ -449,7 +472,7 @@ mod tests {
             (json!({}), None),
         ] {
             let mut options = build_request_options(&config, "openai").unwrap();
-            record_wire_cache_retention(&mut options, Some(&body), "openai");
+            record_wire_request_options(&mut options, Some(&body), "openai");
             assert_eq!(options.prompt_cache.unwrap().retention.as_deref(), expected);
         }
     }
@@ -459,17 +482,53 @@ mod tests {
         let config = crate::engine::driver_registry::LlmCallConfig::new("gpt-6.1-sol");
         let mut options = build_request_options(&config, "openai").unwrap_or_default();
         assert!(options.prompt_cache.is_none());
-        record_wire_cache_retention(&mut options, Some(&json!({})), "openai");
+        record_wire_request_options(&mut options, Some(&json!({})), "openai");
         assert!(options.prompt_cache.is_none());
         let body = json!({"prompt_cache_options":{"ttl":"12h", "mode":"implicit"}});
-        record_wire_cache_retention(&mut options, Some(&body), "openai");
+        record_wire_request_options(&mut options, Some(&body), "openai");
         let cache = options.prompt_cache.unwrap();
         assert!(cache.enabled);
+        assert_eq!(
+            options.provider_options["openai"]["previous_response_id"],
+            false
+        );
         assert_eq!(cache.retention.as_deref(), Some("12h"));
         assert_eq!(cache.provider_mode.as_deref(), Some("implicit"));
         assert_eq!(
             cache.strategy,
             everruns_contracts::driver_registry::PromptCacheStrategy::Auto
+        );
+    }
+
+    #[test]
+    fn wire_options_record_effective_streaming_and_conversation_storage() {
+        let mut config = crate::engine::driver_registry::LlmCallConfig::new("gemini-4-hydrogen");
+        config.prefer_non_streaming = true;
+        let mut options = build_request_options(&config, "gemini").unwrap();
+        assert_eq!(options.stream, Some(false));
+        record_wire_request_options(
+            &mut options,
+            Some(&json!({"stream":true,"store":false})),
+            "gemini",
+        );
+        assert_eq!(options.stream, Some(true));
+        assert_eq!(
+            options.provider_options["gemini"]["conversation_store"],
+            false
+        );
+        assert_eq!(
+            options.provider_options["gemini"]["conversation_continuation"],
+            false
+        );
+        record_wire_request_options(
+            &mut options,
+            Some(&json!({"stream":false,"store":true,"previous_interaction_id":"id"})),
+            "gemini",
+        );
+        assert_eq!(options.stream, Some(false));
+        assert_eq!(
+            options.provider_options["gemini"]["conversation_continuation"],
+            true
         );
     }
 

@@ -186,6 +186,8 @@ Performance and cost optimization for LLM interactions.
 | [Self-Budget](/capabilities/self-budget/) | `self_budget` | 0 |
 | [Parallel Tool Calls](/capabilities/parallel-tool-calls/) | `parallel_tool_calls` | 0 |
 | Native Async Tools | `native_async_tools` | 0 |
+| [Completion Requirements](/capabilities/completion-requirements/) | `completion_requirements` | 0 |
+| [Gemini Stateless](/capabilities/gemini-stateless/) | `gemini_stateless` | 0 |
 | [Prompt Caching](/capabilities/prompt-caching/) | `prompt_caching` | 0 |
 | [Claude Message Threads](/capabilities/claude-message-threads/) | `claude_message_threads` | 0 |
 

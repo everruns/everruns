@@ -252,6 +252,8 @@ pub fn builtin_capability_docs_slug(id: &str) -> Option<&'static str> {
         "a2a_agent_delegation" => Some("a2a-agent-delegation"),
         "loop_detection" => Some("loop-detection"),
         "prompt_caching" => Some("prompt-caching"),
+        "completion_requirements" => Some("completion-requirements"),
+        "gemini_stateless" => Some("gemini-stateless"),
         // Kept complete by scripts/check_docs_catalogs.py: every capability
         // the docs index links to a page must map to that page here.
         _ => None,
