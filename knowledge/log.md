@@ -2,6 +2,8 @@
 
 ## 2026-11-24
 
+- [Channels](integrations/channels.md#output-delivery-checkpoints): protocol-marked pending rows survive the pre-intent crash window under legacy adapters; missing channels retain reconciliation evidence. Deploy the shared-host compatibility baseline before rolling the Channelkit bridge.
+
 - [Channels](integrations/channels.md#output-delivery-checkpoints): structured provider outcomes, fenced write-ahead output intents, restartable native handles and split receipts, persistent retry advice, and retained uncertainty for the Channelkit migration. Slack transport cutover follows separately.
 
 ## 2026-11-23

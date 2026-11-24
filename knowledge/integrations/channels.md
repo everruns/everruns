@@ -160,8 +160,9 @@ message services.
   `ResolvedChannel` (config plus driver, or config plus stream kind) per call;
   the builder's static map becomes one `ChannelResolver`, the server's resolver
   reads `agent_channels`. Recovery resolves each pending delivery's channel
-  through the resolver and leaves it when the channel is only unavailable;
-  it drops it only when the resolver says the channel is gone.
+  through the resolver and retains pending output when the channel is unavailable
+  or gone. Absence cannot establish that an earlier writer sent nothing;
+  explicit reconciliation retires that output.
 - **Host scope.** `ChannelConfig` carries an opaque, typed scope the host's
   port downcasts (the server's ingress context: org, agent, harness, owner,
   virtual user, channel row id). `NewChannelSession` and `send` receive the
@@ -307,7 +308,8 @@ ordinary transport retries, never replay all parts, and never trigger a second
 fallback notice. Confirmed stream handles/prefixes and progress handles survive a
 restart. Known-handle closure and replacement are idempotent cleanup; uncertain
 content is not appended again. Definite rate-limit advice is retained across
-restarts. Unpublished/unavailable channels retain output ledgers for reconciliation.
+restarts. Missing or unavailable channels retain pending rows and output ledgers
+for reconciliation, including legacy rows without a ledger.
 
 The checkpoint is versioned, bounded to eight MiB, and contains no delivery token or
 private response URL. Adapters persist scoped references through the receipt sink;
@@ -316,7 +318,14 @@ support fails before a requiring driver's first provider write. Ledger-capable s
 advertise that capability even when a legacy driver is active: the host refuses to
 replay or clear any existing checkpoint through that driver, before admission or
 provider I/O. Known stores also fence legacy completion. Legacy deliveries without
-a ledger retain their delivery policy. See the
+a ledger retain their delivery policy while an unmarked legacy driver is active.
+New requiring drivers mark pending rows before their first intent; a legacy driver
+refuses these rows even when no ledger exists yet. A requiring driver retains
+unmarked ledgerless rows for reconciliation instead of replaying unaudited output.
+Deploy this protocol-aware baseline to every delivery host before rolling out a
+requiring adapter. A binary that only checks for an existing ledger is not a safe
+mixed-version owner or rollback target. See the
+[cutover runbook](../../docs/sre/runbooks/channel-delivery-cutover.md), the
 [contract](../../crates/contracts/src/runtime/channel.rs),
 [checkpoint runtime](../../crates/core/src/channel_runtime/checkpoint.rs),
 [delivery loop](../../crates/core/src/channel_runtime/delivery.rs) and
