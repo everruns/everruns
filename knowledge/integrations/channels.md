@@ -308,8 +308,8 @@ ordinary transport retries, never replay all parts, and never trigger a second
 fallback notice. Confirmed stream handles/prefixes and progress handles survive a
 restart. Known-handle closure and replacement are idempotent cleanup; uncertain
 content is not appended again. Definite rate-limit advice is retained across
-restarts. Unpublished, missing or unavailable channels retain pending rows and
-output ledgers for reconciliation, including unaudited legacy rows without a ledger.
+restarts. Missing or unavailable channels retain pending rows and output ledgers
+for reconciliation, including legacy rows without a ledger.
 
 The checkpoint is versioned, bounded to eight MiB, and contains no delivery token or
 private response URL. Adapters persist scoped references through the receipt sink;
@@ -317,12 +317,15 @@ a callback failure stops further output. An old custom store without checkpoint
 support fails before a requiring driver's first provider write. Ledger-capable stores
 advertise that capability even when a legacy driver is active: the host refuses to
 replay or clear any existing checkpoint through that driver, before admission or
-provider I/O. Known stores also fence legacy completion. Legacy deliveries without
-a ledger retain their delivery policy while a legacy driver remains active.
-A newly requiring driver resumes a ledgerless row only if the host marked it at
-creation for the checkpoint protocol. Unmarked pre-cutover rows may already have
-sent output, so they remain pending for reconciliation without reading/replaying
-the turn. This also preserves a new row committed before its first intent. See the
+provider I/O. Known stores also fence legacy completion. Unmarked legacy rows without a ledger
+retain their delivery policy under a legacy driver.
+New requiring drivers mark pending rows before their first intent; a legacy driver
+refuses these rows even when no ledger exists yet. A requiring driver retains
+unmarked ledgerless rows for reconciliation instead of replaying unaudited output.
+Deploy this protocol-aware baseline to every delivery host before rolling out a
+requiring adapter. A binary that only checks for an existing ledger is not a safe
+mixed-version owner or rollback target. See the
+[cutover runbook](../../docs/sre/runbooks/channel-delivery-cutover.md), the
 [contract](../../crates/contracts/src/runtime/channel.rs),
 [checkpoint runtime](../../crates/core/src/channel_runtime/checkpoint.rs),
 [delivery loop](../../crates/core/src/channel_runtime/delivery.rs) and
@@ -334,18 +337,3 @@ ledger and replaying the turn is not reconciliation. Rollback must use a build t
 understands and enforces the ledger, or drain/fence deliveries before switching implementations;
 an older binary must not resume these pending rows. This output contract does not
 close the existing inbound ACK-before-background-acceptance crash window.
-
-
-## Provider transport and native file intake
-
-Channelkit adapters sit below the shared host. A delivery context carries the
-host-selected egress service transiently, outside serialized targets and ledgers.
-The same scope governs credential discovery, native history, actions and provider
-writes; an adapter's standalone transport cannot replace a configured host scope.
-
-Native file metadata carries an opaque installation/workspace/file reference,
-never a private URL or bearer credential. The host applies count, declared-size,
-download and content policy before asking the driver's resolver for bounded bytes.
-Resolution requires the host intake egress service; without it, the input receives
-a note and no file fetch occurs. The resolver validates installation/workspace
-again and delegates metadata, redirects and download mechanics to Channelkit.

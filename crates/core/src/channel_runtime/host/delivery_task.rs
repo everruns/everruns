@@ -6,6 +6,17 @@ pub(super) async fn run_delivery(
     turn: Delivery,
     mut events: ChannelEventStream,
 ) {
+    if !turn.driver.requires_checkpoint()
+        && turn
+            .target
+            .extra
+            .contains_key(recovery::CHECKPOINT_PROTOCOL)
+    {
+        // A requiring driver may have committed its pending row but not its
+        // first intent. The marker still forbids legacy replay or completion.
+        warn!(session_id = %turn.session_id, "channel: legacy driver cannot replay protocol-marked output; delivery retained");
+        return;
+    }
     let fenced = inner.store.supports_delivery_checkpoints();
     if turn.driver.requires_checkpoint() && !fenced {
         warn!(session_id = %turn.session_id, "channel: driver requires an output-ledger store; delivery retained");

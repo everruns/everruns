@@ -289,3 +289,15 @@ Related contracts: [Messaging Integrations](messaging-integrations.md),
 [Slack response policy](slack-response-policy.md),
 [Explicit Communication](explicit-communication.md), and
 [Framework application services](../framework/application-api.md).
+
+## Rolling-upgrade baseline
+
+Before enabling the Slack bridge on a rolling deployment, every delivery host
+must understand the output protocol marker as well as existing ledgers. A legacy
+adapter must retain marked pending rows in the pre-intent crash window, and a
+requiring adapter must retain unmarked legacy rows that have no audited ledger.
+Missing channels never prove nonacceptance. Land and deploy this shared-host
+compatibility baseline first, confirm all old owners are gone, then adopt the
+bridge. Rollback uses that baseline or a later protocol-aware build. See the
+[output contract](channels.md#output-delivery-checkpoints) and
+[cutover runbook](../../docs/sre/runbooks/channel-delivery-cutover.md).

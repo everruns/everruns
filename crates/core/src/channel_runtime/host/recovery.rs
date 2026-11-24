@@ -55,6 +55,13 @@ impl ChannelHost {
             let Some(driver) = channel.driver().cloned() else {
                 continue;
             };
+            if !driver.requires_checkpoint()
+                && pending.target.extra.contains_key(CHECKPOINT_PROTOCOL)
+            {
+                // Do not even replay events when a rollback driver cannot
+                // interpret this output protocol, including its pre-intent row.
+                continue;
+            }
             if driver.requires_checkpoint()
                 && pending
                     .target
