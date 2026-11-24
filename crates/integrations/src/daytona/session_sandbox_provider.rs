@@ -1223,15 +1223,16 @@ async fn lost_status(
     // A binding alone (or an empty volume) cannot restore workspace data.
     // Verify the volume without starting compute; unreadable recovery stays
     // unknown rather than hiding a real loss behind a historical checkpoint.
-    let recoverable = match recovery_binding(&context.session_id(), &state.instance)? {
-        Some(binding) if binding.head_revision.is_some() => {
+    let recoverable = match recovery_binding(&context.session_id(), &state.instance) {
+        Ok(Some(binding)) if binding.head_revision.is_some() => {
             match client.get_volume(&binding.volume_id).await {
                 Ok(volume) => Some(volume.state == "ready"),
                 Err(err) if is_not_found(&err) => Some(false),
                 Err(_) => None,
             }
         }
-        _ => Some(false),
+        Ok(_) => Some(false),
+        Err(_) => None,
     };
     Ok(SessionSandboxStatusResponse {
         provider: state.provider.clone(),

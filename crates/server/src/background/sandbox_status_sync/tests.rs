@@ -485,13 +485,19 @@ async fn daytona_missing_instance_requires_a_committed_checkpoint_for_recovery()
 }
 
 #[tokio::test]
-async fn missing_or_unreadable_recovery_volumes_remain_actionable() {
-    for (code, body) in [
-        (404, json!({})),
-        (403, json!({})),
+async fn missing_unreadable_or_invalid_recovery_remains_actionable() {
+    for (code, body, valid_binding) in [
+        (404, json!({}), true),
+        (403, json!({}), true),
         (
             200,
             json!({"id": "recovery-volume", "name": "test", "state": "error"}),
+            true,
+        ),
+        (
+            200,
+            json!({"id": "recovery-volume", "name": "test", "state": "ready"}),
+            false,
         ),
     ] {
         let (db, service, session, provider) = fixture().await;
@@ -503,6 +509,10 @@ async fn missing_or_unreadable_recovery_volumes_remain_actionable() {
             "mount_path": "/mnt/recovery", "subpath": format!("sessions/{session}"),
             "retained_revisions": 10, "head_revision": "rev-1"
         }});
+        if !valid_binding {
+            checkpointed.instance.provider_state["recovery"]["mount_path"] =
+                json!("/mnt/../invalid");
+        }
         store
             .save_state(session, &checkpointed, previous.sandbox.as_ref())
             .await
@@ -516,7 +526,7 @@ async fn missing_or_unreadable_recovery_volumes_remain_actionable() {
         Mock::given(method("GET"))
             .and(path("/volumes/recovery-volume"))
             .respond_with(ResponseTemplate::new(code).set_body_json(body))
-            .expect(1)
+            .expect(if valid_binding { 1 } else { 0 })
             .mount(&provider)
             .await;
         sync(db.pool(), &service).await.unwrap();
