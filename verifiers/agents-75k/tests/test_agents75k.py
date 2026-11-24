@@ -69,6 +69,44 @@ class SoakMemorySignals(unittest.TestCase):
         self.assertEqual(k, {"oom": 2, "controlled": 1, "crash": 1, "unknown": 3})
 
 
+def soak_run(name, at):
+    out = local.shard_soak(soak(name), [])
+    for e in out.entries:
+        e["density"] = out.density
+    return {"run": f"soak-{name}", "at": at, "commit": "x", "fingerprint": CFG.fingerprint,
+            "levels": ["L2"], "density": out.density, "entries": out.entries, "invalid": []}
+
+
+class ScaledSoakLevel(unittest.TestCase):
+    """A 1/8-density soak counts for per-shard points when its log reached
+    about the gate's share of the limit (levels.toml [L2.scaled])."""
+
+    def test_a_soak_at_the_gates_log_share_counts_at_the_scaled_certainty(self):
+        run = soak_run("prefix_ae876092", "2026-11-23T19:10:00Z")  # log 247 MB of 1,792: 13.8%
+        sts = S.states(CFG, [run], fresh())
+        cell = sts["A4"].cells["L2"]
+        self.assertEqual((cell.entry["value"], cell.c), (6, 0.35))
+        self.assertTrue(sts["A4"].gate_failed)  # and its kills fail the gate
+
+    def test_a_soak_whose_log_stayed_small_does_not_count(self):
+        run = soak_run("tip_be9521d3", "2026-11-23T23:10:00Z")
+        for e in run["entries"]:
+            e["log_share"] = 0.03  # snapshot 20,000 at 1/8: about 3% of the limit
+        sts = S.states(CFG, [run], fresh())
+        self.assertNotIn("L2", sts["A4"].cells)
+        self.assertIn("log at 3.0% of its limit", sts["A4"].excluded[0][2])
+
+    def test_a_soak_the_next_gate_contradicted_loses_certainty(self):
+        soak_ = soak_run("prefix_ae876092", "2026-11-23T19:10:00Z")  # predicts a kill
+        data = cloud.read_run(os.path.join(RUNS, ORDER[-1]))      # the gate passed after it
+        out = cloud.import_run(data, ORDER[-1], "L4", 75_000)
+        gate = {"run": ORDER[-1], "at": "2026-11-23T20:00:00Z", "commit": "x", "fingerprint": CFG.fingerprint,
+                "levels": ["L4"], "agents": out.agents, "density": out.density, "entries": out.entries, "invalid": []}
+        later = soak_run("tip_be9521d3", "2026-11-23T23:10:00Z")
+        sts = S.states(CFG, [soak_, gate, later], fresh())
+        self.assertEqual(sts["C3"].cells["L2"].c, round(0.35 * 1 / 2, 3))
+
+
 class Goal(unittest.TestCase):
     def test_points_and_weights(self):
         self.assertEqual(len(CFG.points), 58)

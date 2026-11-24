@@ -91,6 +91,14 @@ def shard_soak(summary, samples):
                 creep.append(s)
     if creep:
         out.add("F1", "L2", round(max(0.0, max(creep)), 4), note="steady window, nodes not killed")
+    # The Raft log's peak share of the soak's memory limit: below goal density
+    # the verifier counts a soak only when this is near the gate's
+    # (levels.toml [L2.scaled]).
+    logs = summary.get("peak_log_mb") or {}
+    if logs and cfg.get("limit_mb"):
+        share = round(max(logs.values()) / cfg["limit_mb"], 4)
+        for e in out.entries:
+            e["log_share"] = share
     return out
 
 

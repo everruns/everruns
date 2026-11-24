@@ -80,6 +80,7 @@ points about growing past it (those are agents-1m's), plus:
 | L0 model | arithmetic from measured per-agent costs | 0.15 |
 | L1 simulation | fleet tests, protocol models and simulations, cluster simulation, realism | 0.30 |
 | L2 local | the agentd harnesses and fault proofs on one machine | 0.50 |
+| L2 scaled | a shard soak below goal density whose Raft log reached about the gate's share of the limit (`levels.toml` `[L2.scaled]`) | 0.35 x its agreement with later gate runs |
 | L4 full | the 75k gate on EKS (`saas dataplane-load`) | 1.00 |
 
 There is no cloud slice: the full gate is cheap enough to be the only cloud
