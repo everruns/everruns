@@ -562,3 +562,56 @@ async fn a_send_that_waits_answers_with_its_turns_reply() {
     assert_eq!(waited["status"], "timeout", "{waited}");
     assert!(waited.get("error").is_none(), "{waited}");
 }
+
+/// `agentd_memory_actions_total{action="restart"}` on each of `shard`'s nodes.
+async fn restarts(fleet: &Fleet, shard: u32) -> Vec<u64> {
+    let mut out = vec![];
+    for (_, addr) in fleet.addrs(shard) {
+        let text = fleet
+            .http
+            .get(format!("http://{addr}/metrics"))
+            .send()
+            .await
+            .unwrap()
+            .text()
+            .await
+            .unwrap();
+        let n = text
+            .lines()
+            .find(|l| {
+                l.starts_with("agentd_memory_actions_total") && l.contains("action=\"restart\"")
+            })
+            .and_then(|l| l.rsplit(' ').next())
+            .and_then(|v| v.parse::<f64>().ok())
+            .unwrap_or(0.0);
+        out.push(n as u64);
+    }
+    out
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn replicas_out_of_memory_together_restart_one_at_a_time() {
+    // Every node of shard 0 measures itself against 1 MiB, all at once: each
+    // is past 98% and sees every peer answering. One restarts (a test fleet
+    // only counts it); the others wait for it, so the shard keeps a quorum.
+    let mut fleet = Fleet::start().await;
+    for node in 1..=3 {
+        fleet.restart_with_memory_limit(0, node, 1 << 20);
+    }
+    let deadline = Instant::now() + Duration::from_secs(20);
+    let mut seen = vec![];
+    while Instant::now() < deadline {
+        seen = restarts(&fleet, 0).await;
+        assert!(
+            seen.iter().sum::<u64>() <= 1,
+            "more than one replica restarted: {seen:?}"
+        );
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    }
+    assert_eq!(
+        seen.iter().sum::<u64>(),
+        1,
+        "one replica restarts: {seen:?}"
+    );
+    fleet.check();
+}
