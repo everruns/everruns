@@ -40,13 +40,20 @@ report of what you did and what is unfinished."
     })
 }
 
-/// Append the reminder when it applies. Returns how many trailing messages it
-/// added, to extend the request's volatile suffix.
-pub(super) fn append_notice(
-    messages: &mut Vec<RuntimeMessage>,
+/// Append the reminder to interleaved messages and extend their volatile
+/// suffix, which context updates stay in front of.
+pub(in crate::engine::execution::reason) fn with_notice(
+    (mut messages, volatile): (Vec<RuntimeMessage>, usize),
     iteration: u32,
     max: usize,
-) -> usize {
+) -> (Vec<RuntimeMessage>, usize) {
+    let added = append_notice(&mut messages, iteration, max);
+    (messages, volatile + added)
+}
+
+/// Append the reminder when it applies. Returns how many trailing messages it
+/// added.
+fn append_notice(messages: &mut Vec<RuntimeMessage>, iteration: u32, max: usize) -> usize {
     match notice(iteration, max) {
         Some(text) => {
             messages.push(RuntimeMessage::turn_scoped_system(text));
