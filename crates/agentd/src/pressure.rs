@@ -124,6 +124,29 @@ pub async fn restart_requested() {
     RESTART.notified().await;
 }
 
+/// The shard's leader as `raft` knows it; none once it stopped on a fatal
+/// error. Its metrics then freeze at the last leader it knew, often itself,
+/// and executors and gateways asking it would send work to a dead core
+/// (`Node::fence`).
+pub fn live_leader(raft: &crate::types::Raft) -> Option<NodeId> {
+    let m = raft.metrics();
+    let m = m.borrow();
+    m.running_state
+        .is_ok()
+        .then_some(m.current_leader)
+        .flatten()
+}
+
+static FENCE: tokio::sync::Notify = tokio::sync::Notify::const_new();
+
+/// Exit status of a node whose Raft stopped on a fatal storage error.
+pub const FENCE_EXIT: i32 = 74;
+
+/// Resolves once a node of this process fenced itself (`Node::fence`).
+pub async fn fence_requested() {
+    FENCE.notified().await;
+}
+
 /// A peer reading older than this does not count.
 const PEER_STALE: Duration = Duration::from_secs(5);
 /// A leader whose applied index has not moved this long while it has
@@ -218,6 +241,8 @@ pub struct Pressure {
     hot_since: Mutex<Option<Instant>>,
     /// This node asked to restart itself.
     restarting: AtomicBool,
+    /// This node fenced itself after Raft stopped on a fatal error.
+    fenced: AtomicBool,
     /// Since when this node's restart has been due and announced.
     pending_since: Mutex<Option<Instant>>,
     /// This node is catching up (`catchup`), as its reading tells peers.
@@ -241,6 +266,7 @@ impl Pressure {
             shed_inputs: AtomicU64::new(0),
             hot_since: Mutex::new(None),
             restarting: AtomicBool::new(false),
+            fenced: AtomicBool::new(false),
             pending_since: Mutex::new(None),
             behind: AtomicBool::new(false),
             peer_flags: Mutex::default(),
@@ -444,6 +470,28 @@ impl Node {
         }
     }
 
+    /// Fence this node after its Raft stopped on a fatal error.
+    ///
+    /// Decision: a storage error Raft cannot get past (a full disk, a failed
+    /// write) stops the node's Raft core but not its process: its metrics
+    /// freeze at the last leader it knew, often itself, so it kept claiming
+    /// leadership while the other replicas elected a new leader, and turns
+    /// queued behind it stalled (disk full on the Mac mini, 2026-11-24: 1,315
+    /// inputs waiting 19 minutes). `leader()` reports none once Raft has
+    /// stopped, and the `node` binary exits with [`FENCE_EXIT`] so the
+    /// orchestrator restarts it; a test fleet, sharing one process, counts.
+    fn fence(&self, fatal: &openraft::error::Fatal<NodeId>) {
+        if self.pressure.fenced.swap(true, Ordering::Relaxed) {
+            return;
+        }
+        self.pressure.actions.inc(&[("action", "fence")]);
+        tracing::error!(shard = self.cfg.shard, node = self.cfg.node_id, %fatal,
+            "raft stopped on a fatal error: fencing this node");
+        if RESTART_ENABLED.load(Ordering::Relaxed) {
+            FENCE.notify_one();
+        }
+    }
+
     /// Level 4: restart this node before the kernel kills it (module notes).
     async fn restart_for_memory(&self) {
         let own = self.pressure.own();
@@ -482,6 +530,9 @@ impl Node {
                 .record_own(crate::memwatch::reading(self.cfg.memory_limit).0);
             let stalled = {
                 let metrics = self.raft.metrics().borrow().clone();
+                if let Err(fatal) = &metrics.running_state {
+                    self.fence(fatal);
+                }
                 self.pressure.record_progress(
                     metrics.state == openraft::ServerState::Leader,
                     metrics.last_log_index.unwrap_or(0),

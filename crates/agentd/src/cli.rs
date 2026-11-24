@@ -452,6 +452,9 @@ pub async fn run(host: impl Host) -> anyhow::Result<()> {
                 () = crate::pressure::restart_requested() => {
                     std::process::exit(crate::memwatch::RESTART_EXIT)
                 }
+                () = crate::pressure::fence_requested() => {
+                    std::process::exit(crate::pressure::FENCE_EXIT)
+                }
             }
         }
         Mode::Executor {

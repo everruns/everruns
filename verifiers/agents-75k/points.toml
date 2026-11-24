@@ -653,7 +653,7 @@ weight = 2
 direction = "pass"
 cheapest = "L2"
 scales = "per_shard"
-built_from = "disk full proof (new)"
+built_from = "scripts/agentd/prove_disk_full.py (a privileged container: it mounts a tmpfs)"
 watches = ["crates/agentd/src/wal.rs", "crates/agentd/src/node.rs"]
 
 [[point]]
