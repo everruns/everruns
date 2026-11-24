@@ -30,7 +30,7 @@ pub(crate) async fn should_process_message(
 ) -> bool {
     if config.response_policy == SlackResponsePolicy::AllMessages
         || is_directed_message(event)
-        || mentions_agent(state, config, endpoint, event).await
+        || mentions_agent(state, config, endpoint, event, app.org_id).await
     {
         return true;
     }
@@ -96,14 +96,16 @@ async fn mentions_agent(
     config: &SlackChannelConfig,
     endpoint: &IngressChannel,
     event: &SlackEvent,
+    org_id: i64,
 ) -> bool {
     let Some(text) = event.text.as_deref().filter(|text| text.contains("<@")) else {
         return false;
     };
-    let Some(bot) = super::resolve_slack_bot_user(
-        &state.bot_user_cache,
-        &config.bot_token,
+    let Some(bot) = crate::channels::slack::provider::bot_user(
+        state,
         &endpoint.public_id.to_string(),
+        config,
+        crate::channels::slack::provider::egress(state, org_id),
     )
     .await
     else {

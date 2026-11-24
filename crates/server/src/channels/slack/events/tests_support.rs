@@ -98,15 +98,13 @@ pub(crate) fn test_slack_file(
     name: &str,
     mimetype: &str,
     filetype: &str,
-    url: Option<&str>,
+    _url: Option<&str>,
 ) -> SlackFile {
     SlackFile {
         id: Some("F0123456789".to_string()),
         name: Some(name.to_string()),
         mimetype: Some(mimetype.to_string()),
         filetype: Some(filetype.to_string()),
-        url_private: url.map(String::from),
-        url_private_download: None,
         is_external: false,
         permalink: None,
         size: Some(1024),
@@ -149,3 +147,86 @@ pub(crate) fn test_slack_attachment() -> SlackAttachment {
 
 /// Noop runner for tests that need SlackState without a real worker.
 pub(crate) struct NoopRunner;
+
+/// A provider fixture with real installation discovery, isolated to loopback.
+pub(crate) async fn mock_provider() -> wiremock::MockServer {
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::path("/auth.test"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200)
+                .set_body_json(serde_json::json!({"ok": true, "team_id": "T1", "user_id": "UBOT"})),
+        )
+        .mount(&server)
+        .await;
+    server
+}
+
+pub(crate) async fn provider_requests(server: &wiremock::MockServer) -> Vec<wiremock::Request> {
+    server
+        .received_requests()
+        .await
+        .expect("provider requests")
+        .into_iter()
+        .filter(|request| request.url.path() != "/auth.test")
+        .collect()
+}
+
+/// The library still validates Slack's HTTPS upload URL. Only this test-owned
+/// host transport maps the approved fixture hop into its local HTTP server.
+pub(crate) fn upload_egress(base: &str) -> Arc<dyn everruns_core::EgressService> {
+    struct LoopbackSlackEgress(String);
+    #[async_trait::async_trait]
+    impl everruns_core::EgressService for LoopbackSlackEgress {
+        async fn send(
+            &self,
+            _: everruns_core::egress::EgressRequest,
+        ) -> everruns_core::egress::EgressResult<everruns_core::egress::EgressResponse> {
+            unreachable!()
+        }
+        async fn send_stream(
+            &self,
+            request: everruns_core::egress::EgressRequest,
+        ) -> everruns_core::egress::EgressResult<everruns_core::egress::EgressStreamResponse>
+        {
+            assert!(request.dns_pinning_required);
+            let url = if request.url == "https://files.slack.com/upload-here" {
+                assert!(!request.headers.contains_key("authorization"));
+                format!("{}/upload-here", self.0)
+            } else {
+                assert!(request.url.starts_with(&format!("{}/", self.0)));
+                request.url
+            };
+            let client = reqwest::Client::builder()
+                .redirect(reqwest::redirect::Policy::none())
+                .build()
+                .unwrap();
+            let mut outbound = client
+                .request(
+                    reqwest::Method::from_bytes(request.method.as_bytes()).unwrap(),
+                    url,
+                )
+                .body(request.body);
+            for (name, value) in request.headers {
+                outbound = outbound.header(name, value);
+            }
+            let response = outbound.send().await.unwrap();
+            let status = response.status().as_u16();
+            let headers = response
+                .headers()
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_str().unwrap().to_string()))
+                .collect();
+            let body = response.bytes().await.unwrap().to_vec();
+            assert!(body.len() <= 1024 * 1024);
+            Ok(everruns_core::egress::EgressStreamResponse {
+                status,
+                headers,
+                body: Box::pin(futures::stream::iter([Ok(body)])),
+            })
+        }
+    }
+    let url = url::Url::parse(base).unwrap();
+    assert_eq!(url.scheme(), "http");
+    assert_eq!(url.host_str(), Some("127.0.0.1"));
+    Arc::new(LoopbackSlackEgress(base.into()))
+}

@@ -156,7 +156,12 @@ impl WorkerServiceImpl {
         &self,
         request: Request<InvokeSlackActionRequest>,
     ) -> Result<Response<InvokeSlackActionResponse>, Status> {
-        crate::channels::slack::actions::serve_rpc(&self.db, self.encryption.as_ref(), request)
-            .await
+        crate::channels::slack::actions::serve_rpc(
+            &self.db,
+            self.encryption.as_ref(),
+            Some(self.slack_egress.clone()),
+            request,
+        )
+        .await
     }
 }

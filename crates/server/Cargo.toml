@@ -51,6 +51,8 @@ lua = ["everruns-capabilities/lua"]
 live-tests = []
 
 [dependencies]
+channelkit.workspace = true
+channelkit-slack.workspace = true
 everruns-integrations = { workspace = true, features = ["event-webhooks", "typesafe", "bashkit", "web-fetch", "web-search", "github", "slack-channel", "browserless"] }
 
 mimalloc.workspace = true

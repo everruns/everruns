@@ -39,6 +39,8 @@ the [scanner regression](../../scripts/test-durable-isolation.sh) exercises both
 failure paths alongside matching and clean source fixtures.
 MCP credential and worker-transport changes also exercise the gRPC identity and
 connection-required contract before merge.
+The integrations offline configuration also selects Slack and webhook drivers, so
+provider bridge and signed-ingress regressions execute rather than merely compile.
 Hosted capability graph validation selects both portable builtins and environment
 capabilities, matching server/worker composition; either catalog alone can omit
 dependencies supplied by the other.

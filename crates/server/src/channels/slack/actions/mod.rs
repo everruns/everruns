@@ -37,9 +37,10 @@ use tracing::{debug, warn};
 use crate::storage::{EncryptionService, StorageBackend};
 pub(super) use everruns_integrations::slack_channel::actions::action_error;
 use everruns_integrations::slack_channel::actions::{
-    add_reaction, lookup_user, share_message_files, update_message, upload_file,
+    add_reaction_scoped, lookup_user_scoped, share_message_files_scoped, update_message_scoped,
+    upload_file_scoped,
 };
-use everruns_integrations::slack_channel::web_api::{SLACK_API_BASE, slack_api_call};
+use everruns_integrations::slack_channel::web_api::SLACK_API_BASE;
 
 mod post_message;
 pub(crate) use post_message::slack_target as signed_slack_target;
@@ -60,6 +61,7 @@ pub struct DbSlackActionInvoker {
     session_id: SessionId,
     /// Slack Web API base. Overridden in tests to point at a local mock.
     api_base: String,
+    egress: Option<Arc<dyn everruns_contracts::runtime::egress::EgressService>>,
 }
 
 impl DbSlackActionInvoker {
@@ -75,7 +77,17 @@ impl DbSlackActionInvoker {
             org_id,
             session_id,
             api_base: SLACK_API_BASE.to_string(),
+            egress: None,
         }
+    }
+
+    fn with_egress(
+        mut self,
+        egress: Option<Arc<dyn everruns_contracts::runtime::egress::EgressService>>,
+    ) -> Self {
+        self.egress = egress
+            .map(|service| crate::domains::messages::intake::org_egress(service, self.org_id));
+        self
     }
 
     #[cfg(test)]
@@ -153,6 +165,8 @@ impl DbSlackActionInvoker {
         }
 
         Ok(SlackActionContext {
+            installation: bound_channel.public_id.to_string(),
+            team: config.team_id,
             bot_token: config.bot_token,
             channel,
             thread_ts: thread_context.thread_ref,
@@ -163,6 +177,8 @@ impl DbSlackActionInvoker {
 }
 
 struct SlackActionContext {
+    installation: String,
+    team: Option<String>,
     channel_id: uuid::Uuid,
     channel_revision: chrono::DateTime<chrono::Utc>,
     bot_token: String,
@@ -171,6 +187,29 @@ struct SlackActionContext {
 }
 
 impl SlackActionContext {
+    fn delivery_context(
+        &self,
+        egress: Option<Arc<dyn everruns_contracts::runtime::egress::EgressService>>,
+    ) -> everruns_contracts::runtime::channel::DeliveryContext {
+        let mut context = everruns_contracts::runtime::channel::DeliveryTarget::new(
+            &self.channel,
+            &self.thread_ts,
+        )
+        .context(&self.bot_token);
+        context.extra.insert(
+            everruns_integrations::slack_channel::bridge::INSTALLATION_ID.into(),
+            self.installation.clone(),
+        );
+        if let Some(team) = &self.team {
+            context.extra.insert(
+                everruns_integrations::slack_channel::bridge::TEAM_ID.into(),
+                team.clone(),
+            );
+        }
+        context.egress = egress;
+        context
+    }
+
     fn authorize_channel(&self, channel: &str) -> Result<(), SlackActionError> {
         if channel != self.channel {
             return Err(SlackActionError::InvalidArgument(
@@ -205,7 +244,7 @@ impl SlackActionInvoker for DbSlackActionInvoker {
             _ => None,
         };
         let context = self.resolve_context(input_id).await?;
-        let bot_token = &context.bot_token;
+        let provider_context = context.delivery_context(self.egress.clone());
 
         let outcome = match action {
             SlackAction::PostMessage {
@@ -218,6 +257,7 @@ impl SlackActionInvoker for DbSlackActionInvoker {
                     &self.api_base,
                     self.session_id,
                     &context,
+                    &provider_context,
                     input_message_id,
                     tool_call_id,
                     text,
@@ -225,9 +265,19 @@ impl SlackActionInvoker for DbSlackActionInvoker {
                 .await?;
                 if !files.is_empty() {
                     // Same trusted conversation the text just went to.
-                    let thread = Some(context.thread_ts.as_str()).filter(|ts| !ts.is_empty());
-                    share_message_files(&self.api_base, bot_token, &context.channel, thread, files)
-                        .await?;
+                    share_message_files_scoped(&self.api_base, &provider_context, files)
+                        .await
+                        .map_err(|error| {
+                            let confirmed = match &outcome {
+                                SlackActionOutcome::MessagePosted { channel, timestamp } => {
+                                    vec![format!("{channel}:{timestamp}")]
+                                }
+                                _ => vec![],
+                            };
+                            everruns_integrations::slack_channel::actions::with_confirmed(
+                                error, confirmed,
+                            )
+                        })?;
                 }
                 outcome
             }
@@ -237,7 +287,9 @@ impl SlackActionInvoker for DbSlackActionInvoker {
                 name,
             } => {
                 context.authorize_channel(&channel)?;
-                match add_reaction(&self.api_base, bot_token, &channel, &timestamp, &name).await {
+                match add_reaction_scoped(&self.api_base, &provider_context, &timestamp, &name)
+                    .await
+                {
                     Ok(outcome) => outcome,
                     Err(error) => {
                         if error.code() == Some("missing_scope") {
@@ -271,10 +323,10 @@ impl SlackActionInvoker for DbSlackActionInvoker {
                 text,
             } => {
                 context.authorize_channel(&channel)?;
-                update_message(&self.api_base, bot_token, &channel, &timestamp, &text).await?
+                update_message_scoped(&self.api_base, &provider_context, &timestamp, &text).await?
             }
             SlackAction::LookupUser { user_id } => {
-                lookup_user(&self.api_base, bot_token, &user_id).await?
+                lookup_user_scoped(&self.api_base, &provider_context, &user_id).await?
             }
             SlackAction::UploadFile {
                 channel,
@@ -297,11 +349,12 @@ impl SlackActionInvoker for DbSlackActionInvoker {
                         (channel, thread_ts)
                     }
                 };
-                upload_file(
+                let mut upload_context = provider_context.clone();
+                upload_context.channel_id = channel;
+                upload_context.thread_ref = thread_ts.unwrap_or_default();
+                upload_file_scoped(
                     &self.api_base,
-                    bot_token,
-                    &channel,
-                    thread_ts.as_deref(),
+                    &upload_context,
                     &filename,
                     content,
                     initial_comment.as_deref(),
@@ -335,15 +388,14 @@ impl SlackActionInvoker for DbSlackActionInvoker {
 pub fn in_process_invoker(
     db: &Arc<StorageBackend>,
     encryption: Option<&Arc<EncryptionService>>,
+    egress: Option<Arc<dyn everruns_contracts::runtime::egress::EgressService>>,
     org_id: i64,
     session_id: SessionId,
 ) -> Arc<dyn SlackActionInvoker> {
-    Arc::new(DbSlackActionInvoker::new(
-        db.clone(),
-        encryption.cloned(),
-        org_id,
-        session_id,
-    ))
+    Arc::new(
+        DbSlackActionInvoker::new(db.clone(), encryption.cloned(), org_id, session_id)
+            .with_egress(egress),
+    )
 }
 
 /// Serve one `InvokeSlackAction` RPC (EVE-1024).
@@ -360,6 +412,7 @@ pub fn in_process_invoker(
 pub async fn serve_rpc(
     db: &Arc<StorageBackend>,
     encryption: Option<&Arc<EncryptionService>>,
+    egress: Option<Arc<dyn everruns_contracts::runtime::egress::EgressService>>,
     request: tonic::Request<everruns_internal_protocol::proto::InvokeSlackActionRequest>,
 ) -> Result<
     tonic::Response<everruns_internal_protocol::proto::InvokeSlackActionResponse>,
@@ -375,7 +428,7 @@ pub async fn serve_rpc(
         .ok_or_else(|| tonic::Status::invalid_argument("missing action"))?
         .into();
 
-    let invoker = in_process_invoker(db, encryption, req.org_id, session_id);
+    let invoker = in_process_invoker(db, encryption, egress, req.org_id, session_id);
     let result = match invoker.invoke(action).await {
         Ok(outcome) => outcome.into(),
         Err(error) => {
@@ -409,7 +462,7 @@ mod tests {
     use everruns_contracts::typed_id::{AgentId, HarnessId, PrincipalId};
     use uuid::Uuid;
     use wiremock::matchers::{body_partial_json, method, path};
-    use wiremock::{Mock, MockServer, ResponseTemplate};
+    use wiremock::{Mock, ResponseTemplate};
 
     const ORG: i64 = 1;
 
@@ -768,7 +821,7 @@ mod tests {
 
     #[tokio::test]
     async fn endpoint_channel_scope_must_match_the_ingress_channel() {
-        let server = MockServer::start().await;
+        let server = crate::channels::slack::events::tests_support::mock_provider().await;
         let fixture = Fixture::new();
         let (app_id, channel_id, _) = fixture
             .seed_app_with_channel(ORG, "slack", "xoxb-secret")
@@ -807,7 +860,7 @@ mod tests {
     /// fallback (EVE-1004).
     #[tokio::test]
     async fn the_routing_tag_resolves_a_session_without_the_channel_fk() {
-        let server = MockServer::start().await;
+        let server = crate::channels::slack::events::tests_support::mock_provider().await;
         Mock::given(method("POST"))
             .and(path("/reactions.add"))
             .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "ok": true })))
@@ -869,7 +922,7 @@ mod tests {
     /// message using the channel's own bot token and no extra credential.
     #[tokio::test]
     async fn a_slack_session_reacts_with_the_channels_own_token() {
-        let server = MockServer::start().await;
+        let server = crate::channels::slack::events::tests_support::mock_provider().await;
         Mock::given(method("POST"))
             .and(path("/reactions.add"))
             .and(wiremock::matchers::header(
@@ -908,7 +961,7 @@ mod tests {
 
     #[tokio::test]
     async fn an_alternate_channel_is_rejected_without_a_slack_request() {
-        let server = MockServer::start().await;
+        let server = crate::channels::slack::events::tests_support::mock_provider().await;
         let fixture = Fixture::new();
         let (app_id, channel_id, _) = fixture
             .seed_app_with_channel(ORG, "slack", "xoxb-secret")
@@ -936,7 +989,7 @@ mod tests {
     /// a success that says so rather than an error the model has to interpret.
     #[tokio::test]
     async fn a_duplicate_reaction_is_a_success() {
-        let server = MockServer::start().await;
+        let server = crate::channels::slack::events::tests_support::mock_provider().await;
         Mock::given(method("POST"))
             .and(path("/reactions.add"))
             .respond_with(
@@ -973,7 +1026,7 @@ mod tests {
     /// flattened into a generic failure (EVE-968's reasoning).
     #[tokio::test]
     async fn a_rate_limit_keeps_slacks_retry_advice() {
-        let server = MockServer::start().await;
+        let server = crate::channels::slack::events::tests_support::mock_provider().await;
         Mock::given(method("POST"))
             .and(path("/chat.update"))
             .respond_with(
@@ -1015,8 +1068,8 @@ mod tests {
     /// only the addressing fields are forwarded.
     #[tokio::test]
     async fn lookup_user_forwards_only_the_addressing_fields() {
-        let server = MockServer::start().await;
-        Mock::given(method("POST"))
+        let server = crate::channels::slack::events::tests_support::mock_provider().await;
+        Mock::given(method("GET"))
             .and(path("/users.info"))
             .respond_with(ResponseTemplate::new(200).set_body_json(json!({
                 "ok": true,
@@ -1076,7 +1129,7 @@ mod tests {
     /// on, not an internal fault.
     #[tokio::test]
     async fn a_permanent_slack_refusal_is_a_tool_error() {
-        let server = MockServer::start().await;
+        let server = crate::channels::slack::events::tests_support::mock_provider().await;
         Mock::given(method("POST"))
             .and(path("/reactions.add"))
             .respond_with(
@@ -1135,12 +1188,12 @@ mod tests {
 
     #[tokio::test]
     async fn upload_file_walks_the_external_upload_flow() {
-        let server = MockServer::start().await;
+        let server = crate::channels::slack::events::tests_support::mock_provider().await;
         Mock::given(method("POST"))
             .and(path("/files.getUploadURLExternal"))
             .respond_with(ResponseTemplate::new(200).set_body_json(json!({
                 "ok": true,
-                "upload_url": format!("{}/upload-here", server.uri()),
+                "upload_url": "https://files.slack.com/upload-here",
                 "file_id": "F1",
             })))
             .mount(&server)
@@ -1173,6 +1226,9 @@ mod tests {
         let outcome = fixture
             .invoker(ORG, session_id)
             .with_api_base(server.uri())
+            .with_egress(Some(
+                crate::channels::slack::events::tests_support::upload_egress(&server.uri()),
+            ))
             .invoke(SlackAction::UploadFile {
                 channel: Some("C1".to_string()),
                 thread_ts: Some("1.2".to_string()),
@@ -1192,7 +1248,7 @@ mod tests {
 
     #[tokio::test]
     async fn an_upload_without_the_session_thread_is_rejected_before_slack() {
-        let server = MockServer::start().await;
+        let server = crate::channels::slack::events::tests_support::mock_provider().await;
         let fixture = Fixture::new();
         let (app_id, channel_id, _) = fixture
             .seed_app_with_channel(ORG, "slack", "xoxb-secret")
@@ -1204,6 +1260,9 @@ mod tests {
         let error = fixture
             .invoker(ORG, session_id)
             .with_api_base(server.uri())
+            .with_egress(Some(
+                crate::channels::slack::events::tests_support::upload_egress(&server.uri()),
+            ))
             .invoke(SlackAction::UploadFile {
                 channel: Some("C1".to_string()),
                 thread_ts: None,
@@ -1222,12 +1281,12 @@ mod tests {
     /// classified as backpressure.
     #[tokio::test]
     async fn a_rejected_upload_url_is_not_treated_as_transient() {
-        let server = MockServer::start().await;
+        let server = crate::channels::slack::events::tests_support::mock_provider().await;
         Mock::given(method("POST"))
             .and(path("/files.getUploadURLExternal"))
             .respond_with(ResponseTemplate::new(200).set_body_json(json!({
                 "ok": true,
-                "upload_url": format!("{}/upload-here", server.uri()),
+                "upload_url": "https://files.slack.com/upload-here",
                 "file_id": "F1",
             })))
             .mount(&server)
@@ -1249,6 +1308,9 @@ mod tests {
         let error = fixture
             .invoker(ORG, session_id)
             .with_api_base(server.uri())
+            .with_egress(Some(
+                crate::channels::slack::events::tests_support::upload_egress(&server.uri()),
+            ))
             .invoke(SlackAction::UploadFile {
                 channel: Some("C1".to_string()),
                 thread_ts: Some("1.2".to_string()),

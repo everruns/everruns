@@ -386,3 +386,110 @@ impl ChannelStore for ObservedChannelStore {
         Ok(())
     }
 }
+
+#[derive(Default)]
+struct ScopedSlackEgress {
+    seen: Mutex<Vec<String>>,
+}
+#[async_trait]
+impl everruns_core::EgressService for ScopedSlackEgress {
+    async fn send(
+        &self,
+        _: everruns_core::egress::EgressRequest,
+    ) -> everruns_core::egress::EgressResult<everruns_core::egress::EgressResponse> {
+        unreachable!()
+    }
+    async fn send_stream(
+        &self,
+        request: everruns_core::egress::EgressRequest,
+    ) -> everruns_core::egress::EgressResult<everruns_core::egress::EgressStreamResponse> {
+        assert!(request.dns_pinning_required);
+        assert_eq!(
+            request.headers.get("authorization").map(String::as_str),
+            Some("Bearer fixture-token")
+        );
+        self.seen.lock().unwrap().push(request.url.clone());
+        let body = if request.url.ends_with("/auth.test") {
+            json!({"ok":true,"team_id":"T1","user_id":"U-bot"})
+        } else {
+            assert!(request.url.ends_with("/chat.postMessage"));
+            json!({"ok":true,"ts":"2.0"})
+        };
+        Ok(everruns_core::egress::EgressStreamResponse {
+            status: 200,
+            headers: Default::default(),
+            body: Box::pin(futures::stream::iter([Ok(body.to_string().into_bytes())])),
+        })
+    }
+}
+struct ForbiddenSlackDefault;
+#[async_trait]
+impl everruns_core::EgressService for ForbiddenSlackDefault {
+    async fn send(
+        &self,
+        _: everruns_core::egress::EgressRequest,
+    ) -> everruns_core::egress::EgressResult<everruns_core::egress::EgressResponse> {
+        panic!("host must override the provider's default transport")
+    }
+    async fn send_stream(
+        &self,
+        _: everruns_core::egress::EgressRequest,
+    ) -> everruns_core::egress::EgressResult<everruns_core::egress::EgressStreamResponse> {
+        panic!("host must override the provider's default transport")
+    }
+}
+#[tokio::test]
+async fn slack_installation_discovery_and_reply_use_the_framework_hosts_egress() {
+    use hmac::{Hmac, KeyInit, Mac};
+    use sha2::Sha256;
+    let engine = InMemoryEngine::new();
+    let egress = Arc::new(ScopedSlackEgress::default());
+    let slack =
+        Slack::new("fixture-token", "fixture-secret").egress(Arc::new(ForbiddenSlackDefault));
+    let channels = Channels::builder(&engine)
+        .channel("slack", slack, agent("A scoped reply"))
+        .egress(egress.clone())
+        .build();
+    let body=json!({"type":"event_callback","event_id":"fixture","team_id":"T1","event":{"type":"app_mention","channel":"C1","user":"U7","ts":"1.0","text":"fixture"}}).to_string().into_bytes();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let mut mac = Hmac::<Sha256>::new_from_slice(b"fixture-secret").unwrap();
+    mac.update(format!("v0:{now}:").as_bytes());
+    mac.update(&body);
+    let request = ChannelRequest {
+        path: String::new(),
+        headers: vec![],
+        body,
+    }
+    .header("x-slack-request-timestamp", now.to_string())
+    .header(
+        "x-slack-signature",
+        format!("v0={}", hex::encode(mac.finalize().into_bytes())),
+    );
+    assert_eq!(channels.handle("slack", &request).await.status, 200);
+    tokio::time::timeout(Duration::from_secs(3), async {
+        while !egress
+            .seen
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|url| url.ends_with("/chat.postMessage"))
+        {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(
+        egress
+            .seen
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|url| url.ends_with("/auth.test"))
+            .count(),
+        1
+    );
+}

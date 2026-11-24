@@ -150,36 +150,59 @@ impl From<SlackActionError> for proto::SlackActionError {
         // does not become the source of that wording.
         match error {
             SlackActionError::NoSlackSession => Self {
+                confirmed: vec![],
                 kind: Kind::NoSlackSession as i32,
                 message: None,
                 retry_after_secs: None,
             },
             SlackActionError::ChannelUnavailable => Self {
+                confirmed: vec![],
                 kind: Kind::EndpointUnavailable as i32,
                 message: None,
                 retry_after_secs: None,
             },
             SlackActionError::NotConfigured => Self {
+                confirmed: vec![],
                 kind: Kind::NotConfigured as i32,
                 message: None,
                 retry_after_secs: None,
             },
             SlackActionError::Rejected(message) => Self {
+                confirmed: vec![],
                 kind: Kind::Rejected as i32,
                 message: Some(message),
                 retry_after_secs: None,
             },
             SlackActionError::RateLimited { retry_after_secs } => Self {
+                confirmed: vec![],
                 kind: Kind::RateLimited as i32,
                 message: None,
                 retry_after_secs,
             },
             SlackActionError::InvalidArgument(message) => Self {
+                confirmed: vec![],
                 kind: Kind::InvalidArgument as i32,
                 message: Some(message),
                 retry_after_secs: None,
             },
+            SlackActionError::DeliveryUnknown { confirmed } => Self {
+                kind: Kind::DeliveryUnknown as i32,
+                message: None,
+                retry_after_secs: None,
+                confirmed,
+            },
+            SlackActionError::PartialDelivery {
+                confirmed,
+                retry_after_secs,
+                reason,
+            } => Self {
+                kind: Kind::PartialDelivery as i32,
+                message: Some(reason),
+                retry_after_secs,
+                confirmed,
+            },
             SlackActionError::Transient(message) => Self {
+                confirmed: vec![],
                 kind: Kind::Transient as i32,
                 message: Some(message),
                 retry_after_secs: None,
@@ -207,6 +230,14 @@ impl From<proto::SlackActionError> for SlackActionError {
             },
             Ok(Kind::InvalidArgument) => Self::InvalidArgument(detail()),
             Ok(Kind::Transient) => Self::Transient(detail()),
+            Ok(Kind::DeliveryUnknown) => Self::DeliveryUnknown {
+                confirmed: error.confirmed,
+            },
+            Ok(Kind::PartialDelivery) => Self::PartialDelivery {
+                reason: detail(),
+                confirmed: error.confirmed,
+                retry_after_secs: error.retry_after_secs,
+            },
             // An unset or unrecognised kind comes from a control plane newer
             // than this worker. Transient is the safe reading: it is reported
             // as an internal fault rather than told to the model as a fact
@@ -284,6 +315,7 @@ mod tests {
     fn round_trip_error(error: SlackActionError) {
         let wire: proto::SlackActionError = error.clone().into();
         let back: SlackActionError = wire.into();
+        assert_eq!(back, error, "typed outcome and references must survive RPC");
         assert_eq!(
             std::mem::discriminant(&back),
             std::mem::discriminant(&error),
@@ -298,6 +330,14 @@ mod tests {
 
     #[test]
     fn every_error_keeps_its_kind_and_classification() {
+        round_trip_error(SlackActionError::DeliveryUnknown {
+            confirmed: vec!["C1:1.0".into()],
+        });
+        round_trip_error(SlackActionError::PartialDelivery {
+            confirmed: vec!["C1:1.0".into()],
+            retry_after_secs: Some(12),
+            reason: "missing_scope".into(),
+        });
         round_trip_error(SlackActionError::NoSlackSession);
         round_trip_error(SlackActionError::ChannelUnavailable);
         round_trip_error(SlackActionError::NotConfigured);
@@ -330,6 +370,7 @@ mod tests {
         // Reading it as a fact about the Slack session would tell the model
         // something false, so it must land on the internal-fault side.
         let wire = proto::SlackActionError {
+            confirmed: vec![],
             kind: 9999,
             message: Some("from the future".to_string()),
             retry_after_secs: None,

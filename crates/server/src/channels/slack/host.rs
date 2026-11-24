@@ -29,7 +29,6 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use axum::http::{HeaderMap, HeaderName, HeaderValue};
 use everruns_contracts::runtime::channel::{
     CHANNEL_MESSAGE_KEY, ChannelAgentSurface, ChannelDeliveryAdapter, ChannelError,
     ChannelReactionSurface, ChannelStreamDelivery, ChannelViewContext, ControlAction,
@@ -47,15 +46,13 @@ use super::delivery::{
     emoji_for_slack_reaction, slack_turn_options, turn_adapter::SlackTurnAdapter,
 };
 use super::events::{
-    SlackEvent, SlackEventEnvelope, SlackState, build_attachment_content_parts,
-    event_matches_slack_scope, fetch_thread_replies, is_supported_slack_message_subtype,
-    parse_slack_inbound_event, resolve_slack_bot_user, resolve_slack_user_name,
-    should_process_message, should_skip_thread_reply, slack_message_metadata, truncation_notice,
-    verify_slack_signature,
+    SlackEvent, SlackState, build_attachment_content_parts, event_matches_slack_scope,
+    is_supported_slack_message_subtype, parse_slack_inbound_event, should_process_message,
+    should_skip_thread_reply, slack_message_metadata, truncation_notice,
 };
 use crate::channels::host::{HISTORY_NOTICE, THREAD_VIEW_CONTEXT};
 use crate::domains::agent_channels::ingress::{IngressChannel, IngressContext};
-use crate::domains::agent_channels::record::slack_channel::{SlackChannelConfig, SlackConnection};
+use crate::domains::agent_channels::record::slack_channel::SlackChannelConfig;
 use crate::domains::agent_channels::slack_evidence::{self, DeliveryEvidence};
 
 pub(crate) const SLACK_PLATFORM: &str = "slack";
@@ -78,6 +75,7 @@ pub(crate) struct SlackHostDriver {
     context: IngressContext,
     channel: IngressChannel,
     config: SlackChannelConfig,
+    files: everruns_integrations::slack_channel::Slack,
 }
 
 impl SlackHostDriver {
@@ -87,11 +85,20 @@ impl SlackHostDriver {
         channel: IngressChannel,
         config: SlackChannelConfig,
     ) -> Self {
+        let mut files = everruns_integrations::slack_channel::Slack::new(
+            &config.bot_token,
+            &config.signing_secret,
+        )
+        .installation(channel.public_id.to_string());
+        if let Some(team) = &config.team_id {
+            files = files.workspace(team);
+        }
         Self {
             state,
             context,
             channel,
             config,
+            files,
         }
     }
 
@@ -149,7 +156,11 @@ impl SlackHostDriver {
 
     /// A person's reaction on a Slack message. The host finds the message it
     /// linked to that key, or ignores it.
-    async fn reaction(&self, event: SlackEvent) -> Inbound {
+    async fn reaction(
+        &self,
+        event: SlackEvent,
+        egress: Option<Arc<dyn everruns_contracts::runtime::egress::EgressService>>,
+    ) -> Inbound {
         let (Some(name), Some(item), Some(user)) = (&event.reaction, &event.item, &event.user)
         else {
             return Inbound::Ignore;
@@ -163,18 +174,24 @@ impl SlackHostDriver {
         // THREAT[TM-SLACK-002]: the bot's own reactions are the agent's,
         // already stored; hearing them back would echo. When Slack cannot
         // say who the bot is, the reaction is dropped rather than risk it.
-        let bot = resolve_slack_bot_user(
-            &self.state.bot_user_cache,
-            &self.config.bot_token,
+        let bot = super::provider::bot_user(
+            &self.state,
             &self.channel.public_id.to_string(),
+            &self.config,
+            egress.clone(),
         )
         .await;
         if bot.is_none() || bot.as_deref() == Some(user.as_str()) {
             return Inbound::Ignore;
         }
-        let actor_name =
-            resolve_slack_user_name(&self.state.user_name_cache, &self.config.bot_token, user)
-                .await;
+        let actor_name = super::provider::user_name(
+            &self.state,
+            &self.channel.public_id.to_string(),
+            &self.config,
+            user,
+            egress,
+        )
+        .await;
         Inbound::Reaction(Box::new(InboundReaction {
             message_key: format!("{channel}:{ts}"),
             emoji: emoji_for_slack_reaction(name),
@@ -188,7 +205,13 @@ impl SlackHostDriver {
         }))
     }
 
-    async fn message(&self, raw_event: &Value, event: SlackEvent) -> Inbound {
+    async fn message(
+        &self,
+        raw_event: &Value,
+        event: SlackEvent,
+        team: &str,
+        egress: Option<Arc<dyn everruns_contracts::runtime::egress::EgressService>>,
+    ) -> Inbound {
         if event.bot_id.is_some() {
             // THREAT[TM-SLACK-002]: never answer a bot, ours included.
             return Inbound::Ignore;
@@ -230,14 +253,21 @@ impl SlackHostDriver {
         }
 
         let user = event.user.clone().unwrap_or_default();
-        let display_name = match user.is_empty() {
-            true => None,
-            false => {
-                resolve_slack_user_name(&self.state.user_name_cache, &self.config.bot_token, &user)
-                    .await
-            }
-        };
-        let mut inbound = parse_slack_inbound_event(&event, &self.config, display_name);
+        let display_name = super::provider::user_name(
+            &self.state,
+            &self.channel.public_id.to_string(),
+            &self.config,
+            &user,
+            egress,
+        )
+        .await;
+        let mut inbound = parse_slack_inbound_event(
+            &event,
+            &self.config,
+            display_name,
+            &self.channel.public_id.to_string(),
+            team,
+        );
         // Link unfurls and app attachments have no attachment kind of their
         // own; their summaries read as part of what was posted.
         for part in build_attachment_content_parts(&event.attachments) {
@@ -296,11 +326,17 @@ impl SlackHostDriver {
         if !user.is_empty() {
             reply_to.extra.insert(SLACK_RECIPIENT_USER_ID.into(), user);
         }
-        if let Some(team) = &self.config.team_id {
-            reply_to
-                .extra
-                .insert(SLACK_RECIPIENT_TEAM_ID.into(), team.clone());
-        }
+        reply_to
+            .extra
+            .insert(SLACK_RECIPIENT_TEAM_ID.into(), team.into());
+        reply_to.extra.insert(
+            everruns_integrations::slack_channel::bridge::TEAM_ID.into(),
+            team.into(),
+        );
+        reply_to.extra.insert(
+            everruns_integrations::slack_channel::bridge::INSTALLATION_ID.into(),
+            self.channel.public_id.to_string(),
+        );
         Inbound::Message(Box::new(InboundMessage {
             event: inbound,
             reply_to,
@@ -315,19 +351,6 @@ fn surface_name(surface: SlackSurface) -> &'static str {
     }
 }
 
-fn header_map(request: &ChannelRequest) -> HeaderMap {
-    let mut headers = HeaderMap::new();
-    for (name, value) in &request.headers {
-        if let (Ok(name), Ok(value)) = (
-            HeaderName::from_bytes(name.as_bytes()),
-            HeaderValue::from_str(value),
-        ) {
-            headers.append(name, value);
-        }
-    }
-    headers
-}
-
 fn slack_event(message: &InboundMessage) -> Option<SlackEvent> {
     serde_json::from_str(message.event.routing_metadata.get(SLACK_EVENT)?).ok()
 }
@@ -336,6 +359,10 @@ fn slack_event(message: &InboundMessage) -> Option<SlackEvent> {
 impl ChannelDeliveryAdapter for SlackHostDriver {
     fn platform(&self) -> &str {
         SLACK_PLATFORM
+    }
+
+    fn requires_checkpoint(&self) -> bool {
+        true
     }
 
     async fn deliver(
@@ -373,6 +400,12 @@ impl ChannelDeliveryAdapter for SlackHostDriver {
 
 #[async_trait]
 impl ChannelDriver for SlackHostDriver {
+    fn attachment_resolver(
+        &self,
+    ) -> Option<&dyn everruns_contracts::runtime::channel::ChannelAttachmentResolver> {
+        Some(&self.files)
+    }
+
     fn secrets(&self) -> Vec<String> {
         vec![
             "signing_secret".into(),
@@ -382,55 +415,47 @@ impl ChannelDriver for SlackHostDriver {
     }
 
     async fn receive(&self, request: &ChannelRequest) -> Result<Inbound, ChannelError> {
-        // THREAT[TM-SLACK-001]: an HTTP request is signed by Slack. A Socket
-        // Mode event arrived over the connection this server opened with the
-        // app token, and only the socket supervisor sets this path: the HTTP
-        // routes always build the request with an empty one.
-        let from_socket = request.path == super::socket_mode::SOCKET_MODE_PATH
-            && self.config.connection == SlackConnection::SocketMode;
-        if !from_socket {
-            verify_slack_signature(
-                &header_map(request),
-                &request.body,
-                &self.config.signing_secret,
-            )
-            .map_err(ChannelError::Unauthorized)?;
-        }
-        let raw = request.body_json()?;
-        let envelope: SlackEventEnvelope = serde_json::from_value(raw.clone())
-            .map_err(|error| ChannelError::BadRequest(error.to_string()))?;
-        match envelope.event_type.as_str() {
-            "url_verification" => {
-                tracing::info!(channel_id = %self.channel.public_id, "Slack URL verification challenge received");
+        self.receive_with_egress(
+            request,
+            super::provider::egress(&self.state, self.context.org_id),
+        )
+        .await
+    }
+
+    async fn receive_with_egress(
+        &self,
+        request: &ChannelRequest,
+        egress: Option<Arc<dyn everruns_contracts::runtime::egress::EgressService>>,
+    ) -> Result<Inbound, ChannelError> {
+        use everruns_integrations::slack_channel::ingress::VerifiedHttpIngress;
+        let received = super::provider::receive(
+            &self.channel.public_id.to_string(),
+            &self.config,
+            request,
+            egress.clone(),
+        )
+        .await?;
+        let (team, mut ingress) = match received {
+            VerifiedHttpIngress::Challenge(challenge) => {
                 if self.config.webhook_verified_at.is_none() {
                     self.evidence(DeliveryEvidence::WebhookVerified).await;
                 }
-                let challenge = envelope.challenge.unwrap_or_default();
                 return Ok(Inbound::Respond(ChannelResponse::ok(
-                    json!({ "challenge": challenge }),
+                    json!({"challenge": challenge}),
                 )));
             }
-            "event_callback" => {}
-            other => {
-                tracing::debug!(channel_id = %self.channel.public_id, event_type = %other, "Unhandled Slack event type");
-                return Ok(Inbound::Ignore);
-            }
-        }
-        let Some(event) = envelope.event else {
+            VerifiedHttpIngress::Events { team, ingress } => (team, ingress),
+        };
+        let Some(normalized) = ingress.ingress.events.drain(..).next() else {
             return Ok(Inbound::Ignore);
         };
-        if !event_matches_slack_scope(&self.config, envelope.team_id.as_deref(), &event) {
-            tracing::warn!(
-                channel_id = %self.channel.public_id,
-                expected_team_id = ?self.config.team_id,
-                incoming_team_id = ?envelope.team_id,
-                expected_channel_id = ?self.config.channel_id,
-                incoming_channel_id = ?event.channel,
-                "Ignoring Slack event outside configured scope"
-            );
+        let Some((raw, event)) = super::provider::policy_event(normalized.kind, &ingress.context)
+        else {
+            return Ok(Inbound::Ignore);
+        };
+        if !event_matches_slack_scope(&self.config, Some(&team), &event) {
             return Ok(Inbound::Ignore);
         }
-
         Ok(match event.event_type.as_str() {
             // Where the user is looking (EVE-977). Kept on the session's
             // thread context, read at prompt assembly, never a message: the
@@ -485,14 +510,24 @@ impl ChannelDriver for SlackHostDriver {
                 }
             }
             "app_home_opened" => Inbound::Ignore,
-            "reaction_added" | "reaction_removed" => self.reaction(event).await,
-            _ => self.message(&raw["event"], event).await,
+            "reaction_added" | "reaction_removed" => self.reaction(event, egress).await,
+            _ => self.message(&raw, event, &team, egress).await,
         })
     }
 
     fn delivery_context(&self, target: &DeliveryTarget) -> DeliveryContext {
         let mut context = target.context(self.config.bot_token.clone());
         context.extra.remove(TARGET_SURFACE);
+        context
+            .extra
+            .entry(everruns_integrations::slack_channel::bridge::INSTALLATION_ID.into())
+            .or_insert_with(|| self.channel.public_id.to_string());
+        if let Some(team) = &self.config.team_id {
+            context
+                .extra
+                .entry(everruns_integrations::slack_channel::bridge::TEAM_ID.into())
+                .or_insert_with(|| team.clone());
+        }
         context
     }
 
@@ -535,16 +570,32 @@ impl ChannelDriver for SlackHostDriver {
         &self,
         message: &InboundMessage,
     ) -> Result<Vec<InboundChannelEvent>, ChannelError> {
+        self.backfill_with_context(message, &self.delivery_context(&message.reply_to))
+            .await
+    }
+
+    async fn backfill_with_context(
+        &self,
+        message: &InboundMessage,
+        context: &DeliveryContext,
+    ) -> Result<Vec<InboundChannelEvent>, ChannelError> {
         let Some(event) = slack_event(message) else {
             return Ok(Vec::new());
         };
-        let (Some(thread_ts), SessionBinding::Thread) =
+        let (Some(_thread_ts), SessionBinding::Thread) =
             (event.thread_ts.as_deref(), self.config.session_strategy)
         else {
             return Ok(Vec::new());
         };
-        let channel = event.channel.as_deref().unwrap_or("unknown");
-        let backfill = fetch_thread_replies(&self.config.bot_token, channel, thread_ts).await;
+        let factory = everruns_integrations::slack_channel::bridge::direct_factory()
+            .map_err(super::provider::error)?;
+        let client = factory
+            .for_context(context, super::events::SLACK_API_BASE)
+            .await
+            .map_err(super::provider::error)?;
+        let target = everruns_integrations::slack_channel::bridge::target(&client, context)
+            .map_err(super::provider::error)?;
+        let backfill = super::events::fetch_thread_replies_client(&client, &target).await;
         let mut history = Vec::new();
         // Say up front that this is a window, not the whole thread.
         if backfill.is_truncated() && !backfill.messages.is_empty() {
@@ -566,17 +617,14 @@ impl ChannelDriver for SlackHostDriver {
                 continue;
             }
             let user = reply.user.clone().unwrap_or_default();
-            let actor_name = match user.is_empty() {
-                true => None,
-                false => {
-                    resolve_slack_user_name(
-                        &self.state.user_name_cache,
-                        &self.config.bot_token,
-                        &user,
-                    )
-                    .await
-                }
-            };
+            let actor_name = super::provider::user_name(
+                &self.state,
+                &self.channel.public_id.to_string(),
+                &self.config,
+                &user,
+                context.egress.clone(),
+            )
+            .await;
             let metadata = reply
                 .ts
                 .iter()

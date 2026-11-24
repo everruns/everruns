@@ -325,6 +325,19 @@ impl ChannelDeliveryAdapter for Reported {
     fn agent_surface(&self) -> Option<&dyn ChannelAgentSurface> {
         self.inner.agent_surface()
     }
+
+    fn reactions(&self) -> Option<&dyn everruns::channels::ChannelReactionSurface> {
+        self.inner.reactions()
+    }
+    fn progress(&self) -> Option<&dyn everruns::channels::ChannelProgressSurface> {
+        self.inner.progress()
+    }
+    fn approvals(&self) -> Option<&dyn everruns::channels::ChannelApprovalPrompt> {
+        self.inner.approvals()
+    }
+    fn app_views(&self) -> Option<&dyn everruns_core::channel::ChannelAppViewSurface> {
+        self.inner.app_views()
+    }
 }
 
 #[async_trait]
@@ -337,6 +350,51 @@ impl ChannelDriver for Reported {
         self.inner.receive(request).await
     }
 
+    async fn receive_with_egress(
+        &self,
+        request: &ChannelRequest,
+        egress: Option<std::sync::Arc<dyn everruns_core::EgressService>>,
+    ) -> Result<Inbound, ChannelError> {
+        self.inner.receive_with_egress(request, egress).await
+    }
+
+    fn attachment_resolver(&self) -> Option<&dyn everruns::channels::ChannelAttachmentResolver> {
+        self.inner.attachment_resolver()
+    }
+    fn binding(
+        &self,
+        route: &everruns::channels::InboundRoute,
+        configured: everruns::channels::SessionBinding,
+    ) -> everruns::channels::SessionBinding {
+        self.inner.binding(route, configured)
+    }
+    async fn admit(
+        &self,
+        message: &everruns::channels::InboundMessage,
+        session: Option<&str>,
+    ) -> Result<bool, ChannelError> {
+        self.inner.admit(message, session).await
+    }
+    async fn backfill(
+        &self,
+        message: &everruns::channels::InboundMessage,
+    ) -> Result<Vec<everruns::channels::InboundChannelEvent>, ChannelError> {
+        self.inner.backfill(message).await
+    }
+    async fn backfill_with_context(
+        &self,
+        message: &everruns::channels::InboundMessage,
+        context: &DeliveryContext,
+    ) -> Result<Vec<everruns::channels::InboundChannelEvent>, ChannelError> {
+        self.inner.backfill_with_context(message, context).await
+    }
+    async fn decided(
+        &self,
+        decision: &everruns::channels::InboundDecision,
+        context: &DeliveryContext,
+    ) {
+        self.inner.decided(decision, context).await
+    }
     fn delivery_context(&self, target: &DeliveryTarget) -> DeliveryContext {
         self.inner.delivery_context(target)
     }

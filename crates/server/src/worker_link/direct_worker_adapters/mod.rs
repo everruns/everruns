@@ -29,15 +29,15 @@ use crate::domains::{agents::record::Agent, harnesses::record::Harness, sessions
 use crate::domains::{budgets::BudgetService, messages::MessageService};
 use crate::kernel_imports::{
     Caller, EgressService, RuntimeMessage, UtilityLlmService,
-    contracts::driver_registry::DriverRegistry, contracts::provider::DriverId,
-    contracts::tool_types::ToolDefinition, resolve_runtime_capabilities,
-};
-use crate::kernel_imports::{
     connection_services::ProviderCredentialStore,
+    contracts::driver_registry::DriverRegistry,
     contracts::model_spec::ModelSpec,
+    contracts::provider::DriverId,
+    contracts::tool_types::ToolDefinition,
     delegation_services::SessionCreationAuthority,
     file_services::ResolvedFile,
     image_services::{ImageArtifactStore, ResolvedImage},
+    resolve_runtime_capabilities,
     tool_execution::BudgetChecker,
 };
 use crate::max_iterations;
@@ -1141,6 +1141,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
         Some(crate::channels::slack::actions::in_process_invoker(
             &self.db,
             self.encryption.as_ref(),
+            self.egress_service.clone(),
             org_id,
             session_id,
         ))

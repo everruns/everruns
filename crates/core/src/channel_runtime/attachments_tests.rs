@@ -279,3 +279,155 @@ async fn the_anonymous_policy_takes_inline_files_only() {
     );
     assert_eq!(stored.len(), 2);
 }
+
+struct ProviderFiles {
+    seen: Mutex<Vec<(String, usize)>>,
+    data: Vec<u8>,
+}
+#[async_trait]
+impl super::super::ChannelAttachmentResolver for ProviderFiles {
+    async fn download(
+        &self,
+        reference: &str,
+        max_bytes: usize,
+        _egress: Arc<dyn EgressService>,
+    ) -> Result<Vec<u8>, ChannelError> {
+        self.seen
+            .lock()
+            .unwrap()
+            .push((reference.into(), max_bytes));
+        Ok(self.data.clone())
+    }
+}
+fn provider_file(reference: &str, size: Option<u64>) -> InboundAttachment {
+    InboundAttachment::ProviderFile {
+        reference: reference.into(),
+        name: Some("report.pdf".into()),
+        media_type: Some("image/png".into()),
+        size,
+    }
+}
+#[tokio::test]
+async fn provider_files_obey_policy_before_credentialed_resolution() {
+    let resolver = ProviderFiles {
+        seen: Mutex::new(vec![]),
+        data: b"%PDF-1.7 body".to_vec(),
+    };
+    let store = TextStore::default();
+    let mut intake = AttachmentIntake {
+        store: &store,
+        egress: Some(Arc::new(FakeEgress::default())),
+        policy: AttachmentPolicy {
+            max_files: 1,
+            max_bytes: 32,
+            downloads: true,
+        },
+        source: "fixture",
+    };
+    let parts = intake
+        .parts_with_resolver(
+            &[
+                provider_file("scoped-file", Some(12)),
+                provider_file("skipped-file", Some(12)),
+            ],
+            Some(&resolver),
+        )
+        .await;
+    assert_eq!(parts.len(), 2);
+    assert_eq!(
+        resolver.seen.lock().unwrap().as_slice(),
+        &[("scoped-file".into(), 32)]
+    );
+    assert_eq!(
+        store.stored.lock().unwrap()[0].media_type,
+        "application/pdf"
+    );
+    for file in [
+        provider_file("too-large", Some(33)),
+        provider_file("https://private.invalid/file", None),
+        provider_file("", None),
+    ] {
+        intake.parts_with_resolver(&[file], Some(&resolver)).await;
+    }
+    intake.policy.downloads = false;
+    intake
+        .parts_with_resolver(&[provider_file("disabled", None)], Some(&resolver))
+        .await;
+    assert_eq!(resolver.seen.lock().unwrap().len(), 1);
+    assert_eq!(store.stored.lock().unwrap().len(), 1);
+}
+#[tokio::test]
+async fn provider_bytes_are_checked_and_missing_resolvers_do_not_fallback_to_urls() {
+    let resolver = ProviderFiles {
+        seen: Mutex::new(vec![]),
+        data: vec![0; 33],
+    };
+    let store = TextStore::default();
+    let intake = AttachmentIntake {
+        store: &store,
+        egress: Some(Arc::new(FakeEgress::default())),
+        policy: AttachmentPolicy {
+            max_files: 1,
+            max_bytes: 32,
+            downloads: true,
+        },
+        source: "fixture",
+    };
+    let files = [provider_file("scoped-file", None)];
+    let oversized = intake.parts_with_resolver(&files, Some(&resolver)).await;
+    assert!(matches!(&oversized[0],ContentPart::Text(part) if part.text.contains("not received")));
+    let unsupported = intake.parts(&files).await;
+    assert!(
+        matches!(&unsupported[0],ContentPart::Text(part) if part.text.contains("does not resolve"))
+    );
+    assert!(store.stored.lock().unwrap().is_empty());
+    assert_eq!(resolver.seen.lock().unwrap().len(), 1);
+}
+struct StalledFiles;
+#[async_trait]
+impl super::super::ChannelAttachmentResolver for StalledFiles {
+    async fn download(
+        &self,
+        _: &str,
+        _: usize,
+        _egress: Arc<dyn EgressService>,
+    ) -> Result<Vec<u8>, ChannelError> {
+        std::future::pending().await
+    }
+}
+#[tokio::test(start_paused = true)]
+async fn provider_resolution_obeys_the_intake_deadline() {
+    let store = TextStore::default();
+    let intake = AttachmentIntake {
+        store: &store,
+        egress: Some(Arc::new(FakeEgress::default())),
+        policy: AttachmentPolicy::default(),
+        source: "fixture",
+    };
+    let parts = intake
+        .parts_with_resolver(&[provider_file("scoped-file", None)], Some(&StalledFiles))
+        .await;
+    assert!(matches!(&parts[0],ContentPart::Text(part) if part.text.contains("timed out")));
+    assert!(store.stored.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn provider_files_are_not_fetched_without_a_host_transport() {
+    let resolver = ProviderFiles {
+        seen: Mutex::new(vec![]),
+        data: b"%PDF-1.7 body".to_vec(),
+    };
+    let store = TextStore::default();
+    let intake = AttachmentIntake {
+        store: &store,
+        egress: None,
+        policy: AttachmentPolicy::default(),
+        source: "fixture",
+    };
+    let parts = intake
+        .parts_with_resolver(&[provider_file("scoped-file", None)], Some(&resolver))
+        .await;
+    assert!(matches!(&parts[0],ContentPart::Text(part) if part.text.contains("does not download")));
+    assert!(resolver.seen.lock().unwrap().is_empty());
+    assert!(store.stored.lock().unwrap().is_empty());
+}

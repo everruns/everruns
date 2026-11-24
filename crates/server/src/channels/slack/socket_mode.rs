@@ -236,6 +236,7 @@ pub(crate) async fn open_connection(
 pub(crate) struct Envelope {
     pub kind: String,
     pub payload: Value,
+    pub envelope_id: String,
 }
 
 /// Read one socket until Slack asks for a reconnect (`Ok`) or it fails.
@@ -296,6 +297,7 @@ pub(crate) async fn serve(
             on_envelope(Envelope {
                 kind: frame["type"].as_str().unwrap_or_default().to_string(),
                 payload: frame["payload"].clone(),
+                envelope_id: envelope_id.into(),
             });
         }
     }
@@ -355,7 +357,7 @@ async fn dispatch(state: SlackState, channel_id: String, envelope: Envelope) {
             let request = ChannelRequest {
                 path: SOCKET_MODE_PATH.to_string(),
                 headers: Default::default(),
-                body: envelope.payload.to_string().into_bytes(),
+                body: json!({"type": envelope.kind, "envelope_id": envelope.envelope_id, "payload": envelope.payload}).to_string().into_bytes(),
             };
             if let Err(error) = channels.host.try_handle(&resolved, &request).await {
                 tracing::warn!(channel_id, %error, "Failed to handle Slack Socket Mode event");
@@ -367,7 +369,7 @@ async fn dispatch(state: SlackState, channel_id: String, envelope: Envelope) {
                 &app,
                 &channel,
                 &config,
-                envelope.payload,
+                json!({"type": envelope.kind, "envelope_id": envelope.envelope_id, "payload": envelope.payload}),
             )
             .await;
         }
@@ -468,11 +470,13 @@ mod tests {
             vec![
                 Envelope {
                     kind: "events_api".into(),
-                    payload: event
+                    payload: event,
+                    envelope_id: "e1".into(),
                 },
                 Envelope {
                     kind: "interactive".into(),
-                    payload: json!({"type": "block_actions"})
+                    payload: json!({"type": "block_actions"}),
+                    envelope_id: "e2".into()
                 },
             ]
         );

@@ -195,6 +195,18 @@ pub enum SlackActionError {
     /// Network trouble, a 5xx, or a store failure.
     #[error("Slack request failed: {0}")]
     Transient(String),
+
+    /// Slack may have accepted the write. Repeating it can duplicate the effect.
+    #[error("Slack acceptance is unknown; reconcile confirmed references before sending again")]
+    DeliveryUnknown { confirmed: Vec<String> },
+
+    /// Some parts were accepted; the remaining operation needs reconciliation.
+    #[error("Slack partially accepted the operation: {reason}; do not resend accepted parts")]
+    PartialDelivery {
+        confirmed: Vec<String>,
+        retry_after_secs: Option<u64>,
+        reason: String,
+    },
 }
 
 impl SlackActionError {

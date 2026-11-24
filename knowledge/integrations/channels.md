@@ -160,8 +160,9 @@ message services.
   `ResolvedChannel` (config plus driver, or config plus stream kind) per call;
   the builder's static map becomes one `ChannelResolver`, the server's resolver
   reads `agent_channels`. Recovery resolves each pending delivery's channel
-  through the resolver and leaves it when the channel is only unavailable;
-  it drops it only when the resolver says the channel is gone.
+  through the resolver and retains pending output when the channel is unavailable
+  or gone. A missing channel cannot prove that an earlier writer sent nothing;
+  retiring that output requires explicit reconciliation.
 - **Host scope.** `ChannelConfig` carries an opaque, typed scope the host's
   port downcasts (the server's ingress context: org, agent, harness, owner,
   virtual user, channel row id). `NewChannelSession` and `send` receive the
@@ -307,7 +308,8 @@ ordinary transport retries, never replay all parts, and never trigger a second
 fallback notice. Confirmed stream handles/prefixes and progress handles survive a
 restart. Known-handle closure and replacement are idempotent cleanup; uncertain
 content is not appended again. Definite rate-limit advice is retained across
-restarts. Unpublished/unavailable channels retain output ledgers for reconciliation.
+restarts. Unpublished, missing or unavailable channels retain pending rows and
+output ledgers for reconciliation, including unaudited legacy rows without a ledger.
 
 The checkpoint is versioned, bounded to eight MiB, and contains no delivery token or
 private response URL. Adapters persist scoped references through the receipt sink;
@@ -316,7 +318,11 @@ support fails before a requiring driver's first provider write. Ledger-capable s
 advertise that capability even when a legacy driver is active: the host refuses to
 replay or clear any existing checkpoint through that driver, before admission or
 provider I/O. Known stores also fence legacy completion. Legacy deliveries without
-a ledger retain their delivery policy. See the
+a ledger retain their delivery policy while a legacy driver remains active.
+A newly requiring driver resumes a ledgerless row only if the host marked it at
+creation for the checkpoint protocol. Unmarked pre-cutover rows may already have
+sent output, so they remain pending for reconciliation without reading/replaying
+the turn. This also preserves a new row committed before its first intent. See the
 [contract](../../crates/contracts/src/runtime/channel.rs),
 [checkpoint runtime](../../crates/core/src/channel_runtime/checkpoint.rs),
 [delivery loop](../../crates/core/src/channel_runtime/delivery.rs) and
@@ -328,3 +334,18 @@ ledger and replaying the turn is not reconciliation. Rollback must use a build t
 understands and enforces the ledger, or drain/fence deliveries before switching implementations;
 an older binary must not resume these pending rows. This output contract does not
 close the existing inbound ACK-before-background-acceptance crash window.
+
+
+## Provider transport and native file intake
+
+Channelkit adapters sit below the shared host. A delivery context carries the
+host-selected egress service transiently, outside serialized targets and ledgers.
+The same scope governs credential discovery, native history, actions and provider
+writes; an adapter's standalone transport cannot replace a configured host scope.
+
+Native file metadata carries an opaque installation/workspace/file reference,
+never a private URL or bearer credential. The host applies count, declared-size,
+download and content policy before asking the driver's resolver for bounded bytes.
+Resolution requires the host intake egress service; without it, the input receives
+a note and no file fetch occurs. The resolver validates installation/workspace
+again and delegates metadata, redirects and download mechanics to Channelkit.

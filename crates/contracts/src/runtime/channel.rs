@@ -23,8 +23,9 @@
 // work — see TODO(platform-tools) below.
 
 pub use crate::runtime::channel_driver::{
-    ChannelDriver, ChannelError, ChannelRequest, ChannelResponse, ControlAction, Inbound,
-    InboundControl, InboundDecision, InboundMessage, InboundReaction, InboundRoute,
+    ChannelAttachmentResolver, ChannelDriver, ChannelError, ChannelRequest, ChannelResponse,
+    ControlAction, Inbound, InboundControl, InboundDecision, InboundMessage, InboundReaction,
+    InboundRoute,
 };
 pub use crate::runtime::message::ExternalActor;
 use crate::runtime::typed_id::SessionId;
@@ -319,6 +320,15 @@ pub enum InboundAttachment {
         name: Option<String>,
         media_type: Option<String>,
         data: Vec<u8>,
+    },
+    /// Provider-owned file identifier, resolved only after host admission and
+    /// intake limits. Contains no private URL or credential. The owning driver
+    /// validates its installation scope and performs the provider download.
+    ProviderFile {
+        reference: String,
+        name: Option<String>,
+        media_type: Option<String>,
+        size: Option<u64>,
     },
     /// A file the host downloads and stores as an attachment, such as a Slack
     /// file behind the bot token.
@@ -720,6 +730,7 @@ impl DeliveryTarget {
             thread_ref: self.thread_ref.clone(),
             extra: self.extra.clone(),
             receipts: None,
+            egress: None,
         }
     }
 }
@@ -741,6 +752,8 @@ pub struct DeliveryContext {
     /// Host-scoped receipt recorder. Contains no credentials and is never serialized.
     /// An adapter records every accepted split part before attempting the next one.
     pub receipts: Option<std::sync::Arc<dyn DeliveryReceiptSink>>,
+    /// Host-owned scoped provider egress. Runtime-only; never persisted or logged.
+    pub egress: Option<std::sync::Arc<dyn super::egress::EgressService>>,
 }
 
 /// Durable receipts for the operation the host has already checkpointed.

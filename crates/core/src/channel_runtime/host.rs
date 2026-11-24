@@ -673,7 +673,12 @@ impl ChannelHost {
     ) -> Result<ChannelResponse, ChannelError> {
         let channel = self.channel(channel.into()).await?;
         let driver = channel.require_driver()?;
-        match driver.receive(request).await? {
+        let egress = self
+            .inner
+            .egress
+            .clone()
+            .map(|egress| self.inner.port.attachment_egress(&channel.config, egress));
+        match driver.receive_with_egress(request, egress).await? {
             Inbound::Respond(response) => Ok(response),
             Inbound::Ignore => Ok(ChannelResponse::ignored()),
             Inbound::Message(message) => self.accept(&channel, &driver, *message).await,
@@ -829,7 +834,13 @@ impl ChannelHost {
         }
         let channel = self.channel(channel.into()).await?;
         Ok(self
-            .intake(&channel.config, session_id, attachments, policy)
+            .intake(
+                &channel.config,
+                session_id,
+                attachments,
+                policy,
+                channel.driver().and_then(|d| d.attachment_resolver()),
+            )
             .await)
     }
 
@@ -841,6 +852,7 @@ impl ChannelHost {
         session_id: Option<&str>,
         attachments: &[InboundAttachment],
         policy: Option<AttachmentPolicy>,
+        resolver: Option<&dyn super::ChannelAttachmentResolver>,
     ) -> Vec<ContentPart> {
         let store = PortStore {
             port: self.inner.port.as_ref(),
@@ -857,7 +869,7 @@ impl ChannelHost {
             policy: policy.unwrap_or(self.inner.attachments),
             source: &channel.name,
         }
-        .parts(attachments)
+        .parts_with_resolver(attachments, resolver)
         .await
     }
 
@@ -1004,7 +1016,12 @@ impl ChannelHost {
         };
 
         let input = self
-            .input_message(&channel.config, &session_id, &message.event)
+            .input_message(
+                &channel.config,
+                &session_id,
+                &message.event,
+                driver.as_ref(),
+            )
             .await;
         let message_key = message
             .event
@@ -1069,11 +1086,18 @@ impl ChannelHost {
         channel: &ChannelConfig,
         session_id: &str,
         event: &InboundChannelEvent,
+        driver: &dyn ChannelDriver,
     ) -> InputMessage {
         let mut message = input_text(&channel.name, event);
         message.content.extend(
-            self.intake(channel, Some(session_id), &event.attachments, None)
-                .await,
+            self.intake(
+                channel,
+                Some(session_id),
+                &event.attachments,
+                None,
+                driver.attachment_resolver(),
+            )
+            .await,
         );
         message
     }
@@ -1087,7 +1111,13 @@ impl ChannelHost {
         session_id: &str,
         message: &InboundMessage,
     ) {
-        let history = match driver.backfill(message).await {
+        let context = delivery_task::delivery_context(
+            &self.inner,
+            &channel.config,
+            driver.as_ref(),
+            &message.reply_to,
+        );
+        let history = match driver.backfill_with_context(message, &context).await {
             Ok(history) if history.is_empty() => return,
             Ok(history) => history,
             Err(error) => {
@@ -1097,7 +1127,10 @@ impl ChannelHost {
         };
         let mut messages = Vec::with_capacity(history.len());
         for event in &history {
-            messages.push(self.input_message(&channel.config, session_id, event).await);
+            messages.push(
+                self.input_message(&channel.config, session_id, event, driver.as_ref())
+                    .await,
+            );
         }
         let history = messages;
         if let Err(error) = self
@@ -1166,7 +1199,15 @@ impl ChannelHost {
             .await?;
         let outcome = self.inner.port.decide(&channel.config, &decision).await?;
         driver
-            .decided(&decision, &driver.delivery_context(&decision.reply_to))
+            .decided(
+                &decision,
+                &delivery_task::delivery_context(
+                    &self.inner,
+                    &channel.config,
+                    driver.as_ref(),
+                    &decision.reply_to,
+                ),
+            )
             .await;
         if let SendOutcome::Started { input_message_id }
         | SendOutcome::Pending { input_message_id } = outcome
@@ -1251,11 +1292,16 @@ impl ChannelHost {
         driver: Arc<dyn ChannelDriver>,
         session_id: String,
         input_message_id: String,
-        target: DeliveryTarget,
+        mut target: DeliveryTarget,
         events: ChannelEventStream,
         pending_saved: bool,
     ) -> Result<(), ChannelError> {
         if !pending_saved {
+            if driver.requires_checkpoint() {
+                target
+                    .extra
+                    .insert(recovery::CHECKPOINT_PROTOCOL.into(), "1".into());
+            }
             // Keep the recovery record in the caller's transaction, before a
             // scheduled invocation can commit its deduplication receipt.
             self.inner

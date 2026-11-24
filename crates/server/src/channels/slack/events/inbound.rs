@@ -10,10 +10,8 @@ use axum::{
     http::{HeaderMap, StatusCode},
 };
 use everruns_contracts::runtime::channel_driver::ChannelRequest;
-use everruns_core::channel::{InboundAttachment, InboundChannelEvent, RemoteCredential};
+use everruns_core::channel::{InboundAttachment, InboundChannelEvent};
 
-/// The only host Slack's bot token is sent to when downloading a file.
-const SLACK_FILES_HOST: &str = "files.slack.com";
 use std::collections::HashMap;
 
 use crate::api::common::ErrorResponse;
@@ -31,6 +29,8 @@ pub(crate) fn parse_slack_inbound_event(
     event: &SlackEvent,
     slack_config: &SlackChannelConfig,
     display_name: Option<String>,
+    installation: &str,
+    team: &str,
 ) -> InboundChannelEvent {
     let slack_user_id = event.user.clone().unwrap_or_default();
 
@@ -39,9 +39,7 @@ pub(crate) fn parse_slack_inbound_event(
     if let Some(ref channel) = event.channel {
         actor_metadata.insert("channel".to_string(), channel.clone());
     }
-    if let Some(ref team_id) = slack_config.team_id {
-        actor_metadata.insert("team_id".to_string(), team_id.clone());
-    }
+    actor_metadata.insert("team_id".to_string(), team.to_string());
 
     let actor = everruns_core::ExternalActor {
         actor_id: slack_user_id,
@@ -54,38 +52,16 @@ pub(crate) fn parse_slack_inbound_event(
         },
     };
 
-    // Files are downloaded by the channel host with the bot token, which goes
-    // only to Slack's file host, and stored as attachments. A file hosted
-    // elsewhere (Google Drive) keeps its link.
-    let mut attachments = Vec::new();
-    for file in &event.files {
-        let name = file.name.as_deref().unwrap_or("unnamed file");
-        let url = file
-            .url_private_download
-            .as_ref()
-            .or(file.url_private.as_ref());
-        match url {
-            Some(url) if !file.is_external && !slack_config.bot_token.is_empty() => {
-                attachments.push(InboundAttachment::Remote {
-                    url: url.clone(),
-                    name: Some(name.to_string()),
-                    media_type: file.mimetype.clone(),
-                    size: file.size,
-                    credential: Some(RemoteCredential::bearer(
-                        SLACK_FILES_HOST,
-                        &slack_config.bot_token,
-                    )),
-                });
-            }
-            _ => attachments.push(InboundAttachment::FileDescription {
-                name: match &file.permalink {
-                    Some(link) if file.is_external => format!("{name} ({link})"),
-                    _ => name.to_string(),
-                },
-                mime_type: file.mimetype.clone(),
-            }),
-        }
-    }
+    // The shared host applies intake policy before Channelkit resolves native IDs.
+    let mut attachments = everruns_integrations::slack_channel::ingress::provider_attachments(
+        &channelkit_slack::SlackEventContext {
+            files: event.files.clone(),
+            ..Default::default()
+        },
+        installation,
+        team,
+        !slack_config.bot_token.is_empty(),
+    );
     for att in &event.attachments {
         if let Some(url) = &att.image_url
             && let Some(url) = validated_image_url(url)

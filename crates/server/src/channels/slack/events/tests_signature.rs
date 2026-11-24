@@ -248,7 +248,7 @@ async fn transport_failure_does_not_cache_user_lookup() {
     assert_eq!(result, None);
     assert!(cache.get("U999").is_none());
 
-    let retry_server = wiremock::MockServer::start().await;
+    let retry_server = crate::channels::slack::events::tests_support::mock_provider().await;
     wiremock::Mock::given(wiremock::matchers::method("GET"))
         .and(wiremock::matchers::path("/users.info"))
         .and(wiremock::matchers::query_param("user", "U999"))
@@ -264,7 +264,14 @@ async fn transport_failure_does_not_cache_user_lookup() {
     let recovered =
         resolve_slack_user_name_base(&retry_server.uri(), &cache, "test-token", "U999").await;
     assert_eq!(recovered.as_deref(), Some("Recovered User"));
-    assert_eq!(cache.get("U999"), Some(recovered));
+    assert_eq!(
+        cache.get(&crate::channels::slack::provider::cache_key(
+            &retry_server.uri(),
+            "test-token",
+            "U999"
+        )),
+        Some(recovered)
+    );
 }
 
 #[test]
@@ -328,7 +335,13 @@ fn test_parse_slack_inbound_event_basic() {
     let mut event = test_event("C123", Some("1234.5678"), Some("1234.0000"));
     event.user = Some("U001".to_string());
 
-    let inbound = parse_slack_inbound_event(&event, &config, Some("Alice".to_string()));
+    let inbound = parse_slack_inbound_event(
+        &event,
+        &config,
+        Some("Alice".to_string()),
+        "test-installation",
+        "T1",
+    );
 
     assert_eq!(inbound.actor.actor_id, "U001");
     assert_eq!(inbound.actor.actor_name.as_deref(), Some("Alice"));
@@ -345,45 +358,42 @@ fn test_parse_slack_inbound_event_basic() {
 }
 
 #[test]
-fn test_parse_slack_inbound_event_downloads_files_with_the_bot_token() {
+fn test_parse_slack_inbound_event_defers_native_files_to_host_policy() {
     let config = test_config(SessionBinding::Thread);
     let mut event = test_event("C123", Some("1234.5678"), None);
-    let mut pdf = test_slack_file(
+    let pdf = test_slack_file(
         "doc.pdf",
         "application/pdf",
         "pdf",
         Some("https://files.slack.com/files-pri/T1-F1/doc.pdf"),
     );
-    pdf.url_private_download =
-        Some("https://files.slack.com/files-pri/T1-F1/download/doc.pdf".to_string());
     event.files = vec![pdf];
 
-    let inbound = parse_slack_inbound_event(&event, &config, None);
+    let inbound = parse_slack_inbound_event(&event, &config, None, "test-installation", "T1");
 
     assert_eq!(inbound.attachments.len(), 1);
     match &inbound.attachments[0] {
-        InboundAttachment::Remote {
-            url,
+        InboundAttachment::ProviderFile {
+            reference,
             name,
             media_type,
             size,
-            credential,
         } => {
-            assert_eq!(
-                url,
-                "https://files.slack.com/files-pri/T1-F1/download/doc.pdf"
-            );
             assert_eq!(name.as_deref(), Some("doc.pdf"));
             assert_eq!(media_type.as_deref(), Some("application/pdf"));
             assert_eq!(*size, Some(1024));
-            let credential = credential.as_ref().expect("bot token credential");
-            assert_eq!(credential.host, "files.slack.com");
+            let decoded: (String, String, String) = serde_json::from_str(reference).unwrap();
             assert_eq!(
-                credential.authorization,
-                format!("Bearer {}", config.bot_token)
+                decoded,
+                (
+                    "test-installation".into(),
+                    "T1".into(),
+                    "F0123456789".into()
+                )
             );
+            assert!(!reference.contains("https:") && !reference.contains(&config.bot_token));
         }
-        other => panic!("Expected Remote attachment, got {:?}", other),
+        other => panic!("Expected opaque provider attachment, got {other:?}"),
     }
 }
 
@@ -404,22 +414,15 @@ fn test_parse_slack_inbound_event_keeps_external_files_as_links() {
         test_slack_file("doc.pdf", "application/pdf", "pdf", None),
     ];
 
-    let inbound = parse_slack_inbound_event(&event, &config, None);
+    let inbound = parse_slack_inbound_event(&event, &config, None, "test-installation", "T1");
 
-    let descriptions: Vec<_> = inbound
-        .attachments
-        .iter()
-        .map(|attachment| match attachment {
-            InboundAttachment::FileDescription { name, .. } => name.as_str(),
-            other => panic!("Expected FileDescription, got {:?}", other),
-        })
-        .collect();
-    assert_eq!(
-        descriptions,
-        [
-            "plan.gdoc (https://docs.google.com/document/d/1)",
-            "doc.pdf"
-        ]
+    assert!(
+        matches!(&inbound.attachments[0], InboundAttachment::FileDescription { name, .. }
+        if name == "plan.gdoc (https://docs.google.com/document/d/1)")
+    );
+    assert!(
+        matches!(&inbound.attachments[1], InboundAttachment::ProviderFile { name, .. }
+        if name.as_deref() == Some("doc.pdf"))
     );
 }
 
@@ -428,7 +431,7 @@ fn test_parse_slack_inbound_event_routing_metadata_no_thread_ts() {
     let config = test_config(SessionBinding::Thread);
     let event = test_event("C123", Some("1234.5678"), None);
 
-    let inbound = parse_slack_inbound_event(&event, &config, None);
+    let inbound = parse_slack_inbound_event(&event, &config, None, "test-installation", "T1");
 
     // Without thread_ts, thread_ref falls back to ts
     assert_eq!(inbound.thread_ref.as_deref(), Some("1234.5678"));

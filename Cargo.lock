@@ -951,7 +951,7 @@ dependencies = [
  "bytes",
  "form_urlencoded",
  "hex",
- "hmac",
+ "hmac 0.13.0",
  "http",
  "percent-encoding",
  "sha2 0.11.1",
@@ -1341,7 +1341,7 @@ dependencies = [
  "futures-util",
  "getrandom 0.4.3",
  "hifijson",
- "hmac",
+ "hmac 0.13.0",
  "indexmap",
  "jaq-core",
  "jaq-std",
@@ -1791,6 +1791,44 @@ dependencies = [
  "cfg-if",
  "cpufeatures 0.3.1",
  "rand_core 0.10.1",
+]
+
+[[package]]
+name = "channelkit"
+version = "0.1.0-alpha.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5e5d9728f046bd0681b27d31870b4600d8941144b8f251c677f4d70f9b8fa778"
+dependencies = [
+ "async-trait",
+ "futures-util",
+ "hex",
+ "hmac 0.12.1",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "thiserror 2.0.21",
+ "tokio",
+ "tokio-util",
+ "url",
+]
+
+[[package]]
+name = "channelkit-slack"
+version = "0.1.0-alpha.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4840497f05b9f43f9a36ef1bff668e9ec452f76cf3bb01949f181c8efc53b02d"
+dependencies = [
+ "async-trait",
+ "channelkit",
+ "futures-util",
+ "hex",
+ "hmac 0.12.1",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tokio",
+ "url",
 ]
 
 [[package]]
@@ -3411,6 +3449,7 @@ checksum = "9ed9a281f7bc9b7576e61468ba615a66a5c8cfdff42420a70aa82701a3b1e292"
 dependencies = [
  "block-buffer 0.10.4",
  "crypto-common 0.1.7",
+ "subtle",
 ]
 
 [[package]]
@@ -3663,7 +3702,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -3737,7 +3776,7 @@ dependencies = [
  "everruns-test-support",
  "futures",
  "hex",
- "hmac",
+ "hmac 0.13.0",
  "libc",
  "parking_lot",
  "rand 0.10.3",
@@ -4373,6 +4412,8 @@ dependencies = [
  "bashkit",
  "buffa",
  "bytes",
+ "channelkit",
+ "channelkit-slack",
  "chrono",
  "clap",
  "connectrpc",
@@ -4388,7 +4429,7 @@ dependencies = [
  "futures-util",
  "globset",
  "hex",
- "hmac",
+ "hmac 0.13.0",
  "http",
  "http-body",
  "hyper-util",
@@ -4662,6 +4703,8 @@ dependencies = [
  "bashkit",
  "bashkit-scripted-tool",
  "bytes",
+ "channelkit",
+ "channelkit-slack",
  "chrono",
  "chrono-tz",
  "clap",
@@ -4690,7 +4733,7 @@ dependencies = [
  "git2",
  "governor",
  "hex",
- "hmac",
+ "hmac 0.13.0",
  "hostname",
  "http-body-util",
  "httparse",
@@ -5560,7 +5603,16 @@ version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4aaa26c720c68b866f2c96ef5c1264b3e6f473fe5d4ce61cd44bbe913e553018"
 dependencies = [
- "hmac",
+ "hmac 0.13.0",
+]
+
+[[package]]
+name = "hmac"
+version = "0.12.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6c49c37c09c17a53d937dfbb742eb3a961d65a994e6bcdcf37e7399d0cc8ab5e"
+dependencies = [
+ "digest 0.10.7",
 ]
 
 [[package]]
@@ -8563,7 +8615,7 @@ dependencies = [
  "quinn-udp",
  "rustc-hash",
  "rustls",
- "socket2 0.5.10",
+ "socket2 0.6.5",
  "thiserror 2.0.21",
  "tokio",
  "tracing",
@@ -8602,9 +8654,9 @@ dependencies = [
  "cfg_aliases",
  "libc",
  "once_cell",
- "socket2 0.5.10",
+ "socket2 0.6.5",
  "tracing",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -9235,7 +9287,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -9293,7 +9345,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -9517,7 +9569,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d43fb82d550b07e6f929a58d7d0935182602f48ddead875f5ee313c41c8f07fe"
 dependencies = [
  "annotate-snippets",
- "base64 0.22.1",
+ "base64 0.23.1",
  "encoding_rs_io",
  "granit-parser",
  "nohash-hasher",
@@ -10246,7 +10298,7 @@ dependencies = [
  "futures-util",
  "hex",
  "hkdf",
- "hmac",
+ "hmac 0.13.0",
  "itoa",
  "log",
  "md-5",
@@ -10500,7 +10552,7 @@ dependencies = [
  "getrandom 0.4.3",
  "once_cell",
  "rustix",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -12288,7 +12340,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

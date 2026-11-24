@@ -2,7 +2,7 @@ use super::*;
 
 #[tokio::test]
 async fn missing_message_is_actionable_and_exact_timestamp_succeeds() {
-    let server = MockServer::start().await;
+    let server = crate::channels::slack::events::tests_support::mock_provider().await;
     Mock::given(method("POST"))
         .and(path("/reactions.add"))
         .and(wiremock::matchers::body_json(json!({
@@ -52,7 +52,7 @@ async fn missing_message_is_actionable_and_exact_timestamp_succeeds() {
 
 #[tokio::test]
 async fn missing_reaction_scope_explains_how_to_reconnect() {
-    let server = MockServer::start().await;
+    let server = crate::channels::slack::events::tests_support::mock_provider().await;
     Mock::given(method("POST"))
         .and(path("/reactions.add"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({

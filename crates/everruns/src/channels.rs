@@ -55,12 +55,12 @@ use crate::{Agent, Engine, InputMessage, ResumeError, SendDisposition, Session};
 
 pub use crate::channel_controls::{ConversationState, ConversationStore, MemoryConversationStore};
 pub use everruns_core::channel::{
-    ApprovalPrompt, ChannelAgentSurface, ChannelApprovalPrompt, ChannelDeliveryAdapter,
-    ChannelDriver, ChannelError, ChannelProgressSurface, ChannelReactionSurface, ChannelRequest,
-    ChannelResponse, ChannelStreamDelivery, ControlAction, DeliveryContext, DeliveryResult,
-    DeliveryTarget, ExternalActor, Inbound, InboundAttachment, InboundChannelEvent, InboundControl,
-    InboundDecision, InboundMessage, InboundReaction, InboundRoute, OutboundChannelMessage,
-    SessionBinding,
+    ApprovalPrompt, ChannelAgentSurface, ChannelApprovalPrompt, ChannelAttachmentResolver,
+    ChannelDeliveryAdapter, ChannelDriver, ChannelError, ChannelProgressSurface,
+    ChannelReactionSurface, ChannelRequest, ChannelResponse, ChannelStreamDelivery, ControlAction,
+    DeliveryContext, DeliveryResult, DeliveryTarget, ExternalActor, Inbound, InboundAttachment,
+    InboundChannelEvent, InboundControl, InboundDecision, InboundMessage, InboundReaction,
+    InboundRoute, OutboundChannelMessage, SessionBinding,
 };
 pub use everruns_core::channel_runtime::TurnDeliveryPlanner;
 /// File intake, for hosts that take files outside a channel (serve's

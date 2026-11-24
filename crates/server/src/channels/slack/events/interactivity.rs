@@ -24,18 +24,18 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::{Extension, Json};
 use serde::Deserialize;
 
-use super::{SlackState, SlackTarget, resolve_slack_channel, verify_slack_signature};
+use super::{SlackState, SlackTarget, resolve_slack_channel};
 use crate::api::ErrorResponse;
 use crate::api::channel_ingress::{IngressChannel, IngressContext};
 use crate::channels::slack::approvals::{
-    ApprovalBinding, ApprovalDecision, ApprovalPolicy, ApprovalPrompt, build_resolved_blocks,
+    ApprovalBinding, ApprovalDecision, ApprovalPolicy, ApprovalPrompt,
 };
 use crate::middleware::RequestId;
 
 type ApiError = (StatusCode, Json<ErrorResponse>);
 
 /// Slack's interactivity envelope, narrowed to the parts a card click uses.
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 struct InteractionPayload {
     #[serde(rename = "type")]
     interaction_type: String,
@@ -48,9 +48,13 @@ struct InteractionPayload {
     #[serde(default)]
     message: Option<SlackMessageRef>,
     #[serde(default)]
-    response_url: Option<String>,
-    #[serde(default)]
     container: Option<SlackContainerRef>,
+    #[serde(skip)]
+    response: Option<channelkit_slack::SlackResponseUrl>,
+    #[serde(skip)]
+    client: Option<std::sync::Arc<channelkit_slack::Slack>>,
+    #[serde(skip)]
+    conversation: Option<channelkit::ConversationKey>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -76,6 +80,42 @@ struct SlackMessageRef {
 }
 
 impl InteractionPayload {
+    fn from_ingress(
+        ingress: channelkit_slack::SlackIngress,
+        client: std::sync::Arc<channelkit_slack::Slack>,
+    ) -> Option<Self> {
+        let action = ingress
+            .ingress
+            .events
+            .into_iter()
+            .find_map(|event| match event.kind {
+                channelkit::EventKind::Action(action) => Some(action),
+                _ => None,
+            })?;
+        let context = ingress.context.interaction.unwrap_or_default();
+        Some(Self {
+            interaction_type: "block_actions".into(),
+            user: Some(SlackUserRef {
+                id: action.actor.id,
+            }),
+            actions: vec![SlackAction {
+                action_id: action.id,
+                value: Some(action.value),
+            }],
+            channel: Some(SlackChannelRef {
+                id: action.conversation.channel.clone(),
+            }),
+            message: context.message_ts.map(|ts| SlackMessageRef {
+                ts,
+                thread_ts: context.thread_ts,
+            }),
+            container: None,
+            response: ingress.interaction_response,
+            client: Some(client),
+            conversation: Some(action.conversation),
+        })
+    }
+
     fn approval_event(
         &self,
         clicker: &str,
@@ -102,8 +142,10 @@ impl InteractionPayload {
             interaction_type: self.interaction_type.clone(),
             user: None,
             actions: vec![],
-            response_url: None,
             container: None,
+            response: None,
+            client: None,
+            conversation: None,
             channel: Some(SlackChannelRef {
                 id: channel.clone(),
             }),
@@ -210,30 +252,62 @@ async fn handle_slack_interactivity(
                 .into_response(StatusCode::INTERNAL_SERVER_ERROR)
         })?;
 
-    // THREAT[TM-SLACK-001]: signature and replay window, before the body is
-    // interpreted at all. Identical to the events endpoint.
-    verify_slack_signature(&headers, &body, &slack_config.signing_secret).map_err(|e| {
-        tracing::warn!(app_id = %app_id, error = %e, "Slack interactivity signature verification failed");
-        ErrorResponse::new("Invalid signature").into_response(StatusCode::UNAUTHORIZED)
-    })?;
-
-    let Some(payload) = parse_interaction(&body) else {
-        tracing::warn!(app_id = %app_id, "Failed to parse Slack interactivity payload");
-        return Err(
-            ErrorResponse::new("Invalid request body").into_response(StatusCode::BAD_REQUEST)
-        );
+    let request = everruns_contracts::runtime::channel_driver::ChannelRequest {
+        path: String::new(),
+        headers: headers
+            .iter()
+            .filter_map(|(key, value)| {
+                value
+                    .to_str()
+                    .ok()
+                    .map(|value| (key.to_string(), value.into()))
+            })
+            .collect(),
+        body: body.to_vec(),
     };
-
-    if payload.interaction_type != "block_actions" {
-        // Shortcuts, view submissions, and the rest are not ours. Acknowledged
-        // so Slack stops, ignored because nothing here handles them.
-        tracing::debug!(
-            app_id = %app_id,
-            interaction_type = %payload.interaction_type,
-            "Ignoring Slack interaction this endpoint does not handle"
-        );
+    let egress = super::super::provider::egress(&state, app.org_id);
+    let received = super::super::provider::receive(
+        &slack_channel.public_id.to_string(),
+        &slack_config,
+        &request,
+        egress.clone(),
+    )
+    .await
+    .map_err(|error| {
+        ErrorResponse::new("Invalid or unavailable Slack interaction").into_response(
+            StatusCode::from_u16(error.status()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+        )
+    })?;
+    let everruns_integrations::slack_channel::ingress::VerifiedHttpIngress::Events {
+        ingress, ..
+    } = received
+    else {
+        return Ok(ack());
+    };
+    if !ingress
+        .ingress
+        .events
+        .iter()
+        .any(|event| matches!(event.kind, channelkit::EventKind::Action(_)))
+    {
         return Ok(ack());
     }
+    // Identity discovery must fit Slack's acknowledgement deadline. A failed
+    // read has made no decision/write: refuse intake so Slack can redeliver.
+    let client = tokio::time::timeout(
+        std::time::Duration::from_millis(1500),
+        interaction_client(&slack_channel, &slack_config, egress),
+    )
+    .await
+    .ok()
+    .flatten()
+    .ok_or_else(|| {
+        ErrorResponse::new("Slack interaction temporarily unavailable")
+            .into_response(StatusCode::SERVICE_UNAVAILABLE)
+    })?;
+    let Some(payload) = InteractionPayload::from_ingress(*ingress, client) else {
+        return Ok(ack());
+    };
 
     handle_block_action(
         &state,
@@ -256,16 +330,32 @@ pub(crate) async fn handle_socket_interaction(
     slack_config: &SlackChannelConfig,
     payload: serde_json::Value,
 ) {
-    let payload: InteractionPayload = match serde_json::from_value(payload) {
-        Ok(payload) => payload,
-        Err(error) => {
-            tracing::warn!(channel_id = %slack_channel.public_id, %error, "Failed to parse Slack Socket Mode interaction");
-            return;
-        }
+    let request = everruns_contracts::runtime::channel_driver::ChannelRequest {
+        path: super::super::socket_mode::SOCKET_MODE_PATH.into(),
+        headers: vec![],
+        body: payload.to_string().into_bytes(),
     };
-    if payload.interaction_type != "block_actions" {
+    let egress = super::super::provider::egress(state, app.org_id);
+    let received = super::super::provider::receive(
+        &slack_channel.public_id.to_string(),
+        slack_config,
+        &request,
+        egress.clone(),
+    )
+    .await;
+    let Ok(everruns_integrations::slack_channel::ingress::VerifiedHttpIngress::Events {
+        ingress,
+        ..
+    }) = received
+    else {
         return;
-    }
+    };
+    let Some(client) = interaction_client(slack_channel, slack_config, egress).await else {
+        return;
+    };
+    let Some(payload) = InteractionPayload::from_ingress(*ingress, client) else {
+        return;
+    };
     if let Err(error) =
         handle_block_action(state, app, slack_channel, slack_config, payload, None).await
     {
@@ -274,6 +364,25 @@ pub(crate) async fn handle_socket_interaction(
 }
 
 /// Slack posts `payload=<json>` as form-encoded, not as a JSON body.
+async fn interaction_client(
+    channel: &IngressChannel,
+    config: &SlackChannelConfig,
+    egress: Option<std::sync::Arc<dyn everruns_contracts::runtime::egress::EgressService>>,
+) -> Option<std::sync::Arc<channelkit_slack::Slack>> {
+    everruns_integrations::slack_channel::bridge::direct_factory()
+        .ok()?
+        .for_credentials(
+            &channel.public_id.to_string(),
+            config.team_id.as_deref(),
+            &config.bot_token,
+            super::SLACK_API_BASE,
+            egress,
+        )
+        .await
+        .ok()
+}
+
+#[cfg(test)]
 fn parse_interaction(body: &[u8]) -> Option<InteractionPayload> {
     let form = std::str::from_utf8(body).ok()?;
     let raw = url::form_urlencoded::parse(form.as_bytes())
@@ -438,20 +547,37 @@ async fn handle_block_action(
             question: None,
             turn_id: None,
         };
-        let blocks = build_resolved_blocks(&request, &decision.as_resolution(clicker));
-        everruns_integrations::slack_channel::web_api::update_slack_message_blocks(
-            &slack_config.bot_token,
-            &channel.id,
-            &message.ts,
-            &decision.as_resolution(clicker),
-            &blocks,
-        )
-        .await
-        .unwrap_or_else(|error| {
-            // The decision is already recorded and the card is consumed; a
-            // card left showing its buttons is cosmetic.
-            tracing::warn!(app_id = %app_id, %error, "Failed to resolve the Slack approval card");
-        });
+        if let Some(client) = &payload.client {
+            let result = async {
+                let target = channelkit::ConversationKey::new(
+                    channelkit::Provider::Slack,
+                    slack_channel.public_id.to_string(),
+                    &channel.id,
+                    message.thread_ts.clone(),
+                )?;
+                client
+                    .edit_card(
+                        &channelkit::MessageRef {
+                            conversation: target,
+                            id: message.ts.clone(),
+                        },
+                        &channelkit_slack::SlackCard {
+                            title: None,
+                            text: format!(
+                                "{}\n{}",
+                                request.action,
+                                decision.as_resolution(clicker)
+                            ),
+                            actions: vec![],
+                        },
+                    )
+                    .await
+            }
+            .await;
+            if result.is_err() {
+                tracing::warn!("Failed to resolve Slack approval card");
+            }
+        }
     }
 
     tracing::info!(
@@ -480,24 +606,32 @@ async fn respond_private_resolution(payload: &InteractionPayload, text: &str) {
 }
 
 async fn send_private_response(payload: &InteractionPayload, text: &str, replace: bool) {
-    let Some(url) = payload.response_url.as_deref().and_then(slack_response_url) else {
+    // A signed callback must exist; a failed private response never becomes public.
+    let (Some(response), Some(client)) = (&payload.response, &payload.client) else {
         return;
     };
-    let body = private_response_body(text, replace);
-    // Do not follow redirects or log a callback URL (it is a bearer secret).
-    let client = reqwest::Client::builder()
-        .redirect(reqwest::redirect::Policy::none())
-        .timeout(std::time::Duration::from_secs(5))
-        .build();
-    let Ok(client) = client else {
+    let card = channelkit_slack::SlackCard {
+        title: None,
+        text: everruns_integrations::slack_channel::markdown::neutralize_broadcasts(text)
+            .into_owned(),
+        actions: vec![],
+    };
+    let result = if replace {
+        client.replace_ephemeral(response, &card).await
+    } else if let (Some(conversation), Some(user)) = (&payload.conversation, &payload.user) {
+        client
+            .post_ephemeral(conversation, &user.id, &card)
+            .await
+            .map(|_| ())
+    } else {
         return;
     };
-    match client.post(url).json(&body).send().await {
-        Ok(response) if response.status().is_success() => {}
-        _ => tracing::warn!("Failed to post a private Slack approval response"),
+    if result.is_err() {
+        tracing::warn!("Failed to post private Slack approval response");
     }
 }
 
+#[cfg(test)]
 fn private_response_body(text: &str, replace: bool) -> serde_json::Value {
     let mut body = serde_json::json!({
         "response_type": "ephemeral",
@@ -510,6 +644,7 @@ fn private_response_body(text: &str, replace: bool) -> serde_json::Value {
     body
 }
 
+#[cfg(test)]
 fn slack_response_url(raw: &str) -> Option<url::Url> {
     let url = url::Url::parse(raw).ok()?;
     (url.scheme() == "https"
@@ -603,6 +738,7 @@ async fn post_decision_message(
 mod tests {
     use super::*;
     use crate::channels::slack::approvals::APPROVE_ACTION_ID;
+    use crate::channels::slack::events::verify_slack_signature;
 
     /// Slack posts interactivity as `payload=<url-encoded json>`, not as JSON.
     /// Getting this wrong makes every click a 400, so it is pinned against the

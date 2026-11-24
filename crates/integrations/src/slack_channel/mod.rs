@@ -8,10 +8,8 @@
 //! - Requests are verified with Slack's `v0` signature and refused when the
 //!   timestamp is more than five minutes off, so a captured request cannot be
 //!   replayed.
-//! - [`Slack::new`] always verifies. [`Slack::from_env`] verifies when
-//!   `SLACK_SIGNING_SECRET` is set and otherwise accepts unsigned requests with
-//!   a warning, for trying an app locally; a host that deploys it must require
-//!   the secret, which [`ChannelDriver::secrets`] names.
+//! - Signed HTTP always requires `SLACK_SIGNING_SECRET`, including local
+//!   `from_env` drivers. Channelkit never treats HTTP as trusted Socket Mode.
 //! - Without a bot token, replies are logged instead of posted.
 //! - The binding thread is `channel:thread_ts`: Slack timestamps are unique
 //!   per channel only.
@@ -23,17 +21,20 @@ use async_trait::async_trait;
 use everruns_contracts::runtime::channel::{
     ChannelDeliveryAdapter, ChannelDriver, ChannelError, ChannelRequest, ChannelResponse,
     DeliveryContext, DeliveryResult, DeliveryTarget, ExternalActor, Inbound, InboundAttachment,
-    InboundChannelEvent, InboundMessage, OutboundChannelMessage, RemoteCredential,
+    InboundChannelEvent, InboundMessage, OutboundChannelMessage,
 };
-use hmac::{Hmac, KeyInit, Mac};
 use serde_json::{Value, json};
-use sha2::Sha256;
-use tracing::{info, warn};
+use tracing::info;
 
-use web_api::{SLACK_API_BASE, SlackApiError, slack_api_call};
+use bridge::{INSTALLATION_ID, SlackAdapterFactory, TEAM_ID};
+use std::sync::Arc;
+use web_api::SLACK_API_BASE;
 
 pub mod actions;
 mod advanced;
+pub mod bridge;
+pub mod channelkit_surfaces;
+pub mod ingress;
 pub mod markdown;
 pub mod surfaces;
 pub mod web_api;
@@ -41,10 +42,6 @@ pub use advanced::{Participation, SlackAdmission};
 
 const BOT_TOKEN_ENV: &str = "SLACK_BOT_TOKEN";
 const SIGNING_SECRET_ENV: &str = "SLACK_SIGNING_SECRET";
-/// Where Slack serves files; the bot token is sent only here.
-const SLACK_FILES_HOST: &str = "files.slack.com";
-/// Slack's own replay window.
-const MAX_CLOCK_SKEW_SECS: i64 = 5 * 60;
 
 #[derive(Clone)]
 enum Credential {
@@ -64,13 +61,13 @@ impl Credential {
     fn value(&self) -> Option<String> {
         match self {
             Self::Env(name) => std::env::var(name).ok().filter(|value| !value.is_empty()),
-            Self::Value(value) => Some(value.clone()),
+            Self::Value(value) => (!value.is_empty()).then(|| value.clone()),
         }
     }
 }
 
 /// The Slack driver.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Slack {
     token: Credential,
     signing_secret: Credential,
@@ -78,6 +75,8 @@ pub struct Slack {
     api_base: String,
     advanced: advanced::Advanced,
     workspace: Option<String>,
+    installation: String,
+    factory: Option<Arc<SlackAdapterFactory>>,
 }
 
 impl Slack {
@@ -106,6 +105,8 @@ impl Slack {
             api_base: SLACK_API_BASE.to_string(),
             advanced: advanced::Advanced::default(),
             workspace: None,
+            installation: "everruns-sdk-slack".into(),
+            factory: None,
         }
     }
 
@@ -126,37 +127,74 @@ impl Slack {
         self
     }
 
-    fn verify(&self, request: &ChannelRequest) -> Result<(), ChannelError> {
-        let Some(secret) = self.signing_secret.value() else {
-            warn!("slack: accepting an unsigned request, {SIGNING_SECRET_ENV} is not set");
-            return Ok(());
-        };
-        if secret.is_empty() {
-            return Err(ChannelError::Unauthorized(
-                "Slack signing secret is empty".into(),
-            ));
+    /// Stable host-owned installation identity; use a different name for each app.
+    pub fn installation(mut self, id: impl Into<String>) -> Self {
+        self.installation = id.into();
+        self
+    }
+
+    /// Use this service for provider requests outside a host-supplied context.
+    /// Host delivery and file intake always retain their configured scoped egress.
+    pub fn egress(
+        self,
+        egress: Arc<dyn everruns_contracts::runtime::egress::EgressService>,
+    ) -> Self {
+        self.transport(Arc::new(crate::channelkit_bridge::EgressTransport::new(
+            egress,
+        )))
+    }
+
+    /// Inject a Channelkit transport, shared by every provider operation.
+    pub fn transport(mut self, transport: channelkit::http::SharedTransport) -> Self {
+        self.factory = Some(Arc::new(SlackAdapterFactory::new(transport)));
+        self
+    }
+
+    fn factory(&self) -> channelkit::Result<&SlackAdapterFactory> {
+        match &self.factory {
+            Some(factory) => Ok(factory),
+            None => bridge::direct_factory(),
         }
-        let unauthorized = |why: &str| ChannelError::Unauthorized(format!("slack: {why}"));
-        let timestamp = request
-            .header_value("x-slack-request-timestamp")
-            .ok_or_else(|| unauthorized("missing x-slack-request-timestamp"))?;
-        let sent: i64 = timestamp
-            .parse()
-            .map_err(|_| unauthorized("bad x-slack-request-timestamp"))?;
-        if unix_now().abs_diff(sent) > MAX_CLOCK_SKEW_SECS as u64 {
-            return Err(unauthorized("request timestamp is too old"));
+    }
+
+    fn scoped_context(&self, context: &DeliveryContext) -> Result<DeliveryContext, DeliveryResult> {
+        if context
+            .extra
+            .get(INSTALLATION_ID)
+            .is_some_and(|id| id != &self.installation)
+        {
+            return Err(bridge::outcome(&channelkit::Error::Scope));
         }
-        let signature = request
-            .header_value("x-slack-signature")
-            .and_then(|value| value.strip_prefix("v0="))
-            .and_then(|hex_signature| hex::decode(hex_signature).ok())
-            .ok_or_else(|| unauthorized("missing or malformed x-slack-signature"))?;
-        let mut mac = Hmac::<Sha256>::new_from_slice(secret.as_bytes())
-            .map_err(|_| unauthorized("unusable signing secret"))?;
-        mac.update(format!("v0:{timestamp}:").as_bytes());
-        mac.update(&request.body);
-        mac.verify_slice(&signature)
-            .map_err(|_| unauthorized("signature does not match"))
+        if let Some(team) = &self.workspace {
+            for key in [TEAM_ID, surfaces::SLACK_RECIPIENT_TEAM_ID] {
+                if context
+                    .extra
+                    .get(key)
+                    .filter(|value| !value.is_empty())
+                    .is_some_and(|value| value != team)
+                {
+                    return Err(bridge::outcome(&channelkit::Error::Scope));
+                }
+            }
+        }
+        let mut scoped = context.clone();
+        scoped
+            .extra
+            .insert(INSTALLATION_ID.into(), self.installation.clone());
+        if let Some(team) = &self.workspace {
+            scoped
+                .extra
+                .entry(TEAM_ID.into())
+                .or_insert_with(|| team.clone());
+        }
+        Ok(scoped)
+    }
+
+    fn provider_surfaces(&self) -> channelkit::Result<channelkit_surfaces::ChannelkitSurfaces<'_>> {
+        Ok(channelkit_surfaces::ChannelkitSurfaces {
+            api_base: &self.api_base,
+            factory: self.factory()?,
+        })
     }
 }
 
@@ -166,34 +204,40 @@ impl ChannelDeliveryAdapter for Slack {
         "slack"
     }
 
+    fn requires_checkpoint(&self) -> bool {
+        true
+    }
+
     async fn deliver(
         &self,
         message: &OutboundChannelMessage,
         context: &DeliveryContext,
     ) -> DeliveryResult {
+        let context = match self.scoped_context(context) {
+            Ok(context) => context,
+            Err(error) => return error,
+        };
         let channel = &context.channel_id;
         if context.auth_token.is_empty() {
             info!(%channel, thread = %message.thread_ref, text = %message.text, "slack reply (no {BOT_TOKEN_ENV}, not posted)");
             return DeliveryResult::Ok;
         }
-        // Agent output is Markdown: post it as `markdown` blocks, not as
-        // `text`, which Slack reads as the much smaller `mrkdwn` dialect.
-        for payload in markdown::reply_payloads(channel, &message.thread_ref, &message.text) {
-            if let Err(error) = slack_api_call(
-                &self.api_base,
-                &context.auth_token,
-                "chat.postMessage",
-                payload,
+        let surfaces = match self.provider_surfaces() {
+            Ok(surfaces) => surfaces,
+            Err(error) => return bridge::outcome(&error),
+        };
+        let session = message.session_id.to_string();
+        surfaces
+            .post_reply(
+                &message.text,
+                &context,
+                message
+                    .correlation_id
+                    .as_deref()
+                    .map(|input| (session.as_str(), input)),
             )
             .await
-            {
-                return match error {
-                    SlackApiError::Permanent(error) => DeliveryResult::PermanentError(error),
-                    error => DeliveryResult::TransientError(error.to_string()),
-                };
-            }
-        }
-        DeliveryResult::Ok
+            .map_or_else(|error| error, |_| DeliveryResult::Ok)
     }
 
     fn streaming(
@@ -234,105 +278,45 @@ impl ChannelDriver for Slack {
     }
 
     async fn receive(&self, request: &ChannelRequest) -> Result<Inbound, ChannelError> {
-        if request.body.len() > 1024 * 1024 {
-            return Err(ChannelError::BadRequest(
-                "Slack request exceeds limit".into(),
-            ));
+        self.receive_with_egress(request, None).await
+    }
+    async fn receive_with_egress(
+        &self,
+        request: &ChannelRequest,
+        egress: Option<Arc<dyn everruns_contracts::runtime::egress::EgressService>>,
+    ) -> Result<Inbound, ChannelError> {
+        let secret = self
+            .signing_secret
+            .value()
+            .ok_or_else(|| ChannelError::Unauthorized("Slack signing secret is required".into()))?;
+        let token = self.token.value();
+        let ingress = ingress::HttpIngress {
+            installation: &self.installation,
+            team: self.workspace.as_deref(),
+            token: token.as_deref(),
+            signing_secret: &secret,
+            api: &self.api_base,
+            factory: self.factory().map_err(ingress::ingress_error)?,
         }
-        self.verify(request)?;
-        if request
-            .header_value("content-type")
-            .is_some_and(|v| v.starts_with("application/x-www-form-urlencoded"))
-        {
-            return self.interactive(request);
-        }
-        let body = request.body_json()?;
-        match body.get("type").and_then(Value::as_str) {
-            Some("url_verification") => {
-                let challenge = body.get("challenge").cloned().unwrap_or(Value::Null);
-                return Ok(Inbound::Respond(ChannelResponse::ok(
-                    json!({ "challenge": challenge }),
-                )));
+        .receive(request, egress)
+        .await?;
+        match ingress {
+            ingress::VerifiedHttpIngress::Challenge(challenge) => Ok(Inbound::Respond(
+                ChannelResponse::ok(json!({"challenge":challenge})),
+            )),
+            ingress::VerifiedHttpIngress::Events { team, ingress } => {
+                let Some(event) = ingress.ingress.events.into_iter().next() else {
+                    return Ok(Inbound::Ignore);
+                };
+                self.normalized(event.kind, &ingress.context, &team)
             }
-            Some("event_callback") => {}
-            _ => return Ok(Inbound::Ignore),
         }
-        if self
-            .workspace
-            .as_ref()
-            .is_some_and(|team| body["team_id"].as_str() != Some(team.as_str()))
-        {
-            return Err(ChannelError::Unauthorized(
-                "Slack event belongs to another workspace".into(),
-            ));
-        }
-        let Some(event) = body.get("event") else {
-            return Ok(Inbound::Ignore);
-        };
-        let field = |name: &str| event.get(name).and_then(Value::as_str).unwrap_or("");
-        let kind = field("type");
-        if let Some(control) = self.pane_control(event) {
-            return Ok(control);
-        }
+    }
 
-        let wanted = kind == "app_mention" || (!self.mention_only && kind == "message");
-        // Bots (this one included) and edits, joins and other subtypes are
-        // not messages for the agent.
-        if !wanted || event.get("bot_id").is_some() || event.get("subtype").is_some() {
-            return Ok(Inbound::Ignore);
-        }
-        let channel = field("channel");
-        let ts = field("ts");
-        if channel.is_empty() || ts.is_empty() {
-            return Err(ChannelError::BadRequest(
-                "slack event without channel or ts".into(),
-            ));
-        }
-        let thread_ts = event.get("thread_ts").and_then(Value::as_str).unwrap_or(ts);
-        self.clear_approval_cards(channel, thread_ts);
-        let user = field("user");
-        let token = self.token.value().filter(|token| !token.is_empty());
-        let attachments = event
-            .get("files")
-            .and_then(Value::as_array)
-            .into_iter()
-            .flatten()
-            .map(|file| file_attachment(file, token.as_deref()))
-            .collect();
-        let routing_metadata = HashMap::from([
-            ("channel_id".to_string(), channel.to_string()),
-            ("user_id".to_string(), user.to_string()),
-        ]);
-        Ok(Inbound::Message(Box::new(InboundMessage {
-            event: InboundChannelEvent {
-                actor: ExternalActor {
-                    actor_id: user.to_string(),
-                    actor_name: None,
-                    source: "slack".into(),
-                    metadata: None,
-                },
-                text: strip_mentions(field("text")),
-                attachments,
-                // One post can arrive as both `app_mention` and `message`, with
-                // different event ids; the message ts is one per post.
-                dedup_key: format!("{channel}:{ts}"),
-                thread_ref: Some(format!("{channel}:{thread_ts}")),
-                routing_metadata,
-                message_metadata: serde_json::Map::from_iter([
-                    ("slack_channel".to_string(), json!(channel)),
-                    ("slack_thread_ts".to_string(), json!(thread_ts)),
-                    ("slack_ts".to_string(), json!(ts)),
-                    ("slack_user".to_string(), json!(user)),
-                    ("slack_mention".to_string(), json!(kind == "app_mention")),
-                ]),
-            },
-            reply_to: advanced::target(
-                channel,
-                thread_ts,
-                user,
-                body["team_id"].as_str().unwrap_or(""),
-            ),
-        })))
+    fn attachment_resolver(
+        &self,
+    ) -> Option<&dyn everruns_contracts::runtime::channel::ChannelAttachmentResolver> {
+        Some(self)
     }
 
     fn binding(
@@ -356,10 +340,30 @@ impl ChannelDriver for Slack {
         &self,
         message: &InboundMessage,
     ) -> Result<Vec<InboundChannelEvent>, ChannelError> {
-        self.history(message).await
+        self.history(message, &self.delivery_context(&message.reply_to))
+            .await
+    }
+    async fn backfill_with_context(
+        &self,
+        message: &InboundMessage,
+        context: &DeliveryContext,
+    ) -> Result<Vec<InboundChannelEvent>, ChannelError> {
+        self.history(message, context).await
     }
     fn delivery_context(&self, target: &DeliveryTarget) -> DeliveryContext {
-        target.context(self.token.value().unwrap_or_default())
+        let mut context = target.context(self.token.value().unwrap_or_default());
+        context
+            .extra
+            .entry(INSTALLATION_ID.into())
+            .or_insert_with(|| self.installation.clone());
+        if let Some(team) = &self.workspace {
+            // Keep a persisted original workspace for mismatch detection.
+            context
+                .extra
+                .entry(TEAM_ID.into())
+                .or_insert_with(|| team.clone());
+        }
+        context
     }
 }
 
@@ -369,36 +373,6 @@ fn unix_now() -> i64 {
         .map_or(0, |elapsed| {
             i64::try_from(elapsed.as_secs()).unwrap_or(i64::MAX)
         })
-}
-
-/// A file of a message: with a bot token, downloaded from Slack's file host
-/// by the channel host (the token goes only there); a file hosted elsewhere
-/// (Google Drive) or without a token is described by name and its link.
-fn file_attachment(file: &Value, token: Option<&str>) -> InboundAttachment {
-    let text = |name: &str| file.get(name).and_then(Value::as_str);
-    let name = text("name").unwrap_or("unnamed file");
-    let media_type = text("mimetype").map(str::to_string);
-    let external = file
-        .get("is_external")
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
-    let url = text("url_private_download").or_else(|| text("url_private"));
-    match (url, token) {
-        (Some(url), Some(token)) if !external => InboundAttachment::Remote {
-            url: url.to_string(),
-            name: Some(name.to_string()),
-            media_type,
-            size: file.get("size").and_then(Value::as_u64),
-            credential: Some(RemoteCredential::bearer(SLACK_FILES_HOST, token)),
-        },
-        _ => InboundAttachment::FileDescription {
-            name: match text("permalink") {
-                Some(link) if external => format!("{name} ({link})"),
-                _ => name.to_string(),
-            },
-            mime_type: media_type,
-        },
-    }
 }
 
 /// Remove `<@U123>` mention tokens and collapse the whitespace around them.
@@ -419,5 +393,68 @@ fn strip_mentions(text: &str) -> String {
     out.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
+impl std::fmt::Debug for Slack {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Slack")
+            .field("installation", &self.installation)
+            .field("workspace", &self.workspace)
+            .field("mention_only", &self.mention_only)
+            .field("advanced", &self.advanced)
+            .finish_non_exhaustive()
+    }
+}
+
+#[async_trait]
+impl everruns_contracts::runtime::channel::ChannelAttachmentResolver for Slack {
+    async fn download(
+        &self,
+        reference: &str,
+        max_bytes: usize,
+        egress: Arc<dyn everruns_contracts::runtime::egress::EgressService>,
+    ) -> Result<Vec<u8>, ChannelError> {
+        let (installation, team, id): (String, String, String) = serde_json::from_str(reference)
+            .map_err(|_| ChannelError::BadRequest("Slack file reference".into()))?;
+        if installation != self.installation
+            || id.is_empty()
+            || id.len() > 256
+            || self
+                .workspace
+                .as_ref()
+                .is_some_and(|expected| expected != &team)
+        {
+            return Err(ChannelError::Unauthorized("Slack file scope".into()));
+        }
+        let token = self.token.value().ok_or_else(|| {
+            ChannelError::Unauthorized("Slack file credentials unavailable".into())
+        })?;
+        let factory = self.factory().map_err(ingress::ingress_error)?;
+        let client = factory
+            .for_credentials(
+                &self.installation,
+                Some(&team),
+                &token,
+                &self.api_base,
+                Some(egress),
+            )
+            .await
+            .map_err(ingress::ingress_error)?;
+        client
+            .download(
+                &channelkit::Attachment {
+                    id,
+                    name: None,
+                    media_type: None,
+                    size: None,
+                },
+                max_bytes,
+            )
+            .await
+            .map_err(|_| ChannelError::BadRequest("Slack file unavailable".into()))
+    }
+}
+
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod migration_tests;

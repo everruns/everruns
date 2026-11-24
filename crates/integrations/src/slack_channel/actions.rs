@@ -1,9 +1,9 @@
 //! Slack vendor operations shared by Server and application-owned Framework bots.
-use super::markdown::{markdown_block, neutralize_broadcasts};
-use super::web_api::{SlackApiError, parse_retry_after, slack_api_call};
+use super::markdown::neutralize_broadcasts;
+use super::web_api::SlackApiError;
+use everruns_contracts::runtime::channel::DeliveryContext;
 use everruns_contracts::slack_action::{SlackActionError, SlackActionOutcome, SlackFile};
 use serde_json::{Value, json};
-use tracing::warn;
 // THREAT[TM-DOS-031]: validate at the vendor seam as well as in model-facing tool arguments.
 const MAX_UPLOAD_BYTES: usize = 8 * 1024 * 1024;
 pub fn action_error(error: SlackApiError) -> SlackActionError {
@@ -13,18 +13,127 @@ pub fn action_error(error: SlackApiError) -> SlackActionError {
         },
         SlackApiError::Permanent(message) => SlackActionError::Rejected(message),
         SlackApiError::Transient(message) => SlackActionError::Transient(message),
+        SlackApiError::Delivery(
+            everruns_contracts::runtime::channel::DeliveryResult::Partial { confirmed, cause },
+        ) => SlackActionError::PartialDelivery {
+            confirmed,
+            retry_after_secs: cause.retry_after().map(|duration| duration.as_secs()),
+            reason: match cause.as_ref() {
+                everruns_contracts::runtime::channel::DeliveryResult::PermanentError(message)
+                | everruns_contracts::runtime::channel::DeliveryResult::TransientError(message) => {
+                    message.clone()
+                }
+                other => other.to_string(),
+            },
+        },
+        SlackApiError::Delivery(outcome) => SlackActionError::DeliveryUnknown {
+            confirmed: outcome.confirmed().to_vec(),
+        },
     }
 }
 
+async fn client_scoped(
+    api: &str,
+    context: &DeliveryContext,
+) -> Result<std::sync::Arc<channelkit_slack::Slack>, SlackApiError> {
+    super::bridge::direct_factory()
+        .map_err(super::web_api::provider_error)?
+        .for_context(context, api)
+        .await
+        .map_err(super::web_api::provider_error)
+}
+async fn call_scoped(
+    api: &str,
+    context: &DeliveryContext,
+    method: &str,
+    payload: Value,
+    side_effect: bool,
+) -> Result<Value, SlackApiError> {
+    client_scoped(api, context)
+        .await?
+        .api_call(method, payload, side_effect)
+        .await
+        .map_err(super::web_api::provider_error)
+}
+
 pub async fn add_reaction(
-    api_base: &str,
-    bot_token: &str,
+    api: &str,
+    token: &str,
     channel: &str,
+    ts: &str,
+    name: &str,
+) -> Result<SlackActionOutcome, SlackApiError> {
+    add_reaction_scoped(
+        api,
+        &super::web_api::tool_context(token, channel, ""),
+        ts,
+        name,
+    )
+    .await
+}
+pub async fn update_message(
+    api: &str,
+    token: &str,
+    channel: &str,
+    ts: &str,
+    text: &str,
+) -> Result<SlackActionOutcome, SlackActionError> {
+    update_message_scoped(
+        api,
+        &super::web_api::tool_context(token, channel, ""),
+        ts,
+        text,
+    )
+    .await
+}
+pub async fn lookup_user(
+    api: &str,
+    token: &str,
+    user: &str,
+) -> Result<SlackActionOutcome, SlackActionError> {
+    lookup_user_scoped(api, &super::web_api::tool_context(token, "", ""), user).await
+}
+pub async fn upload_file(
+    api: &str,
+    token: &str,
+    channel: &str,
+    thread: Option<&str>,
+    filename: &str,
+    content: Vec<u8>,
+    comment: Option<&str>,
+) -> Result<SlackActionOutcome, SlackActionError> {
+    upload_file_scoped(
+        api,
+        &super::web_api::tool_context(token, channel, thread.unwrap_or_default()),
+        filename,
+        content,
+        comment,
+    )
+    .await
+}
+pub async fn share_message_files(
+    api: &str,
+    token: &str,
+    channel: &str,
+    thread: Option<&str>,
+    files: Vec<SlackFile>,
+) -> Result<(), SlackActionError> {
+    share_message_files_scoped(
+        api,
+        &super::web_api::tool_context(token, channel, thread.unwrap_or_default()),
+        files,
+    )
+    .await
+}
+
+pub async fn add_reaction_scoped(
+    api_base: &str,
+    context: &DeliveryContext,
     timestamp: &str,
     name: &str,
 ) -> Result<SlackActionOutcome, SlackApiError> {
-    let payload = json!({ "channel": channel, "timestamp": timestamp, "name": name });
-    match slack_api_call(api_base, bot_token, "reactions.add", payload).await {
+    let payload = json!({ "channel": context.channel_id, "timestamp": timestamp, "name": name });
+    match call_scoped(api_base, context, "reactions.add", payload, false).await {
         Ok(_) => Ok(SlackActionOutcome::ReactionAdded {
             already_reacted: false,
         }),
@@ -40,42 +149,44 @@ pub async fn add_reaction(
     }
 }
 
-pub async fn update_message(
+pub async fn update_message_scoped(
     api_base: &str,
-    bot_token: &str,
-    channel: &str,
+    context: &DeliveryContext,
     timestamp: &str,
     text: &str,
 ) -> Result<SlackActionOutcome, SlackActionError> {
-    // Mirrors the delivery path's rendering choice: `markdown` blocks, so agent
-    // output reaches Slack as the Markdown it actually is rather than being
-    // reinterpreted as the much smaller `mrkdwn` dialect. `text` is still sent
-    // as the notification/fallback string.
-    let payload = json!({
-        "channel": channel,
-        "ts": timestamp,
-        "text": neutralize_broadcasts(text),
-        "blocks": [markdown_block(text)],
-    });
-    slack_api_call(api_base, bot_token, "chat.update", payload)
+    use channelkit::Adapter;
+    let client = client_scoped(api_base, context)
         .await
         .map_err(action_error)?;
+    let reference = super::bridge::reference(&client, context, timestamp)
+        .map_err(super::web_api::provider_error)
+        .map_err(action_error)?;
+    client
+        .edit(
+            &reference,
+            channelkit::Content::Markdown(neutralize_broadcasts(text).into_owned()),
+        )
+        .await
+        .map_err(super::web_api::provider_error)
+        .map_err(action_error)?;
     Ok(SlackActionOutcome::MessageUpdated {
-        channel: channel.to_string(),
+        channel: context.channel_id.clone(),
         timestamp: timestamp.to_string(),
     })
 }
 
-pub async fn lookup_user(
+pub async fn lookup_user_scoped(
     api_base: &str,
-    bot_token: &str,
+    context: &DeliveryContext,
     user_id: &str,
 ) -> Result<SlackActionOutcome, SlackActionError> {
-    let body = slack_api_call(
+    let body = call_scoped(
         api_base,
-        bot_token,
+        context,
         "users.info",
         json!({ "user": user_id }),
+        false,
     )
     .await
     .map_err(action_error)?;
@@ -115,185 +226,97 @@ pub async fn lookup_user(
 /// `files.completeUploadExternal` to place the file in the conversation. Only
 /// the first and last speak the `ok`/`error` envelope; the middle step is a
 /// plain HTTP upload whose failures are classified here.
-pub async fn upload_file(
+pub async fn upload_file_scoped(
     api_base: &str,
-    bot_token: &str,
-    channel: &str,
-    thread_ts: Option<&str>,
+    context: &DeliveryContext,
     filename: &str,
     content: Vec<u8>,
     initial_comment: Option<&str>,
 ) -> Result<SlackActionOutcome, SlackActionError> {
-    if content.is_empty() {
+    if content.is_empty() || content.len() > MAX_UPLOAD_BYTES {
         return Err(SlackActionError::InvalidArgument(
-            "file content must not be empty".to_string(),
+            "Slack file must contain 1 byte to 8 MiB".into(),
         ));
     }
-    if content.len() > MAX_UPLOAD_BYTES {
-        return Err(SlackActionError::InvalidArgument(format!(
-            "file content is {} bytes, over the {MAX_UPLOAD_BYTES} byte limit",
-            content.len()
-        )));
-    }
-
-    let reserve = slack_api_call(
-        api_base,
-        bot_token,
-        "files.getUploadURLExternal",
-        json!({ "filename": filename, "length": content.len() }),
-    )
-    .await
-    .map_err(action_error)?;
-
-    let upload_url = reserve
-        .get("upload_url")
-        .and_then(Value::as_str)
-        .ok_or_else(|| {
-            SlackActionError::Transient(
-                "Slack files.getUploadURLExternal returned no upload_url".to_string(),
-            )
-        })?;
-    let file_id = reserve
-        .get("file_id")
-        .and_then(Value::as_str)
-        .ok_or_else(|| {
-            SlackActionError::Transient(
-                "Slack files.getUploadURLExternal returned no file_id".to_string(),
-            )
-        })?
-        .to_string();
-
-    // THREAT[TM-FW-003]: the reservation is remote input. Never follow it to an arbitrary origin,
-    // redirect bytes to another host, or expose the signed URL in an error.
-    let upload = url::Url::parse(upload_url)
-        .map_err(|_| SlackActionError::Rejected("Invalid Slack upload URL".into()))?;
-    let api = url::Url::parse(api_base)
-        .map_err(|_| SlackActionError::Rejected("Invalid Slack API root".into()))?;
-    let slack_host = upload
-        .host_str()
-        .is_some_and(|host| host == "files.slack.com" || host.ends_with(".slack.com"));
-    let trusted_test_origin =
-        api_base != super::web_api::SLACK_API_BASE && upload.origin() == api.origin();
-    if !upload.username().is_empty()
-        || upload.password().is_some()
-        || !((upload.scheme() == "https" && slack_host) || trusted_test_origin)
-    {
-        return Err(SlackActionError::Rejected(
-            "Slack upload URL has an untrusted origin".into(),
-        ));
-    }
-    let client = reqwest::Client::builder()
-        .redirect(reqwest::redirect::Policy::none())
-        .build()
-        .map_err(|_| SlackActionError::Transient("Could not create Slack upload client".into()))?;
-    let response = client
-        .post(upload_url)
-        .body(content)
-        .send()
+    let client = client_scoped(api_base, context)
         .await
-        .map_err(|_| SlackActionError::Transient("Slack upload transport failed".into()))?;
-    if !response.status().is_success() {
-        let status = response.status();
-        let retry_after = parse_retry_after(response.headers());
-        if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
-            return Err(SlackActionError::RateLimited {
-                retry_after_secs: retry_after.map(|d| d.as_secs()),
-            });
-        }
-        // 4xx on the one-time URL means the reservation no longer applies;
-        // retrying the same URL cannot help, so it is reported as a rejection
-        // rather than something to back off on.
-        return Err(if status.is_client_error() {
-            SlackActionError::Rejected(format!("Slack rejected the file upload ({status})"))
-        } else {
-            SlackActionError::Transient(format!("Slack file upload failed ({status})"))
-        });
-    }
-
-    let mut file_entry = json!({ "id": file_id });
-    if let Some(comment) = initial_comment {
-        file_entry["title"] = json!(filename);
-        // A `markdown` block: `initial_comment` would be read as `mrkdwn`.
-        let mut payload = json!({
-            "files": [file_entry],
-            "channel_id": channel,
-            "blocks": [markdown_block(comment)],
-        });
-        if let Some(thread_ts) = thread_ts {
-            payload["thread_ts"] = json!(thread_ts);
-        }
-        return complete_upload(api_base, bot_token, payload, file_id).await;
-    }
-
-    let mut payload = json!({ "files": [file_entry], "channel_id": channel });
-    if let Some(thread_ts) = thread_ts {
-        payload["thread_ts"] = json!(thread_ts);
-    }
-    complete_upload(api_base, bot_token, payload, file_id).await
-}
-
-/// Share the files of a message whose text Slack already accepted, into the
-/// same conversation, in order.
-///
-/// The text is posted first because it carries the message reference later
-/// edits need, and reads naturally above what it introduces. A failure here
-/// is therefore partial delivery, reported as a rejection that says so: a
-/// blind retry of the whole message would post the text twice.
-pub async fn share_message_files(
-    api_base: &str,
-    bot_token: &str,
-    channel: &str,
-    thread_ts: Option<&str>,
-    files: Vec<SlackFile>,
-) -> Result<(), SlackActionError> {
-    let total = files.len();
-    for (index, file) in files.into_iter().enumerate() {
-        let filename = file.filename.clone();
-        if let Err(error) = upload_file(
-            api_base,
-            bot_token,
-            channel,
-            thread_ts,
-            &file.filename,
-            file.content,
-            None,
+        .map_err(action_error)?;
+    let target = super::bridge::target(&client, context)
+        .map_err(super::web_api::provider_error)
+        .map_err(action_error)?;
+    let file = client
+        .upload_with_options(
+            &target,
+            filename,
+            &content,
+            &channelkit_slack::SlackUploadOptions {
+                markdown_comment: initial_comment
+                    .map(|text| neutralize_broadcasts(text).into_owned()),
+                ..Default::default()
+            },
         )
         .await
-        {
-            let reason = match &error {
-                SlackActionError::Rejected(message) if message.contains("missing_scope") => {
-                    "the Slack app lacks files:write; reconnect it to approve file uploads"
-                        .to_string()
-                }
-                other => other.to_string(),
-            };
-            return Err(SlackActionError::Rejected(format!(
-                "The message text was posted, and {index} of {total} files, but {filename} was not: {reason}. Do not resend the text."
-            )));
+        .map_err(|error| {
+            let error = super::web_api::provider_error(error);
+            if error.code() == Some("missing_scope") {
+                SlackActionError::Rejected(
+                    "missing_scope: reconnect the Slack app and approve files:write for file uploads".into(),
+                )
+            } else {
+                action_error(error)
+            }
+        })?;
+    Ok(SlackActionOutcome::FileUploaded {
+        file_id: file.id,
+        permalink: file.permalink,
+    })
+}
+
+pub async fn share_message_files_scoped(
+    api_base: &str,
+    context: &DeliveryContext,
+    files: Vec<SlackFile>,
+) -> Result<(), SlackActionError> {
+    let mut confirmed = Vec::new();
+    for file in files {
+        match upload_file_scoped(api_base, context, &file.filename, file.content, None).await {
+            Ok(SlackActionOutcome::FileUploaded { file_id, .. }) => {
+                confirmed.push(format!("file:{file_id}"))
+            }
+            Ok(_) => unreachable!("upload returns a file receipt"),
+            Err(error) => return Err(with_confirmed(error, confirmed)),
         }
     }
     Ok(())
 }
 
-async fn complete_upload(
-    api_base: &str,
-    bot_token: &str,
-    payload: Value,
-    file_id: String,
-) -> Result<SlackActionOutcome, SlackActionError> {
-    let body = slack_api_call(api_base, bot_token, "files.completeUploadExternal", payload)
-        .await
-        .map_err(action_error)?;
-    let permalink = body
-        .get("files")
-        .and_then(Value::as_array)
-        .and_then(|files| files.first())
-        .and_then(|file| file.get("permalink"))
-        .and_then(Value::as_str)
-        .map(str::to_string);
-    if permalink.is_none() {
-        // Not fatal: the file is shared, we just cannot link to it.
-        warn!(file_id = %file_id, "Slack completeUploadExternal returned no permalink");
+/// Preserve an accepted prefix when an explicit post subsequently shares files.
+pub fn with_confirmed(error: SlackActionError, mut confirmed: Vec<String>) -> SlackActionError {
+    match error {
+        SlackActionError::DeliveryUnknown { confirmed: suffix } => {
+            confirmed.extend(suffix);
+            SlackActionError::DeliveryUnknown { confirmed }
+        }
+        SlackActionError::PartialDelivery {
+            confirmed: suffix,
+            retry_after_secs,
+            reason,
+        } => {
+            confirmed.extend(suffix);
+            SlackActionError::PartialDelivery {
+                confirmed,
+                retry_after_secs,
+                reason,
+            }
+        }
+        error if confirmed.is_empty() => error,
+        error => SlackActionError::PartialDelivery {
+            confirmed,
+            reason: error.to_string(),
+            retry_after_secs: match error {
+                SlackActionError::RateLimited { retry_after_secs } => retry_after_secs,
+                _ => None,
+            },
+        },
     }
-    Ok(SlackActionOutcome::FileUploaded { file_id, permalink })
 }

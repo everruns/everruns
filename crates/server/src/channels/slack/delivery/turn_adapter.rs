@@ -25,13 +25,16 @@ use everruns_core::channel::{
     ChannelStreamDelivery, DeliveryContext, DeliveryResult, OutboundChannelMessage,
 };
 
-use crate::channels::slack::approvals::{ApprovalBinding, build_approval_blocks};
-use everruns_integrations::slack_channel::actions::upload_file;
-use everruns_integrations::slack_channel::web_api::{SLACK_API_BASE, SlackApiError};
-use everruns_integrations::slack_channel::web_api::{
-    post_slack_blocks, post_slack_ephemeral_blocks, post_slack_message_returning_ts,
-    update_slack_message_text,
-};
+use crate::channels::slack::approvals::{ApprovalBinding, build_approval_card};
+use everruns_integrations::slack_channel::web_api::SLACK_API_BASE;
+use everruns_integrations::slack_channel::{bridge, channelkit_surfaces::ChannelkitSurfaces};
+
+fn surfaces() -> Result<ChannelkitSurfaces<'static>, DeliveryResult> {
+    Ok(ChannelkitSurfaces {
+        api_base: SLACK_API_BASE,
+        factory: bridge::direct_factory().map_err(|error| bridge::outcome(&error))?,
+    })
+}
 
 pub(crate) struct SlackTurnAdapter {
     pub inner: Arc<dyn ChannelDeliveryAdapter>,
@@ -55,6 +58,10 @@ pub(crate) struct SlackAppViews {
 
 #[async_trait]
 impl ChannelDeliveryAdapter for SlackTurnAdapter {
+    fn requires_checkpoint(&self) -> bool {
+        self.inner.requires_checkpoint()
+    }
+
     fn platform(&self) -> &str {
         self.inner.platform()
     }
@@ -113,11 +120,11 @@ fn server_label(server: &str) -> String {
 }
 
 /// The button message under a view's picture (or in its place).
-pub(crate) fn app_view_blocks(
+pub(crate) fn app_view_card(
     view: &ChannelAppView,
     session_link: Option<&str>,
     pictured: bool,
-) -> Option<serde_json::Value> {
+) -> Option<channelkit_slack::SlackCard> {
     let link = session_link?;
     let label = server_label(&view.app.server);
     let note = if pictured {
@@ -125,15 +132,16 @@ pub(crate) fn app_view_blocks(
     } else {
         format!("{label} sent an interactive view ({})", view.app.tool)
     };
-    Some(serde_json::json!([
-        {"type": "context", "elements": [{"type": "mrkdwn", "text": note}]},
-        {"type": "actions", "elements": [{
-            "type": "button",
-            "text": {"type": "plain_text", "text": "Open interactive view"},
-            "url": link,
-            "action_id": "open_mcp_app_view",
-        }]},
-    ]))
+    Some(channelkit_slack::SlackCard {
+        title: None,
+        text: note,
+        actions: vec![channelkit_slack::SlackButton {
+            action_id: "open_mcp_app_view".into(),
+            label: "Open interactive view".into(),
+            value: None,
+            url: Some(link.into()),
+        }],
+    })
 }
 
 #[async_trait]
@@ -147,6 +155,10 @@ impl ChannelAppViewSurface for SlackTurnAdapter {
         let Some(views) = &self.app_views else {
             return DeliveryResult::Ok;
         };
+        let surface = match surfaces() {
+            Ok(surface) => surface,
+            Err(error) => return error,
+        };
         let snapshot = views
             .snapshots
             .snapshot(views.org_id, session_id, &view.app, &view.text)
@@ -154,50 +166,56 @@ impl ChannelAppViewSurface for SlackTurnAdapter {
         let pictured = match snapshot {
             McpAppSnapshot::Off => return DeliveryResult::Ok,
             McpAppSnapshot::LinkOnly => false,
+            McpAppSnapshot::Picture(png) if png.is_empty() || png.len() > 8 * 1024 * 1024 => false,
             McpAppSnapshot::Picture(png) => {
-                let thread =
-                    (!context.thread_ref.is_empty()).then_some(context.thread_ref.as_str());
-                let comment = format!("**{}** · {}", server_label(&view.app.server), view.app.tool);
-                match upload_file(
-                    SLACK_API_BASE,
-                    &context.auth_token,
-                    &context.channel_id,
-                    thread,
-                    &format!("{}-view.png", view.app.server),
-                    png,
-                    Some(&comment),
-                )
-                .await
-                {
-                    Ok(_) => true,
+                let upload = async {
+                    let client = surface
+                        .factory
+                        .for_context(context, surface.api_base)
+                        .await?;
+                    let target = bridge::target(&client, context)?;
+                    client
+                        .upload_with_options(
+                            &target,
+                            &format!("{}-view.png", view.app.server),
+                            &png,
+                            &channelkit_slack::SlackUploadOptions {
+                                markdown_comment: Some(everruns_integrations::slack_channel::markdown::neutralize_broadcasts(&format!(
+                                    "**{}** · {}", server_label(&view.app.server), view.app.tool
+                                )).into_owned()),
+                                ..Default::default()
+                            },
+                        )
+                        .await
+                }
+                .await;
+                match upload {
+                    Ok(file) => {
+                        let reference = format!("file:{}", file.id);
+                        if let Some(sink) = &context.receipts
+                            && sink.confirmed(&reference).await.is_err()
+                        {
+                            return DeliveryResult::Unknown {
+                                confirmed: vec![reference],
+                            };
+                        }
+                        true
+                    }
                     Err(error) => {
-                        tracing::warn!(%session_id, %error, "could not upload an MCP App picture to Slack");
+                        let outcome = bridge::outcome(&error);
+                        // Only a definite refusal permits a link-only fallback.
+                        if outcome.is_uncertain() || !outcome.confirmed().is_empty() {
+                            return outcome;
+                        }
                         false
                     }
                 }
             }
         };
-        let Some(blocks) = app_view_blocks(view, views.session_link.as_deref(), pictured) else {
+        let Some(card) = app_view_card(view, views.session_link.as_deref(), pictured) else {
             return DeliveryResult::Ok;
         };
-        result(
-            post_slack_blocks(
-                &context.auth_token,
-                &context.channel_id,
-                &context.thread_ref,
-                "Open interactive view",
-                &blocks,
-            )
-            .await,
-        )
-    }
-}
-
-fn result(outcome: Result<(), SlackApiError>) -> DeliveryResult {
-    match outcome {
-        Ok(()) => DeliveryResult::Ok,
-        Err(SlackApiError::Permanent(error)) => DeliveryResult::PermanentError(error),
-        Err(error) => DeliveryResult::TransientError(error.to_string()),
+        surface.post_card(&card, None, context).await
     }
 }
 
@@ -223,61 +241,49 @@ impl ChannelApprovalPrompt for SlackTurnAdapter {
             Ok(blocks) => blocks,
             Err(error) => return DeliveryResult::PermanentError(error.into()),
         };
-        let text = prompt.text();
-        let posted = match blocks {
-            Some(blocks) if self.private_approvals => {
-                post_slack_ephemeral_blocks(
-                    &context.auth_token,
-                    &context.channel_id,
-                    &context.thread_ref,
-                    self.requester
-                        .as_deref()
-                        .expect("private card requires requester"),
-                    &text,
-                    &blocks,
-                )
-                .await
-            }
-            Some(blocks) => {
-                post_slack_blocks(
-                    &context.auth_token,
-                    &context.channel_id,
-                    &context.thread_ref,
-                    &text,
-                    &blocks,
-                )
-                .await
-            }
-            None => super::post_to_slack(
-                &context.auth_token,
-                &context.channel_id,
-                &context.thread_ref,
-                &text,
-            )
-            .await
-            .map_err(|error| SlackApiError::Transient(error.to_string())),
+        let surface = match surfaces() {
+            Ok(surface) => surface,
+            Err(error) => return error,
         };
-        result(posted)
+        match blocks {
+            Some(card) => {
+                surface
+                    .post_card(
+                        &card,
+                        self.private_approvals
+                            .then_some(self.requester.as_deref())
+                            .flatten(),
+                        context,
+                    )
+                    .await
+            }
+            None => surface
+                .post_reply(&prompt.text(), context, None)
+                .await
+                .map_or_else(|error| error, |_| DeliveryResult::Ok),
+        }
     }
 }
 
 #[async_trait]
 impl ChannelProgressSurface for SlackTurnAdapter {
     async fn post(&self, text: &str, context: &DeliveryContext) -> Result<String, String> {
-        post_slack_message_returning_ts(
-            &context.auth_token,
-            &context.channel_id,
-            &context.thread_ref,
-            text,
-        )
-        .await
-        .map_err(|error| error.to_string())
+        self.post_checked(text, context)
+            .await
+            .map_err(|error| error.to_string())
     }
-
+    async fn post_checked(
+        &self,
+        text: &str,
+        context: &DeliveryContext,
+    ) -> Result<String, DeliveryResult> {
+        surfaces()?.post_checked(text, context).await
+    }
     async fn update(&self, handle: &str, text: &str, context: &DeliveryContext) -> DeliveryResult {
-        result(
-            update_slack_message_text(&context.auth_token, &context.channel_id, handle, text).await,
-        )
+        match surfaces() {
+            Ok(surface) => surface.update(handle, text, context).await,
+            Err(error) => error,
+        }
     }
 }
 
@@ -288,7 +294,7 @@ fn approval_blocks(
     enabled: bool,
     private: bool,
     destination: (&str, &str),
-) -> Result<Option<serde_json::Value>, &'static str> {
+) -> Result<Option<channelkit_slack::SlackCard>, &'static str> {
     let blocks = requester
         .filter(|user| enabled && !user.is_empty())
         .and_then(|requester| {
@@ -302,7 +308,7 @@ fn approval_blocks(
             if private {
                 binding.private_destination = Some((destination.0.into(), destination.1.into()));
             }
-            build_approval_blocks(prompt, &binding)
+            build_approval_card(prompt, &binding)
         });
     if private && (blocks.is_none() || destination.0.is_empty() || destination.1.is_empty()) {
         return Err("Private approval card unavailable; answer the pending request in Everruns.");
@@ -354,7 +360,7 @@ mod tests {
             .unwrap()
             .unwrap();
         let binding: ApprovalBinding =
-            serde_json::from_str(blocks[1]["elements"][0]["value"].as_str().unwrap()).unwrap();
+            serde_json::from_str(blocks.actions[0].value.as_deref().unwrap()).unwrap();
         assert!(binding.private);
         assert_eq!(binding.requester, "U1");
         assert_eq!(binding.turn_id.as_deref(), Some("turn"));

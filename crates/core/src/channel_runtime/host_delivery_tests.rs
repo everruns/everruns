@@ -357,3 +357,117 @@ async fn legacy_driver_respects_existing_ledgers_and_delivery_ownership() {
         );
     }
 }
+
+#[tokio::test]
+async fn checkpointed_recovery_does_not_replay_unaudited_legacy_rows() {
+    for marked in [false, true] {
+        let port = Arc::new(FakePort::default());
+        port.reply("session_1", "turn_1", "recorded reply");
+        let driver = Arc::new(TestDriver {
+            checkpointed: true,
+            ..Default::default()
+        });
+        let store = Arc::new(MemoryChannelStore::new());
+        let mut target = DeliveryTarget::new("C1", "1.0");
+        if marked {
+            target
+                .extra
+                .insert("everruns_output_checkpoint".into(), "1".into());
+        }
+        let pending = PendingDelivery {
+            channel: "support".into(),
+            session_id: "session_1".into(),
+            input_message_id: "turn_1".into(),
+            target,
+            after_sequence: 0,
+        };
+        store
+            .save_pending(&pending, "old-process", DEFAULT_DELIVERY_LEASE)
+            .await
+            .unwrap();
+        store.expire_leases_for_test();
+        let host = ChannelHost::builder(port.clone())
+            .store(store.clone())
+            .channel(ChannelConfig::new("support"), driver.clone())
+            .build();
+        assert_eq!(host.recover().await.unwrap(), usize::from(marked));
+        if marked {
+            eventually("new protocol recovery", || driver.posts().len() == 1).await;
+            eventually("new protocol completion", || {
+                futures::executor::block_on(store.pending_for_test())
+                    .unwrap()
+                    .is_empty()
+            })
+            .await;
+        } else {
+            assert!(driver.posts().is_empty());
+            assert!(port.state().subscribers.is_empty());
+            assert_eq!(store.pending_for_test().await.unwrap(), [pending]);
+        }
+    }
+}
+
+#[tokio::test]
+async fn new_checkpointed_pending_rows_identify_a_crash_before_the_first_intent() {
+    let store = Arc::new(DeferredDeliveryStore::default());
+    let driver = Arc::new(TestDriver {
+        checkpointed: true,
+        ..Default::default()
+    });
+    let host = ChannelHost::builder(Arc::new(FakePort::default()))
+        .store(store.clone())
+        .channel(ChannelConfig::new("support"), driver)
+        .build();
+    assert_eq!(
+        host.handle("support", &message("hello", "t1", "m1"))
+            .await
+            .status,
+        200
+    );
+    let pending = store.inner.pending_for_test().await.unwrap();
+    assert_eq!(pending.len(), 1);
+    assert_eq!(
+        pending[0]
+            .target
+            .extra
+            .get("everruns_output_checkpoint")
+            .map(String::as_str),
+        Some("1")
+    );
+    assert!(
+        store
+            .inner
+            .delivery_checkpoint(&pending[0].session_id, &pending[0].input_message_id)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    // Simulate process death before its deferred task creates the first intent.
+    store.tasks.lock().unwrap().clear();
+}
+
+#[tokio::test]
+async fn an_unavailable_new_protocol_row_survives_the_pre_intent_window() {
+    let store = Arc::new(MemoryChannelStore::new());
+    let mut target = DeliveryTarget::new("C1", "1.0");
+    target
+        .extra
+        .insert("everruns_output_checkpoint".into(), "1".into());
+    let pending = PendingDelivery {
+        channel: "unavailable".into(),
+        session_id: "session_1".into(),
+        input_message_id: "turn_1".into(),
+        target,
+        after_sequence: 0,
+    };
+    store
+        .save_pending(&pending, "old-process", DEFAULT_DELIVERY_LEASE)
+        .await
+        .unwrap();
+    store.expire_leases_for_test();
+    let host = ChannelHost::builder(Arc::new(FakePort::default()))
+        .store(store.clone())
+        .build();
+    assert_eq!(host.recover().await.unwrap(), 0);
+    assert_eq!(store.pending_for_test().await.unwrap(), [pending]);
+}

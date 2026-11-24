@@ -29,6 +29,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::env::var("SLACK_BOT_TOKEN")?,
         std::env::var("SLACK_SIGNING_SECRET")?,
     )
+    .installation("slack-example")
     .workspace(std::env::var("SLACK_TEAM_ID")?)
     .agent_pane()
     .task_progress()

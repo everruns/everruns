@@ -1972,6 +1972,8 @@ enum SlackActionErrorKind {
     SLACK_ACTION_ERROR_KIND_RATE_LIMITED = 5;
     SLACK_ACTION_ERROR_KIND_INVALID_ARGUMENT = 6;
     SLACK_ACTION_ERROR_KIND_TRANSIENT = 7;
+    SLACK_ACTION_ERROR_KIND_DELIVERY_UNKNOWN = 8;
+    SLACK_ACTION_ERROR_KIND_PARTIAL_DELIVERY = 9;
 }
 
 message SlackActionError {
@@ -1980,6 +1982,8 @@ message SlackActionError {
     // transient). Empty otherwise; the kind alone renders those.
     optional string message = 2;
     optional uint64 retry_after_secs = 3;
+    // Accepted provider references; never credentials or response URLs.
+    repeated string confirmed = 4;
 }
 
 message InvokeSlackActionResponse {

@@ -55,7 +55,7 @@ async fn setup() -> (Fixture, SessionId, String, String) {
 #[tokio::test]
 async fn neutral_tool_posts_to_its_input_thread_and_returns_an_editable_receipt() {
     let (fixture, session, app, endpoint) = setup().await;
-    let slack = MockServer::start().await;
+    let slack = crate::channels::slack::events::tests_support::mock_provider().await;
     Mock::given(method("POST"))
         .and(path("/chat.postMessage"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({"ok":true,"ts":"9.8"})))
@@ -83,7 +83,7 @@ async fn neutral_tool_posts_to_its_input_thread_and_returns_an_editable_receipt(
             matches!(result, ToolExecutionResult::Success(value) if value["sent"] == true && value["delivery"] == json!({"platform":"slack","channel":channel,"message_ref":"9.8"}))
         );
     }
-    let requests = slack.received_requests().await.unwrap();
+    let requests = crate::channels::slack::events::tests_support::provider_requests(&slack).await;
     assert_eq!(requests.len(), 2);
     for (request, (channel, thread)) in requests
         .iter()
@@ -111,7 +111,7 @@ async fn neutral_tool_posts_to_its_input_thread_and_returns_an_editable_receipt(
 #[tokio::test]
 async fn answer_goes_to_the_thread_of_the_message_that_steered_the_turn() {
     let (fixture, session, app, endpoint) = setup().await;
-    let slack = MockServer::start().await;
+    let slack = crate::channels::slack::events::tests_support::mock_provider().await;
     Mock::given(method("POST"))
         .and(path("/chat.postMessage"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({"ok":true,"ts":"9.8"})))
@@ -146,7 +146,7 @@ async fn answer_goes_to_the_thread_of_the_message_that_steered_the_turn() {
 #[tokio::test]
 async fn untrusted_missing_and_sibling_endpoint_inputs_cannot_authorize_posts() {
     let (fixture, session, app, endpoint) = setup().await;
-    let slack = MockServer::start().await;
+    let slack = crate::channels::slack::events::tests_support::mock_provider().await;
     let invoker = fixture.invoker(1, session).with_api_base(slack.uri());
     let untrusted = input(&fixture, session, &app, &endpoint, "C_OTHER", "1.2", false).await;
     let sibling = input(
@@ -170,7 +170,11 @@ async fn untrusted_missing_and_sibling_endpoint_inputs_cannot_authorize_posts() 
             .await;
         assert!(matches!(result, Err(SlackActionError::NoSlackSession)));
     }
-    assert!(slack.received_requests().await.unwrap().is_empty());
+    assert!(
+        crate::channels::slack::events::tests_support::provider_requests(&slack)
+            .await
+            .is_empty()
+    );
 }
 
 #[tokio::test]
@@ -181,7 +185,7 @@ async fn posting_reports_rate_limits_and_does_not_blindly_retry_uncertain_sends(
     ] {
         let (fixture, session, app, endpoint) = setup().await;
         let message = input(&fixture, session, &app, &endpoint, "C1", "1.2", true).await;
-        let slack = MockServer::start().await;
+        let slack = crate::channels::slack::events::tests_support::mock_provider().await;
         Mock::given(method("POST"))
             .and(path("/chat.postMessage"))
             .respond_with(
@@ -209,9 +213,17 @@ async fn posting_reports_rate_limits_and_does_not_blindly_retry_uncertain_sends(
                 })
             ));
         } else {
-            assert!(matches!(result, Err(SlackActionError::Transient(_))));
+            assert!(matches!(
+                result,
+                Err(SlackActionError::DeliveryUnknown { .. })
+            ));
         }
-        assert_eq!(slack.received_requests().await.unwrap().len(), 1);
+        assert_eq!(
+            crate::channels::slack::events::tests_support::provider_requests(&slack)
+                .await
+                .len(),
+            1
+        );
     }
 }
 
@@ -291,7 +303,7 @@ async fn slack_ingress_principal_provenance_authorizes_the_neutral_post() {
         input.metadata.as_ref().unwrap()["source"]["initiator"]["type"],
         "channel"
     );
-    let slack = MockServer::start().await;
+    let slack = crate::channels::slack::events::tests_support::mock_provider().await;
     Mock::given(method("POST"))
         .and(path("/chat.postMessage"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({"ok":true,"ts":"8.9"})))
@@ -371,7 +383,7 @@ async fn native_agent_channel_posts_and_edits_without_an_archival_app() {
         true,
     )
     .await;
-    let slack = MockServer::start().await;
+    let slack = crate::channels::slack::events::tests_support::mock_provider().await;
     Mock::given(method("POST"))
         .and(path("/chat.postMessage"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({"ok":true,"ts":"9.8"})))
@@ -402,7 +414,7 @@ async fn native_agent_channel_posts_and_edits_without_an_archival_app() {
         })
         .await
         .unwrap();
-    for request in slack.received_requests().await.unwrap() {
+    for request in crate::channels::slack::events::tests_support::provider_requests(&slack).await {
         assert_eq!(
             request.headers["authorization"].to_str().unwrap(),
             "Bearer xoxb-native"
@@ -501,13 +513,18 @@ async fn native_agent_channel_posts_and_edits_without_an_archival_app() {
         invoker.invoke(action).await,
         Err(SlackActionError::ChannelUnavailable)
     ));
-    assert_eq!(slack.received_requests().await.unwrap().len(), 2);
+    assert_eq!(
+        crate::channels::slack::events::tests_support::provider_requests(&slack)
+            .await
+            .len(),
+        2
+    );
 }
 
 #[tokio::test]
 async fn a_top_level_dm_input_is_answered_in_the_dm_itself() {
     let (fixture, session, app, endpoint) = setup().await;
-    let slack = MockServer::start().await;
+    let slack = crate::channels::slack::events::tests_support::mock_provider().await;
     Mock::given(method("POST"))
         .and(path("/chat.postMessage"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({"ok":true,"ts":"9.8"})))
@@ -531,7 +548,7 @@ async fn a_top_level_dm_input_is_answered_in_the_dm_itself() {
         })
         .await
         .unwrap();
-    let requests = slack.received_requests().await.unwrap();
+    let requests = crate::channels::slack::events::tests_support::provider_requests(&slack).await;
     let payload: Value = serde_json::from_slice(&requests[0].body).unwrap();
     assert_eq!(payload["channel"], "D1");
     assert!(payload.get("thread_ts").is_none(), "{payload}");
@@ -616,7 +633,7 @@ async fn post_scheduled(
 }
 
 async fn slack_ok() -> MockServer {
-    let slack = MockServer::start().await;
+    let slack = crate::channels::slack::events::tests_support::mock_provider().await;
     Mock::given(method("POST"))
         .and(path("/chat.postMessage"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({"ok":true,"ts":"9.8"})))
@@ -648,7 +665,8 @@ async fn a_scheduled_turn_in_a_dm_session_posts_inline_in_the_dm() {
     post_scheduled(&fixture, session, &slack, scheduled)
         .await
         .unwrap();
-    let payloads = posted(&slack.received_requests().await.unwrap());
+    let payloads =
+        posted(&crate::channels::slack::events::tests_support::provider_requests(&slack).await);
     assert_eq!(payloads.len(), 1);
     assert_eq!(payloads[0]["channel"], "D1");
     assert!(payloads[0].get("thread_ts").is_none(), "{}", payloads[0]);
@@ -665,7 +683,8 @@ async fn a_scheduled_turn_in_a_per_channel_session_posts_top_level() {
     post_scheduled(&fixture, session, &slack, scheduled)
         .await
         .unwrap();
-    let payloads = posted(&slack.received_requests().await.unwrap());
+    let payloads =
+        posted(&crate::channels::slack::events::tests_support::provider_requests(&slack).await);
     assert_eq!(payloads.len(), 1);
     assert_eq!(payloads[0]["channel"], "C1");
     assert!(payloads[0].get("thread_ts").is_none(), "{}", payloads[0]);
@@ -680,7 +699,8 @@ async fn a_scheduled_turn_in_a_thread_session_posts_in_its_thread() {
     post_scheduled(&fixture, session, &slack, scheduled)
         .await
         .unwrap();
-    let payloads = posted(&slack.received_requests().await.unwrap());
+    let payloads =
+        posted(&crate::channels::slack::events::tests_support::provider_requests(&slack).await);
     assert_eq!(payloads.len(), 1);
     assert_eq!(payloads[0]["channel"], "C1");
     assert_eq!(payloads[0]["thread_ts"], "3.4");
@@ -699,7 +719,11 @@ async fn a_scheduled_turn_without_a_signed_slack_input_has_no_slack_session() {
         matches!(result, Err(SlackActionError::NoSlackSession)),
         "{result:?}"
     );
-    assert!(slack.received_requests().await.unwrap().is_empty());
+    assert!(
+        crate::channels::slack::events::tests_support::provider_requests(&slack)
+            .await
+            .is_empty()
+    );
 }
 
 #[tokio::test]
@@ -707,7 +731,7 @@ async fn sent_files_follow_the_text_into_the_same_thread() {
     use everruns_core::host::InMemorySessionFileStore;
     use everruns_core::session_files::SessionFileSystem;
     let (fixture, session, app, endpoint) = setup().await;
-    let slack = MockServer::start().await;
+    let slack = crate::channels::slack::events::tests_support::mock_provider().await;
     Mock::given(method("POST"))
         .and(path("/chat.postMessage"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({"ok":true,"ts":"9.8"})))
@@ -716,7 +740,7 @@ async fn sent_files_follow_the_text_into_the_same_thread() {
     Mock::given(method("POST"))
         .and(path("/files.getUploadURLExternal"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-            "ok": true, "upload_url": format!("{}/upload-here", slack.uri()), "file_id": "F1",
+            "ok": true, "upload_url": "https://files.slack.com/upload-here", "file_id": "F1",
         })))
         .mount(&slack)
         .await;
@@ -745,7 +769,12 @@ async fn sent_files_follow_the_text_into_the_same_thread() {
         ..Default::default()
     });
     ctx.tool_call_id = Some("call-1".into());
-    let invoker = fixture.invoker(1, session).with_api_base(slack.uri());
+    let invoker = fixture
+        .invoker(1, session)
+        .with_api_base(slack.uri())
+        .with_egress(Some(
+            crate::channels::slack::events::tests_support::upload_egress(&slack.uri()),
+        ));
     ctx.extensions
         .insert(Arc::new(ConversationSenderExt(Arc::new(
             SlackConversationSender(Arc::new(invoker)),
@@ -763,7 +792,7 @@ async fn sent_files_follow_the_text_into_the_same_thread() {
     };
     assert_eq!(value["files"], json!(["/out/chart.png"]));
     assert_eq!(value["delivery"]["message_ref"], "9.8");
-    let requests = slack.received_requests().await.unwrap();
+    let requests = crate::channels::slack::events::tests_support::provider_requests(&slack).await;
     let paths: Vec<&str> = requests.iter().map(|r| r.url.path()).collect();
     assert_eq!(
         paths,
@@ -775,7 +804,9 @@ async fn sent_files_follow_the_text_into_the_same_thread() {
         ]
     );
     assert_eq!(requests[2].body, b"\x89PNG");
-    let reserve: Value = serde_json::from_slice(&requests[1].body).unwrap();
+    let reserve: std::collections::HashMap<_, _> = url::form_urlencoded::parse(&requests[1].body)
+        .into_owned()
+        .collect();
     assert_eq!(reserve["filename"], "chart.png");
     let complete: Value = serde_json::from_slice(&requests[3].body).unwrap();
     assert_eq!(complete["channel_id"], "C_FIRST");
@@ -785,7 +816,7 @@ async fn sent_files_follow_the_text_into_the_same_thread() {
 #[tokio::test]
 async fn a_failed_file_after_the_text_says_the_text_was_delivered() {
     let (fixture, session, app, endpoint) = setup().await;
-    let slack = MockServer::start().await;
+    let slack = crate::channels::slack::events::tests_support::mock_provider().await;
     Mock::given(method("POST"))
         .and(path("/chat.postMessage"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({"ok":true,"ts":"9.8"})))
@@ -814,9 +845,15 @@ async fn a_failed_file_after_the_text_says_the_text_was_delivered() {
         })
         .await
         .expect_err("the file upload failed");
-    let SlackActionError::Rejected(message) = error else {
-        panic!("expected a rejection, got {error:?}");
+    let SlackActionError::PartialDelivery {
+        confirmed,
+        reason,
+        retry_after_secs,
+    } = error
+    else {
+        panic!("expected a typed partial delivery, got {error:?}");
     };
-    assert!(message.contains("text was posted"), "{message}");
-    assert!(message.contains("files:write"), "{message}");
+    assert_eq!(confirmed, ["C_FIRST:9.8"]);
+    assert_eq!(retry_after_secs, None);
+    assert!(reason.contains("files:write"), "{reason}");
 }

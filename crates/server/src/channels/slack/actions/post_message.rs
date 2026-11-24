@@ -167,6 +167,8 @@ impl DbSlackActionInvoker {
         Ok(SlackActionContext {
             channel_id: endpoint.internal_id,
             channel_revision: endpoint.updated_at,
+            installation: endpoint.public_id.to_string(),
+            team: config.team_id,
             bot_token: config.bot_token,
             channel,
             thread_ts,
@@ -222,6 +224,7 @@ pub(super) async fn post_message(
     api_base: &str,
     session_id: SessionId,
     context: &SlackActionContext,
+    provider_context: &everruns_contracts::runtime::channel::DeliveryContext,
     input_message_id: String,
     tool_call_id: String,
     text: String,
@@ -235,39 +238,49 @@ pub(super) async fn post_message(
             "Posting requires a tool call reference and 1–12000 characters of text".into(),
         ));
     }
-    let correlation = crate::channels::slack::delivery::SlackCorrelation {
-        session_id: session_id.to_string(),
-        input_message_id,
+    let options = channelkit_slack::SlackPostOptions {
+        metadata: Some(channelkit_slack::SlackMessageMetadata {
+            event_type: "everruns_agent_reply".into(),
+            event_payload: [
+                ("session_id".into(), json!(session_id.to_string())),
+                ("input_message_id".into(), json!(input_message_id)),
+                ("tool_call_id".into(), json!(tool_call_id)),
+            ]
+            .into(),
+        }),
     };
-    let mut payloads = crate::channels::slack::delivery::build_post_payloads(
-        &context.channel,
-        &context.thread_ts,
-        &text,
-        Some(&correlation),
-    );
-    if payloads.len() != 1 {
-        return Err(SlackActionError::InvalidArgument(
-            "Message is too large for one post; share a file instead".into(),
-        ));
-    }
-    let mut payload = payloads.remove(0);
-    payload["metadata"]["event_payload"]["tool_call_id"] = json!(tool_call_id);
     // Durable Act owns at-most-once claims. Do not retry an ambiguous
     // HTTP failure here: Slack may already have accepted the post.
-    let response = slack_api_call(api_base, &context.bot_token, "chat.postMessage", payload)
-        .await
+    let factory = everruns_integrations::slack_channel::bridge::direct_factory()
+        .map_err(everruns_integrations::slack_channel::web_api::provider_error)
         .map_err(super::action_error)?;
-    let timestamp = response["ts"]
-        .as_str()
-        .filter(|ts| !ts.is_empty())
-        .ok_or_else(|| {
-            SlackActionError::Transient(
-                "Slack accepted the message but returned no message reference".into(),
-            )
-        })?;
+    let client = factory
+        .for_context(provider_context, api_base)
+        .await
+        .map_err(everruns_integrations::slack_channel::web_api::provider_error)
+        .map_err(super::action_error)?;
+    let target = everruns_integrations::slack_channel::bridge::target(&client, provider_context)
+        .map_err(everruns_integrations::slack_channel::web_api::provider_error)
+        .map_err(super::action_error)?;
+    let receipt = client
+        .post_markdown_single(
+            &target,
+            &everruns_integrations::slack_channel::markdown::neutralize_broadcasts(&text),
+            &options,
+            None,
+        )
+        .await
+        .map_err(everruns_integrations::slack_channel::web_api::provider_error)
+        .map_err(super::action_error)?;
+    let timestamp = receipt
+        .messages
+        .into_iter()
+        .next()
+        .ok_or_else(|| SlackActionError::DeliveryUnknown { confirmed: vec![] })?
+        .id;
     Ok(SlackActionOutcome::MessagePosted {
         channel: context.channel.clone(),
-        timestamp: timestamp.into(),
+        timestamp,
     })
 }
 

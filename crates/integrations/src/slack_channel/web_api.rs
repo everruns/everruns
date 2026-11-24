@@ -1,23 +1,6 @@
-//! The Slack Web API envelope: one call path, typed failures, retry advice.
-//!
-//! Every Web API method answers the same way: `ok: false` with an `error`
-//! code, and a `Retry-After` header on a rate limit. Deciding what each code
-//! means lives here once (EVE-974), shared by the serve Slack driver and the
-//! server's Slack delivery, actions and interactivity.
-//!
-//! Decisions:
-//! - One `reqwest::Client` per process, so calls reuse connections.
-//! - Codes are matched exactly, never by substring of a rendered message
-//!   (EVE-968).
-
-use std::sync::OnceLock;
-
-use tracing::{Level, debug, error, warn};
-
-fn client() -> &'static reqwest::Client {
-    static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
-    CLIENT.get_or_init(reqwest::Client::new)
-}
+//! Compatibility error codes and a narrowly scoped Channelkit API escape hatch.
+//! Typed messaging, rendering, history and media operations live in Channelkit.
+//! Hosted callers retain installation identity, credential revision and egress.
 
 /// Slack API error codes that retrying cannot fix.
 ///
@@ -44,8 +27,10 @@ pub const PERMANENT_SLACK_ERRORS: &[&str] = &[
     // rather than a failure (EVE-1024).
     "already_reacted",
     // Slack refused the blocks themselves; the same payload fails again.
-    // `slack_api_call` retries a Markdown post once as plain text instead.
+    // Typed Channelkit posts may use full plain text after a definite refusal.
     "invalid_blocks",
+    "unknown_method",
+    "channel_type_not_supported",
 ];
 
 /// Slack error codes that describe the workspace's own install, not a fault
@@ -107,6 +92,8 @@ pub enum SlackApiError {
     Permanent(String),
     /// Network trouble, a 5xx, or an error code we do not recognise.
     Transient(String),
+    /// Typed provider outcome; accepted or uncertain writes must never be retried blindly.
+    Delivery(everruns_contracts::runtime::channel::DeliveryResult),
 }
 
 impl SlackApiError {
@@ -125,7 +112,13 @@ impl SlackApiError {
 
     /// Whether retrying this failure is pointless.
     pub fn is_permanent(&self) -> bool {
-        matches!(self, Self::Permanent(_))
+        matches!(
+            self,
+            Self::Permanent(_)
+                | Self::Delivery(
+                    everruns_contracts::runtime::channel::DeliveryResult::PermanentError(_)
+                )
+        )
     }
 
     /// The Slack `error` code this failure was built from, when it came from an
@@ -136,9 +129,10 @@ impl SlackApiError {
     pub fn code(&self) -> Option<&str> {
         match self {
             Self::RateLimited { .. } => Some("ratelimited"),
-            Self::Permanent(message) | Self::Transient(message) => {
-                message.strip_prefix(SLACK_ERROR_MESSAGE_PREFIX)
-            }
+            Self::Delivery(_) => None,
+            Self::Permanent(message) | Self::Transient(message) => message
+                .strip_prefix(SLACK_ERROR_MESSAGE_PREFIX)
+                .or_else(|| message.strip_prefix("provider rejected operation: ")),
         }
     }
 }
@@ -153,6 +147,7 @@ impl std::fmt::Display for SlackApiError {
             }
             Self::RateLimited { retry_after: None } => write!(f, "Slack API rate limited"),
             Self::Permanent(message) | Self::Transient(message) => write!(f, "{message}"),
+            Self::Delivery(outcome) => write!(f, "{outcome}"),
         }
     }
 }
@@ -173,318 +168,125 @@ pub fn retry_wait(error: &SlackApiError, backoff: std::time::Duration) -> std::t
     }
 }
 
-/// Slack sends `Retry-After` in whole seconds.
-pub fn parse_retry_after(headers: &reqwest::header::HeaderMap) -> Option<std::time::Duration> {
-    headers
-        .get(reqwest::header::RETRY_AFTER)?
-        .to_str()
-        .ok()?
-        .trim()
-        .parse::<u64>()
-        .ok()
-        .map(std::time::Duration::from_secs)
-}
-
 /// Slack Web API base.
 pub const SLACK_API_BASE: &str = "https://slack.com/api";
-
-/// Post one message and return its `ts`.
-///
-/// The status summary needs the `ts` back so it can update that message rather
-/// than posting a second one; the delivery path's own post loop discards it
-/// because it may split a reply across several calls.
-pub async fn post_slack_message_returning_ts(
-    bot_token: &str,
-    channel: &str,
-    thread_ts: &str,
-    text: &str,
-) -> Result<String, SlackApiError> {
-    let text = super::markdown::neutralize_broadcasts(text);
-    let mut payload = serde_json::json!({
-        "channel": channel,
-        "text": text,
-        "blocks": [super::markdown::markdown_block(&text)],
-    });
-    if !thread_ts.is_empty() {
-        payload["thread_ts"] = serde_json::json!(thread_ts);
-    }
-    let body = slack_api_call(SLACK_API_BASE, bot_token, "chat.postMessage", payload).await?;
-    body.get("ts")
-        .and_then(|ts| ts.as_str())
-        .map(str::to_string)
-        .ok_or_else(|| SlackApiError::Transient("chat.postMessage returned no ts".to_string()))
-}
-
-/// Rewrite a message's text in place.
-pub async fn update_slack_message_text(
-    bot_token: &str,
-    channel: &str,
-    ts: &str,
-    text: &str,
-) -> Result<(), SlackApiError> {
-    let text = super::markdown::neutralize_broadcasts(text);
-    slack_api_call(
-        SLACK_API_BASE,
-        bot_token,
-        "chat.update",
-        serde_json::json!({
-            "channel": channel,
-            "ts": ts,
-            "text": text,
-            "blocks": [super::markdown::markdown_block(&text)],
-        }),
-    )
-    .await?;
-    Ok(())
-}
 
 /// Call one Slack Web API method and return its body when `ok` is true.
 ///
 /// A failure comes back classified: a rate limit with Slack's `Retry-After`
 /// advice, a permanent code, or transport trouble.
 ///
-/// A Markdown post Slack rejects as `invalid_blocks` (one bad token, such as
-/// an unknown user-group mention, fails the whole block) is sent once more as
-/// plain `text`, so the person still gets the reply. Hand-built Block Kit is
-/// never retried this way; see [`super::markdown::plain_text_retry`].
+/// Native messaging/rendering uses Channelkit typed methods; this escape hatch
+/// retains provider error codes for narrowly projected action reads and explicit posts.
 pub async fn slack_api_call(
     base_url: &str,
     bot_token: &str,
     method: &str,
     payload: serde_json::Value,
 ) -> Result<serde_json::Value, SlackApiError> {
-    match slack_api_call_once(base_url, bot_token, method, &payload).await {
-        Err(error) if error.code() == Some("invalid_blocks") => {
-            let Some(retry) = super::markdown::plain_text_retry(method, &payload) else {
-                return Err(error);
-            };
-            warn!(
-                method = method,
-                "Slack rejected the Markdown blocks; resending as plain text"
-            );
-            slack_api_call_once(base_url, bot_token, method, &retry).await
-        }
-        result => result,
-    }
+    slack_api_call_scoped(base_url, &tool_context(bot_token, "", ""), method, payload).await
 }
 
-async fn slack_api_call_once(
+/// Trusted provider escape hatch using the same host scope as native actions.
+pub async fn slack_api_call_scoped(
     base_url: &str,
-    bot_token: &str,
+    context: &everruns_contracts::runtime::channel::DeliveryContext,
     method: &str,
-    payload: &serde_json::Value,
+    payload: serde_json::Value,
 ) -> Result<serde_json::Value, SlackApiError> {
-    let response = client()
-        .post(format!("{}/{}", base_url, method))
-        .header("Authorization", format!("Bearer {}", bot_token))
-        .header("Content-Type", "application/json")
-        .json(payload)
-        .send()
+    let client = super::bridge::direct_factory()
+        .map_err(provider_error)?
+        .for_context(context, base_url)
         .await
-        .map_err(|e| SlackApiError::Transient(e.without_url().to_string()))?;
-
-    let status = response.status();
-    // Read the header before the body is consumed: a 429 carries its advice here,
-    // not in the JSON.
-    let retry_after = parse_retry_after(response.headers());
-
-    let body: serde_json::Value = response
-        .json()
+        .map_err(provider_error)?;
+    client
+        .api_call(
+            method,
+            payload,
+            !matches!(
+                method,
+                "auth.test"
+                    | "users.info"
+                    | "conversations.replies"
+                    | "conversations.history"
+                    | "files.info"
+            ),
+        )
         .await
-        .map_err(|e| SlackApiError::Transient(e.without_url().to_string()))?;
-
-    if !body.get("ok").and_then(|v| v.as_bool()).unwrap_or(false) {
-        let error = body
-            .get("error")
-            .and_then(|e| e.as_str())
-            .unwrap_or("unknown");
-
-        // THREAT[TM-FW-001]: never reflect an upstream echo of the Authorization token.
-        let error = if (!bot_token.is_empty() && error.contains(bot_token))
-            || error.len() > 100
-            || !error
-                .bytes()
-                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')
-        {
-            "unexpected_error"
-        } else {
-            error
-        };
-        let failure = SlackApiError::from_code(error, retry_after);
-
-        // Rate limits and `already_reacted` are routine, and workspace install
-        // state is the admin's to fix, so only the rest pages as an error.
-        match failure_log_level(&failure) {
-            Level::DEBUG => debug!(
-                method = method,
-                error = error,
-                retry_after_secs = ?retry_after.map(|d| d.as_secs()),
-                "Slack API call declined"
-            ),
-            Level::WARN => warn!(
-                method = method,
-                error = error,
-                status = %status,
-                "Slack API call failed"
-            ),
-            _ => error!(
-                method = method,
-                error = error,
-                status = %status,
-                "Slack API call failed"
-            ),
-        }
-        return Err(failure);
-    }
-
-    Ok(body)
+        .map_err(provider_error)
 }
 
-/// Post a Block Kit message into a thread.
-///
-/// `text` is the notification/fallback string: a blocks-only post reaches push
-/// notifications and screen readers as an empty message.
-pub async fn post_slack_blocks(
-    bot_token: &str,
-    channel: &str,
-    thread_ts: &str,
-    text: &str,
-    blocks: &serde_json::Value,
-) -> Result<(), SlackApiError> {
-    let mut payload = serde_json::json!({
-        "channel": channel,
-        "text": text,
-        "blocks": blocks,
-    });
-    if !thread_ts.is_empty() {
-        payload["thread_ts"] = serde_json::json!(thread_ts);
-    }
-    slack_api_call(SLACK_API_BASE, bot_token, "chat.postMessage", payload).await?;
-    Ok(())
-}
-
-/// Deliver an approval only to its requester. Never fall back to chat.postMessage.
-pub async fn post_slack_ephemeral_blocks(
-    bot_token: &str,
-    channel: &str,
-    thread_ts: &str,
-    user: &str,
-    text: &str,
-    blocks: &serde_json::Value,
-) -> Result<(), SlackApiError> {
-    let payload = ephemeral_blocks_payload(channel, thread_ts, user, text, blocks)?;
-    post_ephemeral_payload(SLACK_API_BASE, bot_token, payload).await
-}
-
-async fn post_ephemeral_payload(
+/// Compatibility for explicit SDK tools that hold their own credential. Hosted
+/// delivery instead supplies a row identity and scoped egress through its context.
+pub async fn client_for_token(
     base: &str,
     token: &str,
-    payload: serde_json::Value,
-) -> Result<(), SlackApiError> {
-    slack_api_call(base, token, "chat.postEphemeral", payload).await?;
-    Ok(())
+) -> Result<std::sync::Arc<channelkit_slack::Slack>, SlackApiError> {
+    let installation = tool_installation(token);
+    super::bridge::direct_factory()
+        .map_err(provider_error)?
+        .for_credentials(&installation, None, token, base, None)
+        .await
+        .map_err(provider_error)
 }
 
-fn ephemeral_blocks_payload(
-    channel: &str,
-    thread_ts: &str,
-    user: &str,
-    text: &str,
-    blocks: &serde_json::Value,
-) -> Result<serde_json::Value, SlackApiError> {
-    if user.is_empty() {
-        return Err(SlackApiError::Permanent(
-            "Private message requires a recipient".into(),
-        ));
-    }
-    let mut payload =
-        serde_json::json!({"channel": channel, "user": user, "text": text, "blocks": blocks});
-    if !thread_ts.is_empty() {
-        payload["thread_ts"] = serde_json::json!(thread_ts);
-    }
-    Ok(payload)
-}
-
-/// Rewrite a message's blocks, e.g. to retire an answered approval card.
-///
-/// `text` is the notification/fallback string; `blocks` is what the thread
-/// renders. Both are required — a `chat.update` that sends blocks without text
-/// leaves push notifications and accessibility clients with nothing to read.
-pub async fn update_slack_message_blocks(
-    bot_token: &str,
-    channel: &str,
-    ts: &str,
-    text: &str,
-    blocks: &serde_json::Value,
-) -> Result<(), SlackApiError> {
-    slack_api_call(
-        SLACK_API_BASE,
-        bot_token,
-        "chat.update",
-        serde_json::json!({
-            "channel": channel,
-            "ts": ts,
-            "text": text,
-            "blocks": blocks,
-        }),
+pub fn tool_installation(token: &str) -> String {
+    use sha2::{Digest, Sha256};
+    format!(
+        "slack-tool-{}",
+        hex::encode(Sha256::digest(token.as_bytes()))
     )
-    .await?;
-    Ok(())
+}
+
+pub fn tool_context(
+    token: &str,
+    channel: &str,
+    thread: &str,
+) -> everruns_contracts::runtime::channel::DeliveryContext {
+    let mut context =
+        everruns_contracts::runtime::channel::DeliveryTarget::new(channel, thread).context(token);
+    context.extra.insert(
+        super::bridge::INSTALLATION_ID.into(),
+        tool_installation(token),
+    );
+    context
+}
+
+pub fn provider_error(error: channelkit::Error) -> SlackApiError {
+    match error {
+        channelkit::Error::Rejected { ref code } => return SlackApiError::from_code(code, None),
+        channelkit::Error::Observed(ref cause) => return provider_error_observed(cause),
+        _ => {}
+    }
+    delivery_error(super::bridge::outcome(&error))
+}
+
+pub fn delivery_error(
+    outcome: everruns_contracts::runtime::channel::DeliveryResult,
+) -> SlackApiError {
+    use everruns_contracts::runtime::channel::DeliveryResult;
+    match outcome {
+        DeliveryResult::RateLimited { retry_after } => SlackApiError::RateLimited {
+            retry_after: Some(retry_after),
+        },
+        DeliveryResult::PermanentError(message) => SlackApiError::Permanent(message),
+        DeliveryResult::TransientError(message) => SlackApiError::Transient(message),
+        other => SlackApiError::Delivery(other),
+    }
+}
+
+fn provider_error_observed(error: &channelkit::Error) -> SlackApiError {
+    match error {
+        channelkit::Error::Rejected { code } => SlackApiError::from_code(code, None),
+        channelkit::Error::Observed(cause) => provider_error_observed(cause),
+        _ => SlackApiError::Delivery(super::bridge::outcome(error)),
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::time::Duration;
-
-    #[tokio::test]
-    async fn private_delivery_does_not_fall_back_on_slack_failure() {
-        use wiremock::matchers::{body_partial_json, method, path};
-        use wiremock::{Mock, MockServer, ResponseTemplate};
-        let server = MockServer::start().await;
-        Mock::given(method("POST"))
-            .and(path("/chat.postEphemeral"))
-            .and(body_partial_json(
-                serde_json::json!({"user": "U1", "channel": "C1", "thread_ts": "1.0"}),
-            ))
-            .respond_with(
-                ResponseTemplate::new(200).set_body_json(
-                    serde_json::json!({"ok": false, "error": "user_not_in_channel"}),
-                ),
-            )
-            .expect(1)
-            .mount(&server)
-            .await;
-        Mock::given(path("/chat.postMessage"))
-            .respond_with(ResponseTemplate::new(500))
-            .expect(0)
-            .mount(&server)
-            .await;
-        let payload =
-            ephemeral_blocks_payload("C1", "1.0", "U1", "private", &serde_json::json!([])).unwrap();
-        assert!(
-            post_ephemeral_payload(&server.uri(), "test-token", payload)
-                .await
-                .is_err()
-        );
-    }
-
-    #[test]
-    fn private_message_payload_is_recipient_and_thread_bound() {
-        let blocks = serde_json::json!([]);
-        let payload = ephemeral_blocks_payload("C1", "1.0", "U1", "private", &blocks).unwrap();
-        assert_eq!(payload["user"], "U1");
-        assert_eq!(payload["channel"], "C1");
-        assert_eq!(payload["thread_ts"], "1.0");
-        assert_eq!(payload["text"], "private");
-        assert!(ephemeral_blocks_payload("C1", "", "", "private", &blocks).is_err());
-        assert!(
-            ephemeral_blocks_payload("C1", "", "U1", "private", &blocks)
-                .unwrap()
-                .get("thread_ts")
-                .is_none()
-        );
-    }
 
     #[test]
     fn actionable_slack_failures_are_not_internal_errors() {

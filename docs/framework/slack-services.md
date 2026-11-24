@@ -25,7 +25,7 @@ let agent = Agent::builder()
 
 This enables `slack_add_reaction`, `slack_update_message`, `slack_lookup_user`, and `slack_upload_file`. The operations and tool schemas are shared with Server. Uploads use Slack's external upload reservation, byte transfer, and completion flow; the retired `files.upload` method is not used.
 
-Channel arguments cannot redirect the bound credential. Uploads must use the configured thread. Message edits/reactions in a thread verify target membership; user lookup returns only display identity fields. Upload URLs are constrained to Slack or an explicitly configured trusted API origin, redirects are refused, and signed upload URLs do not enter error messages.
+Use `SlackActions::egress(service)` to apply the application’s egress policy to credential discovery, actions and all media hops. Channel arguments cannot redirect the bound credential. Uploads must use the configured thread. Message edits/reactions in a thread verify target membership; user lookup returns only display identity fields. Upload URLs are constrained to Slack HTTPS media hosts, redirects are refused, and signed upload URLs do not enter error messages.
 
 The [native actions example](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/slack_actions.rs) reacts to a thread root and uploads a file through a real agent. Set `OPENAI_API_KEY`, `SLACK_BOT_TOKEN`, `SLACK_CHANNEL_ID` and `SLACK_THREAD_TS`:
 
@@ -45,6 +45,7 @@ let slack = Slack::new(
     std::env::var("SLACK_BOT_TOKEN")?,
     std::env::var("SLACK_SIGNING_SECRET")?,
 )
+    .installation("support-slack")
     .workspace(std::env::var("SLACK_TEAM_ID")?)
     .agent_pane()
     .task_progress()
@@ -66,7 +67,11 @@ Thread history seeds a new session without starting extra turns, excludes the tr
 
 Pane stop/title/context events route to the existing conversation. Latest title/view state is available through `Channels::conversation_state`; view data accompanies the next user input as untrusted reference data. Supply `ConversationStore` for durable metadata, `ChannelStore` for durable bindings/pending delivery, and a durable Engine profile for sessions. The defaults are process-local.
 
-Mount `Channels::handle` on your HTTP framework, preserving the raw body and signature headers. Keep intake within Slack's three-second acknowledgement deadline. `Slack::from_env` permits unsigned requests when no signing secret exists for local experiments; production applications should use the explicit constructor and require both secrets.
+Mount `Channels::handle` on your HTTP framework, preserving the raw body and signature headers. Keep intake within Slack's three-second acknowledgement deadline. Signed HTTP requires a signing secret with both `Slack::new` and `Slack::from_env`, including local development. An HTTP request cannot select the trusted Socket Mode path. Configure a stable `.installation("your-slack-app")` identity for each app; retain it when rotating credentials. Provider operations use Channelkit. Supply the host egress service with `Channels::builder(...).egress(service)`; it governs credential discovery, history, delivery and native file downloads. `Slack::egress(service)` supplies a transport for standalone driver calls. The host's configured service takes precedence during hosted operations.
+
+Slack requires checkpoint-capable channel storage. The supplied Memory, serve SQLite and server PostgreSQL stores support it; custom `ChannelStore` implementations must implement the checkpoint contract. Definite rate limits retain retry advice. Unknown acceptance and partially accepted replies remain pending for reconciliation instead of resending accepted output.
+
+Native files remain opaque until the host applies attachment policy. Without a host intake egress service, the driver provides a note instead of downloading the file. Private URLs and tokens are not serialized into message metadata or delivery checkpoints.
 
 The [complete HTTP example](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/slack_channel.rs) mounts both Events API and Interactivity on `/slack`, requires workspace pinning and verifies raw request signatures:
 

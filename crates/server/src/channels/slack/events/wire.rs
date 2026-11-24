@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 /// Slack event wrapper (Events API envelope).
 #[derive(Debug, Deserialize)]
 #[allow(dead_code)]
+#[cfg(test)]
 pub(crate) struct SlackEventEnvelope {
     /// Event type: "url_verification", "event_callback", etc.
     #[serde(rename = "type")]
@@ -112,78 +113,8 @@ pub(crate) struct SlackReactionItem {
     pub(crate) ts: Option<String>,
 }
 
-/// Slack file attachment object (subset of fields we care about).
-#[derive(Debug, Clone, Deserialize)]
-#[allow(dead_code)]
-pub(crate) struct SlackFile {
-    /// File ID (e.g., "F0123456789").
-    #[serde(default)]
-    pub(crate) id: Option<String>,
-    /// Original filename.
-    #[serde(default)]
-    pub(crate) name: Option<String>,
-    /// MIME type (e.g., "image/png", "video/mp4").
-    #[serde(default)]
-    pub(crate) mimetype: Option<String>,
-    /// File type label from Slack (e.g., "png", "mp4", "pdf").
-    #[serde(default)]
-    pub(crate) filetype: Option<String>,
-    /// URL for private download (requires bot token auth).
-    #[serde(default)]
-    pub(crate) url_private: Option<String>,
-    /// URL that downloads the file rather than showing it (requires bot token
-    /// auth, `files:read`).
-    #[serde(default)]
-    pub(crate) url_private_download: Option<String>,
-    /// A file hosted elsewhere (Google Drive and similar), with only a link.
-    #[serde(default)]
-    pub(crate) is_external: bool,
-    /// Slack's link to the file.
-    #[serde(default)]
-    pub(crate) permalink: Option<String>,
-    /// File size in bytes.
-    #[serde(default)]
-    pub(crate) size: Option<u64>,
-}
-
-/// Slack legacy attachment (link unfurls, rich attachments from apps/workflows).
-#[derive(Debug, Clone, Deserialize)]
-#[allow(dead_code)]
-pub(crate) struct SlackAttachment {
-    /// Attachment title.
-    #[serde(default)]
-    pub(crate) title: Option<String>,
-    /// Title link URL.
-    #[serde(default)]
-    pub(crate) title_link: Option<String>,
-    /// Main text body.
-    #[serde(default)]
-    pub(crate) text: Option<String>,
-    /// Fallback text (plain-text summary).
-    #[serde(default)]
-    pub(crate) fallback: Option<String>,
-    /// Pretext (displayed above the attachment block).
-    #[serde(default)]
-    pub(crate) pretext: Option<String>,
-    /// Image URL (full-size image in the attachment).
-    #[serde(default)]
-    pub(crate) image_url: Option<String>,
-    /// Thumbnail URL.
-    #[serde(default)]
-    pub(crate) thumb_url: Option<String>,
-    /// Author name.
-    #[serde(default)]
-    pub(crate) author_name: Option<String>,
-    /// Service name (e.g., "GitHub", "Jira").
-    #[serde(default)]
-    pub(crate) service_name: Option<String>,
-    /// Original URL that triggered the unfurl.
-    #[serde(default)]
-    pub(crate) original_url: Option<String>,
-    /// Content subtype hint from Slack (e.g., "canvas", "huddle_transcript").
-    #[serde(default)]
-    pub(crate) app_unfurl_url: Option<String>,
-}
+// Provider display context is parsed by Channelkit; private URLs never reach the host.
+pub(crate) use channelkit_slack::{SlackAttachment, SlackFile};
 
 /// Acknowledgement response for event callbacks.
 #[derive(Serialize)]

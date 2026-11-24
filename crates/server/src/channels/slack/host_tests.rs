@@ -157,9 +157,10 @@ impl Slack {
         state.delivery_adapter = Arc::new(Silent);
         // Display names come from Slack; the tests' senders are known.
         for user in ["U1", "U2"] {
-            state
-                .user_name_cache
-                .insert(user.to_string(), Some(format!("Person {user}")));
+            state.user_name_cache.insert(
+                super::provider::cache_key(&channel.public_id.to_string(), &config.bot_token, user),
+                Some(format!("Person {user}")),
+            );
         }
         let state = state.with_channel_host();
         Self {
@@ -238,6 +239,7 @@ impl Slack {
 pub(crate) fn message(channel: &str, ts: &str, thread_ts: Option<&str>) -> Value {
     json!({
         "type": "event_callback",
+        "event_id": "event-fixture",
         "team_id": "T1",
         "event": {
             "type": "message",
@@ -263,6 +265,7 @@ fn pane_event(event_type: &str, ts: &str, extra: Value) -> Value {
     }
     json!({
         "type": "event_callback",
+        "event_id": "event-fixture",
         "team_id": "T1",
         "event": { "type": event_type, "user": "U1", "assistant_thread": thread }
     })
@@ -489,7 +492,7 @@ async fn slack_with_policy(policy: SlackResponsePolicy) -> Slack {
     config.response_policy = policy;
     let slack = Slack::new(config).await;
     slack.state.bot_user_cache.insert(
-        slack.channel.public_id.to_string(),
+        super::provider::cache_key(&slack.channel.public_id.to_string(), "xoxb-token", "bot"),
         Some("UBOT".to_string()),
     );
     slack
@@ -679,6 +682,7 @@ async fn a_top_level_dm_is_answered_in_the_dm_and_a_thread_keeps_its_thread() {
 fn reaction(event_type: &str, user: &str, ts: &str, name: &str) -> Value {
     json!({
         "type": "event_callback",
+        "event_id": "event-fixture",
         "team_id": "T1",
         "event": {
             "type": event_type,
@@ -693,7 +697,7 @@ fn reaction(event_type: &str, user: &str, ts: &str, name: &str) -> Value {
 async fn a_slack_reaction_reaches_the_message_it_is_on() {
     let slack = Slack::new(slack_config(SessionBinding::Thread)).await;
     slack.state.bot_user_cache.insert(
-        slack.channel.public_id.to_string(),
+        super::provider::cache_key(&slack.channel.public_id.to_string(), "xoxb-token", "bot"),
         Some("UBOT".to_string()),
     );
     let session = session_of(&slack.send(message("C1", "1.0", None)).await.unwrap());

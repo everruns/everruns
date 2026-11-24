@@ -2,7 +2,7 @@ use super::*;
 
 #[tokio::test]
 async fn typed_missing_scope_records_one_persistent_health_issue() {
-    let server = MockServer::start().await;
+    let server = crate::channels::slack::events::tests_support::mock_provider().await;
     Mock::given(method("POST"))
         .and(path("/reactions.add"))
         .respond_with(

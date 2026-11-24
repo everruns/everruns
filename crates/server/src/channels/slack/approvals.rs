@@ -42,7 +42,9 @@
 
 use everruns_contracts::typed_id::SessionId;
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::Value;
+#[cfg(test)]
+use serde_json::json;
 use uuid::Uuid;
 
 /// Session hint a Slack endpoint declares when it can draw approval cards.
@@ -222,12 +224,41 @@ fn hint_is_set(hint: Option<&Value>) -> bool {
     hint.and_then(Value::as_bool).unwrap_or(false)
 }
 
+/// Keep authorization values in the host; Channelkit owns native rendering.
+pub(crate) fn build_approval_card(
+    request: &ApprovalPrompt,
+    binding: &ApprovalBinding,
+) -> Option<channelkit_slack::SlackCard> {
+    let value = serde_json::to_string(binding).ok()?;
+    let text = request.text();
+    if value.len() > MAX_ACTION_VALUE_BYTES || text.chars().count() > 3000 {
+        return None;
+    }
+    Some(channelkit_slack::SlackCard {
+        title: Some("Approval needed".into()),
+        text,
+        actions: [
+            (APPROVE_ACTION_ID, "Approve"),
+            (DECLINE_ACTION_ID, "Decline"),
+        ]
+        .into_iter()
+        .map(|(id, label)| channelkit_slack::SlackButton {
+            action_id: id.into(),
+            label: label.into(),
+            value: Some(value.clone()),
+            url: None,
+        })
+        .collect(),
+    })
+}
+
 /// Build the Block Kit blocks for an approval card.
 ///
 /// Returns `None` when the binding will not fit in a button value, which is the
 /// one case where a card would render buttons that cannot be authorized. The
 /// caller falls back to posting the question as text, which is exactly the
 /// no-hint behaviour: the model asks, the human answers in prose.
+#[cfg(test)]
 pub(crate) fn build_approval_blocks(
     request: &ApprovalPrompt,
     binding: &ApprovalBinding,
@@ -283,6 +314,7 @@ pub(crate) fn build_approval_blocks(
 /// makes a second click harmless: the buttons are gone, so there is nothing
 /// left to click, and the thread reads as a decision rather than as a question
 /// with an answer somewhere below it.
+#[cfg(test)]
 pub(crate) fn build_resolved_blocks(request: &ApprovalPrompt, resolution: &str) -> Value {
     json!([
         {

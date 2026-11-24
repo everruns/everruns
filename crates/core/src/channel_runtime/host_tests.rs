@@ -626,7 +626,7 @@ async fn a_delivery_cut_short_is_finished_by_recover() {
 }
 
 #[tokio::test]
-async fn recover_drops_deliveries_of_channels_no_longer_configured() {
+async fn recover_retains_deliveries_of_channels_no_longer_configured() {
     let f = fixture(SessionBinding::Thread);
     f.store
         .save_pending(
@@ -644,7 +644,7 @@ async fn recover_drops_deliveries_of_channels_no_longer_configured() {
         .unwrap();
     f.store.expire_leases_for_test();
     assert_eq!(f.host.recover().await.unwrap(), 0);
-    assert!(f.store.pending_for_test().await.unwrap().is_empty());
+    assert_eq!(f.store.pending_for_test().await.unwrap().len(), 1);
 }
 
 #[tokio::test]

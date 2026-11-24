@@ -38,98 +38,74 @@ impl ThreadBackfill {
     }
 }
 
-/// Fetch thread replies from Slack's conversations.replies API.
-///
-/// Returns messages in chronological order. Gracefully returns an empty
-/// backfill on API errors (missing scope, invalid token, etc.) so the agent can
-/// proceed without history rather than failing the entire message flow.
-pub(crate) async fn fetch_thread_replies(
-    bot_token: &str,
-    channel: &str,
-    thread_ts: &str,
-) -> ThreadBackfill {
-    fetch_thread_replies_base(SLACK_API_BASE, bot_token, channel, thread_ts).await
-}
-
 /// Fetch thread replies, following `response_metadata.next_cursor` until the
 /// thread is exhausted (with a configurable base URL for testing).
 ///
 /// A partial page is not an end-of-thread signal — Slack documents the cursor
 /// as the only one — so paging stops on an absent or empty cursor.
+#[cfg(test)]
 pub(crate) async fn fetch_thread_replies_base(
     base_url: &str,
     bot_token: &str,
     channel: &str,
     thread_ts: &str,
 ) -> ThreadBackfill {
-    let client = reqwest::Client::new();
+    let client = match everruns_integrations::slack_channel::bridge::direct_factory() {
+        Ok(factory) => {
+            factory
+                .for_credentials("slack-history-compat", None, bot_token, base_url, None)
+                .await
+        }
+        Err(error) => Err(error),
+    };
+    let Ok(client) = client else {
+        return ThreadBackfill {
+            exhausted: true,
+            ..Default::default()
+        };
+    };
+    let target = channelkit::ConversationKey::new(
+        channelkit::Provider::Slack,
+        "slack-history-compat",
+        channel,
+        Some(thread_ts.into()),
+    );
+    let Ok(target) = target else {
+        return ThreadBackfill {
+            exhausted: true,
+            ..Default::default()
+        };
+    };
+    fetch_thread_replies_client(&client, &target).await
+}
+
+pub(crate) async fn fetch_thread_replies_client(
+    client: &channelkit_slack::Slack,
+    target: &channelkit::ConversationKey,
+) -> ThreadBackfill {
     let mut backfill = ThreadBackfill::default();
     let mut cursor: Option<String> = None;
-
     for _ in 0..THREAD_BACKFILL_MAX_PAGES {
-        let mut url = format!(
-            "{}/conversations.replies?channel={}&ts={}&limit={}",
-            base_url.trim_end_matches('/'),
-            urlencoding::encode(channel),
-            urlencoding::encode(thread_ts),
-            THREAD_BACKFILL_PAGE_SIZE
-        );
-        if let Some(ref c) = cursor {
-            url.push_str(&format!("&cursor={}", urlencoding::encode(c)));
-        }
-
-        let result = client
-            .get(&url)
-            .header("Authorization", format!("Bearer {}", bot_token))
-            .send()
+        let page = client
+            .history_with_context(
+                target,
+                cursor.as_deref(),
+                THREAD_BACKFILL_PAGE_SIZE as usize,
+            )
             .await;
-
-        let response = match result {
-            Ok(r) => r,
-            Err(e) => {
-                tracing::warn!(error = %e, "Failed to fetch thread replies (network)");
-                // Keep whatever earlier pages produced: partial history the
-                // agent is told about beats silently dropping all of it.
-                backfill.exhausted = backfill.messages.is_empty();
-                return backfill;
-            }
-        };
-
-        let body: serde_json::Value = match response.json().await {
-            Ok(b) => b,
-            Err(e) => {
-                tracing::warn!(error = %e, "Failed to parse conversations.replies response");
-                backfill.exhausted = backfill.messages.is_empty();
-                return backfill;
-            }
-        };
-
-        if !body.get("ok").and_then(|v| v.as_bool()).unwrap_or(false) {
-            let error = body
-                .get("error")
-                .and_then(|e| e.as_str())
-                .unwrap_or("unknown");
-            tracing::warn!(
-                error = error,
-                channel = channel,
-                thread_ts = thread_ts,
-                "Slack conversations.replies API error (thread context unavailable)"
-            );
+        let Ok(page) = page else {
             backfill.exhausted = backfill.messages.is_empty();
             return backfill;
-        }
-
-        match serde_json::from_value::<Vec<SlackReplyMessage>>(
-            body.get("messages").cloned().unwrap_or_default(),
-        ) {
-            Ok(msgs) => backfill.messages.extend(msgs),
-            Err(e) => {
-                tracing::warn!(error = %e, "Failed to parse thread reply messages");
-                backfill.exhausted = backfill.messages.is_empty();
-                return backfill;
-            }
-        }
-
+        };
+        backfill
+            .messages
+            .extend(page.messages.into_iter().map(|entry| SlackReplyMessage {
+                user: Some(entry.message.author.id),
+                text: Some(entry.message.text),
+                ts: Some(entry.message.reference.id),
+                bot_id: entry.message.author.is_bot.then(|| "bot".into()),
+                subtype: entry.context.subtype,
+            }));
         // Cap as we go so a runaway thread cannot balloon memory either.
         if backfill.messages.len() > THREAD_BACKFILL_MAX_MESSAGES {
             let excess = backfill.messages.len() - THREAD_BACKFILL_MAX_MESSAGES;
@@ -137,12 +113,7 @@ pub(crate) async fn fetch_thread_replies_base(
             backfill.omitted_older += excess;
         }
 
-        cursor = body
-            .get("response_metadata")
-            .and_then(|m| m.get("next_cursor"))
-            .and_then(|c| c.as_str())
-            .filter(|c| !c.is_empty())
-            .map(str::to_string);
+        cursor = page.next_cursor;
 
         if cursor.is_none() {
             backfill.exhausted = true;
@@ -151,8 +122,8 @@ pub(crate) async fn fetch_thread_replies_base(
     }
 
     tracing::warn!(
-        channel = channel,
-        thread_ts = thread_ts,
+        channel = target.channel,
+        thread_ts = ?target.thread,
         max_pages = THREAD_BACKFILL_MAX_PAGES,
         "Stopped paging thread replies at the page cap; newest messages may be missing"
     );

@@ -1,5 +1,5 @@
 ---
-type: Proposal
+type: Architecture
 title: Channelkit migration
 description: Move Slack provider operations to Channelkit while retaining Everruns channel orchestration, then qualify additional messaging providers independently.
 tags:
@@ -11,47 +11,52 @@ tags:
 
 # Channelkit migration
 
-## Recommendation and scope
+## Scope and dependency
 
 Adopt Channelkit **below the existing channel host**, through a bridge in
 `everruns-integrations`. Keep Everruns' session, turn, identity, authorization and
 durability contracts. Use Channelkit's adapters directly; do not introduce its
 in-process `Channels` coordinator alongside `ChannelHost`.
 
-Slack is the first migration and the parity bar. Adding other messaging providers
-comes afterward, one independently qualified provider at a time. This is a proposal;
-no installed Slack app, channel row, session binding or deployment is changed by
-this document. It does not propose migrating A2A, AG-UI, Poppy, voice, public chat or
-the Agent Execution API to Channelkit. Those have their own protocol contracts.
+Slack is the first migration and the parity bar. Other providers follow one at a
+time. A2A, AG-UI, Poppy, voice, public chat and the Agent Execution API retain their
+own protocol contracts.
 
-Analysis baseline: Everruns `81a8f6922cd21b5495d3e322e1338e22ce0f4eba`,
-Channelkit Rust `0.1.0-alpha.1` public API and the upstream development checkout.
-New upstream APIs must be merged and available in a qualified dependency revision
-before adoption; an alpha API inventory is not production integration evidence.
-The library prerequisites are implemented on Channelkit main at
-[`1367eeb`](https://github.com/everruns/channelkit/commit/1367eebb1b48219b7ce4d66e505130ff6dbe3b9a),
-with passing branch quality, live API and native-package checks. The owning
-[adoption contract](https://github.com/everruns/channelkit/blob/1367eebb1b48219b7ce4d66e505130ff6dbe3b9a/knowledge/operations/everruns-adoption.md)
-records the provider work and evidence limits. This is a qualified source revision,
-not by itself a registry qualification. Rust `0.1.0-alpha.2`, frozen at
-`0c9e7c7ea3ec8a3e316f5f6f0926b369575f1906`, now contains those APIs and the receipt
-observer seam. Its seven registry artifacts, packaged guides/skill, versioned Rustdoc
-and registry-only consumer are verified. See the
-[published Slack guide](https://docs.rs/channelkit-slack/0.1.0-alpha.2/channelkit_slack/guide/).
-The Everruns implementation continues with output checkpoints and the shared bridge;
-additional fixes discovered during parity qualification require a later qualified alpha.
-The current Rust requirements fit the Everruns toolchain, and both use the reqwest
-0.13 family. Qualify the actual frozen lockfile, license policy, packaged guides and
-registry-only dependency resolution; source compilation alone is insufficient.
+The bridge pins the published Rust `0.1.0-alpha.5` core and Slack packages, frozen at
+[`fb98e85`](https://github.com/everruns/channelkit/commit/fb98e857c26d2d859551b750d2ca13aa9d5d9707).
+The [versioned Slack guide](https://docs.rs/channelkit-slack/0.1.0-alpha.5/channelkit_slack/guide/)
+and upstream [adoption contract](https://github.com/everruns/channelkit/blob/fb98e857c26d2d859551b750d2ca13aa9d5d9707/knowledge/operations/everruns-adoption.md)
+own library behavior. Cargo resolves registry artifacts with checksums; no mutable
+main or path replacement participates in the deployment build.
 
-## Implementation progress
+## Implementation and qualification
 
-The delivery contract now retains rate limits and unknown/partial acceptance.
-Opting drivers use a versioned, fenced output ledger in the shared host, Memory,
-serve SQLite and server PostgreSQL. Native handles/prefixes and confirmed parts
-survive restart; unresolved intents stay pending instead of being reposted. This
-prerequisite does not yet switch the Slack transport. The owning
-[channel contract](channels.md#output-delivery-checkpoints) defines its guarantees.
+The shared bridge now owns Framework, serve and server Slack provider operations.
+Channelkit verifies/parses ingress and owns formatting, native streams, cards,
+history and media. HTTP and trusted Socket Mode share normalization; Everruns keeps
+socket connection supervision and app provisioning/OAuth lifecycle. Privacy-scoped
+user projection and reactions use Channelkit's trusted API escape hatch.
+
+The server retains response policy, durable approvals and explicit-action claims.
+Native history context preserves subtype filtering. Identity and thread reads use
+Slack GET query parameters; native files and standalone actions retain host-scoped egress. Explicit posts use the single
+message API, including full plain fallback only when it fits, and never retry an
+uncertain acceptance. Worker RPC preserves partial receipts and retry advice without
+transferring bot credentials.
+
+The output checkpoint foundation is merged. Opting drivers use a fenced write-ahead
+ledger in Memory, serve SQLite and server PostgreSQL; confirmed split parts and native
+handles survive restart. Unknown sends remain pending. New pending rows carry a
+protocol marker; unmarked legacy rows without a readable ledger require operator
+reconciliation rather than automatic event replay. See the
+[channel contract](channels.md#output-delivery-checkpoints) and
+[cutover runbook](../../docs/sre/runbooks/channel-delivery-cutover.md).
+
+Local deterministic bridge, signature, scope, receipt, native-file and history
+qualification is tracked with the source tests. Final server parity, real-model
+turns, native user-origin messages/approval clicks and deployed-host adoption are
+separate gates; do not infer them from library live API checks or signed fixtures.
+The dependency publication does not itself complete the Everruns cutover.
 
 ## Existing architecture and the boundary to retain
 
@@ -109,8 +114,8 @@ Source anchors: [server Slack driver](../../crates/server/src/channels/slack/hos
 [interactivity](../../crates/server/src/channels/slack/events/interactivity.rs),
 [scheduled conversations](../../crates/server/src/channels/slack/scheduled.rs),
 [reaction mapping](../../crates/server/src/channels/slack/delivery/reactions.rs),
-[Channelkit adapter contract](https://docs.rs/channelkit/0.1.0-alpha.1/channelkit/trait.Adapter.html)
-and [Slack guide](https://docs.rs/channelkit-slack/0.1.0-alpha.1/channelkit_slack/guide/).
+[Channelkit adapter contract](https://docs.rs/channelkit/0.1.0-alpha.5/channelkit/trait.Adapter.html)
+and [Slack guide](https://docs.rs/channelkit-slack/0.1.0-alpha.5/channelkit_slack/guide/).
 
 ## Correctness prerequisites
 
@@ -161,14 +166,14 @@ provider escape hatches in trusted provider code, never expose them as model too
 
 ## Upstream work packages
 
-The linked source implements these packages. The boundaries below are the adoption
+The published dependency implements these packages. The boundaries below are the adoption
 contract; provider-origin interaction and recovery qualification still belongs to
 the consuming Everruns implementation.
 
 1. **Incremental Slack streams.** Add explicit scoped start/append/stop, optional
    recipient context, split-without-truncation and ambiguity preservation. A host
    stores the handle and owns cleanup/retraction. No background worker or DB.
-   Implemented upstream in the source revision above; adoption still needs the
+   Published upstream in the dependency above; adoption still needs the
    consumer delivery and recovery gates below.
 2. **Authenticated Slack ingress projection.** One parser for verified HTTP and
    host-authenticated Socket Mode payloads; strict workspace scope and bounds on
@@ -205,7 +210,7 @@ raw Channelkit API call must be host-scoped, tested and tracked for replacement.
 | 9. Next provider | Add one adapter/configuration/UI surface through the same bridge and host | Provider-specific acceptance matrix complete before general availability |
 
 Deliver each step as small independently tested changes under its repository's
-workflow. Phase 5 and phase 6 are separate cutovers, but the same conversation
+workflow. Inbound and outbound qualification remain separate evidence, and the same conversation
 always has one delivery owner.
 Outbound shadow mode is prohibited because it sends duplicates. Parser comparison
 may run without effects using sanitized fixtures; live comparisons require the
@@ -269,13 +274,12 @@ health and docs in addition to an adapter. Keep native `slack` tools available d
 migration; add common tools through the existing conversation sender seam without
 inventing unsupported provider actions.
 
-## Decisions still needed before implementation rollout
+## Rollout and next-provider decisions
 
 - Select the next provider from actual customer demand after Slack parity.
-- Freeze an adoption revision/release after the prerequisite changes and their
-  qualification; do not depend on mutable upstream main in production.
-- Decide whether durable-before-ACK intake ships as a prerequisite or a separate
-  reliability increment; in either case document the real acceptance guarantee.
+- Keep the exact qualified registry version pinned through cloud adoption.
+- Durable-before-ACK intake remains a separate reliability increment. The existing
+  acknowledge-before-background-processing crash window is unchanged.
 - Set operational canary size, duration and rollback thresholds from baseline
   measurements. These are rollout decisions, not reasons to delay the bridge design.
 
