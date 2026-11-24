@@ -179,6 +179,21 @@ class Adapters(unittest.TestCase):
                                            "expected_model_calls": 2, "restarted_leader_caught_up": True})
         self.assertTrue(out.entries[0]["value"])
 
+    def test_a_phased_proof_passes_when_every_phase_does(self):
+        res = {"load_a": {"errors": 0}, "load_b": {"errors": 0},
+               "check_a": {"ok": True, "failed_sessions": 0}, "check_b": {"ok": True, "failed_sessions": 0}}
+        self.assertEqual(reliability.verdict(res), (True, 0))
+        res["check_b"]["ok"] = False
+        self.assertEqual(reliability.verdict(res), (False, 0))
+        res["check_b"]["ok"], res["load_a"]["errors"] = True, 3
+        self.assertEqual(reliability.verdict(res), (False, 3))
+
+    def test_a_fault_proof_counts_at_any_size(self):
+        run = {"run": "proofs", "at": "2026-11-24T08:58:13Z", "commit": "x", "fingerprint": CFG.fingerprint,
+               "levels": ["L2"], "entries": [{"point": "R1", "level": "L2", "value": True}], "invalid": []}
+        sts = S.states(CFG, [run], fresh())
+        self.assertIn("L2", sts["R1"].cells)
+
     def test_every_proof_reads_a_script_that_exists(self):
         for ch in reliability.CHECKS:
             script = ch.command.split()[0]
