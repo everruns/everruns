@@ -115,6 +115,18 @@ Initial session files are copied into a newly created managed workspace exactly
 once before the first tool call. The managed target removes the inherited VFS
 file and Bashkit shell capabilities, so every tool sees the same `/workspace`.
 
+### Fleet availability
+
+The fleet distinguishes disposable compute availability from workspace durability.
+A fresh provider observation that an idle session has a recoverable workspace
+shows as informational, outside live compute and attention totals. A recovery
+volume without a committed checkpoint is not evidence of a saved workspace.
+Missing instances during active sessions and unavailable or unknown recovery
+remain actionable. Provider observations do not rewrite runtime loss history or
+start replacements; the next sandbox tool call follows the existing recovery path.
+See [fleet projection](../../crates/server/src/storage/backend/sandbox_fleet.rs)
+and [provider status sync tests](../../crates/server/src/background/sandbox_status_sync/tests.rs).
+
 ### Connection ownership
 
 All scopes use `virtual_user_connections`; there is no second secret system.

@@ -35,6 +35,7 @@ export type {
 export type SandboxFleetState =
   | "running"
   | "paused"
+  | "recoverable"
   | "lost"
   | "starting"
   | "failed"

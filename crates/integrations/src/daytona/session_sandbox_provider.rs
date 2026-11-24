@@ -1194,8 +1194,8 @@ impl SessionSandboxProvider for DaytonaSessionSandboxProvider {
         let client = build_client(api_key, config);
         let info = match client.get_sandbox(&state.instance.external_id).await {
             Ok(info) if !is_gone_state(&info.state) => info,
-            Ok(_) => return lost_status(context, state),
-            Err(err) if is_not_found(&err) => return lost_status(context, state),
+            Ok(_) => return lost_status(&client, context, state).await,
+            Err(err) if is_not_found(&err) => return lost_status(&client, context, state).await,
             Err(err) => return Err(ToolExecutionResult::tool_error(err)),
         };
 
@@ -1215,10 +1215,24 @@ impl SessionSandboxProvider for DaytonaSessionSandboxProvider {
     }
 }
 
-fn lost_status(
+async fn lost_status(
+    client: &DaytonaClient,
     context: &dyn SessionSandboxContext,
     state: &SessionSandboxState,
 ) -> Result<SessionSandboxStatusResponse, ToolExecutionResult> {
+    // A binding alone (or an empty volume) cannot restore workspace data.
+    // Verify the volume without starting compute; unreadable recovery stays
+    // unknown rather than hiding a real loss behind a historical checkpoint.
+    let recoverable = match recovery_binding(&context.session_id(), &state.instance)? {
+        Some(binding) if binding.head_revision.is_some() => {
+            match client.get_volume(&binding.volume_id).await {
+                Ok(volume) => Some(volume.state == "ready"),
+                Err(err) if is_not_found(&err) => Some(false),
+                Err(_) => None,
+            }
+        }
+        _ => Some(false),
+    };
     Ok(SessionSandboxStatusResponse {
         provider: state.provider.clone(),
         session_status: SessionSandboxStatus::Lost,
@@ -1227,7 +1241,7 @@ fn lost_status(
         workspace_path: state.instance.workspace_path.clone(),
         metadata: json!({
             "remote_state": "lost",
-            "recoverable": recovery_binding(&context.session_id(), &state.instance)?.is_some(),
+            "recoverable": recoverable,
         }),
     })
 }

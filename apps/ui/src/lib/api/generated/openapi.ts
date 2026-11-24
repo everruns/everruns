@@ -29619,7 +29619,9 @@ export interface components {
        */
       size?: string | null;
       /**
-       * @description `running`, `paused`, `lost`, `starting`, `failed`, `not_started` or `deleted`.
+       * @description `running`, `paused`, `recoverable`, `lost`, `starting`, `failed`, `not_started` or `deleted`.
+       *     `recoverable` means an idle session's provider instance is gone but a saved
+       *     workspace checkpoint is available. The next sandbox tool call attempts recovery.
        * @example running
        */
       state: string;
@@ -56801,8 +56803,9 @@ export interface operations {
     parameters: {
       query?: {
         /**
-         * @description Comma-separated states: `running`, `paused`, `lost`, `starting`,
-         *     `failed`, `not_started`, `deleted`, or `live` for the first five.
+         * @description Comma-separated states: `running`, `paused`, `recoverable`, `lost`,
+         *     `starting`, `failed`, `not_started`, `deleted`, or `live` for
+         *     running, paused and starting instances.
          */
         state?: string;
         /** @description Comma-separated provider ids, such as `daytona,modal`. */
@@ -56843,8 +56846,9 @@ export interface operations {
     parameters: {
       query?: {
         /**
-         * @description Comma-separated states: `running`, `paused`, `lost`, `starting`,
-         *     `failed`, `not_started`, `deleted`, or `live` for the first five.
+         * @description Comma-separated states: `running`, `paused`, `recoverable`, `lost`,
+         *     `starting`, `failed`, `not_started`, `deleted`, or `live` for
+         *     running, paused and starting instances.
          */
         state?: string;
         /** @description Comma-separated provider ids, such as `daytona,modal`. */
@@ -56881,8 +56885,9 @@ export interface operations {
     parameters: {
       query?: {
         /**
-         * @description Comma-separated states: `running`, `paused`, `lost`, `starting`,
-         *     `failed`, `not_started`, `deleted`, or `live` for the first five.
+         * @description Comma-separated states: `running`, `paused`, `recoverable`, `lost`,
+         *     `starting`, `failed`, `not_started`, `deleted`, or `live` for
+         *     running, paused and starting instances.
          */
         state?: string;
         /** @description Comma-separated provider ids, such as `daytona,modal`. */

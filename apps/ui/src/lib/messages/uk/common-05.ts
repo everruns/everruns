@@ -1,5 +1,11 @@
 // Ukrainian product copy. Keep interpolation values separate from translated text.
 export const messages: Readonly<Record<string, string>> = {
+  Recoverable: "Можна відновити",
+  "Instance unavailable": "Екземпляр недоступний",
+  "The provider instance is unavailable. Check diagnostics for recovery options.":
+    "Екземпляр провайдера недоступний. Перегляньте діагностику щодо варіантів відновлення.",
+  "The provider instance is gone. A saved workspace checkpoint is available; the next sandbox tool call attempts recovery.":
+    "Екземпляр провайдера більше не існує. Є збережена контрольна точка робочого простору; наступний виклик інструмента пісочниці спробує відновити його.",
   "Local user": "Локальний користувач",
   Locale: "Мова",
   Localization: "Локалізація",

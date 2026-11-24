@@ -147,7 +147,9 @@ async fn record_observation(
             provider_status_observed_at = CASE WHEN $5::text IS NOT NULL
                 THEN now() ELSE provider_status_observed_at END,
             provider_status_observed_state = COALESCE($5, provider_status_observed_state),
-            provider_status_external_id = COALESCE($6, provider_status_external_id)
+            provider_status_external_id = COALESCE($6, provider_status_external_id),
+            provider_status_recoverable = CASE WHEN $5::text IS NOT NULL
+                THEN $7 ELSE provider_status_recoverable END
         WHERE id = $1 AND org_id = $2 AND generation = $3
           AND updated_at = $4 AND deleted_at IS NULL
           AND observed_state NOT IN ('deleted', 'deleting')
@@ -159,6 +161,11 @@ async fn record_observation(
     .bind(candidate.updated_at)
     .bind(observed)
     .bind(status.as_ref().map(|status| status.external_id.as_str()))
+    .bind(
+        status
+            .as_ref()
+            .and_then(|status| status.metadata["recoverable"].as_bool()),
+    )
     .execute(pool)
     .await?;
     Ok(result.rows_affected() > 0)

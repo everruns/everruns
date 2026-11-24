@@ -13,29 +13,29 @@ links:
 visual: "Sandboxes fleet page with summary tiles, timeline chart and the Needs attention filter (/sandboxes), full width"
 ---
 
-A Sandbox Template names where an agent's commands run: the Bashkit Virtual
-Workspace or a managed provider such as Daytona or E2B, with its credential
-source, durability and lifecycle. Editing a template creates a new immutable
-revision, and existing sessions keep the revision they started with. An agent's
-sandbox policy decides whether a session can pick or override the template.
+Sandbox Templates choose where commands run: the Bashkit Virtual Workspace or a
+managed provider such as Daytona or E2B, with credentials, durability and
+lifecycle policy. Editing creates an immutable revision; existing sessions keep
+their original revision.
 
-Open **Sandbox Templates** and select **New Sandbox Template**.
-**Sandboxes** lists the fleet with a
-lifecycle timeline and a **Needs attention** filter. Pause, resume and delete
-are available in the detail drawer.
-
-`GET /v1/sandboxes` lists the fleet; `/stats` and `/timeline` back
-the page.
+Create templates under **Sandbox Templates**. **Sandboxes** lists the fleet,
+lifecycle timeline and **Needs attention** filter. The detail drawer offers
+pause, resume and delete. The `/v1/sandboxes` API exposes the fleet, statistics
+and timeline.
 
 See [Sandbox Templates](/features/sandbox-templates/).
 
 ## Update 2026-11-21
 
-Idle sandboxes show their last recorded state. Organization admins can check
-the provider's current state in the detail drawer. The idle sweep retries failed
-pauses for sandboxes running in shards.
+Idle sandboxes show their last recorded state. Admins can check provider status.
+The idle sweep retries failed pauses in shards.
 
 ## Update 2026-11-22
 
-Provider status refreshes automatically in bounded batches, with a five-minute
-cooldown.
+Provider status refreshes automatically, with a five-minute cooldown.
+
+## Update 2026-11-23
+
+Idle sessions with a saved workspace checkpoint show as **Recoverable** when
+their provider instance is gone. They stay outside **Live now** and **Needs
+attention**; active-session losses and unavailable recovery still need attention.

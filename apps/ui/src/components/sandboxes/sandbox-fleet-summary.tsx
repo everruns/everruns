@@ -168,7 +168,7 @@ export function SandboxFleetSummary({
         {SANDBOX_STATE_ORDER.map((s) => (
           <StateChip
             key={s}
-            label={sandboxStateLabel(s)}
+            label={ui(sandboxStateLabel(s))}
             tone={sandboxStateTone(s)}
             count={countOf(stats, s)}
             active={state === s && !needsAttention}
