@@ -238,6 +238,61 @@ async fn start_thread_only_uses_allowed_workers() {
 }
 
 #[tokio::test]
+async fn team_members_are_workers_by_name_or_agent_id() {
+    let mut store = MockPlatformStore::new();
+    let member = AgentId::new();
+    store.session.agent_id = Some(store.agent.id);
+    store.agent.capabilities = vec![everruns_contracts::CapabilityRef::with_config(
+        "agent_handoff",
+        json!({"members": [{"id": "everruns-developer", "name": "Everruns Developer", "agent_id": member.to_string()}]}),
+    )];
+    let fixture = Fixture::with_store(store);
+
+    for worker in [
+        "everruns-developer".to_string(),
+        "Everruns Developer".to_string(),
+        member.to_string(),
+    ] {
+        let started = fixture
+            .start(
+                Value::Null,
+                json!({"title": "Bump serde", "brief": "x", "worker": worker}),
+            )
+            .await;
+        let ToolExecutionResult::Success(value) = started else {
+            panic!("{worker}: expected success, got {started:?}");
+        };
+        let thread: SessionId = value["thread_id"].as_str().unwrap().parse().unwrap();
+        let session = fixture
+            .store
+            .get_session_by_id(thread)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(session.agent_id, Some(member), "{worker}");
+        assert_eq!(value["worker"], worker);
+    }
+
+    let outsider = fixture
+        .start(
+            Value::Null,
+            json!({"title": "T", "brief": "x", "worker": AgentId::new().to_string()}),
+        )
+        .await;
+    assert!(error_text(&outsider).contains("not an allowed worker"));
+    let unknown = fixture
+        .start(
+            Value::Null,
+            json!({"title": "T", "brief": "x", "worker": "nobody"}),
+        )
+        .await;
+    assert!(
+        error_text(&unknown).contains("team member's name"),
+        "{unknown:?}"
+    );
+}
+
+#[tokio::test]
 async fn worker_tools_update_the_checklist_and_complete_the_assignment() {
     let fixture = Fixture::new();
     let (thread, task_id) = fixture.start_ok("Fix the bug").await;

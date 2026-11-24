@@ -22,6 +22,12 @@
 //   injected per turn by `PlatformToolAugmentor` into a session that has an
 //   open assignment, the way `report_result` reaches subagents. Coordinator
 //   tools are hidden inside threads: a thread does not start threads.
+// Decision: an agent's team members (its `agent_handoff` members) are allowed
+//   workers without listing them in `workers` (user decision, 2026-11-24): a
+//   coordinator answers and plans, and hands a thread to the member built for
+//   the work, by the member's name or agent id. Membership is read from the
+//   coordinator's agent when the thread starts, so editing the team needs no
+//   second edit here.
 // Decision: relays reach a thread as plain user-role text with a framing line.
 //   A tool-based reply channel is being designed separately; keeping relay text
 //   in `frame_*` helpers keeps that swap local to this file.
@@ -433,7 +439,7 @@ fn narrate_coordination(
     Some(labeled_phrase(verbs.0, verbs.1, verbs.2, title, phase))
 }
 
-const COORDINATOR_SYSTEM_PROMPT: &str = "You coordinate work through threads. Answer quick questions yourself. For real work (research, a change, a report, anything multi-step) call start_thread with a short title and a complete brief; the thread works in the background and you are told when it finishes, asks something, or stops. Once work is in a thread, do not do it yourself as well: tell the person in a sentence where it went, and give the result when the automatic update arrives. One thread per piece of work: a follow-up that extends, corrects or asks about existing work (\"also add the dates\", \"make it shorter\") goes to that thread with message_thread, even right after it finished; start a new thread only for new work, and check list_threads when unsure. Threads only talk to each other through you. Notices marked as automatic task updates come from the platform, not the person: relay what matters to the person in a sentence or two and link nothing you did not read. Never answer a thread's question on the person's behalf unless the person already told you the answer; when the answer is already in what the person asked for, say so to the thread. Resolve a thread with resolve_thread when the person is done with it.";
+const COORDINATOR_SYSTEM_PROMPT: &str = "You coordinate work through threads. Answer quick questions yourself. For real work (research, a change, a report, anything multi-step) call start_thread with a short title and a complete brief (to run it on one of your team's agents, pass that agent's name as worker); the thread works in the background and you are told when it finishes, asks something, or stops. Once work is in a thread, do not do it yourself as well: tell the person in a sentence where it went, and give the result when the automatic update arrives. One thread per piece of work: a follow-up that extends, corrects or asks about existing work (\"also add the dates\", \"make it shorter\") goes to that thread with message_thread, even right after it finished; start a new thread only for new work, and check list_threads when unsure. Threads only talk to each other through you. Notices marked as automatic task updates come from the platform, not the person: relay what matters to the person in a sentence or two and link nothing you did not read. Never answer a thread's question on the person's behalf unless the person already told you the answer; when the answer is already in what the person asked for, say so to the thread. Resolve a thread with resolve_thread when the person is done with it.";
 
 // =============================================================================
 // Shared helpers
@@ -698,7 +704,7 @@ impl Tool for StartThreadTool {
             "properties": {
                 "title": { "type": "string", "description": "A few plain words naming the work, in the person's vocabulary." },
                 "brief": { "type": "string", "description": "Everything the thread needs: the ask in the person's words, relevant decisions, and what done looks like." },
-                "worker": { "type": "string", "description": "\"self\" (default) runs the thread on this agent; an agent id runs it on that agent, when allowed." }
+                "worker": { "type": "string", "description": "\"self\" (default) runs the thread on this agent; a team member's name (or agent id) runs it on that agent." }
             },
             "required": ["title", "brief"],
             "additionalProperties": false
@@ -788,16 +794,30 @@ async fn start_thread(
         };
         (harness_id, coordinator.agent_id)
     } else {
-        let agent_id: AgentId = worker.parse().map_err(|_| {
-            ToolExecutionResult::tool_error(format!(
-                "worker must be \"self\" or an agent id, got \"{worker}\""
-            ))
-        })?;
-        if !config.allows_agent(worker) {
-            return Err(ToolExecutionResult::tool_error(format!(
-                "Agent {worker} is not an allowed worker for this coordinator."
-            )));
-        }
+        let member = match coordinator.agent_id {
+            Some(agent_id) => delegate
+                .get_agent_by_id(agent_id)
+                .await
+                .map_err(ToolExecutionResult::internal_error)?
+                .and_then(|agent| team_member(&agent, worker)),
+            None => None,
+        };
+        let agent_id: AgentId = match member {
+            Some(agent_id) => agent_id,
+            None => {
+                let agent_id = worker.parse().map_err(|_| {
+                    ToolExecutionResult::tool_error(format!(
+                        "worker must be \"self\", a team member's name, or an agent id, got \"{worker}\""
+                    ))
+                })?;
+                if !config.allows_agent(worker) {
+                    return Err(ToolExecutionResult::tool_error(format!(
+                        "Agent {worker} is not an allowed worker for this coordinator."
+                    )));
+                }
+                agent_id
+            }
+        };
         // THREAT[TM-AUTHZ]: the delegate runs as the person, so an agent they
         // may not see resolves to None and is refused here.
         if delegate
@@ -862,6 +882,35 @@ async fn start_thread(
         "worker": worker,
         "status": "working",
     })))
+}
+
+/// The agent id of `worker` when it names one of `agent`'s team members (its
+/// `agent_handoff` members) by name or agent id.
+fn team_member(agent: &everruns_core::AgentDefinition, worker: &str) -> Option<AgentId> {
+    #[derive(Deserialize)]
+    struct Team {
+        #[serde(default, alias = "members")]
+        targets: Vec<Member>,
+    }
+    #[derive(Deserialize)]
+    struct Member {
+        #[serde(default)]
+        id: String,
+        #[serde(default)]
+        name: String,
+        agent_id: AgentId,
+    }
+    let capability = agent
+        .capabilities
+        .iter()
+        .find(|capability| capability.id() == super::agent_handoff::AGENT_HANDOFF_CAPABILITY_ID)?;
+    let team: Team = serde_json::from_value(capability.config_value().clone()).ok()?;
+    team.targets
+        .into_iter()
+        .find(|member| {
+            member.id == worker || member.name == worker || member.agent_id.to_string() == worker
+        })
+        .map(|member| member.agent_id)
 }
 
 struct MessageThreadTool;
