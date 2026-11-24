@@ -74,6 +74,11 @@ impl StorageBackend {
         self.db.background_pool()
     }
 
+    /// The pool actor lease renewals run on.
+    pub fn liveness_pool(&self) -> &PgPool {
+        self.db.liveness_pool()
+    }
+
     /// The same storage, routed onto the background pool.
     ///
     /// Background loops take this instead of the request-path backend so a

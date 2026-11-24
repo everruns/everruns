@@ -224,3 +224,56 @@ async fn a_renewal_batch_and_an_append_fence_check_do_not_deadlock() {
             .all(|outcome| matches!(outcome, ActorLeaseRenewalOutcome::Renewed(_)))
     );
 }
+
+/// Production's 2+2 pools, 2026-11-24: every request connection held by API
+/// reads for 20-30 s at a time. Renewals queued behind them past the lease
+/// TTL, so a long scheduled run lost its lease three times and was sealed.
+/// On the liveness pool they no longer wait for the request pool at all.
+#[tokio::test]
+async fn renewals_do_not_wait_for_a_saturated_request_pool() {
+    use sqlx::ConnectOptions;
+
+    let fixture = StorageBackend::test_database();
+    let url = fixture.pool().connect_options().to_url_lossy().to_string();
+    let tight = |liveness: u32| crate::storage::repositories::DatabasePoolConfig {
+        max_connections: 1,
+        min_connections: 1,
+        acquire_timeout: Duration::from_millis(300),
+        background_max_connections: 1,
+        liveness_max_connections: liveness,
+        ..Default::default()
+    };
+
+    for (liveness, should_renew) in [(0, false), (1, true)] {
+        let db = StorageBackend::from_database(
+            Database::connect_with_config(&url, tight(liveness))
+                .await
+                .expect("connect"),
+        );
+        let session = runnable(&db).await;
+        let fences: std::collections::HashMap<_, _> =
+            lease_all(&db, "worker-a").await.into_iter().collect();
+        let fence = fences[&session];
+
+        // A burst of API reads holds the whole request pool.
+        let _burst = db.pool().acquire().await.expect("request connection");
+        let single = db
+            .renew_session_actor_lease(session, "worker-a", fence, TTL, 0)
+            .await;
+        let batch = db
+            .renew_session_actor_leases("worker-a", TTL, &[item(session, fence, 0)])
+            .await;
+        if should_renew {
+            assert!(single.expect("single renewal").is_some());
+            assert!(matches!(
+                batch.expect("batch renewal").as_slice(),
+                [ActorLeaseRenewalOutcome::Renewed(_)]
+            ));
+        } else {
+            // The pre-fix shape: the renewal waits on the request pool and
+            // times out, which on a worker is a lost lease.
+            assert!(single.is_err(), "renewal on a saturated request pool");
+            assert!(batch.is_err(), "batch renewal on a saturated request pool");
+        }
+    }
+}

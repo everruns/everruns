@@ -298,7 +298,11 @@ The worker binary mirrors this pattern through `WorkerAppBuilder` in `crates/wor
    - Background loops take `StorageBackend::for_background()`, which routes their whole call graph onto the reserved
      pool without changing a query. Request handlers keep the request pool.
    - `DATABASE_BACKGROUND_POOL_MAX=0` puts background work back on the request pool, as a config-only rollback.
-   - Lease renewals set `synchronous_commit = off` per statement on the request pool: they do not wait for the WAL
+   - A third, one-connection liveness pool (`DATABASE_LIVENESS_POOL_MAX`, default 1, `0` = request pool) carries
+     actor lease renewals only. Why: production on a two-connection request pool queued renewals 20-30 s behind API
+     reads, past the 10 s lease TTL, so long runs lost their lease and were sealed as failing without progress
+     (2026-11-24). A worker renews all its leases in one statement per tick, so one connection serves a server.
+   - Lease renewals set `synchronous_commit = off` per statement: they do not wait for the WAL
      flush, since losing one in a database crash is harmless. Chat events and messages keep waiting for the flush.
      Reason: at 500 agents RDS spent most of its time on WAL flush waits (load test 2026-10-29).
    - Sizes and defaults live in `crates/server/src/storage/repositories/mod.rs`.
@@ -834,7 +838,7 @@ Multiple control-plane instances can run behind a load balancer for HA.
 Set `EXPECTED_INSTANCES=N` to inform each instance about the total count:
 
 - **SSE connection limits**: Global and per-org limits divided by N. Per-session limits unchanged.
-- **Database pool sizing**: Set `DATABASE_POOL_MAX = pg_max_connections / N - margin`. An instance opens `DATABASE_POOL_MAX + DATABASE_BACKGROUND_POOL_MAX` connections, and the startup warning fires when that sum × instances exceeds 80% of `PG_MAX_CONNECTIONS` (default 100).
+- **Database pool sizing**: Set `DATABASE_POOL_MAX = pg_max_connections / N - margin`. An instance opens `DATABASE_POOL_MAX + DATABASE_BACKGROUND_POOL_MAX + DATABASE_LIVENESS_POOL_MAX` connections, and the startup warning fires when that sum × instances exceeds 80% of `PG_MAX_CONNECTIONS` (default 100).
 - **Metrics**: Each instance maintains its own ring buffer. The `/v1/platform/durable/metrics/timeseries` response includes `instance_count` when >1.
 
 ### Load Balancer Requirements

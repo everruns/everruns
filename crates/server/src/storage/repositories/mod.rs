@@ -201,6 +201,16 @@ pub struct DatabasePoolConfig {
     /// Acquire timeout for the background pool. Deliberately far longer than
     /// the request timeout: a sweep can afford to wait.
     pub background_acquire_timeout: std::time::Duration,
+    /// Connections reserved for actor lease renewals, the writes that keep a
+    /// running turn alive. Separate from the request pool so a burst of API
+    /// reads cannot hold a renewal past the lease TTL: production ran with a
+    /// two-connection request pool, renewals queued 20-30 s behind console
+    /// and synthetic-check reads, every lease of a long run expired and the
+    /// turn was sealed as one that "keeps failing without progress".
+    /// A worker renews all its leases in one statement per tick, so one
+    /// connection serves every worker of a server. `0` renews on the request
+    /// pool again (config-only rollback).
+    pub liveness_max_connections: u32,
 }
 
 impl Default for DatabasePoolConfig {
@@ -212,6 +222,7 @@ impl Default for DatabasePoolConfig {
             idle_timeout: std::time::Duration::from_secs(300),
             background_max_connections: 8,
             background_acquire_timeout: std::time::Duration::from_secs(30),
+            liveness_max_connections: 1,
         }
     }
 }
@@ -236,6 +247,10 @@ impl DatabasePoolConfig {
                 "DATABASE_BACKGROUND_ACQUIRE_TIMEOUT_SECS",
                 defaults.background_acquire_timeout,
             ),
+            liveness_max_connections: env_or(
+                "DATABASE_LIVENESS_POOL_MAX",
+                defaults.liveness_max_connections,
+            ),
         }
     }
 
@@ -243,6 +258,7 @@ impl DatabasePoolConfig {
     pub fn total_max_connections(&self) -> u32 {
         self.max_connections
             .saturating_add(self.background_max_connections)
+            .saturating_add(self.liveness_max_connections)
     }
 }
 
@@ -320,6 +336,10 @@ pub struct Database {
     /// `pool` so a request burst cannot starve them; equal to `pool` when the
     /// database was built without a background pool (tests, embedded uses).
     background_pool: PgPool,
+    /// Connections reserved for actor lease renewals
+    /// (`DatabasePoolConfig::liveness_max_connections`); equal to the request
+    /// pool when the database was built without one.
+    liveness_pool: PgPool,
     /// Optional S3-compatible blob backend. When set, file/image content bytes
     /// are offloaded to the object store and these tables hold only metadata +
     /// a pointer. `None` keeps bytes inline in
@@ -361,6 +381,7 @@ impl Database {
     pub fn new(pool: PgPool) -> Self {
         Self {
             background_pool: pool.clone(),
+            liveness_pool: pool.clone(),
             pool: crate::storage::transaction::TxPool::new(pool),
             blob_store: None,
             test_database: None,
@@ -443,6 +464,18 @@ impl Database {
                 .connect_lazy(database_url)?
         };
 
+        // Eager and warm: a renewal must never wait for a connect either.
+        let liveness_pool = if config.liveness_max_connections == 0 {
+            pool.clone()
+        } else {
+            pool_options()
+                .max_connections(config.liveness_max_connections)
+                .min_connections(config.liveness_max_connections)
+                .acquire_timeout(config.acquire_timeout)
+                .idle_timeout(None)
+                .connect_lazy(database_url)?
+        };
+
         tracing::info!(
             max_connections = config.max_connections,
             min_connections = config.min_connections,
@@ -450,6 +483,7 @@ impl Database {
             idle_timeout_secs = config.idle_timeout.as_secs(),
             background_max_connections = config.background_max_connections,
             background_acquire_timeout_secs = config.background_acquire_timeout.as_secs(),
+            liveness_max_connections = config.liveness_max_connections,
             "Database connection pool initialized"
         );
 
@@ -495,6 +529,7 @@ impl Database {
         Ok(Self {
             pool: crate::storage::transaction::TxPool::new(pool),
             background_pool,
+            liveness_pool,
             blob_store: None,
             test_database: None,
             event_writer: Some(events::group_commit::EventLogWriter::from_env()),
@@ -521,6 +556,18 @@ impl Database {
         &self.background_pool
     }
 
+    /// The pool actor lease renewals run on; see
+    /// `DatabasePoolConfig::liveness_max_connections`.
+    pub fn liveness_pool(&self) -> &PgPool {
+        &self.liveness_pool
+    }
+
+    /// Renew leases on `pool` instead of the request pool.
+    pub fn with_liveness_pool(mut self, pool: PgPool) -> Self {
+        self.liveness_pool = pool;
+        self
+    }
+
     /// A view of this database whose queries run on the background pool.
     ///
     /// Every repository method takes `&self.pool`, so handing a background loop
@@ -530,6 +577,7 @@ impl Database {
         Self {
             pool: crate::storage::transaction::TxPool::new(self.background_pool.clone()),
             background_pool: self.background_pool.clone(),
+            liveness_pool: self.liveness_pool.clone(),
             blob_store: self.blob_store.clone(),
             test_database: self.test_database.clone(),
             event_writer: self.event_writer.clone(),

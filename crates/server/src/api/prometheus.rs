@@ -170,6 +170,21 @@ pub fn spawn_gauge_bridge(collector: MetricsCollector) {
 /// Start the pool gauge bridge for the storage backend's PostgreSQL pools.
 pub fn spawn_storage_pool_gauge_bridge(storage: &crate::storage::StorageBackend) {
     spawn_pool_gauge_bridge(storage.pool().clone(), storage.background_pool().clone());
+    let liveness = storage.liveness_pool().clone();
+    // On the request pool (liveness pool disabled) there is nothing separate
+    // to sample.
+    if !std::ptr::eq(
+        &*liveness.connect_options(),
+        &*storage.pool().connect_options(),
+    ) {
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(10));
+            loop {
+                interval.tick().await;
+                record_pool_gauges(&liveness, "liveness");
+            }
+        });
+    }
 }
 
 /// Sample the process-local request and background sqlx pools every 10 seconds.
