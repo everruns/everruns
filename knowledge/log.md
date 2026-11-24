@@ -1,5 +1,9 @@
 # Everruns Knowledge Update Log
 
+## 2026-11-23
+
+- [Channelkit migration](integrations/channelkit-migration.md): Slack parity analysis, provider/host ownership, implemented Channelkit prerequisites, delivery ambiguity and recovery gates, staged cutover, and subsequent provider qualification. The Everruns migration remains a proposal; no Everruns channel implementation or deployment changed.
+
 ## 2026-11-22
 
 - [Tool execution](execution/tool-execution.md): targeted mid-batch redirection, paired skipped results, unchanged ordinary FIFO and approval behavior, and journal-backed replay boundaries.
