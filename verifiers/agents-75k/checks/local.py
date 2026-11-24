@@ -131,7 +131,8 @@ def drill(res):
 
 
 def rejoin(result):
-    out = Output()
+    held = result.get("sessions_per_shard") or {}
+    out = Output(density=min(held.values()) if held else 0)
     note = f"{result.get('errors')} errors, caught up in {result.get('caught_up_secs')} s"
     out.add("E1", "L2", bool(result.get("ok")), note=note)
     out.add("R3", "L2", bool(result.get("ok")), note=note)
@@ -207,7 +208,7 @@ def run_drill(ctx):
 
 
 def run_rejoin(ctx):
-    text, cmd = harness(ctx, "prove_rejoin_under_load.py", [], "rejoin")
+    text, cmd = harness(ctx, "prove_rejoin_under_load.py", ["--seed-per-shard", density_sessions(ctx)], "rejoin")
     return rejoin(last_json(text))
 
 

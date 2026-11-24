@@ -188,11 +188,14 @@ class Adapters(unittest.TestCase):
         res["check_b"]["ok"], res["load_a"]["errors"] = True, 3
         self.assertEqual(reliability.verdict(res), (False, 3))
 
-    def test_a_fault_proof_counts_at_any_size(self):
-        run = {"run": "proofs", "at": "2026-11-24T08:58:13Z", "commit": "x", "fingerprint": CFG.fingerprint,
-               "levels": ["L2"], "entries": [{"point": "R1", "level": "L2", "value": True}], "invalid": []}
-        sts = S.states(CFG, [run], fresh())
-        self.assertIn("L2", sts["R1"].cells)
+    def test_a_fault_proof_counts_only_at_goal_density(self):
+        def run(density):
+            entry = {"point": "R1", "level": "L2", "value": True, "density": density}
+            return {"run": "proofs", "at": "2026-11-24T08:58:13Z", "commit": "x", "fingerprint": CFG.fingerprint,
+                    "levels": ["L2"], "entries": [entry], "invalid": []}
+        self.assertNotIn("L2", S.states(CFG, [run(0)], fresh())["R1"].cells)
+        self.assertIn("L2", S.states(CFG, [run(25_000)], fresh())["R1"].cells)
+        self.assertEqual(reliability.density({"sessions_per_shard": {"0": 25_010, "1": 24_990}}), 24_990)
 
     def test_every_proof_reads_a_script_that_exists(self):
         for ch in reliability.CHECKS:

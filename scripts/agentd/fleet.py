@@ -209,6 +209,40 @@ def up(shards, nodes, base, executors=0):
     return topo
 
 
+def seed(per_shard, which=None):
+    """Give each shard `per_shard` sessions (one finished turn each) before a
+    proof injects its fault, and return the sessions each shard holds.
+
+    Decision: the 75k verifier counts a proof's per-shard points only at the
+    goal's density (25,000 sessions a shard). What a fault costs grows with
+    a shard's size (snapshot size for catch-up and rejoin, log written
+    before a purge for a store outage), so a proof on an empty shard proves
+    less than it seems to. Proofs take `--seed-per-shard` and report
+    `sessions_per_shard`; the verifier passes the goal's density.
+    """
+    which = [int(c) for c in shards()] if which is None else list(which)
+    if per_shard <= 0:
+        return {}
+    gws = ",".join(f"http://{addr(c, n)}" for c in which for n in nodes_of(c))
+    drive = os.environ.get("AGENTD_DRIVE_BIN", os.path.join(
+        ROOT, os.environ.get("AGENTD_BIN_DIR", os.path.join("target", "release")), "agentd-drive"))
+    started = time.time()
+    out = subprocess.run([drive, "load", "--gateways", gws, "--agent", "sim", "--scenarios", "chat",
+                          "--sessions", str(per_shard * len(which)), "--turns", "1",
+                          "--concurrency", "500"], capture_output=True, text=True)
+    held = {}
+    for c in which:
+        for n in nodes_of(c):
+            try:
+                with urllib.request.urlopen(f"http://{addr(c, n)}/shard/inspect", timeout=5) as r:
+                    held[str(c)] = max(held.get(str(c), 0), json.load(r).get("sessions") or 0)
+            except Exception:
+                pass
+    print(json.dumps({"seeded": held, "seed_s": round(time.time() - started),
+                      "seed_errors": (json.loads(out.stdout or "{}") or {}).get("errors")}), flush=True)
+    return held
+
+
 def post(path, body, timeout=120):
     """POST to the first directory-shard node that answers."""
     last = None

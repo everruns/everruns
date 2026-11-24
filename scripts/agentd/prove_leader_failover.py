@@ -5,7 +5,7 @@ Pass: the turn completes, its in-flight model call was not repeated (the
 executor kept running across the leader change), and the restarted old leader
 catches up with the shard.
 """
-import json, os, subprocess, sys, time, urllib.request
+import argparse, json, os, subprocess, sys, time, urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(ROOT, "scripts", "shard"))
@@ -28,11 +28,15 @@ def gw(shard, node):
 
 
 def main():
+    p = argparse.ArgumentParser()
+    p.add_argument("--seed-per-shard", type=int, default=0, help="sessions each shard holds before the fault (the verifier: goal density)")
+    a = p.parse_args()
     subprocess.run([sys.executable, os.path.join(ROOT, "scripts/agentd/fleet.py"), "down"])
     time.sleep(0.5)
     subprocess.run(["rm", "-rf", fleet.STATE])
     os.environ["AGENTD_MODEL_DELAY_MS"] = str(DELAY_MS)
     fleet.up(1, 3, 7100)
+    seeded = fleet.seed(a.seed_per_shard)
     time.sleep(1)
 
     leader = fleet.leader(0)
@@ -47,17 +51,19 @@ def main():
         active = None
         for _ in range(100):
             view = call("GET", f"{base}/v1/sessions/{session}")
-            if view["active"]:
+            # The session's holder names the node running the turn (it was
+            # `executor` before the authority holder replaced it).
+            if view["active"] and view["active"].get("node") is not None:
                 active = view["active"]
                 break
             time.sleep(0.05)
-        if active and active["executor"] != leader:
+        if active and active["node"] != leader:
             break
         call("GET", f"{base}/v1/sessions/{session}/wait?turns=1")
     else:
         sys.exit("could not place a turn on a follower")
 
-    executor = active["executor"]
+    executor = active["node"]
     # Wait until the model call is in flight.
     while True:
         events = call("GET", f"{base}/v1/sessions/{session}/events")["data"]
@@ -100,6 +106,7 @@ def main():
         time.sleep(0.1)
 
     result = {
+        "sessions_per_shard": seeded,
         "killed_leader": leader,
         "executor": executor,
         "new_leader": new_leader,

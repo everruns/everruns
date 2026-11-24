@@ -11,7 +11,7 @@ Build first: cargo build --release -p everruns-agentd-testkit --bins
 """
 
 from . import Check, Output
-from .local import harness, last_json
+from .local import density_sessions, harness, last_json
 
 
 def verdict(res):
@@ -59,9 +59,18 @@ def leader_failover(res):
     return out
 
 
-def proof(point, script, args, what, minutes):
+def density(res):
+    """Sessions per shard the proof ran at: its fullest shard's seeding
+    (`fleet.seed`), so a proof counts for per-shard points only at goal
+    density; none reported reads as 0."""
+    held = res.get("sessions_per_shard") or {}
+    return min(held.values()) if held else 0
+
+
+def proof(point, script, args, what, minutes, seed=True):
     def run(ctx):
-        text, cmd = harness(ctx, script, args, point.lower() + "-" + script.removesuffix(".py"))
+        full = [*args, "--seed-per-shard", density_sessions(ctx)] if seed else list(args)
+        text, cmd = harness(ctx, script, full, point.lower() + "-" + script.removesuffix(".py"))
         try:
             res = last_json(text)
         except ValueError:
@@ -69,8 +78,10 @@ def proof(point, script, args, what, minutes):
             out.add(point, "L2", False, note=f"{script} printed no result (crashed? see its log)", evidence=cmd)
             return out
         out = leader_failover(res) if point == "R1" else adapt(point, res, what)
+        out.density = density(res)
         for e in out.entries:
             e["evidence"] = cmd
+            e["density"] = out.density
         return out
     command = "scripts/agentd/" + " ".join([script, *map(str, args)])
     return Check(script.removesuffix(".py").replace("_", "-") + ("-executors" if "--executor-kills" in args else ""),
@@ -79,14 +90,14 @@ def proof(point, script, args, what, minutes):
 
 CHECKS = [
     proof("R1", "prove_leader_failover.py", [], "leader killed mid model call", 5),
-    proof("R2", "prove_follower_catchup.py", [], "lagging follower healed from a snapshot", 10),
+    proof("R2", "prove_follower_catchup.py", [], "lagging follower healed from a snapshot", 10, seed=False),
     proof("R4", "chaos.py", ["--shards", 2, "--sessions", 300, "--turns", 3, "--kills", 15, "--moves", 100],
           "15 random node kills with 100 live moves", 15),
     proof("R5", "chaos.py", ["--shards", 2, "--executors", 3, "--executor-kills", 10],
           "10 executor kills mid-turn", 15),
-    proof("R6", "prove_rebalance.py", [], "sessions moved mid-turn by the rebalancer", 10),
-    proof("R7", "prove_scale_in.py", [], "a shard drained and retired under long turns", 10),
-    proof("R8", "prove_topology.py", [], "nodes and shards added and removed under load", 10),
+    proof("R6", "prove_rebalance.py", [], "sessions moved mid-turn by the rebalancer", 10, seed=False),
+    proof("R7", "prove_scale_in.py", [], "a shard drained and retired under long turns", 10, seed=False),
+    proof("R8", "prove_topology.py", [], "nodes and shards added and removed under load", 10, seed=False),
     proof("R9", "soak.py", ["--minutes", 60, "--rate", 20, "--think", 20, "--turns", 5, "--kill-every", 300],
           "an hour of production-shaped load with a node killed every 5 minutes", 70),
     proof("U11", "prove_store_outage.py", ["--sessions", 1000, "--outage", 600],

@@ -37,6 +37,7 @@ p.add_argument("--sessions", type=int, default=1000)
 p.add_argument("--outage", type=int, default=600, help="seconds the store is gone (goal: 10 minutes)")
 p.add_argument("--max-catch-up-s", type=float, default=120.0)
 p.add_argument("--max-rebuild-s", type=float, default=600.0)
+p.add_argument("--seed-per-shard", type=int, default=0, help="sessions each shard holds before the fault (the verifier: goal density)")
 a = p.parse_args()
 
 
@@ -73,6 +74,7 @@ os.environ.update({"AGENTD_LEDGER": ledger, "AGENTD_WORK_MS": "50"})
 os.environ.setdefault("AGENTD_MEMORY_BUDGET_MB", "512")
 fleet.up(1, 3, 7100, 2)
 fleet.wait_ready()
+seeded = fleet.seed(a.seed_per_shard)
 t0 = time.time()
 gws = [f"http://{fleet.addr(0, n)}" for n in (1, 2, 3)]
 sf = os.path.join(fleet.STATE, "sessions.txt")
@@ -177,6 +179,7 @@ chk = subprocess.run([DRIVE, "check", "--gateways", ",".join(gws), "--sessions-f
 after = json.loads(chk.stdout) if chk.stdout.strip() else {"ok": False, "err": chk.stderr[-2000:]}
 
 res = {
+    "sessions_per_shard": seeded,
     "sessions": len(ids), "outage_s": a.outage,
     "load": {k: load.get(k) for k in ("turns_completed", "errors")},
     "acked": len(acked), "acked_during_outage": acked_during_outage,
