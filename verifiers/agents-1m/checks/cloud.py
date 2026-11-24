@@ -17,6 +17,9 @@ Decisions:
   count and shared ones do not.
 - Exactly-once (A1) from a cloud run is "0 errors and every turn
   completed"; the run has no tool ledger, so A2 and A3 come from L1/L2.
+- Per-agent costs (memory, CPU, store writes, compute) are recorded as
+  metrics for the model and the cluster simulation; they score in
+  agents-75k, not here.
 - D7 needs the driver pods' CPU limit; the workflow runs them without one,
   so D7 is not measured from these runs (noted, not guessed).
 """
@@ -60,13 +63,6 @@ def condense(samples):
                                   "leader": s.get("leader") == s.get("node"), "unshipped_ms": s.get("unshipped_ms")})
         rows.append({"t": r["t"], "nodes": nodes})
     return rows
-
-
-def unshipped_p99_s(rows):
-    vals = sorted(n["unshipped_ms"] for r in rows for n in r["nodes"] if n["leader"] and n["unshipped_ms"] is not None)
-    if not vals:
-        return None
-    return vals[min(len(vals) - 1, int(0.99 * len(vals)))] / 1000
 
 
 def restart_kinds(restarts):
@@ -114,36 +110,22 @@ def import_run(run, run_id, level, goal_agents):
             note=(run["chaos"].strip().splitlines() or ["no chaos"])[0], evidence=ev)
     per_shard = peak_sessions / shards
     c1 = s["peak_node_rss_mb"] / per_shard * 1000
-    out.add("C1", level, round(c1, 1), note=f"peak node {s['peak_node_rss_mb']:,} MB at {per_shard:,.0f} sessions per shard", evidence=ev)
     turns = s.get("turns_completed") or 0
     puts = sum((s.get("store_puts") or {}).values())
     if puts and turns:
-        out.add("C5", level, round(puts / turns, 3), evidence=ev)
         out.metrics["store_puts_per_turn"] = round(puts / turns, 3)
     out.metrics["node_mb_per_1k_sessions"] = round(c1, 1)
     if rows:
         out.metrics["node_base_mb"] = round(statistics.fmean(n["rss"] for n in rows[0]["nodes"]) or 60)
-        # C3: what the node does not account for, at each node's peak.
-        worst = 0.0
-        for nid in {n["id"] for r in rows for n in r["nodes"]}:
-            pk = max((n for r in rows for n in r["nodes"] if n["id"] == nid), key=lambda n: n["rss"])
-            if pk["rss"] > 1000:
-                worst = max(worst, (pk["rss"] - pk["res"] - pk["log"]) / pk["rss"])
-        out.add("C3", level, round(worst, 3), note="peak node: resident set less resident events and Raft log", evidence=ev)
-        p99 = unshipped_p99_s(rows)
-        if p99 is not None:
-            out.add("F3", level, round(p99, 2), note="leaders' oldest unshipped entry, p99 over the run", evidence=ev)
     usage = (s.get("usage") or {}).get("components") or {}
     tps = s.get("turns_per_sec") or 0
     if usage and tps:
         cell, exe = usage.get("cell", {}), usage.get("executor", {})
         shard_ms = cell["cpu_cores_avg"] * 1000 / tps
-        out.add("C4", level, round(shard_ms, 1), note=f"{cell['cpu_cores_avg']} cell cores at {tps} turns/s", evidence=ev)
         out.metrics["shard_core_ms_per_turn"] = round(shard_ms, 1)
         out.metrics["executor_core_ms_per_turn"] = round(exe["cpu_cores_avg"] * 1000 / tps, 1)
         if s.get("peak_running_turns"):
             c2 = exe["memory_mb_peak"] / s["peak_running_turns"]
-            out.add("C2", level, round(c2, 3), note=f"{exe['memory_mb_peak']:,} MB at {s['peak_running_turns']:,} running turns", evidence=ev)
             out.metrics["executor_mb_per_running_turn"] = round(c2, 3)
         backlog = [b["running"] for b in s.get("backlog", []) if b["running"]]
         if backlog:
@@ -152,11 +134,8 @@ def import_run(run, run_id, level, goal_agents):
             hours = rows[-1]["t"] / 3600
             agent_hours = s["sessions"] * hours
             usd = (s["compute_usd_estimate"] + puts * PUT_USD) / agent_hours
-            out.add("C6", level, round(usd, 7), note=f"${s['compute_usd_estimate']} compute + ${puts * PUT_USD:.2f} store writes over {agent_hours:,.0f} agent-hours", evidence=ev)
             out.metrics["usd_per_agent_hour"] = round(usd, 7)
     out.notes.append("D7 not measured: the workflow runs drivers without a CPU limit")
-    out.notes.append("F1 not measured: in the 75k load every session stops after 10 turns, so memory "
-                     "falls after the first half hour and there is no steady hour to measure creep on")
     out.metrics["run_summary"] = {k: s.get(k) for k in ("sessions", "turns_completed", "errors", "shed", "turns_per_sec",
                                                          "peak_sessions", "peak_running_turns", "peak_node_rss_mb")}
     return out
@@ -213,10 +192,10 @@ def dispatch(cfg, level, spend, dry_run=False):
 
 
 CHECKS = [
-    Check("cloud-slice", "L3", ["A1", "A4", "C1", "C2", "C3", "C4", "C5", "C6", "E1", "F3"],
+    Check("cloud-slice", "L3", ["A1", "A4", "E1"],
           minutes=90, cost_usd=20, needs=("gh",),
           command='verify --level cloud-slice --spend "<reason>", then verify --import-run <run id>'),
-    Check("full", "L4", ["A1", "A4", "C1", "C2", "C3", "C4", "C5", "C6", "E1", "F3"],
+    Check("full", "L4", ["A1", "A4", "E1"],
           minutes=150, cost_usd=200, needs=("gh",),
           command='verify --level full --spend "<reason>" (owner approval in goal.toml)'),
 ]

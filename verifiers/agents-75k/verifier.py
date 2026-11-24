@@ -1,7 +1,7 @@
 """What this verifier adds to the generic engine (lib/engine/hooks.py):
 agents, shards and pace as target names, the density and run-size rules,
-proven agents, EKS run import and paid dispatch, and the report sections
-about resources and the coding profile.
+proven agents, EKS run import and paid dispatch, and the report notes
+about the model's inputs and the coding profile.
 
 Kept per verifier on purpose (owner, 2026-11-24): agents-1m and agents-75k
 verify different goals and may diverge, so each owns its copy.
@@ -241,8 +241,6 @@ class AgentsVerifier(Hooks):
     def summary(self, cfg, runs, fresh):
         return {
             "proven_agents": self.proven_agents(cfg, runs),
-            "next_limit": latest_metric(runs, "next_limit")[0],
-            "resources": latest_metric(runs, "resources")[0],
             "model_inputs": latest_metric(runs, "model_inputs")[0],
             "assumptions": latest_metric(runs, "model_assumptions")[0],
             "realism": latest_metric(runs, "realism")[0],
@@ -257,24 +255,6 @@ class AgentsVerifier(Hooks):
 
     def headline(self, cfg, rep):
         return f"Proven agents {fmt(rep['proven_agents'])}."
-
-    def sections(self, cfg, rep):
-        return ["\n## Next limit\n",
-                rep["next_limit"] or "None crossed in the cluster simulation, or it has not run yet."]
-
-    def after_milestones(self, cfg, rep):
-        r = rep.get("resources")
-        if not r:
-            return []
-        L = ["\n## Resources for the goal (cluster simulation)\n",
-             f"{fmt(r['agents'])} agents: {r['shards']} shards ({r['node_pods']} node pods) and "
-             f"{r['executor_pods']} executors on {', '.join(f'{v} x {k}' for k, v in r['machines'].items())}: "
-             f"{fmt(r['vcpus'])} vCPU, {fmt(r['memory_gb'])} GB, ${r['machines_usd_per_hour']:,.2f}/h machines "
-             f"+ ${r['store_usd_per_hour']:,.2f}/h object store writes.\n",
-             "| Pod | Peak | After a zone loss |\n|---|---|---|"]
-        for k, v in r["worst"].items():
-            L.append(f"| {k} | {v['peak']:.0%} | {v['zone_loss']:.0%} |")
-        return L
 
     def notes(self, cfg, rep):
         L = []

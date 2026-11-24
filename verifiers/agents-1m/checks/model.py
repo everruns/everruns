@@ -1,10 +1,15 @@
 """L0 model: arithmetic from measured per-agent costs, plus a scaling-curve fit.
 
-Inputs are the newest measured per-agent costs in results.jsonl (highest
-level first): memory per 1,000 sessions, executor memory per running turn,
-turn time in flight, CPU per turn, object store writes per turn, and the
-1/2/4/8-shard throughput curve. Missing inputs are reported, never guessed;
-the two assumptions below are named in every report until measured.
+Inputs are the newest measured per-agent costs (highest level first):
+memory per 1,000 sessions, executor memory per running turn, turn time in
+flight, CPU per turn, object store writes per turn, and the 1/2/4/8-shard
+throughput curve. Missing inputs are reported, never guessed; the two
+assumptions below are named in every report until measured.
+
+Decision (owner, 2026-11-24): per-agent efficiency is agents-75k's goal, so
+its runs measure these costs and this verifier reads them from
+verifiers/agents-75k/results.jsonl (runs under that verifier's current
+goal), next to its own cloud runs. Only the scaling curve is its own.
 
 Coding agents (25% of the goal) take turns at the pace in the coding
 profile; a coding turn counts as `calls / ASSUMED mix calls` mix turns of
@@ -15,8 +20,11 @@ import json
 import math
 import os
 
+from engine import config as C
+from engine import store
 from . import Check, Output
 
+EFFICIENCY = os.path.join(C.REPO, "verifiers", "agents-75k")
 PROFILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                        "workload", "coding-profile.json")
 
@@ -34,11 +42,24 @@ INPUT_KEYS = [
 LEVEL_RANK = {"L4": 4, "L3": 3, "L2": 2, "L1": 1, "L0": 0}
 
 
-def measured(cfg, runs):
-    """key -> {value, run, level}: the best-level, newest measurement of each input."""
+def efficiency_runs(root=EFFICIENCY):
+    """agents-75k's runs under its current goal, labelled as its own."""
+    try:
+        fp = C.fingerprint(C.load_toml(os.path.join(root, "goal.toml")))
+        rows = store.read_jsonl(os.path.join(root, "results.jsonl"))
+    except FileNotFoundError:
+        return []
+    return [{**r, "run": f"agents-75k {r['run']}"} for r in rows if r.get("fingerprint") == fp]
+
+
+def measured(cfg, runs, others=()):
+    """key -> {value, run, level}: the best-level, newest measurement of each
+    input, from this verifier's runs and `others` (already checked runs of
+    the efficiency verifier)."""
     out = {}
-    for run in sorted(runs, key=lambda r: r["at"]):
-        if run.get("fingerprint") != cfg.fingerprint or run.get("invalid"):
+    mine = [r for r in runs if r.get("fingerprint") == cfg.fingerprint]
+    for run in sorted(mine + list(others), key=lambda r: r["at"]):
+        if run.get("invalid"):
             continue
         level = max((LEVEL_RANK[l] for l in run.get("levels", [])), default=0)
         if level == 0:
@@ -150,7 +171,7 @@ def fleet_cost(cfg, inp, ld):
 def run(ctx):
     cfg = ctx.cfg
     out = Output()
-    got = measured(cfg, ctx.runs)
+    got = measured(cfg, ctx.runs, efficiency_runs())
     inp = {k: v["value"] for k, v in got.items()}
     missing = [k for k in INPUT_KEYS if k not in inp]
     out.metrics["model_inputs"] = {k: {"value": v["value"], "from": v["run"], "level": v["level"]}
@@ -189,11 +210,9 @@ def run(ctx):
         out.add("D5", "L0", round(margin, 2), note=f"{per_prefix:,.0f} writes/s per shard prefix at the peak")
     if all(k in inp for k in ("executor_core_ms_per_turn", "store_puts_per_turn")):
         cost = fleet_cost(cfg, inp, ld)
-        out.add("C6", "L0", cost["usd_per_agent_hour"],
-                note=f"${cost['compute_usd_per_hour']:,.0f}/h compute + ${cost['store_usd_per_hour']:,.0f}/h store writes")
         out.metrics["cost"] = {k: round(v, 7 if "agent" in k else 2) for k, v in cost.items()}
     return out
 
 
-CHECKS = [Check("model", "L0", ["B1", "C6", "D1", "D5"], minutes=0.1,
+CHECKS = [Check("model", "L0", ["B1", "D1", "D5"], minutes=0.1,
                 command="verify (runs with every default run)", run=run)]

@@ -20,9 +20,9 @@ class Output(K.Output):
 
 
 def all_checks():
-    from . import cloud, cluster, fleettests, formal, local, model, realism, reliability
+    from . import cloud, fleettests, formal, local, model, realism, reliability
     out = []
-    for mod in (model, cluster, realism, fleettests, formal, local, reliability, cloud):
+    for mod in (model, realism, fleettests, formal, local, reliability, cloud):
         out.extend(mod.CHECKS)
     return out
 
@@ -38,10 +38,6 @@ NOT_BUILT = {
     "B2": ("L2", "agentd-drive peak profile: 3x rate for 10 minutes, shed share and retries"),
     "B3": ("L2", "agentd-drive open loop at the ramp rate (sessions created a second)"),
     "B4": ("L2", "drive reports with model time split out of turn time"),
-    "D2": ("L2", "stream consumer reading the goal's agents' records from /v1/stream"),
-    "D3": ("L2", "synthetic spend-grant requests at the goal's rate"),
-    "E3": ("L2", "zone loss for 5 minutes with Chaos Mesh on the local cluster"),
-    "E6": ("L2", "rolling upgrade during a run"),
     "F2": ("L1", "long-session gate: turn time flat over 200,000 turns"),
     "G1": ("L2", "memory_bench.py with the coding scenarios"),
     "G2": ("L2", "drive with the coding scenarios, overhead per model call"),

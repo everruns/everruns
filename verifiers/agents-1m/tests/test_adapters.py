@@ -29,41 +29,17 @@ def vals(out):
 
 
 class Adapters(unittest.TestCase):
-    def test_memory_bench_recorded_baseline(self):
-        with open(os.path.join(SCRIPTS, "memory_bench_baseline.json")) as f:
-            res = json.load(f)
-        out = local.memory_bench(res)
-        self.assertEqual(vals(out)["C1"], res["gated"]["node_rss_mb_per_1k_sessions"])
-        self.assertEqual(vals(out)["C5"], res["gated"]["puts_per_turn"])
-        self.assertEqual(out.density, res["sessions"])
-        self.assertIn("node_base_mb", out.metrics)
-
     def test_shard_soak(self):
         samples = [json.loads(l) for l in read(os.path.join(FIX, "shard_soak.samples.jsonl")).splitlines()]
         v = vals(local.shard_soak(fx("shard_soak.summary.json"), samples))
         self.assertEqual(v["A4"], 0)
-        self.assertAlmostEqual(v["C3"], 6950 / 10480, places=3)
         self.assertTrue(v["E1"])
-        self.assertLess(v["F1"], 0.05)  # 0.05 MB/s on ~9.2 GB
-        self.assertGreater(v["F1"], 0.0)
-
-    def test_bench(self):
-        out = local.bench(fx("bench.json"))
-        self.assertAlmostEqual(vals(out)["C4"], 9.8 + 2 * 3.1)
-        self.assertEqual(out.metrics["executor_core_ms_per_turn"], 21.4)
+        self.assertEqual(set(v), {"A4", "E1"})  # memory and creep score in agents-75k
 
     def test_scale_fits_a_curve(self):
         out = local.scale(fx("scale.json"), goal_shards=40)
         self.assertEqual(len(out.metrics["scale_curve"]), 4)
         self.assertIn("D1", vals(out))
-
-    def test_drill(self):
-        v = vals(local.drill(fx("drill.json")))
-        self.assertTrue(v["E2"])
-        self.assertEqual(v["F3"], 10.2)
-        bad = fx("drill.json")
-        bad["check"]["second"]["ok"] = False
-        self.assertFalse(vals(local.drill(bad))["E2"])
 
     def test_rejoin_and_many_sessions(self):
         self.assertTrue(vals(local.rejoin(fx("rejoin.json")))["E1"])
@@ -106,11 +82,8 @@ class Drift(unittest.TestCase):
     """The keys adapters read, by harness. A harness that renames one fails here."""
 
     KEYS = {
-        "memory_bench.py": ["gated", "node_rss_mb_per_1k_sessions", "puts_per_turn", "rss_mb", "idle", "sessions", "--no-baseline"],
-        "shard_soak.py": ["config", "oom_kills", "crashes", "restarts", "peak_remainder_mb", "--snapshot-every", "peak_rss_mb", "peak_unaccounted_mb", "peak_rss_share_of_limit", "chaos", "killed", "errors", "rss_mb", "samples.jsonl", "summary.json"],
-        "bench.py": ["leader_cpu_ms_per_turn", "follower_cpu_ms_per_turn", "executor_cpu_ms_per_turn", "--no-baseline"],
+        "shard_soak.py": ["config", "oom_kills", "crashes", "restarts", "--snapshot-every", "peak_rss_share_of_limit", "chaos", "killed", "errors", "samples.jsonl", "summary.json"],
         "scale.py": ["shards", "turns_per_sec"],
-        "drill.py": ["ship_lag_s", "rebuild_s", "kill_to_leader_s", "second_messages_lost", "check", "rebuilt", "p99"],
         "prove_rejoin_under_load.py": ["\"ok\"", "caught_up_secs", "errors"],
         "many_sessions.py": ["check", "errors", "sessions"],
     }
@@ -136,11 +109,12 @@ class CloudImport(unittest.TestCase):
         self.assertTrue(v["A1"])
         self.assertEqual(v["A4"], 0)
         self.assertTrue(v["E1"])
-        self.assertAlmostEqual(v["C1"], 11484 / (79905 / 3) * 1000, places=0)
-        self.assertAlmostEqual(v["C5"], (24087 + 947238 + 55) / 725370, places=3)
-        self.assertAlmostEqual(v["C4"], 11.22 * 1000 / 218.7, places=0)
-        self.assertGreater(v["C3"], 0.5)  # the memory design's finding: most of the node is uncounted
-        self.assertLess(v["F3"], 15)
+        self.assertEqual(set(v), {"A1", "A4", "E1"})
+        # Per-agent costs stay as metrics: the model's inputs, scored in agents-75k.
+        m = out.metrics
+        self.assertAlmostEqual(m["node_mb_per_1k_sessions"], 11484 / (79905 / 3) * 1000, places=0)
+        self.assertAlmostEqual(m["store_puts_per_turn"], (24087 + 947238 + 55) / 725370, places=3)
+        self.assertAlmostEqual(m["shard_core_ms_per_turn"], 11.22 * 1000 / 218.7, places=0)
         self.assertEqual(out.agents, 72537)
         self.assertGreater(out.density, 25_000)
         for k in ("turn_seconds_in_flight", "executor_core_ms_per_turn", "executor_mb_per_running_turn"):

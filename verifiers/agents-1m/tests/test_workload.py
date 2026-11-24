@@ -3,7 +3,6 @@ import os
 import tempfile
 import unittest
 
-from checks import realism
 from workload import capture, generate
 
 SECRET = "TOP-SECRET-PROMPT-TEXT"
@@ -61,23 +60,12 @@ class Generate(unittest.TestCase):
         self.assertEqual(generate.seq_bytes(10), 21)
         self.assertGreaterEqual(generate.seq_bytes(generate.seq_for_kb(7.4)), 7.4 * 1024)
 
-    def test_committed_scenarios_are_current_and_realistic(self):
+    def test_committed_scenarios_are_current(self):
         with open(generate.PROFILE) as f:
             prof = json.load(f)
         with open(generate.OUT) as f:
             have = f.read()
         self.assertEqual(have, generate.render(prof), "run workload/generate.py")
-        worst, detail = realism.distance(prof, json.loads(have))
-        self.assertLessEqual(worst, 0.10, detail)
-
-    def test_realism_catches_a_load_off_profile(self):
-        with open(generate.PROFILE) as f:
-            prof = json.load(f)
-        scens = generate.scenarios(prof)
-        for s in scens:
-            s["steps"] = s["steps"][:1] + s["steps"][-1:]  # every turn cut to two model calls
-        worst, _ = realism.distance(prof, scens)
-        self.assertGreater(worst, 0.10)
 
     def test_deterministic(self):
         with open(generate.PROFILE) as f:

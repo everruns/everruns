@@ -59,12 +59,10 @@ class EndToEnd(unittest.TestCase):
 
         code, md = self.main("--quick", "--record")
         rep = self.report()
-        self.assertGreater(rep["score"], 20)
+        self.assertGreater(rep["score"], 10)
         self.assertIsNotNone(rep["resources"])
         self.assertTrue(rep["climb"])
         self.assertIn("## Climb list", md)
-        g6 = next(p for p in rep["points"] if p["id"] == "G6")
-        self.assertEqual(g6["best_level"], "L1")
         d8 = next(p for p in rep["points"] if p["id"] == "D8")
         self.assertEqual(d8["best_level"], "L1")
 
@@ -75,8 +73,8 @@ class EndToEnd(unittest.TestCase):
         code, out = self.main("--against", "base")
         self.assertEqual(code, 0, out)
 
-        self.main("--attempt", "smaller snapshots", "--points", "C1", "--kept", "no", "--why", "no change")
-        self.assertEqual(T.read_jsonl(T.ATTEMPTS)[0]["points"], ["C1"])
+        self.main("--attempt", "smaller snapshots", "--points", "X3", "--kept", "no", "--why", "no change")
+        self.assertEqual(T.read_jsonl(T.ATTEMPTS)[0]["points"], ["X3"])
         code, out = self.main("--history")
         self.assertIn("smaller snapshots", out)
 
@@ -87,11 +85,11 @@ class EndToEnd(unittest.TestCase):
         worse = dict(rows[0])
         worse["run"] += "-later"
         worse["at"] = "2026-11-23T19:00:00Z"
-        worse["entries"] = [dict(e, value=600.0) if e["point"] == "C1" else e for e in rows[0]["entries"]]
+        worse["entries"] = [dict(e, value=3) if e["point"] == "A4" else e for e in rows[0]["entries"]]
         T.append_jsonl(T.RESULTS, worse)
         code, out = self.main("--against", "base")
         self.assertEqual(code, 1)
-        self.assertIn("C1", out)
+        self.assertIn("A4", out)
 
     def test_entry_point_runs(self):
         r = subprocess.run([sys.executable, os.path.join(ROOT, "verify"), "--help"], capture_output=True, text=True)

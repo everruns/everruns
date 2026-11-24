@@ -109,12 +109,17 @@ class ScaledSoakLevel(unittest.TestCase):
 
 class Goal(unittest.TestCase):
     def test_points_and_weights(self):
-        self.assertEqual(len(CFG.points), 58)
+        self.assertEqual(len(CFG.points), 53)
         self.assertEqual(CFG.total_weight, 157)
         ids = {p.id for p in CFG.points}
         self.assertTrue({f"R{i}" for i in range(1, 11)} <= ids)
         self.assertTrue({f"U{i}" for i in range(1, 14)} <= ids)
-        self.assertFalse({"D1", "D4", "D6"} & ids)  # scaling past 75k is the 1M verifier's
+        # What only shows across many cells is the 1M verifier's (owner, 2026-11-24).
+        self.assertFalse({"D1", "D2", "D3", "D4", "D5", "D6", "D8", "E3", "E6"} & ids)
+        self.assertFalse(ids & {p.id for p in CFG_1M.points if p.id.startswith("X")})
+        # Per-agent cost carries the most weight here.
+        self.assertEqual(sum(p.weight for p in CFG.points if p.id.startswith("C")), 30)
+        self.assertEqual(CFG.target(CFG.point("B6")), 0.9)
 
     def test_no_cloud_slice_and_a_near_full_run_counts(self):
         self.assertNotIn("L3", CFG.levels)
@@ -138,7 +143,11 @@ class Registry(unittest.TestCase):
             self.assertNotIn(name, big)
         self.assertNotIn("cloud-slice", mine)
         self.assertIn("cloud-slice", big)
-        self.assertNotIn("scale", mine)  # D1 only
+        self.assertEqual(mine["scale"].points, ["B6"])  # 1 to 3 shards; 1 to 8 and the curve are 1M's D1
+        for name in ("memory-bench", "bench", "drill", "realism"):  # per-agent cost: 75k only
+            self.assertIn(name, mine)
+            self.assertNotIn(name, big)
+        self.assertNotIn("cluster", mine)  # fleet fit on real machines: 1M only
         self.assertEqual(mine["full"].cost_usd, 40)
         self.assertIn("R10", mine["full"].points)
         self.assertNotIn("R10", big["full"].points)
@@ -170,6 +179,17 @@ class Adapters(unittest.TestCase):
                "ship_first_s": {"p50": 0.01, "p99": 0.1}, "check": {"first": {"ok": True}, "second": {"ok": True}}}
         v = {e["point"]: e["value"] for e in local.drill(res).entries}
         self.assertEqual((v["U7"], v["U8"], v["U9"], v["U10"]), (3.7, 7.4, 0.1, 0.006))
+
+    def test_scale_efficiency(self):
+        rows = [{"shards": 1, "turns_per_sec": 400.0, "errors": 0},
+                {"shards": 2, "turns_per_sec": 790.0, "errors": 0},
+                {"shards": 3, "turns_per_sec": 1140.0, "errors": 0}]
+        out = local.scale(rows)
+        self.assertEqual([e["value"] for e in out.entries], [0.95])
+        self.assertEqual(out.metrics["scale_curve"][-1], [3, 1140.0])
+        rows[2]["errors"] = 4
+        self.assertEqual(local.scale(rows).entries[0]["value"], 0.0)  # dropped turns are not scaling
+        self.assertEqual(local.scale(rows[:1]).entries, [])
 
     def test_proof_verdicts(self):
         self.assertEqual(reliability.verdict({"ok": True, "errors": 0}), (True, 0))
