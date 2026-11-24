@@ -2,6 +2,8 @@
 adapters it adds, and the backtest on the recorded 75k runs at full (L4)
 certainty with the repeat-pass streak (R10)."""
 
+import copy
+import json
 import os
 import unittest
 
@@ -21,6 +23,50 @@ NOW = S.parse_time("2026-11-23T20:00:00Z")
 
 def fresh():
     return S.Freshness(changed=lambda commit, paths: False, now=NOW)
+
+
+def soak(name):
+    with open(os.path.join(HERE, "fixtures", f"shard_soak.{name}.summary.json")) as f:
+        return json.load(f)
+
+
+def points(out):
+    return {e["point"]: e["value"] for e in out.entries}
+
+
+class SoakMemorySignals(unittest.TestCase):
+    """The shard soak's memory signals, on two 1/8-density soaks at snapshot
+    60,000 (Mac mini, 2026-11-23): ae876092 before the snapshot fix (six
+    out-of-memory kills) and be9521d3 with the memory ledger (none)."""
+
+    def test_the_pre_fix_soak_fails_the_gate(self):
+        v = points(local.shard_soak(soak("prefix_ae876092"), []))
+        self.assertEqual(v["A4"], 6)
+        self.assertEqual(v["C3"], round(1751 / 1864, 3))  # no ledger yet: resident set less events and log
+
+    def test_the_ledger_remainder_is_c3(self):
+        out = local.shard_soak(soak("tip_be9521d3"), [])
+        v = points(out)
+        self.assertEqual(v["A4"], 0)
+        self.assertEqual(v["C3"], round(633 / 1273, 3))
+        self.assertNotIn("U13", v)  # no controlled restart happened, so no evidence either way
+
+    def test_a_crash_fails_the_gate_and_a_controlled_restart_is_u13(self):
+        s = copy.deepcopy(soak("tip_be9521d3"))
+        s["restarts"] = [{"t": 900.0, "node": 2}]
+        v = points(local.shard_soak(s, []))
+        self.assertEqual((v["A4"], v["U13"]), (0, True))
+        s["crashes"] = [{"t": 950.0, "node": 3, "code": 101}]
+        v = points(local.shard_soak(s, []))
+        self.assertEqual((v["A4"], v["U13"]), (1, False))
+
+    def test_below_full_density_the_soak_uses_the_calibrated_spacing(self):
+        self.assertEqual(local.snapshot_every(1.0), 20_000)
+        self.assertEqual(local.snapshot_every(0.125), 60_000)
+
+    def test_gate_restarts_by_cause(self):
+        k = cloud.restart_kinds({"a": "2 (OOMKilled)", "b": "1 (exit 75)", "c": "1 (exit 101)", "d": "3 (Error)"})
+        self.assertEqual(k, {"oom": 2, "controlled": 1, "crash": 1, "unknown": 3})
 
 
 class Goal(unittest.TestCase):

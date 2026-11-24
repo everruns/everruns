@@ -1,0 +1,73 @@
+{
+  "scale": 0.125,
+  "config": {
+    "sessions": 3125,
+    "budget_mb": 1152,
+    "limit_mb": 1792,
+    "snapshot_every": 60000,
+    "pressure_turns": 128
+  },
+  "secs": 3328,
+  "sessions_started": 3125,
+  "turns": 31250,
+  "turns_missing": 0,
+  "stalled": [],
+  "errors": 0,
+  "chaos": [
+    {
+      "t": 600.4,
+      "killed": [
+        "node 1",
+        "executor 1"
+      ]
+    }
+  ],
+  "oom_kills": [
+    {
+      "t": 1050.3,
+      "node": 3,
+      "rss_mb": 1806
+    },
+    {
+      "t": 1199.2,
+      "node": 1,
+      "rss_mb": 1864
+    },
+    {
+      "t": 1473.9,
+      "node": 2,
+      "rss_mb": 1800
+    },
+    {
+      "t": 1723.8,
+      "node": 3,
+      "rss_mb": 1804
+    },
+    {
+      "t": 1768.5,
+      "node": 1,
+      "rss_mb": 1838
+    },
+    {
+      "t": 1887.2,
+      "node": 2,
+      "rss_mb": 1840
+    }
+  ],
+  "peak_rss_mb": {
+    "1": 1864,
+    "2": 1840,
+    "3": 1806
+  },
+  "peak_rss_share_of_limit": 1.04,
+  "peak_log_mb": {
+    "1": 194,
+    "2": 228,
+    "3": 247
+  },
+  "peak_unaccounted_mb": {
+    "1": 1751,
+    "2": 1675,
+    "3": 1689
+  }
+}

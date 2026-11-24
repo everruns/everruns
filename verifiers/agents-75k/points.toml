@@ -153,7 +153,7 @@ target = "goal.limits.unaccounted_memory_share"
 unit = "share of resident memory"
 cheapest = "L2"
 scales = "per_shard"
-built_from = "shard_soak.py peak_unaccounted_mb"
+built_from = "shard_soak.py peak_remainder_mb (peak_unaccounted_mb before the memory ledger)"
 watches = ["crates/agentd/src/heap.rs", "crates/agentd/src/memwatch.rs"]
 
 [[point]]
@@ -659,5 +659,5 @@ weight = 2
 direction = "pass"
 cheapest = "L2"
 scales = "per_shard"
-built_from = "memory restart proof (new)"
+built_from = "shard_soak.py restarts (exit 75), when a soak restarts a node"
 watches = ["crates/agentd/src/memwatch.rs", "crates/agentd/src/pressure.rs"]
