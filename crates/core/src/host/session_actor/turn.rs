@@ -54,6 +54,17 @@
 //!   with its own counter). That report fails in the very outage it reports,
 //!   so a blip would still count; the retry waits the blip out instead, and
 //!   needs no schema or protocol change.
+//! - An unreachable event store is not a failure without progress. Behind a
+//!   data plane a session's events page in from an object store, and while
+//!   that store is down every run fails with `EventLogError::Backend` however
+//!   often it is tried. Counted like any retryable failure, a 10-minute
+//!   outage spent a lease's retries every half minute and the poison guard
+//!   sealed the turn after three: an input the shard had accepted ended as a
+//!   failed turn (Mac mini, 2026-11-24, 210 of 1,000 at 25,000 sessions a
+//!   shard). Such a failure keeps the lease and runs the turn again past
+//!   `control_plane_retries`, the backoff capped at 64 times its base, for up
+//!   to `BACKEND_OUTAGE_LIMIT`; the turn runs once the store is back. Past
+//!   the limit it falls back to the rule above.
 //! - Hand-off: a draining holder (`SessionActorDriver::with_hand_off`) stops
 //!   the turn at its next step boundary through the inbox
 //!   (`TurnInbox::should_hand_off`), after at least one step, with that
@@ -196,14 +207,26 @@ impl<H: ActorHosts> SessionActorDriver<H> {
         // A retryable failure runs the turn again on this lease, off the
         // poison guard's count (module notes).
         let mut retries = 0;
+        let mut backend_down: Option<std::time::Instant> = None;
         let finish = loop {
             let made = Made::new();
             // Boxed: the run's future (setup, the whole driven turn) is large,
             // and inline in this loop it overflowed a test thread's stack.
             let finish = Box::pin(self.run_once(&lease, &actor, &made)).await;
+            // An unreachable event store is waited out on this lease (module
+            // notes), up to `BACKEND_OUTAGE_LIMIT`, past the retries.
+            let waiting_out = |error: &AgentLoopError, since: &mut Option<std::time::Instant>| {
+                if !error.is_backend_unavailable() {
+                    *since = None;
+                    return false;
+                }
+                since.get_or_insert_with(std::time::Instant::now).elapsed()
+                    < super::BACKEND_OUTAGE_LIMIT
+            };
             let error = match finish {
                 Ok(Finish::Retry(error)) | Err(error)
-                    if retries < self.config.control_plane_retries
+                    if (retries < self.config.control_plane_retries
+                        || waiting_out(&error, &mut backend_down))
                         && !lease.is_lost()
                         && !error.is_non_retryable()
                         && !session_deleted(&lease, &error).await =>

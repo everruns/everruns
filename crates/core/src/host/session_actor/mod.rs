@@ -139,6 +139,10 @@ pub const DEFAULT_ACTOR_STALL_TIMEOUT: Duration = Duration::from_secs(5 * 60);
 /// Default number of times one lease runs its turn again after a retryable
 /// (control-plane) failure before it lets the lease expire; see `turn.rs`.
 pub const DEFAULT_ACTOR_CONTROL_PLANE_RETRIES: u32 = 5;
+/// How long one lease keeps running its turn again while the session's event
+/// store is unreachable (`AgentLoopError::is_backend_unavailable`), past
+/// `control_plane_retries`; see `turn.rs`.
+pub const BACKEND_OUTAGE_LIMIT: Duration = Duration::from_secs(30 * 60);
 /// Default wait before the first such retry; it doubles with each one, so the
 /// default retries span about 30 s, past a pool or failover blip.
 pub const DEFAULT_ACTOR_CONTROL_PLANE_BACKOFF: Duration = Duration::from_secs(1);
