@@ -29,7 +29,7 @@ command, reading a script's JSON, running cargo tests). A verifier without
 
 | Verifier | Goal |
 |---|---|
-| [agents-1m](agents-1m/README.md) | 1,000,000 agents in parallel on agentd (data plane v2) |
-| [agents-75k](agents-75k/README.md) | the 75k gate, plus the reliability, durability and recoverability it must prove |
+| [agents-1m](agents-1m/README.md) | 1,000,000 agents in parallel on agentd (data plane v2): cells working together at extreme size |
+| [agents-75k](agents-75k/README.md) | the 75k gate: efficiency per agent and general scalability, plus the reliability, durability and recoverability it must prove |
 
 Design and reasoning: `knowledge/operations/verifiers.md`.

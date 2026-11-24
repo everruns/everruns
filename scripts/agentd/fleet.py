@@ -226,20 +226,33 @@ def seed(per_shard, which=None):
     gws = ",".join(f"http://{addr(c, n)}" for c in which for n in nodes_of(c))
     drive = os.environ.get("AGENTD_DRIVE_BIN", os.path.join(
         ROOT, os.environ.get("AGENTD_BIN_DIR", os.path.join("target", "release")), "agentd-drive"))
-    started = time.time()
-    out = subprocess.run([drive, "load", "--gateways", gws, "--agent", "sim", "--scenarios", "chat",
-                          "--sessions", str(per_shard * len(which)), "--turns", "1",
-                          "--concurrency", "500"], capture_output=True, text=True)
+    def holding():
+        held = {}
+        for c in which:
+            for n in nodes_of(c):
+                try:
+                    with urllib.request.urlopen(f"http://{addr(c, n)}/shard/inspect", timeout=5) as r:
+                        held[str(c)] = max(held.get(str(c), 0), json.load(r).get("sessions") or 0)
+                except Exception:
+                    pass
+        return held
+
+    # Gateways place sessions unevenly across shards, so seed in rounds until
+    # the emptiest shard holds `per_shard` (each round tops up its shortfall
+    # times the shard count, plus a tenth), at most four rounds.
+    started, errors, want = time.time(), 0, per_shard * len(which)
     held = {}
-    for c in which:
-        for n in nodes_of(c):
-            try:
-                with urllib.request.urlopen(f"http://{addr(c, n)}/shard/inspect", timeout=5) as r:
-                    held[str(c)] = max(held.get(str(c), 0), json.load(r).get("sessions") or 0)
-            except Exception:
-                pass
-    print(json.dumps({"seeded": held, "seed_s": round(time.time() - started),
-                      "seed_errors": (json.loads(out.stdout or "{}") or {}).get("errors")}), flush=True)
+    for _ in range(4):
+        out = subprocess.run([drive, "load", "--gateways", gws, "--agent", "sim", "--scenarios", "chat",
+                              "--sessions", str(want), "--turns", "1",
+                              "--concurrency", "500"], capture_output=True, text=True)
+        errors += (json.loads(out.stdout or "{}") or {}).get("errors") or 0
+        held = holding()
+        short = per_shard - min((held.get(str(c), 0) for c in which), default=0)
+        if short <= 0:
+            break
+        want = int(short * len(which) * 1.1) + 1
+    print(json.dumps({"seeded": held, "seed_s": round(time.time() - started), "seed_errors": errors}), flush=True)
     return held
 
 

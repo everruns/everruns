@@ -130,6 +130,24 @@ def drill(res):
     return out
 
 
+def scale(results):
+    """B6: turns/s at the most shards over shards x turns/s at one shard. A
+    run with errors scores 0: throughput bought by dropping turns is not
+    scaling."""
+    out = Output()
+    curve = sorted((r["shards"], r["turns_per_sec"]) for r in results)
+    out.metrics["scale_curve"] = [list(p) for p in curve]
+    one = dict(curve).get(1)
+    n, top = curve[-1]
+    if not one or n < 2:
+        return out
+    errors = sum(r.get("errors") or 0 for r in results)
+    eff = 0.0 if errors else top / (n * one)
+    out.add("B6", "L2", round(eff, 3),
+            note=f"{one:,.0f} turns/s on 1 shard, {top:,.0f} on {n}" + (f", {errors} errors" if errors else ""))
+    return out
+
+
 def rejoin(result):
     held = result.get("sessions_per_shard") or {}
     out = Output(density=min(held.values()) if held else 0)
@@ -207,6 +225,14 @@ def run_drill(ctx):
     return drill(last_json(text))
 
 
+def run_scale(ctx):
+    text, cmd = harness(ctx, "scale.py", ["--shards", "1,2,3", "--sessions", max(2000, int(20000 * ctx.size)), "--turns", 2], "scale")
+    out = scale(last_json(text))
+    for e in out.entries:
+        e["evidence"] = cmd
+    return out
+
+
 def run_rejoin(ctx):
     text, cmd = harness(ctx, "prove_rejoin_under_load.py", ["--seed-per-shard", density_sessions(ctx)], "rejoin")
     return rejoin(last_json(text))
@@ -228,6 +254,8 @@ CHECKS = [
           command="scripts/agentd/bench.py --sessions 200 --turns 10 --agent chat --no-baseline"),
     Check("drill", "L2", ["E2", "F3", "U7", "U8", "U9", "U10"], minutes=30, needs=CARGO, run=run_drill,
           command="scripts/agentd/drill.py --sessions 50000 --shards 2 --inflight 3000"),
+    Check("scale", "L2", ["B6"], minutes=30, needs=CARGO, run=run_scale,
+          command="scripts/agentd/scale.py --shards 1,2,3 --sessions 20000 --turns 2"),
     Check("rejoin", "L2", ["E1", "R3"], minutes=5, needs=CARGO, run=run_rejoin,
           command="scripts/agentd/prove_rejoin_under_load.py"),
     Check("many-sessions", "L2", ["A1"], minutes=40, needs=CARGO, run=run_many_sessions,

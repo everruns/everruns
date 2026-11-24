@@ -20,9 +20,9 @@ class Output(K.Output):
 
 
 def all_checks():
-    from . import cloud, cluster, fleettests, local, model, realism
+    from . import cloud, cluster, fleettests, local, model
     out = []
-    for mod in (model, cluster, realism, fleettests, local, cloud):
+    for mod in (model, cluster, fleettests, local, cloud):
         out.extend(mod.CHECKS)
     return out
 
@@ -35,19 +35,16 @@ def registry(cfg=None):
 # Points no check covers yet, with what would cover them. The climb list
 # offers "build the check" for each; when one is built it moves into a module.
 NOT_BUILT = {
-    "B2": ("L2", "agentd-drive peak profile: 3x rate for 10 minutes, shed share and retries"),
-    "B3": ("L2", "agentd-drive open loop at the ramp rate (sessions created a second)"),
-    "B4": ("L2", "drive reports with model time split out of turn time"),
+    "B2": ("L2", "agentd-drive peak profile across shards: 3x rate for 10 minutes, shed share and retries"),
     "D2": ("L2", "stream consumer reading the goal's agents' records from /v1/stream"),
     "D3": ("L2", "synthetic spend-grant requests at the goal's rate"),
     "D4": ("L1", "in-process directory and edge router holding 1M sessions"),
+    "X2": ("L1", "edge router forwarding turns at the goal's rate in process, added latency p99"),
+    "X3": ("L2", "drive load across shards while sessions move between them: lost or repeated messages, move p99"),
+    "X4": ("L2", "one hot shard among many with the rebalancer on, under drive load: turn errors"),
     "D6": ("L1", "KWOK cluster with hundreds of shards and ~700 pods"),
+    "X6": ("L1", "directory and edge router while shards join, leave and fail, in process"),
+    "X7": ("L2", "parents and their subagents placed on different shards under load: lost results, result p99"),
     "E3": ("L2", "zone loss for 5 minutes with Chaos Mesh on the local cluster"),
     "E6": ("L2", "rolling upgrade during a run"),
-    "F2": ("L1", "long-session gate: turn time flat over 200,000 turns"),
-    "G1": ("L2", "memory_bench.py with the coding scenarios"),
-    "G2": ("L2", "drive with the coding scenarios, overhead per model call"),
-    "G3": ("L1", "idle unload and reload test (memory design)"),
-    "G4": ("L1", "blob reference test for payloads over 256 KB (memory design)"),
-    "G5": ("L2", "llmsim compaction scenario at shard scale"),
 }
