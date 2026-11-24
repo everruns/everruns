@@ -272,7 +272,7 @@ async fn store(
             super::session_records::lease(cp, org_id, session_id, lease).await?;
         }
         Record::Subagent { session_id, origin } => {
-            super::subagents::record(cp, org_id, session_id, origin).await?;
+            super::subagents::record(cp, org_id, session_id, origin, record.at_unix_ms).await?;
         }
         Record::Health { .. } | Record::Unknown => {}
     }
