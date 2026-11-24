@@ -1251,11 +1251,16 @@ impl ChannelHost {
         driver: Arc<dyn ChannelDriver>,
         session_id: String,
         input_message_id: String,
-        target: DeliveryTarget,
+        mut target: DeliveryTarget,
         events: ChannelEventStream,
         pending_saved: bool,
     ) -> Result<(), ChannelError> {
         if !pending_saved {
+            if driver.requires_checkpoint() {
+                target
+                    .extra
+                    .insert(recovery::CHECKPOINT_PROTOCOL.into(), "1".into());
+            }
             // Keep the recovery record in the caller's transaction, before a
             // scheduled invocation can commit its deduplication receipt.
             self.inner

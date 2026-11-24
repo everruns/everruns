@@ -1,11 +1,13 @@
 //! Recovery of leased delivery tasks, retaining uncertain output.
 use super::*;
 
+/// New pending rows distinguish a pre-intent crash from unaudited legacy output.
+pub(super) const CHECKPOINT_PROTOCOL: &str = "everruns_output_checkpoint";
+
 impl ChannelHost {
     /// Resume every delivery a previous process left unfinished and no live
-    /// process holds. Returns how many were resumed. Legacy deliveries of retired
-    /// channels may be removed under their lease. Checkpointed or unavailable
-    /// deliveries remain pending for later recovery.
+    /// process holds. Returns how many were resumed. Unavailable channels retain
+    /// their pending output for later recovery or operator reconciliation.
     pub async fn recover(&self) -> Result<usize, ChannelError> {
         let mut resumed = 0;
         let claimed = self
@@ -24,33 +26,17 @@ impl ChannelHost {
             let channel = match found {
                 Ok(Some(channel)) if channel.driver().is_some() => channel,
                 Ok(_) => {
-                    // A temporarily unpublished channel must not discard accepted or
-                    // uncertain output. Legacy rows without an output ledger may retire.
-                    if matches!(
-                        self.inner
-                            .store
-                            .delivery_checkpoint(&pending.session_id, &pending.input_message_id)
-                            .await,
-                        Ok(None)
-                    ) {
-                        self.inner
-                            .store
-                            .complete_delivery(
-                                &pending.session_id,
-                                &pending.input_message_id,
-                                &self.inner.holder,
-                            )
-                            .await?;
-                    } else {
-                        self.inner
-                            .store
-                            .release_pending(
-                                &pending.session_id,
-                                &pending.input_message_id,
-                                &self.inner.holder,
-                            )
-                            .await?;
-                    }
+                    // Absence of a channel or ledger cannot prove an old writer
+                    // sent nothing. Preserve even unaudited legacy rows while
+                    // the channel is unpublished, deleted or temporarily missing.
+                    self.inner
+                        .store
+                        .release_pending(
+                            &pending.session_id,
+                            &pending.input_message_id,
+                            &self.inner.holder,
+                        )
+                        .await?;
                     continue;
                 }
                 Err(error) => {
@@ -69,6 +55,33 @@ impl ChannelHost {
             let Some(driver) = channel.driver().cloned() else {
                 continue;
             };
+            if !driver.requires_checkpoint()
+                && pending.target.extra.contains_key(CHECKPOINT_PROTOCOL)
+            {
+                // Do not even replay events when a rollback driver cannot
+                // interpret this output protocol, including its pre-intent row.
+                continue;
+            }
+            if driver.requires_checkpoint()
+                && pending
+                    .target
+                    .extra
+                    .get(CHECKPOINT_PROTOCOL)
+                    .map(String::as_str)
+                    != Some("1")
+                && !matches!(
+                    self.inner
+                        .store
+                        .delivery_checkpoint(&pending.session_id, &pending.input_message_id)
+                        .await,
+                    Ok(Some(_))
+                )
+            {
+                // A legacy writer may have accepted output without recording an
+                // intent. Retain its row; a new adapter cannot safely replay it.
+                warn!(session_id=%pending.session_id,"channel: legacy delivery requires reconciliation before checkpointed recovery");
+                continue;
+            }
             let events = self
                 .inner
                 .port
