@@ -110,7 +110,7 @@ async fn speak_streams_audio_then_reports_the_response_done() {
     }
     assert_eq!(audio, 2 * AUDIO_BYTES_PER_SECOND as usize);
     let request = lock(&speech.requests)[0].clone();
-    assert_eq!(request.model, "gpt-4o-mini-tts");
+    assert_eq!(request.model, "gpt-realtime-2.1-mini");
     assert_eq!(request.voice, "marin");
     assert_eq!(request.instructions.as_deref(), Some("Calm."));
     assert_eq!(request.safety_identifier.as_deref(), Some("user-hash"));

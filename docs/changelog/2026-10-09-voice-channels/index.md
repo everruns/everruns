@@ -12,19 +12,25 @@ links:
   prs: [everruns/everruns#4394, everruns/everruns#4402, everruns/everruns#4406]
 ---
 
-Voice is now a channel type. A speech-to-speech model only listens and speaks;
-the agent, with its own model and tools, writes every answer. Speech starts
-sentence by sentence while the answer streams, short fillers cover silence, and
-talking over the agent stops it. A call and a text chat on one session share a
-transcript.
+Voice is a channel for WebRTC calls. The agent keeps its model, tools and
+instructions; speech streams sentence by sentence, and interruptions stop
+playback. Calls and text chats share a transcript.
 
 ![Voice channel on the agent Integrations tab with its Talk to this channel button](./voice-channel-talk@2x.png)
 
-**In the UI:** an organization administrator turns on **Voice** in
-**Settings → Features**. Then add a voice channel from the agent's
-**Integrations** tab and use its talk button. Speech uses an OpenAI provider.
+**In the UI:** an administrator enables **Voice** in **Settings → Features**,
+then adds a channel from the agent's **Integrations** tab.
 
-**In code:** `everruns::voice` puts a voice channel in front of any Framework
-session, and serve's `voice` feature gives every top-level agent browser calls.
+**In code:** `everruns::voice` adds calls to Framework sessions; serve's `voice`
+feature exposes browser calls for top-level agents.
 
-See [Voice](/features/voice/), [Framework voice](/framework/voice/) and [#4394](https://github.com/everruns/everruns/pull/4394), [#4402](https://github.com/everruns/everruns/pull/4402), [#4406](https://github.com/everruns/everruns/pull/4406).
+Cascaded OpenAI speech defaults to `gpt-realtime-2.1-mini` over Realtime,
+preserving 24 kHz PCM. Explicit Speech API overrides retain their transport
+until [retirement on January 6, 2027](https://developers.openai.com/api/docs/guides/text-to-speech).
+Exact-text instructions express intent; generative speech is not guaranteed
+verbatim.
+
+See [Voice](/features/voice/), [Framework voice](/framework/voice/) and
+[#4394](https://github.com/everruns/everruns/pull/4394),
+[#4402](https://github.com/everruns/everruns/pull/4402),
+[#4406](https://github.com/everruns/everruns/pull/4406).

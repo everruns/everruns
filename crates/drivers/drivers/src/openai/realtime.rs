@@ -308,7 +308,7 @@ pub fn command_events(command: &RealtimeCommand) -> Vec<Value> {
                 "input": [],
                 "instructions": format!(
                     "Say exactly the following text, and nothing else:\n\n{}",
-                    text.trim()
+                    text
                 ),
             }
         })],
@@ -468,7 +468,7 @@ mod tests {
             events[0]["response"]["instructions"]
                 .as_str()
                 .unwrap()
-                .ends_with("Hello.")
+                .ends_with(" Hello. ")
         );
         let stop = command_events(&RealtimeCommand::StopSpeaking);
         assert_eq!(stop[0]["type"], "response.cancel");

@@ -5,7 +5,8 @@
 //! `input_audio_buffer.append`, and OpenAI's voice activity detection and
 //! transcription events come back in the same shape a speech-to-speech call
 //! reports them, so they map through [`map_server_event`]. [`synthesize`]
-//! streams `/audio/speech` as raw PCM.
+//! streams Realtime audio as raw PCM. Explicit Speech API model overrides
+//! retain the `/audio/speech` workflow until those models retire.
 //!
 //! Decisions:
 //! - 24 kHz 16-bit mono PCM both ways, the format both endpoints take
@@ -98,12 +99,12 @@ pub fn speech_body(request: &SpeechRequest) -> Value {
 
 /// Cuts a byte stream into whole 16-bit samples.
 #[derive(Default)]
-struct Samples {
-    carry: Option<u8>,
+pub(super) struct Samples {
+    pub(super) carry: Option<u8>,
 }
 
 impl Samples {
-    fn cut(&mut self, bytes: &[u8]) -> Vec<u8> {
+    pub(super) fn cut(&mut self, bytes: &[u8]) -> Vec<u8> {
         let mut out = Vec::with_capacity(bytes.len() + 1);
         out.extend(self.carry.take());
         out.extend_from_slice(bytes);
@@ -184,6 +185,9 @@ impl SpeechDriver for OpenAISpeechDriver {
     ) -> Result<SpeechAudio, RealtimeDriverError> {
         if request.text.trim().is_empty() {
             return Err(RealtimeDriverError::Invalid("nothing to say".into()));
+        }
+        if super::realtime_speech::uses_realtime(&request.model) {
+            return super::realtime_speech::synthesize(endpoint, request).await;
         }
         let url = endpoint_url(endpoint, "audio/speech")?;
         let mut http = self.http.post(&url).json(&speech_body(request));
