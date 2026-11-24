@@ -80,6 +80,11 @@ def parse_args():
     p.add_argument("--api-pressure", type=int, default=0, metavar="N",
                    help="N threads reading the public API for the whole load phase, "
                         "so running turns share the servers' request pools with clients")
+    p.add_argument("--api-pressure-delay", type=float, default=0, metavar="S",
+                   help="start the pressure S seconds into the load, once turns hold leases "
+                        "(production order: a running turn, then reads pile up)")
+    p.add_argument("--api-pressure-duration", type=float, default=0, metavar="S",
+                   help="stop the pressure after S seconds (0: until the load ends)")
     a = p.parse_args()
     pre = a.port_prefix
     a.database_url = a.database_url or f"postgres://everruns:everruns@localhost:{pre}32/everruns"
@@ -201,19 +206,42 @@ def setup_fixtures(api: Api, args) -> tuple[dict, dict]:
     return model_ids, agents
 
 
-def api_pressure_thread(api: Api, stop: threading.Event, stats: dict):
+def api_pressure_thread(base_url: str, stop: threading.Event, stats: dict, delay: float, duration: float):
     """Keep the servers' request pools busy the way a few open consoles and
     synthetic checks do in production: list reads, back to back. A running
-    turn must not depend on this traffic leaving it a connection."""
-    paths = ["/v1/platform/sessions", "/v1/platform/agents"]
+    turn must not depend on this traffic leaving it a connection.
+
+    One keep-alive connection per thread: a socket per request exhausts the
+    client's ephemeral ports (macOS Errno 49) long before the server's pool."""
+    import http.client
+    import urllib.parse
+
+    if stop.wait(delay):
+        return
+    deadline = time.time() + duration if duration else None
+    parsed = urllib.parse.urlparse(base_url)
+    conn = None
+    paths = ["/api/v1/platform/sessions?limit=50", "/api/v1/platform/agents?limit=50"]
     i = 0
-    while not stop.is_set():
+    lock = stats.setdefault("_lock", threading.Lock())
+    while not stop.is_set() and (deadline is None or time.time() < deadline):
+        key = "errors"
         try:
-            api.request("GET", paths[i % len(paths)], query={"limit": 50}, retries=0, retry_5xx=False)
-            stats["ok"] = stats.get("ok", 0) + 1
+            if conn is None:
+                conn = http.client.HTTPConnection(parsed.hostname, parsed.port, timeout=60)
+            conn.request("GET", paths[i % len(paths)], headers={"Accept": "application/json"})
+            resp = conn.getresponse()
+            resp.read()
+            key = "ok" if resp.status < 400 else str(resp.status)
         except Exception:  # noqa: BLE001
-            stats["errors"] = stats.get("errors", 0) + 1
+            if conn is not None:
+                conn.close()
+            conn = None
+        with lock:
+            stats[key] = stats.get(key, 0) + 1
         i += 1
+    if conn is not None:
+        conn.close()
 
 
 def lease_losses(run_dir: str, workers: int) -> dict[str, int]:
@@ -323,8 +351,13 @@ def main():
             )
             ct.start()
         pressure_stats: dict = {}
-        for _ in range(args.api_pressure):
-            threading.Thread(target=api_pressure_thread, args=(Api(topo.base_urls), stop, pressure_stats), daemon=True).start()
+        for n in range(args.api_pressure):
+            threading.Thread(
+                target=api_pressure_thread,
+                args=(topo.base_urls[n % len(topo.base_urls)], stop, pressure_stats,
+                      args.api_pressure_delay, args.api_pressure_duration),
+                daemon=True,
+            ).start()
         with cf.ThreadPoolExecutor(max_workers=args.concurrency) as pool:
             futs = []
             for i, k in enumerate(kinds):
@@ -337,6 +370,7 @@ def main():
                     print(f"[load] +{time.time() - t0:5.1f}s {done}/{len(futs)} sessions done", flush=True)
         t_load_end = time.time()
         if args.api_pressure:
+            pressure_stats.pop("_lock", None)
             print(f"[pressure] {pressure_stats}", flush=True)
         if ct:
             ct.join()  # finish the schedule (restarts) even if load ended early
@@ -445,7 +479,7 @@ def main():
             "api_conn_errors": api.conn_errors,
             "api_retries": api.retries,
             "driver_errors": sum(len(r.errors) for r in driver.runs),
-            "api_pressure": dict(pressure_stats, threads=args.api_pressure),
+            "api_pressure": {**{k: v for k, v in pressure_stats.items() if k != "_lock"}, "threads": args.api_pressure},
             "per_worker": per_worker,
         }
         lat = {}
