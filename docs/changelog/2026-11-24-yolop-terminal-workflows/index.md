@@ -1,7 +1,7 @@
 ---
 title: Review changes and resume work in Yolop
 description: Yolop adds a live changes panel, visual rewind, session search, inspectable prompt attachments, recovery actions, and searchable terminal commands.
-date: 2026-11-23
+date: 2026-11-24
 kind: feature
 significance: notable
 products: [yolop]
