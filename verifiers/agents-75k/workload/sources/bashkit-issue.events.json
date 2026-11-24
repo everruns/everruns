@@ -1,0 +1,6 @@
+[
+ {"created_at": "2026-09-21T19:09:43Z", "duration_ms": 50774, "num_turns": 5, "context_tokens": [412855], "output_tokens": 3271},
+ {"created_at": "2026-09-21T19:44:40Z", "duration_ms": 10146, "num_turns": 2, "context_tokens": [419056], "output_tokens": 79},
+ {"created_at": "2026-09-21T19:55:37Z", "duration_ms": 42123, "num_turns": 6, "context_tokens": [430824], "output_tokens": 2345},
+ {"created_at": "2026-09-21T19:55:42Z", "duration_ms": 4938, "num_turns": 2, "context_tokens": [432241], "output_tokens": 92}
+]

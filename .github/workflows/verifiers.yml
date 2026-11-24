@@ -1,0 +1,65 @@
+name: Verifiers
+
+# The verifier engine (verifiers/lib) on its own, with a toy verifier that
+# has nothing to do with agents; then each verifier (verifiers/agents-1m,
+# verifiers/agents-75k): its tests (scoring, adapters against harness
+# outputs, the backtest on saved 75k runs, the cluster simulation, the coding
+# profile) and its entry point end to end at the free levels without the
+# cargo fleet tests. Seconds, no build.
+
+on:
+  pull_request:
+    paths:
+      - 'verifiers/**'
+      - 'scripts/agentd/**'
+      - 'crates/drivers/llmsim/scenarios/**'
+      - 'crates/agentd-testkit/tests/**'
+      - 'crates/agentd/tests/**'
+      - 'tests/models/**'
+      - 'scripts/check-tla-models.sh'
+      - '.github/workflows/verifiers.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'verifiers/**'
+      - 'scripts/agentd/**'
+      - 'crates/drivers/llmsim/scenarios/**'
+      - '.github/workflows/verifiers.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verifiers-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  engine:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: verifiers/lib
+    steps:
+      - uses: actions/checkout@v7
+      - run: python3 -m unittest discover -s tests -t . -v
+
+  verifiers:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        verifier: [agents-1m, agents-75k]
+    defaults:
+      run:
+        working-directory: verifiers/${{ matrix.verifier }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0  # freshness compares evidence commits with the tree
+      - run: python3 -m unittest discover -s tests -t . -v
+      - run: workload/generate.py --check
+      - name: End to end (free levels, quick)
+        run: ./verify --quick --out "$RUNNER_TEMP/${{ matrix.verifier }}" && ./verify --plan

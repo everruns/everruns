@@ -11,8 +11,8 @@
 * [Observability Providers](observability.md) - Observability providers.
 * [Correlation IDs](correlation-ids.md) - Correlation IDs.
 * [Load Testing Specification](load-testing.md) - End-to-end load testing framework.
-* [Validators](validators.md) - Executable non-functional requirements scored 0-100, starting with 1M agents in parallel.
-* [agents-1m analysis](agents-1m-analysis.md) - Evidence behind the 1M agents validator: backtest, coding sessions, first baseline.
+* [Verifiers](verifiers.md) - Executable requirements scored 0-100: a generic engine, one self-contained folder per goal.
+* [agents-1m analysis](agents-1m-analysis.md) - Evidence behind the 1M agents verifier: backtest, coding sessions, first baseline.
 * [Network Access List](network-access.md) - Network access allowlist/blocklist.
 * [System-wide Outbound Allowlist](system-allowlist.md) - System-wide outbound allowlist ("green list").
 * [Localization And Timezone Resolution](localization.md) - Locale/timezone resolution and backend localization rules.

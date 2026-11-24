@@ -1,0 +1,13 @@
+[[point]]
+id = "P1"
+title = "No page declares another language"
+weight = 1
+direction = "pass"
+gate = true
+
+[[point]]
+id = "P2"
+title = "Share of pages in Ukrainian"
+weight = 3
+direction = "at_least"
+target = "goal.pages.share_min"

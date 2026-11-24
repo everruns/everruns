@@ -48,10 +48,11 @@ use llmsim::scenario_stream::{Pacing, word_tokens};
 use llmsim::{SimError, SimTurn};
 
 /// Scenarios for everruns features llmsim does not know about, such as
-/// subagents, and the coding-agent load of the 1M agents validator
+/// subagents, and the coding-agent load of the 1M agents verifier
 /// (`coding-profile.json`, generated from measured coding sessions by
-/// `validators/agents-1m/workload/generate.py`; do not edit by hand). They are
-/// parsed by `local_scenarios_are_valid`.
+/// `verifiers/agents-1m/workload/generate.py`, which agents-75k keeps an
+/// identical copy of; do not edit by hand). They are parsed by
+/// `local_scenarios_are_valid`.
 const LOCAL_SCENARIOS: [&str; 2] = [
     include_str!("../scenarios/subagent-fanout.json"),
     include_str!("../scenarios/coding-profile.json"),

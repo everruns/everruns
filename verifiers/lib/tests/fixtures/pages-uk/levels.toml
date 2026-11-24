@@ -1,0 +1,5 @@
+[L1]
+name = "scan"
+certainty = 1.0
+what = "Read every page of the site"
+paid = false

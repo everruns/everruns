@@ -1,0 +1,8 @@
+# A verifier that has nothing to do with agents: every page of a site must
+# be in Ukrainian. It proves the engine runs a verifier with no load code.
+
+[meta]                       # not fingerprinted
+title = "Ukrainian pages verifier"
+
+[pages]
+share_min = 1.0              # every page

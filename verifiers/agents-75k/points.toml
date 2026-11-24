@@ -1,0 +1,663 @@
+# The 58 verification points of the 75k goal: the 1M goal's points that apply at
+# 75k plus reliability (R) and durability (U). Weights add up to 157, scaled to 100.
+#
+# direction: at_least (m = value / target), at_most (m = target / value),
+#            pass (value is true or false). A zero target at_most is pass/fail.
+# target:    an expression over goal.*, layout.* and g.* (derived from the goal:
+#            g.agents, g.turns_per_sec, g.peak_turns_per_sec, g.ramp_per_sec,
+#            g.shards, g.coding_agents). Milestones re-evaluate it with fewer agents.
+# scales:    per_shard points count from any run at goal density; shared points
+#            only from a run of the goal's (or milestone's) full size, or at
+#            the levels below L3, from a check aimed at full-size traffic.
+# gate:      a failing newest result caps the score at 25.
+# validity:  decides whether a run counts (D7 also carries weight).
+# watches:   code the evidence depends on; a change since halves freshness.
+
+# A. Nothing lost or doubled (20)
+[[point]]
+id = "A1"
+title = "Every accepted message handled exactly once"
+weight = 5
+gate = true
+direction = "pass"
+cheapest = "L1"
+scales = "per_shard"
+built_from = "fleet test durability, many_sessions.py, the 75k drive check"
+watches = ["crates/agentd/src/sm.rs", "crates/agentd/src/state_session.rs", "crates/agentd/src/wal.rs", "crates/agentd/src/node.rs"]
+
+[[point]]
+id = "A2"
+title = "Every tool ran at most once, also across failures"
+weight = 5
+gate = true
+direction = "pass"
+cheapest = "L1"
+scales = "per_shard"
+built_from = "fleet test recovery (tool ledger)"
+watches = ["crates/agentd/src/executor.rs", "crates/agentd/src/ship.rs", "crates/agentd/src/catchup.rs"]
+
+[[point]]
+id = "A3"
+title = "Replicas agree, journals have no holes"
+weight = 4
+gate = true
+direction = "pass"
+cheapest = "L1"
+scales = "per_shard"
+built_from = "agentd raft_simulation"
+watches = ["crates/agentd/src/cluster.rs", "crates/agentd/src/wal.rs", "crates/agentd/src/catchup.rs"]
+
+[[point]]
+id = "A4"
+title = "No out-of-memory kills"
+weight = 6
+gate = true
+direction = "at_most"
+target = "goal.limits.oom_kills"
+unit = "kills"
+cheapest = "L2"
+scales = "per_shard"
+built_from = "shard_soak.py, 75k workflow restarts"
+watches = ["crates/agentd/src/memwatch.rs", "crates/agentd/src/state.rs", "crates/agentd/src/sm.rs", "crates/agentd/src/session_storage.rs"]
+
+# B. Throughput and speed (18)
+[[point]]
+id = "B1"
+title = "Steady turns a second, with headroom"
+weight = 5
+direction = "at_least"
+target = "g.turns_per_sec * (1 + goal.limits.headroom)"
+unit = "turns/s capacity"
+cheapest = "L0"
+scales = "shared"
+built_from = "model from measured CPU per turn, scale.py, 75k workflow"
+watches = ["crates/agentd/src/executor.rs", "crates/agentd/src/node.rs", "crates/agentd/src/dispatch.rs"]
+
+[[point]]
+id = "B2"
+title = "Busy peak served, under 0.1% shed, all retried"
+weight = 3
+direction = "at_least"
+target = "g.peak_turns_per_sec"
+unit = "turns/s"
+cheapest = "L2"
+scales = "shared"
+built_from = "agentd-drive --rate (peak profile, new)"
+watches = ["crates/agentd/src/executor.rs", "crates/agentd/src/gateway_input.rs"]
+
+[[point]]
+id = "B3"
+title = "Ramp: creating sessions"
+weight = 3
+direction = "at_least"
+target = "g.ramp_per_sec"
+unit = "sessions/s"
+cheapest = "L2"
+scales = "shared"
+built_from = "agentd-drive open loop (new)"
+watches = ["crates/agentd/src/edge.rs", "crates/agentd/src/api_session.rs"]
+
+[[point]]
+id = "B4"
+title = "Platform overhead per turn (p50 and p99, model time excluded)"
+weight = 4
+direction = "at_most"
+target = "1"
+unit = "share of the p50/p99 budget, worst of the two"
+cheapest = "L2"
+scales = "per_shard"
+built_from = "drive reports with model time split out (new)"
+watches = ["crates/agentd/src/executor.rs", "crates/agentd/src/gateway.rs"]
+
+[[point]]
+id = "B5"
+title = "Streams get every event fast"
+weight = 3
+direction = "pass"
+cheapest = "L1"
+scales = "per_shard"
+built_from = "fleet test stream"
+watches = ["crates/agentd/src/stream.rs", "crates/agentd/src/gateway_sse.rs"]
+
+# C. Cost per agent (18)
+[[point]]
+id = "C1"
+title = "Shard node memory per 1,000 sessions"
+weight = 4
+direction = "at_most"
+target = "layout.node_memory_limit_mb * (1 - goal.limits.headroom) / goal.density.sessions_per_shard * 1000"
+unit = "MB per 1k sessions"
+cheapest = "L2"
+scales = "per_shard"
+built_from = "memory_bench.py, 75k peak node memory"
+watches = ["crates/agentd/src/state.rs", "crates/agentd/src/state_session.rs", "crates/agentd/src/session_storage.rs", "crates/agentd/src/sm.rs", "crates/agentd/src/wal.rs"]
+
+[[point]]
+id = "C2"
+title = "Executor memory per running turn"
+weight = 3
+direction = "at_most"
+target = "layout.executor_memory_limit_mb * (1 - goal.limits.headroom) / layout.executor_turns_max"
+unit = "MB per running turn"
+cheapest = "L2"
+scales = "per_shard"
+built_from = "75k executor memory / peak running turns"
+watches = ["crates/agentd/src/executor.rs", "crates/agentd/src/exec_api.rs"]
+
+[[point]]
+id = "C3"
+title = "Memory the node does not account for"
+weight = 3
+direction = "at_most"
+target = "goal.limits.unaccounted_memory_share"
+unit = "share of resident memory"
+cheapest = "L2"
+scales = "per_shard"
+built_from = "shard_soak.py peak_unaccounted_mb"
+watches = ["crates/agentd/src/heap.rs", "crates/agentd/src/memwatch.rs"]
+
+[[point]]
+id = "C4"
+title = "Shard CPU per turn (all three nodes) within the 75k peak budget"
+weight = 4
+direction = "at_most"
+target = "g.shards * layout.nodes_per_shard * layout.node_cpu_cores * 1000 / g.peak_turns_per_sec"
+unit = "core-ms per turn"
+cheapest = "L2"
+scales = "per_shard"
+built_from = "bench.py, 75k cell CPU"
+watches = ["crates/agentd/src/node.rs", "crates/agentd/src/wal.rs", "crates/agentd/src/sm.rs", "crates/agentd/src/cluster.rs"]
+
+[[point]]
+id = "C5"
+title = "Object store writes per turn"
+weight = 2
+direction = "at_most"
+target = "goal.limits.store_puts_per_turn_max"
+unit = "writes per turn"
+cheapest = "L2"
+scales = "per_shard"
+built_from = "memory_bench.py puts_per_turn, 75k store_puts"
+watches = ["crates/agentd/src/ship.rs", "crates/agentd/src/store.rs", "crates/agentd/src/session_storage.rs"]
+
+[[point]]
+id = "C6"
+title = "Compute and store writes per agent-hour"
+weight = 2
+direction = "at_most"
+target = "goal.cost.usd_per_agent_hour_max"
+unit = "USD per agent-hour"
+cheapest = "L0"
+scales = "per_shard"
+built_from = "model, 75k compute estimate + store writes"
+watches = ["crates/agentd/src/ship.rs", "crates/agentd/src/executor.rs", "crates/agentd/src/node.rs"]
+
+# D. Parts that do not grow with shards (23)
+[[point]]
+id = "D2"
+title = "agentd streams 75k agents' records out to its controller (p99 lag)"
+weight = 3
+direction = "at_most"
+target = "5"
+unit = "s stream lag p99"
+cheapest = "L2"
+scales = "shared"
+built_from = "stream consumer at the 75k record rate (new)"
+watches = ["crates/agentd/src/install_stream.rs", "crates/agentd/src/stream.rs"]
+
+[[point]]
+id = "D3"
+title = "Spend allowances issued at the 75k rate"
+weight = 2
+direction = "pass"
+cheapest = "L2"
+scales = "shared"
+built_from = "synthetic generator (new)"
+watches = ["crates/agentd/src/allowance.rs", "crates/agentd/src/group.rs"]
+
+[[point]]
+id = "D5"
+title = "Object store request rate under the per-prefix limit"
+weight = 2
+direction = "at_least"
+target = "goal.limits.store_prefix_margin"
+unit = "limit / peak rate per prefix"
+cheapest = "L0"
+scales = "shared"
+built_from = "model from C5"
+watches = ["crates/agentd/src/ship.rs", "crates/agentd/src/store.rs"]
+
+[[point]]
+id = "D7"
+title = "The load generator is not the bottleneck"
+weight = 3
+validity = true
+direction = "at_most"
+target = "goal.limits.driver_cpu_max"
+unit = "driver CPU share of its limit"
+cheapest = "L2"
+scales = "per_shard"
+built_from = "driver pod CPU against its limit"
+watches = ["crates/agentd-testkit/src/bin/drive.rs"]
+
+[[point]]
+id = "D8"
+title = "The 75k fleet fits on real machines (cluster simulation)"
+weight = 3
+direction = "at_most"
+target = "1"
+unit = "worst of peak/70% and zone-loss/85% utilization"
+cheapest = "L1"
+scales = "shared"
+built_from = "cluster simulation fed by measured per-agent costs"
+watches = ["verifiers/agents-1m/layout.toml"]
+
+# E. Survives failures at size (14)
+[[point]]
+id = "E1"
+title = "A node in every shard group killed mid-run: catches up, 0 errors"
+weight = 3
+direction = "pass"
+cheapest = "L2"
+scales = "per_shard"
+built_from = "prove_rejoin_under_load.py, 75k chaos"
+watches = ["crates/agentd/src/catchup.rs", "crates/agentd/src/cluster.rs", "crates/agentd/src/node.rs"]
+
+[[point]]
+id = "E2"
+title = "A whole shard lost: rebuilt from the store, every session finishes"
+weight = 2
+direction = "pass"
+cheapest = "L2"
+scales = "per_shard"
+built_from = "drill.py"
+watches = ["crates/agentd/src/node_restore.rs", "crates/agentd/src/ship.rs", "crates/agentd/src/store.rs"]
+
+[[point]]
+id = "E3"
+title = "A zone lost for 5 minutes: sessions keep going, 0 lost work"
+weight = 3
+direction = "pass"
+cheapest = "L2"
+scales = "per_shard"
+built_from = "Chaos Mesh on the local cluster (new)"
+watches = ["crates/agentd/src/cluster.rs", "crates/agentd/src/ship.rs"]
+
+[[point]]
+id = "E4"
+title = "A quarter of executors killed: turns resume elsewhere"
+weight = 2
+direction = "pass"
+cheapest = "L1"
+scales = "per_shard"
+built_from = "fleet test executors"
+watches = ["crates/agentd/src/executor.rs", "crates/agentd/src/detach.rs"]
+
+[[point]]
+id = "E5"
+title = "Control plane down for 10 minutes: turns continue or wait"
+weight = 2
+direction = "pass"
+cheapest = "L1"
+scales = "shared"
+built_from = "fleet test control_plane"
+watches = ["crates/agentd/src/control.rs", "crates/agentd/src/host.rs"]
+
+[[point]]
+id = "E6"
+title = "Rolling upgrade during the run: 0 sessions suspended"
+weight = 2
+direction = "pass"
+cheapest = "L2"
+scales = "per_shard"
+built_from = "upgrade test (new)"
+watches = ["crates/agentd/src/node_control.rs"]
+
+# F. Stays healthy for hours (10)
+[[point]]
+id = "F1"
+title = "Memory does not creep over the steady hour"
+weight = 4
+direction = "at_most"
+target = "goal.limits.memory_creep_share_per_hour"
+unit = "growth per hour at steady load"
+cheapest = "L2"
+scales = "per_shard"
+built_from = "shard_soak.py samples, 75k samples"
+watches = ["crates/agentd/src/state.rs", "crates/agentd/src/sm.rs", "crates/agentd/src/session_storage.rs"]
+
+[[point]]
+id = "F2"
+title = "Turns stay fast as sessions get long (flat over 200,000 turns)"
+weight = 3
+direction = "pass"
+cheapest = "L1"
+scales = "per_shard"
+built_from = "long-session gate (new)"
+watches = ["crates/agentd/src/session_storage.rs", "crates/agentd/src/sm.rs"]
+
+[[point]]
+id = "F3"
+title = "Shipping to the store keeps up"
+weight = 3
+direction = "at_most"
+target = "goal.limits.ship_lag_p99_s"
+unit = "unshipped age p99, s"
+cheapest = "L2"
+scales = "per_shard"
+built_from = "ship-lag gauge in drill.py and 75k samples"
+watches = ["crates/agentd/src/ship.rs"]
+
+# G. Long-running coding agents (12)
+[[point]]
+id = "G1"
+title = "Shard memory for a long coding session"
+weight = 3
+direction = "at_most"
+target = "layout.node_memory_limit_mb * (1 - goal.limits.headroom) / goal.density.sessions_per_shard * 1000"
+unit = "MB per 1k coding sessions"
+cheapest = "L2"
+scales = "per_shard"
+built_from = "memory_bench.py with the coding scenarios (new)"
+watches = ["crates/agentd/src/state.rs", "crates/agentd/src/session_storage.rs"]
+
+[[point]]
+id = "G2"
+title = "Turns with many model calls: overhead per call"
+weight = 3
+direction = "at_most"
+target = "goal.limits.model_call_overhead_p99_ms"
+unit = "overhead per model call p99, ms"
+cheapest = "L2"
+scales = "per_shard"
+built_from = "drive with coding scenarios, model time split out (new)"
+watches = ["crates/agentd/src/executor.rs"]
+
+[[point]]
+id = "G3"
+title = "Sessions idle for hours cost almost no memory"
+weight = 3
+direction = "at_most"
+target = "goal.limits.idle_reload_s"
+unit = "reload after unload, s"
+cheapest = "L1"
+scales = "per_shard"
+built_from = "idle unload from the memory design; fleet test (new)"
+watches = ["crates/agentd/src/state.rs", "crates/agentd/src/memwatch.rs"]
+
+[[point]]
+id = "G4"
+title = "Payloads over 256 KB stay out of the shard log"
+weight = 2
+direction = "pass"
+cheapest = "L1"
+scales = "per_shard"
+built_from = "blob references from the memory design; test (new)"
+watches = ["crates/agentd/src/session_storage.rs", "crates/agentd/src/files.rs"]
+
+[[point]]
+id = "G5"
+title = "Compaction of long contexts at scale without stalling the shard"
+weight = 1
+direction = "pass"
+cheapest = "L2"
+scales = "per_shard"
+built_from = "llmsim compaction scenario (new)"
+watches = ["crates/agentd/src/executor.rs"]
+
+[[point]]
+id = "G6"
+title = "The coding load matches real sessions"
+weight = 0
+validity = true
+direction = "at_most"
+target = "goal.limits.realism_tolerance"
+unit = "worst relative distance from the profile"
+cheapest = "L1"
+scales = "per_shard"
+built_from = "realism check over generated scenarios"
+watches = ["verifiers/agents-1m/workload"]
+
+# --- Reliability: proofs that break a running local fleet on purpose ---
+
+[[point]]
+id = "R1"
+title = "Leader killed mid model call: turn completes, the call is not repeated"
+weight = 3
+direction = "pass"
+cheapest = "L2"
+scales = "per_shard"
+built_from = "scripts/agentd/prove_leader_failover.py"
+watches = ["crates/agentd/src/node.rs", "crates/agentd/src/executor.rs", "crates/agentd/src/sm.rs"]
+
+[[point]]
+id = "R2"
+title = "A follower left far behind heals from a snapshot"
+weight = 2
+direction = "pass"
+cheapest = "L2"
+scales = "per_shard"
+built_from = "scripts/agentd/prove_follower_catchup.py"
+watches = ["crates/agentd/src/catchup.rs", "crates/agentd/src/sm.rs"]
+
+[[point]]
+id = "R3"
+title = "A follower killed under load rejoins with 0 errors"
+weight = 2
+direction = "pass"
+cheapest = "L2"
+scales = "per_shard"
+built_from = "scripts/agentd/prove_rejoin_under_load.py"
+watches = ["crates/agentd/src/node.rs", "crates/agentd/src/catchup.rs"]
+
+[[point]]
+id = "R4"
+title = "Random kill -9 of nodes with live moves: every session finishes once"
+weight = 3
+direction = "pass"
+cheapest = "L2"
+scales = "per_shard"
+built_from = "scripts/agentd/chaos.py --kills 15 --moves 100"
+watches = ["crates/agentd/src/node.rs", "crates/agentd/src/moves.rs", "crates/agentd/src/sm.rs"]
+
+[[point]]
+id = "R5"
+title = "Executors killed again and again: turns finish on others"
+weight = 2
+direction = "pass"
+cheapest = "L2"
+scales = "per_shard"
+built_from = "scripts/agentd/chaos.py --executor-kills 10"
+watches = ["crates/agentd/src/executor.rs", "crates/agentd/src/dispatch.rs"]
+
+[[point]]
+id = "R6"
+title = "The rebalancer moves sessions mid-turn without losing work"
+weight = 2
+direction = "pass"
+cheapest = "L2"
+scales = "shared"
+built_from = "scripts/agentd/prove_rebalance.py"
+watches = ["crates/agentd/src/moves.rs", "crates/agentd/src/cluster.rs"]
+
+[[point]]
+id = "R7"
+title = "A shard drained and retired under long turns"
+weight = 2
+direction = "pass"
+cheapest = "L2"
+scales = "shared"
+built_from = "scripts/agentd/prove_scale_in.py"
+watches = ["crates/agentd/src/moves.rs", "crates/agentd/src/cluster.rs"]
+
+[[point]]
+id = "R8"
+title = "Nodes and shards added and removed under load"
+weight = 2
+direction = "pass"
+cheapest = "L2"
+scales = "shared"
+built_from = "scripts/agentd/prove_topology.py"
+watches = ["crates/agentd/src/cluster.rs", "crates/agentd/src/node_control.rs"]
+
+[[point]]
+id = "R9"
+title = "An hour of production-shaped load with a node killed every 5 minutes"
+weight = 3
+direction = "pass"
+cheapest = "L2"
+scales = "per_shard"
+built_from = "scripts/agentd/soak.py --minutes 60 --kill-every 300"
+watches = ["crates/agentd/src"]
+
+[[point]]
+id = "R10"
+title = "The full gate passes run after run, not once"
+weight = 3
+direction = "at_least"
+target = "goal.limits.gate_streak"
+unit = "passing runs in a row"
+cheapest = "L4"
+scales = "shared"
+built_from = "the results journal over imported 75k runs"
+watches = ["crates/agentd/src"]
+
+# --- Durability and recoverability ---
+
+[[point]]
+id = "U1"
+title = "Protocol models hold (TLC: safe configurations pass, bug ones still fail)"
+weight = 3
+direction = "pass"
+cheapest = "L1"
+scales = "shared"
+built_from = "scripts/check-tla-models.sh"
+watches = ["tests/models/data-plane-v2"]
+
+[[point]]
+id = "U2"
+title = "Protocol simulation keeps every acknowledged write"
+weight = 2
+direction = "pass"
+cheapest = "L1"
+scales = "per_shard"
+built_from = "crates/agentd/tests/protocol_simulation.rs"
+watches = ["crates/agentd/src/sm.rs", "crates/agentd/src/wal.rs", "crates/agentd/src/ship.rs"]
+
+[[point]]
+id = "U3"
+title = "Snapshots stay within their memory bound"
+weight = 2
+direction = "pass"
+cheapest = "L1"
+scales = "per_shard"
+built_from = "crates/agentd/tests/snapshot_memory.rs"
+watches = ["crates/agentd/src/sm.rs", "crates/agentd/src/state.rs"]
+
+[[point]]
+id = "U4"
+title = "Two zones lost: the shard comes back from the store and the survivor, no started call lost"
+weight = 3
+direction = "pass"
+cheapest = "L1"
+scales = "per_shard"
+built_from = "crates/agentd-testkit/tests/recovery.rs (two_zones)"
+watches = ["crates/agentd/src/restore.rs", "crates/agentd/src/node_restore.rs", "crates/agentd/src/ship.rs"]
+
+[[point]]
+id = "U5"
+title = "Point-in-time restore drops only what came after"
+weight = 2
+direction = "pass"
+cheapest = "L1"
+scales = "per_shard"
+built_from = "crates/agentd-testkit/tests/recovery.rs (point_in_time_restore)"
+watches = ["crates/agentd/src/restore.rs", "crates/agentd/src/restore_points.rs"]
+
+[[point]]
+id = "U6"
+title = "One-org restore takes back only that org"
+weight = 2
+direction = "pass"
+cheapest = "L1"
+scales = "per_shard"
+built_from = "crates/agentd-testkit/tests/recovery.rs (one_org_restore)"
+watches = ["crates/agentd/src/restore.rs", "crates/agentd/src/tenants.rs"]
+
+[[point]]
+id = "U7"
+title = "A whole shard rebuilt from the store in time"
+weight = 2
+direction = "at_most"
+target = "goal.limits.rebuild_s"
+unit = "s"
+cheapest = "L2"
+scales = "per_shard"
+built_from = "scripts/agentd/drill.py"
+watches = ["crates/agentd/src/restore.rs", "crates/agentd/src/node_restore.rs"]
+
+[[point]]
+id = "U8"
+title = "After losing a whole shard, a leader again in time"
+weight = 2
+direction = "at_most"
+target = "goal.limits.kill_to_leader_s"
+unit = "s"
+cheapest = "L2"
+scales = "per_shard"
+built_from = "scripts/agentd/drill.py"
+watches = ["crates/agentd/src/node.rs", "crates/agentd/src/node_restore.rs"]
+
+[[point]]
+id = "U9"
+title = "Must-survive writes reach the store fast (ship-first p99)"
+weight = 2
+direction = "at_most"
+target = "goal.limits.ship_first_p99_s"
+unit = "s"
+cheapest = "L2"
+scales = "per_shard"
+built_from = "scripts/agentd/drill.py"
+watches = ["crates/agentd/src/ship.rs", "crates/agentd/src/store.rs"]
+
+[[point]]
+id = "U10"
+title = "Messages caught in the loss window are few and sent again"
+weight = 1
+direction = "at_most"
+target = "goal.limits.loss_window_share"
+unit = "share of in-flight messages"
+cheapest = "L2"
+scales = "per_shard"
+built_from = "scripts/agentd/drill.py"
+watches = ["crates/agentd/src/ship.rs"]
+
+[[point]]
+id = "U11"
+title = "Object store down for 10 minutes: no acknowledged write lost, shipping catches up"
+weight = 3
+direction = "pass"
+cheapest = "L2"
+scales = "per_shard"
+built_from = "store outage proof (new)"
+watches = ["crates/agentd/src/ship.rs", "crates/agentd/src/store_throttle.rs"]
+
+[[point]]
+id = "U12"
+title = "Disk full on a shard node: it fences itself, the shard carries on"
+weight = 2
+direction = "pass"
+cheapest = "L2"
+scales = "per_shard"
+built_from = "disk full proof (new)"
+watches = ["crates/agentd/src/wal.rs", "crates/agentd/src/node.rs"]
+
+[[point]]
+id = "U13"
+title = "Memory at 98%: a controlled restart hands leadership over, no turn lost"
+weight = 2
+direction = "pass"
+cheapest = "L2"
+scales = "per_shard"
+built_from = "memory restart proof (new)"
+watches = ["crates/agentd/src/memwatch.rs", "crates/agentd/src/pressure.rs"]
