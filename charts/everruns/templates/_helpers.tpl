@@ -284,7 +284,7 @@ is and the link to the server.
 {{- define "everruns.shardEnv" -}}
 {{- $internal := include "everruns.internalSecretName" . -}}
 {{- $server := include "everruns.name" (list . "server") -}}
-- { name: AGENTD_TOPOLOGY, value: /etc/shard/topology.json }
+- { name: AGENTD_TOPOLOGY, value: /etc/agentd/topology.json }
 - { name: AGENTD_STORE, value: {{ include "everruns.shardStore" . | quote }} }
 - { name: AGENTD_DATA_PLANE, value: local }
 - { name: AGENTD_JWKS_URL, value: {{ printf "http://%s:9000/api/.well-known/jwks.json" $server | quote }} }
