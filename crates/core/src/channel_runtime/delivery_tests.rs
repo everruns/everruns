@@ -40,6 +40,11 @@ struct Recorder {
     fail_start: bool,
     reactions: bool,
     views: bool,
+    reply_outcome: Mutex<Option<DeliveryResult>>,
+    append_outcome: Mutex<Option<DeliveryResult>>,
+    start_outcome: Mutex<Option<DeliveryResult>>,
+    replace_outcome: Mutex<Option<DeliveryResult>>,
+    after_post: Mutex<Option<Arc<dyn Fn() + Send + Sync>>>,
 }
 
 impl Recorder {
@@ -59,10 +64,28 @@ impl ChannelDeliveryAdapter for Recorder {
     async fn deliver(
         &self,
         message: &OutboundChannelMessage,
-        _: &DeliveryContext,
+        context: &DeliveryContext,
     ) -> DeliveryResult {
         self.push(Call::Post(message.text.clone()));
-        DeliveryResult::Ok
+        let result = self
+            .reply_outcome
+            .lock()
+            .unwrap()
+            .clone()
+            .unwrap_or(DeliveryResult::Ok);
+        if matches!(result, DeliveryResult::Ok) {
+            if let Some(sink) = &context.receipts
+                && sink.confirmed("C1:accepted").await.is_err()
+            {
+                return DeliveryResult::Unknown {
+                    confirmed: vec!["C1:accepted".into()],
+                };
+            }
+            if let Some(callback) = self.after_post.lock().unwrap().as_ref() {
+                callback();
+            }
+        }
+        result
     }
     async fn send_ack(&self, _: &str, _: &str, _: &DeliveryContext) -> DeliveryResult {
         DeliveryResult::Ok
@@ -113,6 +136,9 @@ impl ChannelReactionSurface for Recorder {
         _: &DeliveryContext,
     ) -> Result<Option<String>, DeliveryResult> {
         self.push(Call::Post(message.text.clone()));
+        if let Some(outcome) = self.reply_outcome.lock().unwrap().clone() {
+            return Err(outcome);
+        }
         match self.reply_failure {
             Some(error) => Err(DeliveryResult::PermanentError(error.into())),
             None => Ok(Some("C1:posted".into())),
@@ -161,6 +187,16 @@ impl ChannelProgressSurface for Recorder {
 
 #[async_trait]
 impl ChannelStreamDelivery for Recorder {
+    async fn start_checked(&self, context: &DeliveryContext) -> Result<String, DeliveryResult> {
+        if let Some(outcome) = self.start_outcome.lock().unwrap().clone() {
+            self.push(Call::Start);
+            return Err(outcome);
+        }
+        self.start(context)
+            .await
+            .map_err(DeliveryResult::TransientError)
+    }
+
     async fn start(&self, _: &DeliveryContext) -> Result<String, String> {
         if self.fail_start {
             return Err("no streams today".into());
@@ -170,11 +206,19 @@ impl ChannelStreamDelivery for Recorder {
     }
     async fn append(&self, _: &str, text: &str, _: &DeliveryContext) -> DeliveryResult {
         self.push(Call::Append(text.into()));
-        DeliveryResult::Ok
+        self.append_outcome
+            .lock()
+            .unwrap()
+            .clone()
+            .unwrap_or(DeliveryResult::Ok)
     }
     async fn replace(&self, _: &str, text: &str, _: &DeliveryContext) -> DeliveryResult {
         self.push(Call::Replace(text.into()));
-        DeliveryResult::Ok
+        self.replace_outcome
+            .lock()
+            .unwrap()
+            .clone()
+            .unwrap_or(DeliveryResult::Ok)
     }
     async fn stop(&self, _: &str, _: &DeliveryContext) -> DeliveryResult {
         self.push(Call::Stop);
@@ -973,3 +1017,6 @@ async fn without_a_view_surface_a_tool_view_draws_nothing() {
     delivery.observe(&view_completed(None)).await;
     assert!(recorder.calls().is_empty());
 }
+
+#[path = "checkpoint_delivery_tests.rs"]
+mod checkpoint_tests;

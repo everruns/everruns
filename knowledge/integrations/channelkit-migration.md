@@ -33,11 +33,25 @@ The library prerequisites are implemented on Channelkit main at
 with passing branch quality, live API and native-package checks. The owning
 [adoption contract](https://github.com/everruns/channelkit/blob/1367eebb1b48219b7ce4d66e505130ff6dbe3b9a/knowledge/operations/everruns-adoption.md)
 records the provider work and evidence limits. This is a qualified source revision,
-not a claim that the existing registry alpha contains the new APIs. The next Everruns
-implementation steps are delivery outcomes/checkpoints and the integrations bridge.
+not by itself a registry qualification. Rust `0.1.0-alpha.2`, frozen at
+`0c9e7c7ea3ec8a3e316f5f6f0926b369575f1906`, now contains those APIs and the receipt
+observer seam. Its seven registry artifacts, packaged guides/skill, versioned Rustdoc
+and registry-only consumer are verified. See the
+[published Slack guide](https://docs.rs/channelkit-slack/0.1.0-alpha.2/channelkit_slack/guide/).
+The Everruns implementation continues with output checkpoints and the shared bridge;
+additional fixes discovered during parity qualification require a later qualified alpha.
 The current Rust requirements fit the Everruns toolchain, and both use the reqwest
 0.13 family. Qualify the actual frozen lockfile, license policy, packaged guides and
 registry-only dependency resolution; source compilation alone is insufficient.
+
+## Implementation progress
+
+The delivery contract now retains rate limits and unknown/partial acceptance.
+Opting drivers use a versioned, fenced output ledger in the shared host, Memory,
+serve SQLite and server PostgreSQL. Native handles/prefixes and confirmed parts
+survive restart; unresolved intents stay pending instead of being reposted. This
+prerequisite does not yet switch the Slack transport. The owning
+[channel contract](channels.md#output-delivery-checkpoints) defines its guarantees.
 
 ## Existing architecture and the boundary to retain
 

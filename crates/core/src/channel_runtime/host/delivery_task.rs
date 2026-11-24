@@ -6,6 +6,45 @@ pub(super) async fn run_delivery(
     turn: Delivery,
     mut events: ChannelEventStream,
 ) {
+    let fenced = inner.store.supports_delivery_checkpoints();
+    if turn.driver.requires_checkpoint() && !fenced {
+        warn!(session_id = %turn.session_id, "channel: driver requires an output-ledger store; delivery retained");
+        return;
+    }
+    if fenced
+        && inner
+            .store
+            .renew_pending(
+                &turn.session_id,
+                &turn.input_message_id,
+                &inner.holder,
+                inner.lease,
+            )
+            .await
+            .is_err()
+    {
+        warn!(session_id = %turn.session_id, "channel: delivery ownership lost before dispatch; no provider writes attempted");
+        return;
+    }
+    if fenced && !turn.driver.requires_checkpoint() {
+        // Check before admission can clear the row, and before a legacy adapter
+        // performs any writes. Changing the driver must not erase its output ledger.
+        match inner
+            .store
+            .delivery_checkpoint(&turn.session_id, &turn.input_message_id)
+            .await
+        {
+            Ok(None) => {}
+            Ok(Some(_)) => {
+                warn!(session_id = %turn.session_id, "channel: legacy driver cannot replay checkpointed output; delivery retained");
+                return;
+            }
+            Err(_) => {
+                warn!(session_id = %turn.session_id, "channel: output checkpoint unavailable; delivery retained");
+                return;
+            }
+        }
+    }
     if !admission::prepare_delivery(&inner, &turn).await {
         return;
     }
@@ -33,6 +72,31 @@ pub(super) async fn run_delivery(
         options,
     );
     delivery.set_observer(inner.delivery_observer.clone());
+    let checkpointed = driver.requires_checkpoint();
+    if checkpointed {
+        if let Err(error) = delivery
+            .enable_checkpoints(inner.store.clone(), inner.holder.clone(), &session_id)
+            .await
+        {
+            warn!(%session_id, %error, "channel: delivery checkpoint unavailable; no provider writes attempted");
+            return;
+        }
+        if !save_links(&inner, &channel, &session_id, &mut delivery).await {
+            return;
+        }
+        if delivery.needs_reconciliation().await {
+            delivery.close_uncertain_streams().await;
+            warn!(%session_id, "channel: uncertain output retained for reconciliation");
+            return;
+        }
+        if delivery.is_finished() {
+            let _ = inner
+                .store
+                .complete_delivery(&session_id, &input_message_id, &inner.holder)
+                .await;
+            return;
+        }
+    }
     let mut flush = tokio::time::interval(inner.flush_interval);
     flush.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     // Renew well before the lease runs out, so a slow store round trip never
@@ -41,40 +105,59 @@ pub(super) async fn run_delivery(
     renew.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     renew.tick().await;
 
-    loop {
-        tokio::select! {
-            event = events.next() => {
-                let Some(event) = event else {
-                    // The stream ended without a terminal event: the host is
-                    // shutting down. Leave the pending delivery for recovery.
-                    delivery.flush().await;
-                    return;
-                };
-                learn_reacted_key(&inner, &channel, &session_id, &mut delivery, &event).await;
-                let step = delivery.observe(&event).await;
-                save_links(&inner, &channel, &session_id, &mut delivery).await;
-                if let DeliveryStep::Finished(_) = step {
-                    break;
+    // Keep ownership alive while a provider call or its retry delay is awaiting I/O.
+    // Cancelling this future after a lost lease leaves its committed intent uncertain.
+    let finished = {
+        let pumping = async {
+            loop {
+                tokio::select! {
+                    event = events.next() => {
+                        let Some(event) = event else {
+                            delivery.flush().await;
+                            return false;
+                        };
+                        learn_reacted_key(&inner, &channel, &session_id, &mut delivery, &event).await;
+                        let step = delivery.observe(&event).await;
+                        if !save_links(&inner, &channel, &session_id, &mut delivery).await && checkpointed { return false; }
+                        if let DeliveryStep::Finished(_) = step { return true; }
+                    }
+                    _ = flush.tick(), if delivery.has_pending_work() => delivery.flush().await,
                 }
             }
-            _ = flush.tick(), if delivery.has_pending_work() => delivery.flush().await,
-            _ = renew.tick() => {
-                if let Err(error) = inner
-                    .store
-                    .renew_pending(&session_id, &input_message_id, &inner.holder, inner.lease)
-                    .await
-                {
-                    warn!(%session_id, %error, "channel: could not renew a delivery lease");
+        };
+        tokio::pin!(pumping);
+        loop {
+            tokio::select! {
+                finished = &mut pumping => break finished,
+                _ = renew.tick() => {
+                    if let Err(error) = inner.store.renew_pending(&session_id, &input_message_id, &inner.holder, inner.lease).await {
+                        warn!(%session_id, %error, "channel: delivery ownership lost; writes stopped");
+                        return;
+                    }
                 }
             }
         }
+    };
+    if !finished {
+        return;
     }
 
-    if let Err(error) = inner
-        .store
-        .clear_pending(&session_id, &input_message_id)
-        .await
-    {
+    if delivery.needs_recovery().await {
+        warn!(%session_id, "channel: output retained for retry or reconciliation");
+        return;
+    }
+    let completion = if fenced {
+        inner
+            .store
+            .complete_delivery(&session_id, &input_message_id, &inner.holder)
+            .await
+    } else {
+        inner
+            .store
+            .clear_pending(&session_id, &input_message_id)
+            .await
+    };
+    if let Err(error) = completion {
         warn!(%session_id, %error, "channel: could not clear a pending delivery");
     }
 }
@@ -122,7 +205,8 @@ async fn save_links(
     channel: &ResolvedChannel,
     session_id: &str,
     delivery: &mut TurnDelivery,
-) {
+) -> bool {
+    let mut saved = true;
     for (key, message_id) in delivery.take_links() {
         let message = super::LinkedMessage {
             session_id: session_id.to_string(),
@@ -134,6 +218,8 @@ async fn save_links(
             .await
         {
             warn!(%session_id, %error, "channel: could not link a posted message");
+            saved = false;
         }
     }
+    saved
 }

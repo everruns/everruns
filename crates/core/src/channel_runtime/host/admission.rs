@@ -16,11 +16,20 @@ pub(super) async fn prepare_delivery(inner: &Inner, turn: &Delivery) -> bool {
         match status {
             Ok(Ok(SendResolution::Assigned { steered: false, .. })) => return true,
             Ok(Ok(SendResolution::Assigned { steered: true, .. } | SendResolution::Rejected)) => {
-                if let Err(error) = inner
-                    .store
-                    .clear_pending(&turn.session_id, &turn.input_message_id)
-                    .await
+                let completion = if turn.driver.requires_checkpoint()
+                    || inner.store.supports_delivery_checkpoints()
                 {
+                    inner
+                        .store
+                        .complete_delivery(&turn.session_id, &turn.input_message_id, &inner.holder)
+                        .await
+                } else {
+                    inner
+                        .store
+                        .clear_pending(&turn.session_id, &turn.input_message_id)
+                        .await
+                };
+                if let Err(error) = completion {
                     warn!(%error, "channel: could not clear settled admission delivery");
                 }
                 return false;

@@ -25,7 +25,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
-use super::{ChannelError, DeliveryTarget};
+use super::{ChannelError, DeliveryCheckpoint, DeliveryTarget};
 
 /// A turn that still owes its conversation a reply.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -42,6 +42,49 @@ pub struct PendingDelivery {
 /// Channel host persistence.
 #[async_trait]
 pub trait ChannelStore: Send + Sync {
+    /// Whether this backend can contain output ledgers. Stores implementing the
+    /// checkpoint methods must return true, including when a legacy driver is
+    /// active, so a rollback cannot ignore previously persisted output.
+    fn supports_delivery_checkpoints(&self) -> bool {
+        false
+    }
+
+    /// Load the output ledger, separately from credentials and routing configuration.
+    async fn delivery_checkpoint(
+        &self,
+        _session_id: &str,
+        _input_message_id: &str,
+    ) -> Result<Option<DeliveryCheckpoint>, ChannelError> {
+        Err(ChannelError::Session(
+            "channel store does not implement output checkpoints".into(),
+        ))
+    }
+
+    /// Atomically fence by the current, unexpired delivery lease before every write.
+    async fn save_delivery_checkpoint(
+        &self,
+        _session_id: &str,
+        _input_message_id: &str,
+        _holder: &str,
+        _checkpoint: &DeliveryCheckpoint,
+    ) -> Result<(), ChannelError> {
+        Err(ChannelError::Session(
+            "channel store does not implement output checkpoints".into(),
+        ))
+    }
+
+    /// A stale holder must not clear a successor's pending delivery and output ledger.
+    async fn complete_delivery(
+        &self,
+        session_id: &str,
+        input_message_id: &str,
+        _holder: &str,
+    ) -> Result<(), ChannelError> {
+        let _ = (session_id, input_message_id);
+        Err(ChannelError::Session(
+            "channel store does not implement fenced delivery completion".into(),
+        ))
+    }
     /// Start delivery only after its durable state is committed. Transactional
     /// stores override this to discard the task on rollback.
     fn spawn_delivery(&self, task: futures::future::BoxFuture<'static, ()>) {
@@ -65,7 +108,8 @@ pub trait ChannelStore: Send + Sync {
     /// retry of a delivery already accepted.
     async fn first_sighting(&self, channel: &str, dedup_key: &str) -> Result<bool, ChannelError>;
 
-    /// Save a pending delivery, held by `holder` for `lease`.
+    /// Insert a pending delivery, held by `holder` for `lease`. Existing
+    /// deliveries retain their owner and checkpoint; takeover uses `claim_pending`.
     async fn save_pending(
         &self,
         pending: &PendingDelivery,
@@ -164,12 +208,26 @@ struct MemoryState {
     seen: HashSet<(String, String)>,
     seen_order: VecDeque<(String, String)>,
     pending: Vec<PendingDelivery>,
+    checkpoints: HashMap<(String, String), DeliveryCheckpoint>,
+    holders: HashMap<(String, String), (String, web_time::Instant)>,
     links: HashMap<(String, String), LinkedMessage>,
 }
 
 impl MemoryChannelStore {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    #[cfg(test)]
+    pub(super) async fn pending_for_test(&self) -> Result<Vec<PendingDelivery>, ChannelError> {
+        Ok(self.state().pending.clone())
+    }
+
+    #[cfg(test)]
+    pub(super) fn expire_leases_for_test(&self) {
+        for (_, until) in self.state().holders.values_mut() {
+            *until = web_time::Instant::now();
+        }
     }
 
     fn state(&self) -> std::sync::MutexGuard<'_, MemoryState> {
@@ -181,6 +239,68 @@ impl MemoryChannelStore {
 
 #[async_trait]
 impl ChannelStore for MemoryChannelStore {
+    fn supports_delivery_checkpoints(&self) -> bool {
+        true
+    }
+
+    async fn delivery_checkpoint(
+        &self,
+        session_id: &str,
+        input_message_id: &str,
+    ) -> Result<Option<DeliveryCheckpoint>, ChannelError> {
+        Ok(self
+            .state()
+            .checkpoints
+            .get(&(session_id.into(), input_message_id.into()))
+            .cloned())
+    }
+
+    async fn save_delivery_checkpoint(
+        &self,
+        session_id: &str,
+        input_message_id: &str,
+        holder: &str,
+        checkpoint: &DeliveryCheckpoint,
+    ) -> Result<(), ChannelError> {
+        let mut state = self.state();
+        let key = (session_id.into(), input_message_id.into());
+        if !state
+            .holders
+            .get(&key)
+            .is_some_and(|(owner, until)| owner == holder && *until > web_time::Instant::now())
+        {
+            return Err(ChannelError::Session(
+                "delivery lease is no longer held".into(),
+            ));
+        }
+        state.checkpoints.insert(key, checkpoint.clone());
+        Ok(())
+    }
+
+    async fn complete_delivery(
+        &self,
+        session_id: &str,
+        input_message_id: &str,
+        holder: &str,
+    ) -> Result<(), ChannelError> {
+        let mut state = self.state();
+        let key = (session_id.into(), input_message_id.into());
+        if !state
+            .holders
+            .get(&key)
+            .is_some_and(|(owner, until)| owner == holder && *until > web_time::Instant::now())
+        {
+            return Err(ChannelError::Session(
+                "delivery lease is no longer held".into(),
+            ));
+        }
+        state.pending.retain(|pending| {
+            pending.session_id != session_id || pending.input_message_id != input_message_id
+        });
+        state.holders.remove(&key);
+        state.checkpoints.remove(&key);
+        Ok(())
+    }
     async fn session_for(&self, channel: &str, key: &str) -> Result<Option<String>, ChannelError> {
         Ok(self
             .state()
@@ -218,19 +338,46 @@ impl ChannelStore for MemoryChannelStore {
         Ok(true)
     }
 
-    // One process: leases have nobody to exclude.
+    // The in-process store also fences independent hosts sharing this instance.
     async fn save_pending(
         &self,
         pending: &PendingDelivery,
-        _holder: &str,
-        _lease: Duration,
+        holder: &str,
+        lease: Duration,
     ) -> Result<(), ChannelError> {
         let mut state = self.state();
-        state.pending.retain(|existing| {
-            !(existing.session_id == pending.session_id
-                && existing.input_message_id == pending.input_message_id)
-        });
+        if state.pending.iter().any(|existing| {
+            existing.session_id == pending.session_id
+                && existing.input_message_id == pending.input_message_id
+        }) {
+            return Ok(());
+        }
         state.pending.push(pending.clone());
+        state.holders.insert(
+            (pending.session_id.clone(), pending.input_message_id.clone()),
+            (holder.into(), web_time::Instant::now() + lease),
+        );
+        Ok(())
+    }
+
+    async fn renew_pending(
+        &self,
+        session_id: &str,
+        input_message_id: &str,
+        holder: &str,
+        lease: Duration,
+    ) -> Result<(), ChannelError> {
+        let mut state = self.state();
+        let key = (session_id.into(), input_message_id.into());
+        let Some((owner, until)) = state.holders.get_mut(&key) else {
+            return Err(ChannelError::Session("delivery lease is absent".into()));
+        };
+        if owner != holder || *until <= web_time::Instant::now() {
+            return Err(ChannelError::Session(
+                "delivery lease is no longer held".into(),
+            ));
+        }
+        *until = web_time::Instant::now() + lease;
         Ok(())
     }
 
@@ -239,18 +386,58 @@ impl ChannelStore for MemoryChannelStore {
         session_id: &str,
         input_message_id: &str,
     ) -> Result<(), ChannelError> {
-        self.state().pending.retain(|existing| {
+        let mut state = self.state();
+        state.pending.retain(|existing| {
             !(existing.session_id == session_id && existing.input_message_id == input_message_id)
         });
+        let key = (session_id.into(), input_message_id.into());
+        state.holders.remove(&key);
+        state.checkpoints.remove(&key);
         Ok(())
     }
 
     async fn claim_pending(
         &self,
-        _holder: &str,
-        _lease: Duration,
+        holder: &str,
+        lease: Duration,
     ) -> Result<Vec<PendingDelivery>, ChannelError> {
-        Ok(self.state().pending.clone())
+        let mut state = self.state();
+        let now = web_time::Instant::now();
+        let pending = state
+            .pending
+            .iter()
+            .filter(|pending| {
+                state
+                    .holders
+                    .get(&(pending.session_id.clone(), pending.input_message_id.clone()))
+                    .is_none_or(|(_, until)| *until <= now)
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        for pending in &pending {
+            state.holders.insert(
+                (pending.session_id.clone(), pending.input_message_id.clone()),
+                (holder.into(), now + lease),
+            );
+        }
+        Ok(pending)
+    }
+
+    async fn release_pending(
+        &self,
+        session_id: &str,
+        input_message_id: &str,
+        holder: &str,
+    ) -> Result<(), ChannelError> {
+        let mut state = self.state();
+        if let Some((owner, until)) = state
+            .holders
+            .get_mut(&(session_id.into(), input_message_id.into()))
+            && owner == holder
+        {
+            *until = web_time::Instant::now();
+        }
+        Ok(())
     }
 
     async fn link_message(

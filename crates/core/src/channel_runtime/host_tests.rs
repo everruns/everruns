@@ -201,6 +201,8 @@ impl ChannelSessionPort for FakePort {
 /// `{"decide": "<call>", "session", "approved"}` a decision.
 #[derive(Default)]
 struct TestDriver {
+    checkpointed: bool,
+    outcome: Option<DeliveryResult>,
     posts: Mutex<Vec<(String, String)>>,
     /// Texts the driver declines in `admit`.
     declined: Mutex<Vec<String>>,
@@ -219,6 +221,9 @@ impl TestDriver {
 
 #[async_trait]
 impl ChannelDeliveryAdapter for TestDriver {
+    fn requires_checkpoint(&self) -> bool {
+        self.checkpointed
+    }
     fn platform(&self) -> &str {
         "test"
     }
@@ -231,7 +236,7 @@ impl ChannelDeliveryAdapter for TestDriver {
             .lock()
             .unwrap()
             .push((message.thread_ref.clone(), message.text.clone()));
-        DeliveryResult::Ok
+        self.outcome.clone().unwrap_or(DeliveryResult::Ok)
     }
     async fn send_ack(&self, _: &str, _: &str, _: &DeliveryContext) -> DeliveryResult {
         DeliveryResult::Ok
@@ -462,7 +467,7 @@ async fn a_message_starts_a_turn_and_its_reply_reaches_the_thread() {
     })
     .await;
     eventually("the pending delivery to clear", || {
-        futures::executor::block_on(f.store.claim_pending("test", DEFAULT_DELIVERY_LEASE))
+        futures::executor::block_on(f.store.pending_for_test())
             .unwrap()
             .is_empty()
     })
@@ -489,13 +494,7 @@ async fn a_channel_without_replies_runs_the_turn_and_posts_nothing() {
     port.reply("session_1", "turn_1", "answer");
     tokio::time::sleep(Duration::from_millis(50)).await;
     assert!(driver.posts().is_empty());
-    assert!(
-        store
-            .claim_pending("test", DEFAULT_DELIVERY_LEASE)
-            .await
-            .unwrap()
-            .is_empty()
-    );
+    assert!(store.pending_for_test().await.unwrap().is_empty());
 }
 
 #[tokio::test]
@@ -582,7 +581,7 @@ async fn a_delivery_cut_short_is_finished_by_recover() {
     // The turn starts, then the process goes away before it ends.
     port.emit("session_1", event(1, "turn_1", TURN_STARTED, json!({})));
     eventually("the pending delivery", || {
-        futures::executor::block_on(store.claim_pending("test", DEFAULT_DELIVERY_LEASE))
+        futures::executor::block_on(store.pending_for_test())
             .unwrap()
             .len()
             == 1
@@ -590,10 +589,7 @@ async fn a_delivery_cut_short_is_finished_by_recover() {
     .await;
     port.disconnect();
     tokio::time::sleep(Duration::from_millis(20)).await;
-    let pending = store
-        .claim_pending("test", DEFAULT_DELIVERY_LEASE)
-        .await
-        .unwrap();
+    let pending = store.pending_for_test().await.unwrap();
     assert_eq!(
         pending.len(),
         1,
@@ -614,6 +610,7 @@ async fn a_delivery_cut_short_is_finished_by_recover() {
     );
     port.emit("session_1", event(3, "turn_1", TURN_COMPLETED, json!({})));
 
+    store.expire_leases_for_test();
     let second = fixture_with(port.clone(), store.clone(), SessionBinding::Thread);
     assert_eq!(second.host.recover().await.unwrap(), 1);
     eventually("the recovered reply", || {
@@ -621,7 +618,7 @@ async fn a_delivery_cut_short_is_finished_by_recover() {
     })
     .await;
     eventually("the pending delivery to clear", || {
-        futures::executor::block_on(store.claim_pending("test", DEFAULT_DELIVERY_LEASE))
+        futures::executor::block_on(store.pending_for_test())
             .unwrap()
             .is_empty()
     })
@@ -645,14 +642,9 @@ async fn recover_drops_deliveries_of_channels_no_longer_configured() {
         )
         .await
         .unwrap();
+    f.store.expire_leases_for_test();
     assert_eq!(f.host.recover().await.unwrap(), 0);
-    assert!(
-        f.store
-            .claim_pending("test", DEFAULT_DELIVERY_LEASE)
-            .await
-            .unwrap()
-            .is_empty()
-    );
+    assert!(f.store.pending_for_test().await.unwrap().is_empty());
 }
 
 #[tokio::test]
@@ -1169,15 +1161,9 @@ async fn recover_keeps_deliveries_whose_channel_cannot_be_read_now() {
             }))
             .build()
     };
+    store.expire_leases_for_test();
     assert_eq!(host(true).recover().await.unwrap(), 0);
-    assert_eq!(
-        store
-            .claim_pending("test", DEFAULT_DELIVERY_LEASE)
-            .await
-            .unwrap()
-            .len(),
-        1
-    );
+    assert_eq!(store.pending_for_test().await.unwrap().len(), 1);
     assert_eq!(host(false).recover().await.unwrap(), 1);
 }
 
@@ -1324,14 +1310,14 @@ async fn deferred_admission_is_acknowledged_and_steering_or_rejection_clears_its
         .expect("acknowledgement must not wait for execution");
         assert_eq!(response.status, 200);
         eventually("admission delivery to be retained", || {
-            !futures::executor::block_on(f.store.claim_pending("test", DEFAULT_DELIVERY_LEASE))
+            !futures::executor::block_on(f.store.pending_for_test())
                 .unwrap()
                 .is_empty()
         })
         .await;
         f.port.state().resolution = Some(resolution);
         eventually("settled admission delivery to clear", || {
-            futures::executor::block_on(f.store.claim_pending("test", DEFAULT_DELIVERY_LEASE))
+            futures::executor::block_on(f.store.pending_for_test())
                 .unwrap()
                 .is_empty()
         })

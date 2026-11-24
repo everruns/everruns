@@ -10,7 +10,9 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use everruns_contracts::runtime::channel::{ChannelError, DeliveryTarget};
-use everruns_core::channel_runtime::{ChannelStore, LinkedMessage, PendingDelivery};
+use everruns_core::channel_runtime::{
+    ChannelStore, DeliveryCheckpoint, LinkedMessage, PendingDelivery,
+};
 use uuid::Uuid;
 
 use crate::storage::{ChannelPendingDeliveryRow, StorageBackend};
@@ -45,6 +47,54 @@ fn session_string(session_id: Uuid) -> String {
 
 #[async_trait]
 impl ChannelStore for PgChannelStore {
+    fn supports_delivery_checkpoints(&self) -> bool {
+        true
+    }
+
+    async fn delivery_checkpoint(
+        &self,
+        session_id: &str,
+        input_message_id: &str,
+    ) -> Result<Option<DeliveryCheckpoint>, ChannelError> {
+        self.db
+            .channel_delivery_checkpoint(session_uuid(session_id)?, input_message_id)
+            .await?
+            .map(serde_json::from_value)
+            .transpose()
+            .map_err(|_| ChannelError::Session("invalid delivery checkpoint".into()))
+    }
+
+    async fn save_delivery_checkpoint(
+        &self,
+        session_id: &str,
+        input_message_id: &str,
+        holder: &str,
+        checkpoint: &DeliveryCheckpoint,
+    ) -> Result<(), ChannelError> {
+        let state = serde_json::to_value(checkpoint).map_err(anyhow::Error::from)?;
+        Ok(self
+            .db
+            .save_channel_delivery_checkpoint(
+                session_uuid(session_id)?,
+                input_message_id,
+                holder,
+                &state,
+            )
+            .await?)
+    }
+
+    async fn complete_delivery(
+        &self,
+        session_id: &str,
+        input_message_id: &str,
+        holder: &str,
+    ) -> Result<(), ChannelError> {
+        Ok(self
+            .db
+            .complete_channel_delivery(session_uuid(session_id)?, input_message_id, holder)
+            .await?)
+    }
+
     fn spawn_delivery(&self, task: futures::future::BoxFuture<'static, ()>) {
         crate::storage::transaction::spawn_after_commit(task);
     }
@@ -149,10 +199,25 @@ impl ChannelStore for PgChannelStore {
                 }),
                 // Unreadable now means unreadable on every later claim too.
                 Err(error) => {
-                    tracing::warn!(%error, session_id = %row.session_id, "channel host: dropping a pending delivery with an unreadable target");
-                    self.db
-                        .clear_channel_pending_delivery(row.session_id, &row.input_message_id)
-                        .await?;
+                    tracing::warn!(%error, session_id = %row.session_id, "channel host: unreadable delivery target; output ledgers are retained");
+                    if self
+                        .db
+                        .channel_delivery_checkpoint(row.session_id, &row.input_message_id)
+                        .await?
+                        .is_some()
+                    {
+                        self.db
+                            .release_channel_pending_delivery(
+                                row.session_id,
+                                &row.input_message_id,
+                                holder,
+                            )
+                            .await?;
+                    } else {
+                        self.db
+                            .clear_channel_pending_delivery(row.session_id, &row.input_message_id)
+                            .await?;
+                    }
                 }
             }
         }
