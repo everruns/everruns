@@ -114,8 +114,83 @@ pub enum SessionCommand {
 /// A retained command's immutable request fingerprint and reply.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CommandReceipt {
+    /// The command's fingerprint, or its digest ([`fingerprint_digest`]).
     pub fingerprint: Value,
     pub value: Value,
+}
+
+/// The key of a fingerprint kept as its digest.
+const DIGEST_KEY: &str = "$fingerprint_sha256";
+
+/// `fingerprint` as a digest a host may retain in its place.
+///
+/// Decision: an admission's fingerprint is the whole message, so a host
+/// that keeps the full value holds every recent message twice (a heap
+/// profile of agentd showed these receipts at 50-80 MB a node). A digest
+/// answers the same question, whether a retry carries the same input.
+/// It hashes the value canonically (object keys sorted), as `Value`
+/// equality ignores key order.
+pub fn fingerprint_digest(fingerprint: &Value) -> Value {
+    json!({ DIGEST_KEY: digest_hex(fingerprint) })
+}
+
+fn digest_hex(value: &Value) -> String {
+    use sha2::Digest;
+    fn feed(h: &mut sha2::Sha256, value: &Value) {
+        let len = |h: &mut sha2::Sha256, n: usize| h.update((n as u64).to_le_bytes());
+        match value {
+            Value::Null => h.update(b"n"),
+            Value::Bool(b) => h.update(if *b { b"t" } else { b"f" }),
+            Value::Number(n) => {
+                let text = n.to_string();
+                h.update(b"#");
+                len(h, text.len());
+                h.update(text.as_bytes());
+            }
+            Value::String(text) => {
+                h.update(b"s");
+                len(h, text.len());
+                h.update(text.as_bytes());
+            }
+            Value::Array(items) => {
+                h.update(b"[");
+                len(h, items.len());
+                items.iter().for_each(|item| feed(h, item));
+            }
+            Value::Object(map) => {
+                h.update(b"{");
+                len(h, map.len());
+                let mut keys: Vec<&String> = map.keys().collect();
+                keys.sort();
+                for key in keys {
+                    len(h, key.len());
+                    h.update(key.as_bytes());
+                    feed(h, &map[key]);
+                }
+            }
+        }
+    }
+    let mut h = sha2::Sha256::new();
+    feed(&mut h, value);
+    hex_lower(&h.finalize())
+}
+
+fn hex_lower(bytes: &[u8]) -> String {
+    use std::fmt::Write;
+    bytes.iter().fold(String::with_capacity(64), |mut out, b| {
+        let _ = write!(out, "{b:02x}");
+        out
+    })
+}
+
+/// Whether a retained `fingerprint` (full or digest) is `current`'s.
+fn same_fingerprint(retained: &Value, current: &Value) -> bool {
+    match retained.get(DIGEST_KEY).and_then(Value::as_str) {
+        Some(digest) if retained.as_object().is_some_and(|m| m.len() == 1) => {
+            digest == digest_hex(current)
+        }
+        _ => retained == current,
+    }
 }
 
 /// Bounded authority facts captured in the same transaction as the command.
@@ -401,7 +476,7 @@ pub fn prepare(
             // feature may already contain arbitrary metadata at this key.
             causal::normalize_fingerprint(&mut fingerprint);
         }
-        if fingerprint != plan.fingerprint {
+        if !same_fingerprint(&fingerprint, &plan.fingerprint) {
             return Err(CommandError::Conflict(
                 "command identity reused with different input",
             ));

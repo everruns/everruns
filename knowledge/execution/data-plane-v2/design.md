@@ -2476,6 +2476,25 @@ and peak node memory 10.1 to 11.5 GB (80% of 14 GiB, down from 13.7 GB);
 one-shard soak (`scripts/agentd/shard_soak.py`) is how the next change of
 this kind is caught before a 75k run.
 
+**Bounded memory (2026-11-23).** At the gate's peaks a node counted only
+about 30% of its memory (resident events and the Raft log), so a
+memory problem showed only under real load. The memory design, approved by
+the user on 2026-11-23, makes every large holder either capped or bounded:
+payloads over 256 KB go to the object store as references
+(`payload.rs`); idle sessions unload after 10 minutes; a shard goes Full,
+Shedding, then Emergency (95%: no new turns), and a node that reaches 98%
+restarts itself while its peers are up (`pressure.rs`); executors take
+turns by free memory and hand their newest turns away at 95%
+(`memwatch::turn_credits`). A jemalloc heap profile of the local soak found
+three large uncounted holders, now fixed: axum rebuilding its route table
+per connection (about 280 MB after a peer's kill, when its streams
+reconnected), admission receipts holding each recent message again (now a
+digest, `session_commands::fingerprint_digest`), and events taking 1.5
+times their encoded size. `agentd_memory_bytes{source}` reports the
+ledger; the remainder (`unaccounted`) is the number the soak gates on. The
+local soak at the gate's snapshot spacing (`--snapshot-every 60000`) now
+reproduces the phase 2 kills on the pre-fix build (6 kills at scale 0.125).
+
 ### Corrections after the architecture review (2026-11-09)
 
 A review of the merged steps 1 to 3 against the code, not the plan, found

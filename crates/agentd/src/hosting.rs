@@ -513,6 +513,12 @@ impl SessionHosting for RaftHosting {
     }
 
     async fn command(&self, session: SessionId, command: SessionCommand) -> Result<Value> {
+        // Client input never names a stored payload (`payload.rs`).
+        if serde_json::to_string(&command).is_ok_and(|text| crate::payload::forged_text(&text)) {
+            return Err(AgentLoopError::Configuration(
+                "input holds a reserved payload reference".into(),
+            ));
+        }
         let definition = match &command {
             SessionCommand::Create { binding } => {
                 let binding: SessionBinding =
@@ -535,6 +541,7 @@ impl SessionHosting for RaftHosting {
                     definition,
                     now_ms: now_ms(),
                     seed: EventId::new(),
+                    blobs: false,
                 },
             )
             .await?;
@@ -962,6 +969,7 @@ impl Ports {
                     request,
                     expected,
                     now_ms: now_ms(),
+                    blobs: false,
                 },
                 reply: None,
             })
@@ -1037,6 +1045,7 @@ impl Ports {
                 request,
                 expected,
                 now_ms: now_ms(),
+                blobs: false,
             })
             .await
             .map_err(|e| backend(e.to_string()))?;
@@ -1082,6 +1091,14 @@ impl Ports {
     /// short of `limit` with more to read.
     async fn window(&self, after: i32, limit: usize) -> Result<(Vec<Event>, i32, bool)> {
         let (mut events, high, partial) = self.window_applied(after, limit).await?;
+        // Payloads stored by reference (`payload.rs`) are read back here:
+        // Engine builds model input from them.
+        self.inner
+            .caught_up(self.session)
+            .await?
+            .resolved(self.session, &mut events)
+            .await
+            .map_err(|e| AgentLoopError::store(e.to_string()))?;
         let pending = self.pending_after(high);
         let Some(last) = pending.last().and_then(|e| e.sequence) else {
             return Ok((events, high, partial));

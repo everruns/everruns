@@ -126,14 +126,7 @@ pub struct Stats {
     pub metrics: crate::metrics::MetricsReport,
 }
 
-/// This process's resident set size, from `/proc` (0 elsewhere).
-pub(crate) fn rss_mb() -> u64 {
-    std::fs::read_to_string("/proc/self/statm")
-        .ok()
-        .and_then(|s| s.split_whitespace().nth(1)?.parse::<u64>().ok())
-        .map(|pages| pages * 4096 / (1024 * 1024))
-        .unwrap_or(0)
-}
+pub(crate) use crate::memwatch::rss_mb;
 
 /// One node's resources and latencies, for its leader's minute report
 /// (`GET /shard/usage`, `node_control::report_minute`).
@@ -471,13 +464,7 @@ async fn metrics(State(node): State<Arc<Node>>) -> impl IntoResponse {
         "Pages the allocator holds resident, including kept free pages and metadata (jemalloc).",
         (heap.resident_mb << 20) as f64,
     );
-    // What the node does not account for: live bytes beyond its resident
-    // events and its Raft log (the memory design's "remainder").
-    w.gauge(
-        "agentd_memory_unaccounted_bytes",
-        "Live heap bytes beyond resident events and the Raft log.",
-        ((heap.allocated_mb << 20).saturating_sub(resident_bytes + node.wal.held_bytes())) as f64,
-    );
+    crate::pressure::write_ledger(&node, &mut w);
     let (working, limit) = crate::memwatch::working();
     w.gauge(
         "agentd_memory_container_bytes",
@@ -495,6 +482,7 @@ async fn metrics(State(node): State<Arc<Node>>) -> impl IntoResponse {
         crate::memwatch::oom_kills() as f64,
     );
     crate::pressure::write_metrics(&node.pressure, &mut w);
+    crate::payload::write_metrics(&mut w);
     w.gauge(
         "agentd_shard_catching_up",
         "1 while this follower is far behind its leader and steps aside (no elections, no session requests).",
@@ -966,7 +954,13 @@ async fn events(
 ) -> Result<Json<Lookup<Vec<Event>>>, (StatusCode, String)> {
     let id = parse(&session)?;
     match node.shared.read_events(id, after.after.max(0)).await {
-        Some(Ok(events)) => Ok(Json(Lookup::Here(events))),
+        Some(Ok(mut events)) => {
+            node.shared
+                .resolved(id, &mut events)
+                .await
+                .map_err(|error| (StatusCode::SERVICE_UNAVAILABLE, error.to_string()))?;
+            Ok(Json(Lookup::Here(events)))
+        }
         Some(Err(error)) => Err((StatusCode::SERVICE_UNAVAILABLE, error.to_string())),
         None => Ok(Json(lookup(&node, id, |_| Vec::new()))),
     }
@@ -1029,10 +1023,16 @@ pub fn subscribe(node: Arc<Node>, session: SessionId, after: i32) -> mpsc::Recei
         let mut changes = node.shared.watch(session);
         let mut last = after;
         let replay = async |last: &mut i32| -> Vec<Arc<Event>> {
-            let events: Vec<Arc<Event>> = match node.shared.read_events(session, *last).await {
-                Some(Ok(events)) => events.into_iter().map(Arc::new).collect(),
+            let mut events: Vec<Event> = match node.shared.read_events(session, *last).await {
+                Some(Ok(events)) => events,
                 _ => Vec::new(),
             };
+            // An unreadable payload ends the replay here; the caller reads
+            // again after its last event.
+            if node.shared.resolved(session, &mut events).await.is_err() {
+                events.clear();
+            }
+            let events: Vec<Arc<Event>> = events.into_iter().map(Arc::new).collect();
             if let Some(seq) = events.last().and_then(|e| e.sequence) {
                 *last = seq;
             }
@@ -1049,6 +1049,11 @@ pub fn subscribe(node: Arc<Node>, session: SessionId, after: i32) -> mpsc::Recei
                     Ok(Change::Event(s, event)) if s == session => {
                         let seq = event.sequence.unwrap_or(0);
                         if seq == last + 1 {
+                            let mut one = [event];
+                            if node.shared.resolved_shared(session, &mut one).await.is_err() {
+                                return;
+                            }
+                            let [event] = one;
                             last = seq;
                             if tx.send(event).await.is_err() { return; }
                         } else if seq > last + 1 {

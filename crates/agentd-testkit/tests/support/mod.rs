@@ -332,6 +332,12 @@ impl Fleet {
 
     /// Executor `n`, running up to `slots` turns at once.
     pub fn executor_with(&mut self, n: u64, slots: usize) -> Arc<Executor> {
+        self.executor_limited(n, slots, 0)
+    }
+
+    /// Executor `n` that admits turns against a memory limit of `limit`
+    /// bytes (measured as this process's resident set).
+    pub fn executor_limited(&mut self, n: u64, slots: usize, limit: u64) -> Arc<Executor> {
         let rt = runtime();
         let cfg = ExecutorConfig {
             id: EXECUTOR_IDS + n,
@@ -341,6 +347,7 @@ impl Fleet {
             mirror_sessions: 64,
             pull_wait: Duration::from_secs(2),
             dream_sweep: Duration::from_millis(500),
+            memory_limit: limit,
         };
         let executor = {
             let _guard = rt.enter();

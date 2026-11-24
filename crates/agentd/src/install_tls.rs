@@ -74,6 +74,8 @@ pub async fn serve(
     use hyper_util::rt::{TokioExecutor, TokioIo};
     use tower::ServiceExt;
     let acceptor = tokio_rustls::TlsAcceptor::from(Arc::new(config(files)?));
+    // Turn every route into its service once, not per request.
+    let app: axum::Router = app.with_state(());
     loop {
         let (tcp, peer) = listener.accept().await?;
         let acceptor = acceptor.clone();

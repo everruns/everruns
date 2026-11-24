@@ -881,7 +881,13 @@ async fn shard_org_sessions(
     let mut out = Vec::with_capacity(ids.len());
     for session in ids {
         match node.shared.read_events(session, 0).await {
-            Some(Ok(events)) => out.push(ExportedSession { session, events }),
+            Some(Ok(mut events)) => {
+                node.shared
+                    .resolved(session, &mut events)
+                    .await
+                    .map_err(|error| (StatusCode::SERVICE_UNAVAILABLE, error.to_string()))?;
+                out.push(ExportedSession { session, events })
+            }
             Some(Err(error)) => {
                 return Err((StatusCode::SERVICE_UNAVAILABLE, error.to_string()));
             }

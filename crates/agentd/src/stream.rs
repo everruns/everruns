@@ -588,7 +588,12 @@ async fn follow(
         ..Default::default()
     };
     let started = tokio::time::Instant::now();
-    let send_committed = async |sent: &mut Sent, events: Vec<Event>| -> bool {
+    let send_committed = async |sent: &mut Sent, mut events: Vec<Event>| -> bool {
+        // A payload that cannot be read ends the stream; the client
+        // reconnects from its cursor.
+        if node.shared.resolved(session, &mut events).await.is_err() {
+            return false;
+        }
         for event in events {
             if event.sequence.is_none_or(|seq| seq <= sent.last) {
                 continue;

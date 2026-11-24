@@ -8,7 +8,8 @@
 //! from an executor; the workspace survives executors and a move; an
 //! executor runs a session again after it moved shards; a shard short of
 //! memory sheds new work while admitted turns finish; a shard with Raft on
-//! its own listener and threads fails over like any other; a shard that
+//! its own listener and threads fails over like any other; an executor
+//! out of memory takes no turns and drains; a shard that
 //! stops committing sheds new work and takes it again once it commits; only
 //! the leader says a session is missing; Raft's own listener takes large
 //! snapshot chunks.
@@ -22,6 +23,27 @@ use std::time::{Duration, Instant};
 use everruns_agentd::remote::EXECUTOR_IDS;
 use serde_json::json;
 use support::{Fleet, answers, pulled, types};
+
+/// An executor out of memory takes no turns and drains to restart; the
+/// turn runs on an executor with room (memory design, "Executor").
+#[tokio::test(flavor = "multi_thread")]
+async fn an_executor_out_of_memory_takes_no_turns_and_drains() {
+    let mut fleet = Fleet::start().await;
+    // A 1 MiB limit: whatever this process holds is past 98% of it.
+    let full = fleet.executor_limited(1, 8, 1 << 20);
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !full.wants_restart() {
+        assert!(Instant::now() < deadline, "the full executor did not drain");
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    let session = fleet.create("worker").await;
+    fleet.say(&session, "go").await;
+    tokio::time::sleep(Duration::from_secs(2)).await;
+    assert_eq!(pulled(&full), 0, "the full executor took a turn");
+    let roomy = fleet.executor(2);
+    fleet.turns(&session, 1).await;
+    assert!(pulled(&roomy) >= 1);
+}
 
 #[tokio::test(flavor = "multi_thread")]
 async fn turns_run_on_executors_not_nodes() {
@@ -390,8 +412,8 @@ async fn approved(agent: &str, tool: &str) {
     assert_eq!(answers(&events), vec!["Changed, as approved.".to_string()]);
 }
 
-/// A shard whose node is near its memory limit refuses new input and new
-/// sessions with 429 and a retry hint, lets the turn it already admitted
+/// A shard whose node is past its memory limit refuses new input and new
+/// sessions with 429 and a retry hint, lets the turn it already started
 /// finish, gets no new sessions from the gateway, and takes work again once
 /// memory frees.
 #[tokio::test(flavor = "multi_thread")]
@@ -400,7 +422,15 @@ async fn a_shard_short_of_memory_sheds_new_work_and_finishes_admitted_turns() {
     fleet.executor(1);
     let session = fleet.create_in("slow", 1).await;
     fleet.say(&session, "go").await;
-    // Shard 1's only node now measures itself against 1 MiB: shedding.
+    // At Emergency a shard starts no turns, so this one starts first.
+    fleet
+        .until("the turn starts", || async {
+            types(&fleet.events(&session).await).contains(&"turn.started")
+        })
+        .await;
+    // Shard 1's only node now measures itself against 1 MiB: past every
+    // level, so at Emergency. A restart is due but a test fleet only
+    // counts it (`pressure::enable_restart`).
     fleet.restart_with_memory_limit(1, 1, 1 << 20);
     fleet.leader(1).await;
     let say = |text: &str| json!({ "text": text });
@@ -451,7 +481,15 @@ async fn a_shard_short_of_memory_sheds_new_work_and_finishes_admitted_turns() {
         .lines()
         .find(|l| l.starts_with("agentd_shard_overload_level{"))
         .unwrap_or_default();
-    assert!(level.ends_with(" 2"), "shedding: {level}");
+    assert!(level.ends_with(" 3"), "emergency: {level}");
+    let restarts = metrics
+        .lines()
+        .find(|l| l.starts_with("agentd_memory_actions_total{") && l.contains("restart"))
+        .unwrap_or_default();
+    assert!(
+        restarts.ends_with(" 1"),
+        "a restart was due once: {restarts}"
+    );
     // Memory frees: the shard takes work again.
     fleet.restart_with_memory_limit(1, 1, 1 << 40);
     fleet.leader(1).await;

@@ -1,0 +1,119 @@
+# One shard of the 75k gate, scaled down, on one runner (memory design,
+# step 6): sessions arrive at the gate's rhythm, a node and an executor are
+# killed at the end of the ramp, and the run fails on any emulated
+# out-of-memory kill, crash, error or missed turn, and when a node's live
+# heap beyond what it counts (resident events and the Raft log) passes a
+# share of its limit (the remainder check). See scripts/agentd/shard_soak.py.
+#
+# Decision: the remainder bound starts at 50%, a ratchet, not the memory
+# design's 15% target. The first soak with every fix in (2026-11-23, scale
+# 0.125, gate snapshot spacing x3) peaked at 39%: Raft entry copies, shard
+# state maps and per-session state beyond events are not counted yet. Lower
+# the bound as each is counted or capped.
+#
+# Why its own workflow: it needs release builds of the shard test node and
+# driver, under their own rust-cache key, like the drill
+# (knowledge/project/ci-build-time.md). It runs on changes to agentd, its
+# test kit or the soak itself, weekly, and by hand. The snapshot spacing is
+# the gate's own, unscaled (--snapshot-every 20000 by default), so the log
+# grows as on EKS. No secrets: only the simulated model answers.
+name: Shard Memory Soak
+
+on:
+  pull_request:
+    paths:
+      - 'crates/agentd/**'
+      - 'crates/agentd-testkit/**'
+      - 'scripts/agentd/shard_soak.py'
+      - 'scripts/agentd/fleet.py'
+      - '.github/workflows/agentd-soak.yml'
+  schedule:
+    - cron: '41 9 * * 2'
+  workflow_dispatch:
+    inputs:
+      scale:
+        description: 'Share of one gate shard'
+        required: false
+        default: '0.06'
+        type: string
+      max_unaccounted:
+        description: 'Remainder check: live heap beyond counted sources, share of the limit'
+        required: false
+        default: '0.5'
+        type: string
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  soak:
+    name: One shard under the gate's load, with a node killed
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS: "-C link-arg=-fuse-ld=lld"
+      CARGO_PROFILE_RELEASE_LTO: "off"
+      CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "16"
+      CARGO_PROFILE_RELEASE_DEBUG: "0"
+      SCALE: ${{ inputs.scale || '0.06' }}
+      MAX_UNACCOUNTED: ${{ inputs.max_unaccounted || '0.5' }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install fast linker
+        timeout-minutes: 5
+        run: |
+          command -v ld.lld >/dev/null 2>&1 || { sudo apt-get update -qq && sudo apt-get install -y -qq lld; }
+          ld.lld --version
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.96.0
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "shard-drill-release"
+
+      - name: Build release test node and driver
+        run: cargo build --release -p everruns-agentd-testkit --bin agentd-testnode --bin agentd-drive
+
+      - name: Run the soak
+        run: |
+          AGENTD_BIN_DIR=target/release python3 scripts/agentd/shard_soak.py \
+            --scale "$SCALE" --max-unaccounted "$MAX_UNACCOUNTED" --out target/shard-soak
+
+      - name: Summarize
+        if: always()
+        run: |
+          result="target/shard-soak/summary.json"
+          [ -f "$result" ] || exit 0
+          {
+            echo "### Shard memory soak"
+            echo
+            echo '```json'
+            jq '{scale, secs, sessions_started, turns, turns_missing, errors, oom_kills, restarts, crashes, peak_rss_share_of_limit, peak_log_mb, peak_remainder_mb, peak_remainder_share_of_limit}' "$result"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload samples and logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: shard-soak
+          path: |
+            target/shard-soak
+            .shard/logs
+          if-no-files-found: warn
+          retention-days: 14

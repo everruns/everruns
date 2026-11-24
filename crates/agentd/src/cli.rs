@@ -70,7 +70,10 @@ enum Mode {
         #[arg(long, env = "AGENTD_RAFT_PORT_OFFSET", default_value = "0")]
         raft_port_offset: u16,
         /// Also unload sessions idle this many seconds (0: only under pressure).
-        #[arg(long, env = "AGENTD_UNLOAD_IDLE_SECS", default_value = "0")]
+        /// Decision: 10 minutes by default, as `serve` and the Helm chart
+        /// do: an idle session's events otherwise stay resident until the
+        /// node is short of memory (memory design, step 3).
+        #[arg(long, env = "AGENTD_UNLOAD_IDLE_SECS", default_value = "600")]
         unload_idle_secs: u64,
         #[arg(long, default_value = "5000")]
         claim_ttl_ms: u64,
@@ -129,6 +132,10 @@ enum Mode {
         /// Address for `/health` and `/metrics`.
         #[arg(long)]
         listen: Option<SocketAddr>,
+        /// Memory limit in MiB turns are admitted against; 0: the
+        /// container's.
+        #[arg(long, env = "AGENTD_EXECUTOR_MEMORY_LIMIT_MB", default_value = "0")]
+        memory_limit_mb: u64,
     },
     /// Run the edge router: one public URL for the control plane and the
     /// data plane (`edge.rs`).
@@ -438,7 +445,14 @@ pub async fn run(host: impl Host) -> anyhow::Result<()> {
                 },
                 control_plane: control_plane.map(crate::node_control::ControlPlane::new),
             };
-            serve_node(cfg, host, source, addr.parse()?, join).await
+            // A node out of memory restarts itself (`pressure`, level 4).
+            crate::pressure::enable_restart();
+            tokio::select! {
+                served = serve_node(cfg, host, source, addr.parse()?, join) => served,
+                () = crate::pressure::restart_requested() => {
+                    std::process::exit(crate::memwatch::RESTART_EXIT)
+                }
+            }
         }
         Mode::Executor {
             topology,
@@ -448,6 +462,7 @@ pub async fn run(host: impl Host) -> anyhow::Result<()> {
             mirror_sessions,
             cache_mb,
             listen,
+            memory_limit_mb,
         } => {
             let id = match id {
                 Some(id) => id,
@@ -461,6 +476,7 @@ pub async fn run(host: impl Host) -> anyhow::Result<()> {
                 mirror_sessions,
                 pull_wait: Duration::from_secs(1),
                 dream_sweep: Duration::from_secs(60),
+                memory_limit: memory_limit_mb << 20,
             };
             serve_executor(cfg, host, listen).await
         }
@@ -484,7 +500,7 @@ pub async fn run(host: impl Host) -> anyhow::Result<()> {
             let edge = crate::edge::Edge::with_prefix(gateway, &control_plane, tokens, &api_prefix);
             let listener = tokio::net::TcpListener::bind(listen).await?;
             tracing::info!(%listen, control_plane, "edge listening");
-            axum::serve(listener, edge.router()).await?;
+            axum::serve(listener, edge.router().into_make_service()).await?;
             Ok(())
         }
         Mode::Restore {
@@ -558,7 +574,7 @@ pub async fn run(host: impl Host) -> anyhow::Result<()> {
             }
             let listener = tokio::net::TcpListener::bind(listen).await?;
             tracing::info!(%listen, install, "gateway listening");
-            axum::serve(listener, app).await?;
+            axum::serve(listener, app.into_make_service()).await?;
             Ok(())
         }
         Mode::Serve {
@@ -821,7 +837,12 @@ pub async fn serve_node_with(
             crate::catchup::guard,
         ));
     tracing::info!(shard, node = id, %listen, "node listening");
-    let server = tokio::spawn(async move { axum::serve(listener, app).await });
+    // Decision: serve a make-service, not the router. axum 0.8 serving a
+    // `Router` rebuilds its route table (a map of every route) for each
+    // connection and keeps it while the connection lives: ~280 MB on a node
+    // that 7,000 streams reconnected to after a peer's kill (heap profile,
+    // 2026-11-23). `into_make_service` builds it once.
+    let server = tokio::spawn(async move { axum::serve(listener, app.into_make_service()).await });
     if !join && let Err(error) = node.bootstrap().await {
         // Decision: a node that can't form its shard stops serving too, so
         // it reads as down rather than as a member that never elects.
@@ -862,12 +883,13 @@ pub async fn serve_executor(
         let app = crate::executor::router(executor.clone());
         let listener = tokio::net::TcpListener::bind(listen).await?;
         tracing::info!(%listen, "executor listening");
-        tokio::spawn(async move { axum::serve(listener, app).await });
+        tokio::spawn(async move { axum::serve(listener, app.into_make_service()).await });
     }
     let mut term = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
     tokio::select! {
         _ = term.recv() => {}
         _ = tokio::signal::ctrl_c() => {}
+        _ = executor.restart_wanted.notified() => {}
     }
     tracing::info!(running = executor.running(), "draining");
     executor.drain();
@@ -880,6 +902,10 @@ pub async fn serve_executor(
     }
     if executor.running() > 0 {
         tracing::warn!(running = executor.running(), "drain limit reached; leaving");
+    }
+    if executor.wants_restart() {
+        // A distinct code, so the restart counts as the executor's own.
+        std::process::exit(crate::memwatch::RESTART_EXIT);
     }
     Ok(())
 }

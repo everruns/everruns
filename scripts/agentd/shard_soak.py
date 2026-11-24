@@ -20,8 +20,10 @@ sustained load, then losing a node. That is one shard's shape, and it scales:
   executors are killed and come back after `--down-for` seconds, as a pod
   restart does;
 - a node whose resident set passes its scaled limit is killed and restarted,
-  as the kubelet's out-of-memory kill does, and counted. The run fails on
-  any such kill and on any error the driver reports.
+  as the kubelet's out-of-memory kill does, and counted. A node that exits
+  on its own is restarted too: exit 75 is a controlled restart before the
+  limit (`pressure.rs`, counted under `restarts`), any other exit a crash.
+  The run fails on any kill or crash and on any error the driver reports.
 
 The memory figures come from /proc, which is what agentd's own pressure loop
 reads, so this runs on Linux only (in a container on a Mac). Build first:
@@ -81,11 +83,51 @@ def node_pid(n):
         return None
 
 
+def exit_code(pid):
+    """A node process's exit code once it exited on its own, else None."""
+    try:
+        done, status = os.waitpid(pid, os.WNOHANG)
+    except ChildProcessError:
+        try:
+            os.kill(pid, 0)
+            return None
+        except ProcessLookupError:
+            return -1
+    return os.waitstatus_to_exitcode(status) if done else None
+
+
+RESTART_EXIT = 75  # memwatch::RESTART_EXIT: a node restarting itself
+
+
 def stats(n):
     try:
         return fleet.stats(0, n, timeout=1.0)
     except Exception:
         return None
+
+
+def memory_metrics(n):
+    """The node's memory ledger from /metrics: bytes by source (MB), its
+    memory level and its memory actions, or None."""
+    try:
+        with urllib.request.urlopen(f"http://{fleet.addr(0, n)}/metrics", timeout=1.0) as r:
+            text = r.read().decode()
+    except Exception:
+        return None
+    out = {"sources_mb": {}, "level": None, "actions": {}}
+    for line in text.splitlines():
+        if line.startswith("#") or " " not in line:
+            continue
+        series, value = line.rsplit(" ", 1)
+        label = lambda key: series.split(f'{key}="', 1)[1].split('"', 1)[0] \
+            if f'{key}="' in series else None
+        if series.startswith("agentd_memory_bytes{"):
+            out["sources_mb"][label("source")] = round(float(value) / 2**20)
+        elif series.startswith("agentd_memory_level{"):
+            out["level"] = int(float(value))
+        elif series.startswith("agentd_memory_actions_total{"):
+            out["actions"][label("action")] = int(float(value))
+    return out
 
 
 def scaled(a):
@@ -132,6 +174,9 @@ def main():
     p.add_argument("--every", type=float, default=0.5, help="sample interval, seconds")
     p.add_argument("--out", default=os.path.join(ROOT, "target", "shard-soak"))
     p.add_argument("--keep", action="store_true", help="leave the fleet running")
+    p.add_argument("--max-unaccounted", type=float, default=None, metavar="SHARE",
+                   help="fail when a node's live heap beyond its counted sources passes this "
+                        "share of its limit (the memory design's remainder check, e.g. 0.15)")
     p.add_argument("--heap-profile", metavar="DIR",
                    help="dump jemalloc heap profiles here (build with --features heap-profile)")
     a = p.parse_args()
@@ -164,11 +209,19 @@ def main():
     reader.start()
 
     oom = []        # (t, node, rss) for every emulated out-of-memory kill
+    restarts = []   # (t, node) for every node that restarted itself (exit 75)
+    crashes = []    # (t, node, code) for any other exit
     chaos = []
     down_until = {}  # node -> time it comes back
     peak = {n: 0.0 for n in NODES}
     peak_log = {n: 0 for n in NODES}
     peak_unaccounted = {n: 0 for n in NODES}
+    peak_remainder = {n: 0 for n in NODES}
+    peak_sources = {n: {} for n in NODES}  # source -> peak MB, from /metrics
+    peak_level = {n: 0 for n in NODES}
+    actions = {n: {} for n in NODES}       # last seen per process; summed over restarts
+    seen = {n: {} for n in NODES}
+    samples_taken = 0
     try:
         while drive.poll() is None:
             now = time.time()
@@ -189,11 +242,24 @@ def main():
                         fleet.start(0, key)
                     del down_until[key]
             row = {"t": t, "nodes": {}}
+            samples_taken += 1
+            scrape = samples_taken % max(1, round(5 / a.every)) == 0
             for n in NODES:
                 pid = node_pid(n)
+                code = exit_code(pid) if pid and n not in down_until else None
+                if code is not None:
+                    # As Kubernetes does: the container starts again.
+                    (restarts if code == RESTART_EXIT else crashes).append(
+                        {"t": t, "node": n} | ({} if code == RESTART_EXIT else {"code": code}))
+                    print(f"t={t}: node {n} exited ({code}); restarting", flush=True)
+                    down_until[n] = now + 1
+                    continue
                 rss = rss_mb(pid) if pid else 0.0
                 st = stats(n) or {}
                 counted = (st.get("resident_mb") or 0) + (st.get("wal_held_mb") or 0)
+                # Live heap beyond the counted sources: what the remainder
+                # check gates on (rss also holds fragmentation and code).
+                live = ((st.get("heap") or {}).get("allocated_mb")) if st else None
                 row["nodes"][n] = {"rss_mb": round(rss), "log_mb": st.get("wal_held_mb"),
                                    "resident_mb": st.get("resident_mb"),
                                    "unaccounted_mb": round(rss - counted) if st else None,
@@ -201,10 +267,24 @@ def main():
                                    "sessions": st.get("sessions"),
                                    "active_turns": st.get("active_turns"),
                                    "queued_inputs": st.get("queued_inputs")}
+                mem = memory_metrics(n) if scrape else None
+                if mem:
+                    row["nodes"][n]["memory"] = mem
+                    for source, mb in mem["sources_mb"].items():
+                        peak_sources[n][source] = max(peak_sources[n].get(source, 0), mb)
+                    peak_level[n] = max(peak_level[n], mem["level"] or 0)
+                    for action, count in mem["actions"].items():
+                        # A restarted node counts from 0 again.
+                        last = seen[n].get(action, 0)
+                        actions[n][action] = actions[n].get(action, 0) + (
+                            count - last if count >= last else count)
+                        seen[n][action] = count
                 peak[n] = max(peak[n], rss)
                 peak_log[n] = max(peak_log[n], st.get("wal_held_mb") or 0)
                 if st:
                     peak_unaccounted[n] = max(peak_unaccounted[n], rss - counted)
+                if live is not None:
+                    peak_remainder[n] = max(peak_remainder[n], live - counted)
                 if pid and rss > cfg["limit_mb"] and n not in down_until:
                     # What the kubelet does to a container past its limit.
                     fleet.kill(0, n)
@@ -219,25 +299,48 @@ def main():
         reader.join(timeout=30)
         if not a.keep:
             subprocess.run([sys.executable, os.path.join(ROOT, "scripts/agentd/fleet.py"), "down"])
+    missing = (report.get("sessions") or 0) * a.turns - (report.get("turns_completed") or 0)
     summary = {
         "scale": a.scale,
         "config": cfg,
         "secs": round(time.time() - started),
+        # Sessions arrive open loop (Poisson) for the ramp, so a run starts
+        # about sessions +- sqrt(sessions); what must hold is that every
+        # session that started finished every turn.
+        "sessions_started": report.get("sessions"),
         "turns": report.get("turns_completed"),
+        "turns_missing": missing,
+        "stalled": report.get("stalled"),
         "errors": report.get("errors"),
         "chaos": chaos,
         "oom_kills": oom,
+        "restarts": restarts,
+        "crashes": crashes,
         "peak_rss_mb": {n: round(v) for n, v in peak.items()},
         "peak_rss_share_of_limit": round(max(peak.values()) / cfg["limit_mb"], 3),
         "peak_log_mb": peak_log,
         "peak_unaccounted_mb": {n: round(v) for n, v in peak_unaccounted.items()},
+        # Live heap (jemalloc allocated) beyond resident events and the log.
+        "peak_remainder_mb": {n: round(v) for n, v in peak_remainder.items()},
+        "peak_remainder_share_of_limit": round(max(peak_remainder.values()) / cfg["limit_mb"], 3),
+        # From each node's /metrics every 5 s: agentd_memory_bytes{source},
+        # agentd_memory_level and agentd_memory_actions_total.
+        "peak_memory_mb_by_source": peak_sources,
+        "peak_memory_level": peak_level,
+        "memory_actions": actions,
     }
     with open(os.path.join(a.out, "summary.json"), "w") as f:
         json.dump(summary, f, indent=2)
     print(json.dumps(summary, indent=2))
-    if oom or report.get("errors") or drive.returncode:
-        sys.exit(f"failed: {len(oom)} out-of-memory kills, {report.get('errors')} errors, "
-                 f"driver exit {drive.returncode}")
+    over = a.max_unaccounted is not None and \
+        summary["peak_remainder_share_of_limit"] > a.max_unaccounted
+    if over:
+        print(f"remainder {summary['peak_remainder_share_of_limit']} of the limit is over "
+              f"{a.max_unaccounted}", flush=True)
+    if oom or crashes or over or report.get("errors") or missing or drive.returncode:
+        sys.exit(f"failed: {len(oom)} out-of-memory kills, {len(crashes)} crashes, "
+                 f"{report.get('errors')} errors, "
+                 f"{missing} turns missing, driver exit {drive.returncode}")
 
 
 if __name__ == "__main__":

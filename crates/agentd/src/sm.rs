@@ -35,6 +35,8 @@ use everruns_contracts::typed_id::SessionId;
 use everruns_core::events::Event;
 use futures::stream::{self, StreamExt};
 
+/// Bytes in memory per two encoded bytes of an event (`Shared::resident`).
+const IN_MEMORY_PER_ENCODED: u64 = 3;
 /// The shard state shared between the Raft state machine and the node's
 /// executor, scheduler and API.
 pub struct Shared {
@@ -132,6 +134,36 @@ impl Shared {
                     events
                 }),
         )
+    }
+
+    /// Put back the payloads `events` of `session` hold by reference
+    /// (`payload.rs`), for readers that hand events out. A session that
+    /// never held one is not scanned.
+    pub async fn resolved(&self, session: SessionId, events: &mut [Event]) -> anyhow::Result<()> {
+        if self.holds_blobs(session) {
+            crate::payload::resolve(&self.store, events).await?;
+        }
+        Ok(())
+    }
+
+    /// [`resolved`](Self::resolved) for shared events.
+    pub async fn resolved_shared(
+        &self,
+        session: SessionId,
+        events: &mut [Arc<Event>],
+    ) -> anyhow::Result<()> {
+        if self.holds_blobs(session) {
+            crate::payload::resolve_shared(&self.store, events).await?;
+        }
+        Ok(())
+    }
+
+    fn holds_blobs(&self, session: SessionId) -> bool {
+        self.state
+            .read()
+            .sessions
+            .get(&session)
+            .is_some_and(|s| s.blobs)
     }
 
     /// What an executor needs of the session's log, among sequences
@@ -346,7 +378,12 @@ impl Shared {
         self.last_snapshot.lock().elapsed()
     }
 
-    /// Estimated bytes of resident events, and their count.
+    /// Estimated bytes of resident events in memory, and their count.
+    ///
+    /// Decision: an event in memory takes about half again its encoded
+    /// size (parsed values, maps, string headers). Counting encoded bytes
+    /// put the journal at 115 MB on a node whose heap profile held 170 MB
+    /// of it (2026-11-23), so the budget let it grow past what it allows.
     pub fn resident(&self) -> (u64, usize) {
         let events: usize = self
             .state
@@ -356,7 +393,7 @@ impl Shared {
             .map(|s| s.events.len())
             .sum();
         (
-            events as u64 * self.event_bytes.load(Ordering::Relaxed),
+            events as u64 * self.event_bytes.load(Ordering::Relaxed) * IN_MEMORY_PER_ENCODED / 2,
             events,
         )
     }
@@ -767,6 +804,7 @@ fn stub(s: &SessionState) -> SessionState {
         sqldb: s.sqldb.clone(),
         branch: s.branch,
         labels: s.labels.clone(),
+        blobs: s.blobs,
     }
 }
 

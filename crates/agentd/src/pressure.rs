@@ -26,7 +26,28 @@
 //! by the load view (a second old at most) sends the next ones elsewhere
 //! instead.
 //!
-//! The levels have hysteresis (clear at 80% and 88%), so a shard does not
+//! - **Emergency** (95%): the shard refuses new work as when shedding and
+//!   starts no turns at all. Turns already running finish, which frees
+//!   memory; a turn started now would only add to it.
+//!
+//! Past Emergency a node restarts itself rather than wait for the kernel's
+//! kill (level 4): at 98% of its limit, or at Emergency for
+//! [`EMERGENCY_FOR`]. It marks the restart in its memory heartbeat (so it is
+//! not counted as a kill), stops Raft (its followers elect at once instead
+//! of after a lost heartbeat) and exits with `memwatch::RESTART_EXIT`;
+//! Kubernetes starts it again from its disk. Decision: only while every
+//! peer answers, so a restart never takes the shard's second node down
+//! with the first; a node whose peer is already gone waits for it instead.
+//! A restart frees what a kill frees, without a kill's torn writes, and
+//! shows as its own count (`agentd_memory_actions_total{action="restart"}`)
+//! rather than as an out-of-memory kill. Only the `node` binary exits
+//! ([`enable_restart`]); a test fleet shares one process and only counts.
+//!
+//! Decision: memory is read as the kernel kills on it, the container's
+//! working bytes (`memwatch::reading`), not the resident set; outside a
+//! container (local fleets) the resident set stands in.
+//!
+//! The levels have hysteresis (clear at 80%, 88% and 92%), so a shard does not
 //! flap at a boundary. The level is the shard's, not the node's: every node
 //! holds every session of its shard, so the worst node decides. Each node
 //! asks its peers every second; a peer that does not answer for 5 s (down,
@@ -65,6 +86,26 @@ const FULL_AT: u64 = 850;
 const FULL_CLEAR: u64 = 800;
 const SHED_AT: u64 = 920;
 const SHED_CLEAR: u64 = 880;
+const EMERG_AT: u64 = 950;
+const EMERG_CLEAR: u64 = 920;
+/// Permille of its own limit at which a node restarts itself.
+const RESTART_AT: u64 = 980;
+/// How long a node's own reading may stay at Emergency before it restarts.
+pub const EMERGENCY_FOR: Duration = Duration::from_secs(30);
+
+/// Set by the `node` binary: a node that wants a restart may exit.
+static RESTART_ENABLED: AtomicBool = AtomicBool::new(false);
+static RESTART: tokio::sync::Notify = tokio::sync::Notify::const_new();
+
+/// Let this process restart itself out of memory (the `node` binary).
+pub fn enable_restart() {
+    RESTART_ENABLED.store(true, Ordering::Relaxed);
+}
+
+/// Resolves once a node of this process asks to restart.
+pub async fn restart_requested() {
+    RESTART.notified().await;
+}
 
 /// A peer reading older than this does not count.
 const PEER_STALE: Duration = Duration::from_secs(5);
@@ -87,6 +128,8 @@ pub enum Level {
     Full,
     /// No new sessions and no new input.
     Shedding,
+    /// No new sessions, no new input, no new turns.
+    Emergency,
 }
 
 impl Level {
@@ -94,13 +137,16 @@ impl Level {
         match v {
             1 => Self::Full,
             2 => Self::Shedding,
+            3 => Self::Emergency,
             _ => Self::Ok,
         }
     }
 
     /// The level after a reading of `permille`, from `self`.
     pub fn next(self, permille: u64) -> Self {
-        if permille >= SHED_AT || (self == Self::Shedding && permille >= SHED_CLEAR) {
+        if permille >= EMERG_AT || (self == Self::Emergency && permille >= EMERG_CLEAR) {
+            Self::Emergency
+        } else if permille >= SHED_AT || (self >= Self::Shedding && permille >= SHED_CLEAR) {
             Self::Shedding
         } else if permille >= FULL_AT || (self >= Self::Full && permille >= FULL_CLEAR) {
             Self::Full
@@ -142,6 +188,12 @@ pub struct Pressure {
     /// Refusals since start, by what was refused.
     pub shed_sessions: AtomicU64,
     pub shed_inputs: AtomicU64,
+    /// Since when this node's own reading has been at Emergency.
+    hot_since: Mutex<Option<Instant>>,
+    /// This node asked to restart itself.
+    restarting: AtomicBool,
+    /// What memory made the node do, by `action`.
+    pub actions: crate::prom::Counters,
 }
 
 impl Pressure {
@@ -155,6 +207,9 @@ impl Pressure {
             stalled: AtomicBool::new(false),
             shed_sessions: AtomicU64::new(0),
             shed_inputs: AtomicU64::new(0),
+            hot_since: Mutex::new(None),
+            restarting: AtomicBool::new(false),
+            actions: crate::prom::Counters::default(),
         }
     }
 
@@ -165,7 +220,7 @@ impl Pressure {
         }
     }
 
-    /// Record this node's resident set and recompute the shard's level.
+    /// Record this node's memory in use and recompute the shard's level.
     pub fn record_own(&self, rss: u64) -> Level {
         self.own.store(rss, Ordering::Relaxed);
         self.update()
@@ -190,9 +245,39 @@ impl Pressure {
     }
 
     fn update(&self) -> Level {
-        let level = self.level().next(self.shard_permille());
+        let was = self.level();
+        let level = was.next(self.shard_permille());
+        if level == Level::Emergency && was != Level::Emergency {
+            self.actions.inc(&[("action", "emergency")]);
+        }
         self.level.store(level as u8, Ordering::Relaxed);
         level
+    }
+
+    /// Whether this node should restart itself now (level 4), from its own
+    /// reading: at [`RESTART_AT`], or at Emergency for [`EMERGENCY_FOR`];
+    /// and only while every peer answers (`peers_answer`). Once.
+    pub fn restart_due(&self, peers_answer: bool) -> bool {
+        self.restart_due_at(peers_answer, Instant::now())
+    }
+
+    fn restart_due_at(&self, peers_answer: bool, now: Instant) -> bool {
+        let own = self.own().permille();
+        let hot = {
+            let mut since = self.hot_since.lock();
+            if own >= EMERG_AT {
+                since.get_or_insert(now);
+            } else if own < EMERG_CLEAR {
+                *since = None;
+            }
+            *since
+        };
+        let due = own >= RESTART_AT || hot.is_some_and(|t| now.duration_since(t) >= EMERGENCY_FOR);
+        due && peers_answer && !self.restarting.swap(true, Ordering::Relaxed)
+    }
+
+    pub fn restarting(&self) -> bool {
+        self.restarting.load(Ordering::Relaxed)
     }
 
     pub fn level(&self) -> Level {
@@ -230,7 +315,7 @@ impl Pressure {
 
     /// Whether the shard refuses `work` now; counts the refusal.
     pub fn refuses(&self, work: Work) -> bool {
-        let refused = self.effective() == Level::Shedding;
+        let refused = self.effective() >= Level::Shedding;
         if refused {
             match work {
                 Work::Session => &self.shed_sessions,
@@ -280,9 +365,39 @@ impl Node {
     /// it: the input was already queued. Below the floor the shard still
     /// makes progress, so memory that only finished turns free does get
     /// freed.
+    ///
+    /// At Emergency it starts none.
     pub(crate) fn holds_turns(&self, state: &crate::state::ShardState) -> bool {
-        self.pressure.effective() >= Level::Full
-            && self.running_turns(state) >= self.cfg.pressure_turns
+        match self.pressure.effective() {
+            Level::Emergency => true,
+            Level::Ok => false,
+            _ => self.running_turns(state) >= self.cfg.pressure_turns,
+        }
+    }
+
+    /// Level 4: restart this node before the kernel kills it (module notes).
+    async fn restart_for_memory(&self) {
+        let own = self.pressure.own();
+        self.pressure.actions.inc(&[("action", "restart")]);
+        if !RESTART_ENABLED.load(Ordering::Relaxed) {
+            tracing::error!(
+                shard = self.cfg.shard,
+                permille = own.permille(),
+                "out of memory: a restart is due, but this process may not exit"
+            );
+            return;
+        }
+        tracing::error!(
+            shard = self.cfg.shard,
+            node = self.cfg.node_id,
+            permille = own.permille(),
+            "out of memory: restarting before the kernel kills this node"
+        );
+        crate::memwatch::note_restart(&self.cfg.data_dir);
+        if let Err(error) = self.raft.shutdown().await {
+            tracing::warn!(%error, "raft did not stop cleanly");
+        }
+        RESTART.notify_one();
     }
 
     /// Every second: read this node's resident set and ask the shard's other
@@ -293,7 +408,8 @@ impl Node {
         let mut was_stalled = false;
         loop {
             tick.tick().await;
-            self.pressure.record_own(crate::api::rss_mb() << 20);
+            self.pressure
+                .record_own(crate::memwatch::reading(self.cfg.memory_limit).0);
             let stalled = {
                 let metrics = self.raft.metrics().borrow().clone();
                 self.pressure.record_progress(
@@ -315,6 +431,7 @@ impl Node {
                 .into_iter()
                 .filter(|(id, _)| *id != self.cfg.node_id)
                 .collect();
+            let asked = peers.len();
             let readings = futures::future::join_all(peers.into_iter().map(|(id, addr)| {
                 let http = self.http.clone();
                 async move {
@@ -332,8 +449,13 @@ impl Node {
             }))
             .await;
             let mut level = self.pressure.level();
+            let mut answered = 0;
             for (id, reading) in readings.into_iter().flatten() {
+                answered += 1;
                 level = self.pressure.record_peer(id, reading);
+            }
+            if self.pressure.restart_due(answered == asked) {
+                self.restart_for_memory().await;
             }
             if level != was {
                 tracing::warn!(
@@ -367,7 +489,7 @@ pub fn write_metrics(p: &Pressure, w: &mut crate::prom::Writer) {
     );
     w.gauge(
         "agentd_shard_overload_level",
-        "0: taking work, 1: full (no new sessions placed here), 2: shedding (new sessions and input refused).",
+        "0: taking work, 1: full (no new sessions placed here), 2: shedding (new sessions and input refused), 3: emergency (no new turns either).",
         p.effective() as u8 as f64,
     );
     w.gauge(
@@ -384,6 +506,72 @@ pub fn write_metrics(p: &Pressure, w: &mut crate::prom::Writer) {
         "agentd_shard_shed_inputs_total",
         "New input refused while shedding load.",
         p.shed_inputs.load(Ordering::Relaxed) as f64,
+    );
+    w.gauge(
+        "agentd_memory_level",
+        "What memory makes this node do: 0 ok, 1 full, 2 shedding, 3 emergency, 4 restarting.",
+        if p.restarting() {
+            4.0
+        } else {
+            f64::from(p.effective() as u8)
+        },
+    );
+    w.counters(
+        "agentd_memory_actions_total",
+        "What memory made this node do: emergency (entered level 3), restart (level 4).",
+        &p.actions,
+    );
+    w.counter(
+        "agentd_memory_restarts_total",
+        "Restarts this node did before its memory limit, across restarts.",
+        crate::memwatch::restarts() as f64,
+    );
+}
+
+/// The node's memory by source, and each capped source's cap: the memory
+/// design's ledger. `unaccounted` is live heap beyond the counted sources
+/// (the remainder the design keeps under 15% of the limit); `fragmentation`
+/// is what the allocator holds beyond live bytes.
+pub(crate) fn write_ledger(node: &Node, w: &mut crate::prom::Writer) {
+    let events = node.shared.resident().0;
+    let log = node.wal.held_bytes();
+    let heap = crate::heap::heap();
+    let allocated = heap.allocated_mb << 20;
+    let unaccounted = allocated.saturating_sub(events + log);
+    w.gauge(
+        "agentd_memory_unaccounted_bytes",
+        "Live heap bytes beyond resident events and the Raft log.",
+        unaccounted as f64,
+    );
+    let base = crate::prom::render(&[
+        ("shard", &node.cfg.shard.to_string()),
+        ("node", &node.cfg.node_id.to_string()),
+    ]);
+    let row = |source: &str, bytes: u64| (crate::prom::render(&[("source", source)]), bytes as f64);
+    w.family(
+        "agentd_memory_bytes",
+        "gauge",
+        "The node's memory by source (events and raft_log counted, unaccounted live heap, allocator fragmentation).",
+        &base,
+        [
+            row("events", events),
+            row("raft_log", log),
+            row("unaccounted", unaccounted),
+            row(
+                "fragmentation",
+                (heap.resident_mb << 20).saturating_sub(allocated),
+            ),
+        ],
+    );
+    w.family(
+        "agentd_memory_cap_bytes",
+        "gauge",
+        "Where each capped source is held down: events unload past the budget, the log snapshots past a sixteenth of it.",
+        &base,
+        [
+            row("events", node.cfg.memory_budget),
+            row("raft_log", node.cfg.memory_budget / 16),
+        ],
     );
 }
 
@@ -448,10 +636,37 @@ mod tests {
         assert_eq!(Full.next(810), Full, "stays full until 80%");
         assert_eq!(Full.next(799), Ok);
         assert_eq!(Full.next(920), Shedding);
-        assert_eq!(Ok.next(950), Shedding, "a jump skips Full");
+        assert_eq!(Ok.next(940), Shedding, "a jump skips Full");
         assert_eq!(Shedding.next(890), Shedding, "stays shedding until 88%");
         assert_eq!(Shedding.next(870), Full, "then still full");
         assert_eq!(Shedding.next(500), Ok);
+        assert_eq!(Shedding.next(950), Emergency);
+        assert_eq!(Ok.next(990), Emergency, "a jump skips the steps");
+        assert_eq!(Emergency.next(930), Emergency, "stays until 92%");
+        assert_eq!(Emergency.next(919), Shedding, "then still shedding");
+        assert_eq!(Emergency.next(100), Ok);
+    }
+
+    #[test]
+    fn a_node_restarts_at_98_percent_or_after_30_s_of_emergency() {
+        let p = Pressure::new(1000);
+        let t0 = Instant::now();
+        let at = |secs| t0 + Duration::from_secs(secs);
+        p.record_own(960);
+        assert!(!p.restart_due_at(true, at(0)));
+        assert!(!p.restart_due_at(true, at(29)));
+        // A dip below Emergency's clear starts the clock over.
+        p.record_own(900);
+        assert!(!p.restart_due_at(true, at(30)));
+        p.record_own(960);
+        assert!(!p.restart_due_at(true, at(31)));
+        assert!(!p.restart_due_at(false, at(61)), "not while a peer is gone");
+        assert!(p.restart_due_at(true, at(62)));
+        assert!(!p.restart_due_at(true, at(63)), "once");
+        let p = Pressure::new(1000);
+        p.record_own(985);
+        assert!(p.restart_due_at(true, t0), "at 98% at once");
+        assert_eq!(p.actions.get(&[("action", "emergency")]), 1);
     }
 
     #[test]

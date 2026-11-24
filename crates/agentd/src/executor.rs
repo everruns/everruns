@@ -16,11 +16,25 @@
 //! - Draining (a rolling deploy): stop pulling, ask every running epoch to
 //!   hand off at its next step boundary, and exit once none runs. Another
 //!   executor resumes each turn from the journal.
+//! - Memory (memory design, "Executor"): an executor offers a shard the
+//!   smaller of its free slots and the turns its memory has room for
+//!   (`memwatch::turn_credits`). At 95% of its limit it starts nothing and
+//!   hands its newest turns back, which resume on another executor from the
+//!   session's log; at 98% it drains and exits for a clean restart, before
+//!   the kernel would kill it.
+//! - Capability memory classes (memory design, "Capabilities"): only
+//!   capabilities with a hard memory cap run inside the executor process
+//!   (the virtual shell's `max_memory`, 10 MB, in `integrations::bashkit`;
+//!   Lua's `set_memory_limit`). Browsers, desktops and user code with real
+//!   processes run in sandboxes outside it (`sandbox_*` capabilities), so no
+//!   one turn's tool can take the executor's memory. A large payload a turn
+//!   reads comes back from the blob store (`payload.rs`) and is counted in
+//!   the executor's own reading like any other.
 //! - Freshness (`tenants.rs`): an executor that hasn't heard from the
 //!   directory shard within the bound pulls nothing, and one offered a
 //!   session of a suspended or deleted tenant gives it back unrun.
 
-use std::collections::{HashSet, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::Duration;
@@ -49,6 +63,8 @@ pub struct ExecutorConfig {
     pub pull_wait: Duration,
     /// How often due dreams are looked for (`Executor::dreams_loop`).
     pub dream_sweep: Duration,
+    /// Memory limit in bytes; 0: the container's, if any.
+    pub memory_limit: u64,
 }
 
 pub struct Executor {
@@ -58,7 +74,14 @@ pub struct Executor {
     pub engine: everruns::Engine,
     free: AtomicUsize,
     freed: tokio::sync::Notify,
-    running: Mutex<HashSet<SessionId>>,
+    /// Sessions running here, and since when.
+    running: Mutex<HashMap<SessionId, std::time::Instant>>,
+    /// Running sessions handed back for memory: their activation loop
+    /// stops at its next end instead of starting the session again.
+    shed: Mutex<HashSet<SessionId>>,
+    /// Set when memory reached the restart level (`serve_executor` exits).
+    restart: AtomicBool,
+    pub restart_wanted: tokio::sync::Notify,
     /// Sessions mirrored but not running, least recently run first.
     recent: Mutex<VecDeque<SessionId>>,
     draining: AtomicBool,
@@ -100,6 +123,9 @@ impl Executor {
             engine,
             freed: tokio::sync::Notify::new(),
             running: Mutex::default(),
+            shed: Mutex::default(),
+            restart: AtomicBool::new(false),
+            restart_wanted: tokio::sync::Notify::new(),
             recent: Mutex::default(),
             draining: AtomicBool::new(false),
             tenants: Default::default(),
@@ -146,6 +172,7 @@ impl Executor {
     pub fn spawn(self: &Arc<Self>) {
         tokio::spawn(self.clone().tenants_loop());
         tokio::spawn(self.clone().dreams_loop());
+        tokio::spawn(self.clone().memory_loop());
         let executor = self.clone();
         tokio::spawn(async move {
             let mut pulling: HashSet<ShardId> = HashSet::new();
@@ -301,19 +328,22 @@ impl Executor {
     /// Stop taking work and hand running epochs back at their next step.
     pub fn drain(&self) {
         self.draining.store(true, Ordering::SeqCst);
-        let running: Vec<SessionId> = self.running.lock().iter().copied().collect();
+        let running: Vec<SessionId> = self.running.lock().keys().copied().collect();
         for session in running {
             self.hosting.changed(session, true);
         }
     }
 
-    /// Credits to offer one shard: an even share of the free slots.
+    /// Credits to offer one shard: an even share of the free slots, no
+    /// more than the turns memory has room for.
     fn take_credits(&self) -> usize {
         let shards = self.remote.shards().len().max(1);
         let share = self.cfg.slots.div_ceil(shards).max(1);
+        let (used, limit) = crate::memwatch::reading(self.cfg.memory_limit);
+        let room = crate::memwatch::turn_credits(used, limit);
         let mut free = self.free.load(Ordering::SeqCst);
         loop {
-            let take = free.min(share);
+            let take = free.min(share).min(room);
             if take == 0 {
                 return 0;
             }
@@ -325,6 +355,71 @@ impl Executor {
                 Err(now) => free = now,
             }
         }
+    }
+
+    /// Whether memory reached the restart level.
+    pub fn wants_restart(&self) -> bool {
+        self.restart.load(Ordering::SeqCst)
+    }
+
+    /// Every second: act on this executor's memory level.
+    async fn memory_loop(self: Arc<Self>) {
+        use crate::memwatch::ExecLevel;
+        let mut tick = tokio::time::interval(Duration::from_secs(1));
+        loop {
+            tick.tick().await;
+            let (used, limit) = crate::memwatch::reading(self.cfg.memory_limit);
+            match crate::memwatch::exec_level(used, limit) {
+                ExecLevel::Ok => {}
+                ExecLevel::Stop => {
+                    let handed = self.hand_back_newest();
+                    if handed > 0 {
+                        tracing::warn!(
+                            used_mb = used >> 20,
+                            limit_mb = limit >> 20,
+                            handed,
+                            "executor memory at 95%: handing its newest turns back"
+                        );
+                    }
+                }
+                ExecLevel::Restart => {
+                    if !self.restart.swap(true, Ordering::SeqCst) {
+                        tracing::error!(
+                            used_mb = used >> 20,
+                            limit_mb = limit >> 20,
+                            "executor memory at 98%: draining to restart"
+                        );
+                        self.stats.inc(&[("memory", "restart")]);
+                        self.drain();
+                        self.restart_wanted.notify_one();
+                    }
+                    return;
+                }
+            }
+        }
+    }
+
+    /// Hand back the newest quarter of the running turns (at least one);
+    /// returns how many.
+    fn hand_back_newest(&self) -> usize {
+        let newest: Vec<SessionId> = {
+            let running = self.running.lock();
+            let shed = self.shed.lock();
+            let mut by_age: Vec<_> = running
+                .iter()
+                .filter(|(s, _)| !shed.contains(*s))
+                .map(|(s, at)| (*at, *s))
+                .collect();
+            by_age.sort_by_key(|(at, _)| std::cmp::Reverse(*at));
+            let n = by_age.len().div_ceil(4);
+            by_age.into_iter().take(n).map(|(_, s)| s).collect()
+        };
+        for session in &newest {
+            self.shed.lock().insert(*session);
+            self.hosting.changed(*session, true);
+            self.stats.inc(&[("memory", "handed_back")]);
+        }
+        newest.len()
     }
 
     fn give_back(&self, credits: usize) {
@@ -447,9 +542,14 @@ impl Executor {
     /// Run `session`'s activations here until it owes no more work. Holds
     /// one slot.
     fn run(self: Arc<Self>, shard: ShardId, session: SessionId) {
-        if !self.running.lock().insert(session) {
-            self.give_back(1);
-            return;
+        {
+            let mut running = self.running.lock();
+            if running.contains_key(&session) {
+                drop(running);
+                self.give_back(1);
+                return;
+            }
+            running.insert(session, std::time::Instant::now());
         }
         self.recent.lock().retain(|s| *s != session);
         if self.remote.bind(session, shard) {
@@ -483,7 +583,10 @@ impl Executor {
                     &[("activation_ms", "sum")],
                     started.elapsed().as_millis() as u64,
                 );
-                if outcome != "completed" || self.draining.load(Ordering::SeqCst) {
+                if outcome != "completed"
+                    || self.draining.load(Ordering::SeqCst)
+                    || self.shed.lock().contains(&session)
+                {
                     break;
                 }
                 if self.remote.refresh(session, 0).await.is_err() {
@@ -507,6 +610,7 @@ impl Executor {
             }
             watching.store(false, Ordering::SeqCst);
             self.running.lock().remove(&session);
+            self.shed.lock().remove(&session);
             self.retire(session);
             self.give_back(1);
         });
@@ -538,7 +642,7 @@ impl Executor {
             let mut out = Vec::new();
             while recent.len() > self.cfg.mirror_sessions {
                 if let Some(oldest) = recent.pop_front()
-                    && !running.contains(&oldest)
+                    && !running.contains_key(&oldest)
                 {
                     out.push(oldest);
                 }
@@ -584,6 +688,22 @@ pub fn router(executor: Arc<Executor>) -> axum::Router {
                         "executor_free_slots",
                         "Slots not running or offered.",
                         executor.free.load(Ordering::SeqCst) as f64,
+                    );
+                    let (used, limit) = crate::memwatch::reading(executor.cfg.memory_limit);
+                    w.gauge(
+                        "agentd_memory_container_bytes",
+                        "Memory in use as the kernel counts it (the resident set outside a container).",
+                        used as f64,
+                    );
+                    w.gauge("agentd_memory_limit_bytes", "Memory limit turns are admitted against (0: none).", limit as f64);
+                    w.gauge(
+                        "agentd_memory_level",
+                        "0: normal, 3: starting nothing and handing the newest turns back, 4: draining to restart.",
+                        match crate::memwatch::exec_level(used, limit) {
+                            crate::memwatch::ExecLevel::Ok => 0.0,
+                            crate::memwatch::ExecLevel::Stop => 3.0,
+                            crate::memwatch::ExecLevel::Restart => 4.0,
+                        },
                     );
                     w.gauge(
                         "executor_mirrored_sessions",
