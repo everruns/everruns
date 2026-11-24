@@ -396,7 +396,7 @@ pub struct CheckAgentNameResponse {
     pub available: bool,
 }
 
-/// Query parameters for POST /v1/agents/import
+/// Query parameters for POST /v1/platform/agents/import
 #[derive(Debug, Clone, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
 pub struct ImportAgentQuery {

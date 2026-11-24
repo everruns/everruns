@@ -41,7 +41,7 @@ Configure an organization-owned provider key and add or sync an extraction-capab
 Set `EVERRUNS_URL` to the API base URL, for example `http://localhost:27100/api` for a local stack.
 
 ```bash
-curl "$EVERRUNS_URL/v1/extractions" \
+curl "$EVERRUNS_URL/v1/platform/extractions" \
   -H "Authorization: Bearer $EVERRUNS_API_KEY" \
   -H 'Content-Type: application/json' \
   -d '{"model_id":"YOUR_MODEL_ID","input":{"state":"Invoice INV-42","fields":{"invoice_number":{"type":"text"}}}}'

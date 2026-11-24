@@ -151,7 +151,7 @@ The two layers cover each other's weaknesses:
 Run both: the decisions is the dynamic front line (reproduces the screenshot),
 the deterministic redactor is the exact, fail-closed net for values the platform
 already holds. Advisory mode + dry-run
-(`POST /v1/capabilities/guardrails/dry-run`) tune the decisions's false
+(`POST /v1/platform/capabilities/guardrails/dry-run`) tune the decisions's false
 positives before it goes active.
 
 ## Honest limits

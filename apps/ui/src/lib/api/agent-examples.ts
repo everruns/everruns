@@ -4,13 +4,13 @@ import { api } from "./client";
 import type { Agent, AgentExample } from "./types";
 
 export async function listAgentExamples(): Promise<GuidedAgentExample[]> {
-  const response = await api.get<GuidedAgentExample[]>("/v1/agent-examples");
+  const response = await api.get<GuidedAgentExample[]>("/v1/platform/agent-examples");
   return response.data;
 }
 
 export async function importAgentExample(name: string): Promise<Agent> {
   const response = await api.post<Agent>(
-    `/v1/agents/import?from-example=${encodeURIComponent(name)}`,
+    `/v1/platform/agents/import?from-example=${encodeURIComponent(name)}`,
   );
   return response.data;
 }
@@ -31,7 +31,7 @@ export interface AgentExampleSetup {
   connect_github: boolean;
   connections: string[];
   repository_placeholder: string;
-  /// `POST /v1/agents/{id}/triggers` body once the placeholder is replaced.
+  /// `POST /v1/platform/agents/{id}/triggers` body once the placeholder is replaced.
   trigger: Record<string, unknown>;
   settings: AgentExampleSetting[];
 }

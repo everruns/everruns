@@ -10,7 +10,7 @@ use test_harness::TestServer;
 async fn published_channel(server: &TestServer, channel_config: Value) -> String {
     let agent: Value = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": format!("ag-ui-caps-{}", uuid::Uuid::new_v4().simple()),
                 "system_prompt": "Test",
@@ -22,7 +22,7 @@ async fn published_channel(server: &TestServer, channel_config: Value) -> String
     let agent_id = agent["id"].as_str().unwrap();
     let endpoint: Value = server
         .post(
-            &format!("/v1/agents/{agent_id}/channels"),
+            &format!("/v1/platform/agents/{agent_id}/channels"),
             json!({ "channel_type": "ag_ui", "channel_config": channel_config }),
         )
         .await
@@ -31,7 +31,7 @@ async fn published_channel(server: &TestServer, channel_config: Value) -> String
     let channel_id = endpoint["id"].as_str().unwrap().to_string();
     server
         .post(
-            &format!("/v1/agents/{agent_id}/channels/{channel_id}/publish"),
+            &format!("/v1/platform/agents/{agent_id}/channels/{channel_id}/publish"),
             json!({}),
         )
         .await

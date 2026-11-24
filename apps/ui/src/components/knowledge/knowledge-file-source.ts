@@ -30,7 +30,7 @@ export function knowledgeContentUrl(
 ) {
   const params = new URLSearchParams({ path, extracted: String(extracted) });
   if (version) params.set("version", version);
-  return `/api/v1/knowledge/${collectionId}/files/content?${params}`;
+  return `/api/v1/platform/knowledge/${collectionId}/files/content?${params}`;
 }
 
 async function fetchContent(url: string): Promise<Response> {

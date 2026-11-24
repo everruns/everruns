@@ -8,7 +8,7 @@ impl StorageBackend {
     //
     // Lookup-by-public_id helpers that return the owning org without requiring
     // the caller to know it. Used only by the authenticated
-    // GET /v1/resolve-org endpoint, which gates the result by the caller's
+    // GET /v1/platform/resolve-org endpoint, which gates the result by the caller's
     // org memberships to preserve the 404-vs-403 enumeration guarantee.
     // See knowledge/security/multitenancy.md (Cross-Org Resource Resolution).
     // ============================================

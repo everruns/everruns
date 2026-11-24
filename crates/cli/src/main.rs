@@ -4,7 +4,7 @@
 // Design Decision: Use clap derive for ergonomic argument parsing.
 // Design Decision: Support text/json output formats for scripting.
 // Design Decision: No SDK. Platform commands go through the shared contract
-// mapper and POST /v1/commands; the rest is plain HTTP (see contract.rs).
+// mapper and POST /v1/platform/commands; the rest is plain HTTP (see contract.rs).
 // Design Decision: Credential file (platform config dir/everruns/credentials.json) with env var override.
 
 mod auth;
@@ -272,7 +272,7 @@ async fn run() -> anyhow::Result<()> {
     let api_url = creds.api_url;
     let org_id = creds.org_id;
 
-    let client = commands::api::ApiClient::new(&api_url, &api_key, org_id.as_deref());
+    let client = commands::api::ApiClient::connect(&api_url, &api_key, org_id.as_deref()).await?;
 
     // Each arm's future is boxed rather than awaited inline. Without it every
     // command's state machine is inlined into main's, which the optimizer then
@@ -294,7 +294,7 @@ async fn run() -> anyhow::Result<()> {
         Commands::Connections { command } => {
             Box::pin(commands::connections::run(
                 command,
-                &api_url,
+                client.management_url(),
                 &api_key,
                 output_format,
                 cli.quiet,

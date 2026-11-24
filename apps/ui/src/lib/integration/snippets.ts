@@ -24,9 +24,9 @@ function resolveOrigin(origin: string): string {
   return origin || FALLBACK_ORIGIN;
 }
 
-/** REST base URL. The UI mounts the backend under `/api`; public base is `/api/v1`. */
+/** Platform REST base URL for account-scoped session operations. */
 export function apiBaseUrl(origin: string): string {
-  return `${resolveOrigin(origin)}/api/v1`;
+  return `${resolveOrigin(origin)}/api/v1/platform`;
 }
 
 /** OpenAPI document URL — the source of truth external integrators should read. */

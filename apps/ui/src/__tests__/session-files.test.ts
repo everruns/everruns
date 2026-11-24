@@ -30,21 +30,23 @@ describe("fsPath encoding (EVE-558 / EVE-555)", () => {
     mockedApi.get.mockResolvedValueOnce({ data: { data: [] } });
     await listFiles(WORKSPACE_ID, "/dir?recursive=true");
     expect(mockedApi.get).toHaveBeenCalledWith(
-      `/v1/workspaces/${WORKSPACE_ID}/fs/dir%3Frecursive%3Dtrue`,
+      `/v1/platform/workspaces/${WORKSPACE_ID}/fs/dir%3Frecursive%3Dtrue`,
     );
   });
 
   it("encodes # in a filename so it is not treated as a fragment delimiter", async () => {
     mockedApi.get.mockResolvedValueOnce({ data: {} });
     await readFile(WORKSPACE_ID, "/notes#section");
-    expect(mockedApi.get).toHaveBeenCalledWith(`/v1/workspaces/${WORKSPACE_ID}/fs/notes%23section`);
+    expect(mockedApi.get).toHaveBeenCalledWith(
+      `/v1/platform/workspaces/${WORKSPACE_ID}/fs/notes%23section`,
+    );
   });
 
   it("encodes % in a filename so pre-encoded sequences are not double-decoded", async () => {
     mockedApi.get.mockResolvedValueOnce({ data: {} });
     await readFile(WORKSPACE_ID, "/file%20name.txt");
     expect(mockedApi.get).toHaveBeenCalledWith(
-      `/v1/workspaces/${WORKSPACE_ID}/fs/file%2520name.txt`,
+      `/v1/platform/workspaces/${WORKSPACE_ID}/fs/file%2520name.txt`,
     );
   });
 
@@ -52,14 +54,14 @@ describe("fsPath encoding (EVE-558 / EVE-555)", () => {
     mockedApi.get.mockResolvedValueOnce({ data: {} });
     await readFile(WORKSPACE_ID, "/a?b/c#d/e%f");
     expect(mockedApi.get).toHaveBeenCalledWith(
-      `/v1/workspaces/${WORKSPACE_ID}/fs/a%3Fb/c%23d/e%25f`,
+      `/v1/platform/workspaces/${WORKSPACE_ID}/fs/a%3Fb/c%23d/e%25f`,
     );
   });
 
   it("root path produces bare fs base URL without trailing slash", async () => {
     mockedApi.get.mockResolvedValueOnce({ data: { data: [] } });
     await listFiles(WORKSPACE_ID, "/");
-    expect(mockedApi.get).toHaveBeenCalledWith(`/v1/workspaces/${WORKSPACE_ID}/fs`);
+    expect(mockedApi.get).toHaveBeenCalledWith(`/v1/platform/workspaces/${WORKSPACE_ID}/fs`);
   });
 
   it("recursive=true is appended as a separate query param after the encoded path", async () => {
@@ -74,6 +76,6 @@ describe("fsPath encoding (EVE-558 / EVE-555)", () => {
     mockedApi.delete.mockResolvedValueOnce({ data: { deleted: true } });
     await deleteFile(WORKSPACE_ID, "/tmp?dir", true);
     const url = mockedApi.delete.mock.calls[0][0] as string;
-    expect(url).toBe(`/v1/workspaces/${WORKSPACE_ID}/fs/tmp%3Fdir?recursive=true`);
+    expect(url).toBe(`/v1/platform/workspaces/${WORKSPACE_ID}/fs/tmp%3Fdir?recursive=true`);
   });
 });

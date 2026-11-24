@@ -73,7 +73,7 @@ async fn bound_sessions(server: &TestServer, key: &str) -> Vec<Value> {
         let session_id = everruns_contracts::typed_id::SessionId::from_uuid(id);
         sessions.push(
             server
-                .get(&format!("/v1/sessions/{session_id}"))
+                .get(&format!("/v1/platform/sessions/{session_id}"))
                 .await
                 .assert_success()
                 .json(),
@@ -122,7 +122,7 @@ async fn session_event_count(
     session_id: &everruns_contracts::typed_id::SessionId,
 ) -> usize {
     let events: Value = server
-        .get(&format!("/v1/sessions/{session_id}/events"))
+        .get(&format!("/v1/platform/sessions/{session_id}/events"))
         .await
         .assert_success()
         .json();
@@ -149,7 +149,7 @@ async fn session_has_event_type(
     event_type: &str,
 ) -> bool {
     let events: Value = server
-        .get(&format!("/v1/sessions/{session_id}/events"))
+        .get(&format!("/v1/platform/sessions/{session_id}/events"))
         .await
         .assert_success()
         .json();
@@ -209,7 +209,7 @@ async fn create_test_agent(server: &TestServer) -> String {
     let ts = unique_ts();
     let agent: Value = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": format!("slack-test-agent-{}", ts.replace('.', "-")),
                 "display_name": format!("Slack Test Agent {}", ts),

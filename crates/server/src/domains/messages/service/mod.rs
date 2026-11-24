@@ -94,7 +94,7 @@ impl MessageService {
     }
 
     /// Answer the pending client-side tool calls of a waiting session from
-    /// server code, the way `POST /v1/sessions/{id}/tool-results` does. Eval
+    /// server code, the way `POST /v1/platform/sessions/{id}/tool-results` does. Eval
     /// tool fixtures use it. Returns `false` when the session is no longer
     /// waiting (another answer won, or the turn ended).
     pub async fn submit_tool_results(

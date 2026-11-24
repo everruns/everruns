@@ -31,7 +31,7 @@ Verify that a session can be deleted and is no longer accessible.
 
 1. Create agent:
    ```bash
-   curl -s -X POST "${BASE_URL}/api/v1/agents" \
+   curl -s -X POST "${BASE_URL}/api/v1/platform/agents" \
      -H "Content-Type: application/json" \
      -d '{"name": "temp-agent", "system_prompt": "Temporary."}'
    ```
@@ -39,7 +39,7 @@ Verify that a session can be deleted and is no longer accessible.
 
 2. Create session:
    ```bash
-   curl -s -X POST "${BASE_URL}/api/v1/sessions" \
+   curl -s -X POST "${BASE_URL}/api/v1/platform/sessions" \
      -H "Content-Type: application/json" \
      -d '{"agent_id": "{agent_id}"}'
    ```
@@ -47,12 +47,12 @@ Verify that a session can be deleted and is no longer accessible.
 
 3. Delete session:
    ```bash
-   curl -s -X DELETE "${BASE_URL}/api/v1/sessions/{session_id}"
+   curl -s -X DELETE "${BASE_URL}/api/v1/platform/sessions/{session_id}"
    ```
 
 4. Attempt to fetch deleted session:
    ```bash
-   curl -s -o /dev/null -w "%{http_code}" "${BASE_URL}/api/v1/sessions/{session_id}"
+   curl -s -o /dev/null -w "%{http_code}" "${BASE_URL}/api/v1/platform/sessions/{session_id}"
    ```
 
 ## Expected Result

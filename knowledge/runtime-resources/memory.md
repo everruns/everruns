@@ -332,17 +332,17 @@ the Memory row.
 REST endpoints (see `knowledge/execution/apis.md` for the full list, conventions, and
 OpenAPI exposure):
 
-* `GET    /v1/memories`
-* `POST   /v1/memories`
-* `GET    /v1/memories/{memory_id}`
-* `PATCH  /v1/memories/{memory_id}`
-* `DELETE /v1/memories/{memory_id}`, archive / delete per lifecycle
-* `GET    /v1/memories/{memory_id}/fs/...`
-* `POST   /v1/memories/{memory_id}/fs/...`
-* `PUT    /v1/memories/{memory_id}/fs/...`
-* `DELETE /v1/memories/{memory_id}/fs/...`
-* `POST   /v1/memories/{memory_id}/fs/_/{stat,grep}`
-* `GET    /v1/memories/{memory_id}/fs/_/download/{path}`
+* `GET    /v1/platform/memories`
+* `POST   /v1/platform/memories`
+* `GET    /v1/platform/memories/{memory_id}`
+* `PATCH  /v1/platform/memories/{memory_id}`
+* `DELETE /v1/platform/memories/{memory_id}`, archive / delete per lifecycle
+* `GET    /v1/platform/memories/{memory_id}/fs/...`
+* `POST   /v1/platform/memories/{memory_id}/fs/...`
+* `PUT    /v1/platform/memories/{memory_id}/fs/...`
+* `DELETE /v1/platform/memories/{memory_id}/fs/...`
+* `POST   /v1/platform/memories/{memory_id}/fs/_/{stat,grep}`
+* `GET    /v1/platform/memories/{memory_id}/fs/_/download/{path}`
 
 `move` and `copy` actions are deferred, the spec leaves room for them but
 the file CRUD ships first; clients can compose them with create + delete.

@@ -95,6 +95,7 @@ pub mod openai_wire;
 #[cfg(feature = "http")]
 pub mod openresponses_protocol;
 pub mod openresponses_types;
+pub mod platform_api;
 pub mod provider;
 pub mod provider_info;
 pub mod provider_limit;

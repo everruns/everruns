@@ -52,7 +52,7 @@ Verify that `everruns files push` uploads local files to a session's workspace, 
 
 5. Verify remote files:
    ```bash
-   curl -s "http://localhost:9300/api/v1/sessions/$SESSION_ID/fs/hello.txt" | jq '.content'
+   curl -s "http://localhost:9300/api/v1/platform/sessions/$SESSION_ID/fs/hello.txt" | jq '.content'
    ```
 
 6. Push again (no changes — should be incremental):

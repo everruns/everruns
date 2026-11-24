@@ -12,7 +12,7 @@ tags:
 # Session Cost Tab
 
 Status: approved in the project thread on 2026-11-01; shipped with the `GET
-/v1/sessions/{session_id}/cost` read.
+/v1/platform/sessions/{session_id}/cost` read.
 
 ## Problem
 

@@ -37,7 +37,7 @@ origin while preserving a safe relative `return_to` continuation.
 2. Observe the browser navigation target.
 3. Repeat with an OAuth-style protected continuation:
    `/oauth/authorize?client_id=test&response_type=code`.
-4. Inspect `GET /v1/auth/config` from the app API.
+4. Inspect `GET /v1/platform/auth/config` from the app API.
 5. Complete login for the safe continuation; verify the selected route and query load. Repeat with the rejected continuation variants as the login page's `return_to`.
 6. Remove `AUTH_LOGIN_ORIGIN`, restart the stack, clear both auth cookies, and repeat step 1.
 

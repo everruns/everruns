@@ -20,9 +20,9 @@ Verifies that a user can switch to an organization they just created, without re
 
 ## Steps
 
-1. Call `POST /v1/orgs` with `{"name": "Switch Target"}` — expect 201
+1. Call `POST /v1/platform/orgs` with `{"name": "Switch Target"}` — expect 201
 2. Note the returned `id` field
-3. Call `POST /v1/users/me/switch-org` with `{"org_id": "<id from step 2>"}`
+3. Call `POST /v1/platform/users/me/switch-org` with `{"org_id": "<id from step 2>"}`
 
 ## Expected Result
 

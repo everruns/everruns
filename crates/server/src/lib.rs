@@ -22,6 +22,7 @@ pub mod api;
 
 // HTTP middleware (request ID, etc.)
 pub mod middleware;
+pub mod platform_compat;
 
 // Authentication module
 pub mod auth;

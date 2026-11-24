@@ -113,11 +113,15 @@ fn generated_operations_reach_the_openapi_document() {
     let item = doc
         .paths
         .paths
-        .get("/v1/skills/{id}/delete")
+        .get("/v1/platform/skills/{id}/delete")
         .expect("destroy_skill is generated from #[command]");
     let op = item.post.as_ref().expect("POST");
     assert_eq!(op.operation_id.as_deref(), Some("destroy_skill"));
-    let list = doc.paths.paths.get("/v1/skills").expect("list path");
+    let list = doc
+        .paths
+        .paths
+        .get("/v1/platform/skills")
+        .expect("list path");
     let params: Vec<_> = list
         .get
         .as_ref()

@@ -211,10 +211,10 @@ export function RoomApiSnippet({ room, lastSeq }: { room: Room; lastSeq?: number
   const after = lastSeq ?? 0;
   const http = [
     `# ${ui("Follow the room's changes from where you stopped")}`,
-    `GET /v1/rooms/${room.id}/events?after=${after}`,
+    `GET /v1/platform/rooms/${room.id}/events?after=${after}`,
     "",
     `# ${ui("Post for one of your app's people, the way an app does")}`,
-    `POST /v1/rooms/${room.id}/messages`,
+    `POST /v1/platform/rooms/${room.id}/messages`,
     `{"text": "@agent can you look at this?", "as_member": "rmem_..."}`,
   ].join("\n");
   const cli = [

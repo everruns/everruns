@@ -75,7 +75,7 @@ pub struct UpdateKnowledgeBaseRequest {
     pub embedding_model_id: UpdateField<ModelId>,
 }
 
-/// Query parameters for `GET /v1/knowledge-bases` — optional name/desc
+/// Query parameters for `GET /v1/platform/knowledge-bases` — optional name/desc
 /// search plus a flag to include archived knowledge bases.
 #[derive(Debug, Clone, Deserialize, IntoParams, ToSchema)]
 pub struct ListKnowledgeBasesQuery {
@@ -155,7 +155,7 @@ pub struct CreateKnowledgeEntryRequest {
     pub title: String,
     /// Entry body. Markdown is rendered when displayed.
     #[schema(
-        example = "Use the `/v1/payments/{id}/refund` endpoint with `reason: \"past_window\"`. Only the on-call billing engineer can authorize this."
+        example = "Use the `/v1/platform/payments/{id}/refund` endpoint with `reason: \"past_window\"`. Only the on-call billing engineer can authorize this."
     )]
     pub body: String,
     #[serde(default)]
@@ -183,7 +183,7 @@ pub struct UpdateKnowledgeEntryRequest {
     /// Updated entry body. Markdown is rendered when displayed.
     #[serde(default)]
     #[schema(
-        example = "Use the `/v1/payments/{id}/refund` endpoint with `reason: \"past_window\"`. Now requires VP approval."
+        example = "Use the `/v1/platform/payments/{id}/refund` endpoint with `reason: \"past_window\"`. Now requires VP approval."
     )]
     pub body: Option<String>,
     #[serde(default)]

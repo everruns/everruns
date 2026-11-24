@@ -4,7 +4,7 @@
 //! Decisions:
 //! - The driver acts as one member of one org, with an API key, the way a
 //!   customer's client does. It exchanges the key at the control plane's
-//!   `POST /v1/auth/token` and sends the token to the gateways as
+//!   `POST /v1/platform/auth/token` and sends the token to the gateways as
 //!   `x-everruns-org-token`; the token's org is the session's tenant.
 //! - One token serves every request. It is fetched again a minute before it
 //!   ends (halfway through a short life), as the edge does, so a 75 000
@@ -44,7 +44,10 @@ impl OrgToken {
             http: reqwest::Client::builder()
                 .timeout(Duration::from_secs(15))
                 .build()?,
-            url: format!("{}/v1/auth/token", control_plane.trim_end_matches('/')),
+            url: format!(
+                "{}/v1/platform/auth/token",
+                control_plane.trim_end_matches('/')
+            ),
             api_key,
             org,
             current: RwLock::new(None),
@@ -146,7 +149,7 @@ mod tests {
 
     async fn control_plane(issued: Arc<AtomicUsize>) -> String {
         let app = axum::Router::new().route(
-            "/api/v1/auth/token",
+            "/api/v1/platform/auth/token",
             post(
                 move |headers: HeaderMap, Json(body): Json<serde_json::Value>| {
                     let issued = issued.clone();

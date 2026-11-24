@@ -922,7 +922,7 @@ async fn export(
     Ok(())
 }
 
-/// Fetch a session export from `GET /v1/sessions/{id}/export` in `format`.
+/// Fetch a session export from `GET /v1/platform/sessions/{id}/export` in `format`.
 async fn export_raw(
     client: &ApiClient<'_>,
     session_id: &str,
@@ -932,7 +932,10 @@ async fn export_raw(
         .request(
             reqwest::Method::GET,
             &with_query(
-                &format!("/v1/sessions/{}/export", urlencoding::encode(session_id)),
+                &format!(
+                    "/v1/platform/sessions/{}/export",
+                    urlencoding::encode(session_id)
+                ),
                 &[("format", format.as_query_value())],
             ),
         )

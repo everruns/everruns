@@ -20,7 +20,7 @@ pub fn routes(state: ApiState) -> Router {
         .route("/dp/v1/feed", post(feed))
         .route("/dp/v1/tenants/{org}/allowances", post(allowances))
         .route("/.well-known/jwks.json", get(jwks))
-        .route("/v1/auth/token", post(token))
+        .route("/v1/platform/auth/token", post(token))
         .with_state(state)
 }
 
@@ -134,7 +134,7 @@ struct TokenRequest {
     org: Option<String>,
 }
 
-/// `POST /v1/auth/token`: exchange the caller's credential for an org token
+/// `POST /v1/platform/auth/token`: exchange the caller's credential for an org token
 /// of an org they belong to that runs on a data plane.
 async fn token(
     State(state): State<ApiState>,

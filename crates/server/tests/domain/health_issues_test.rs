@@ -17,14 +17,14 @@ async fn health_lifecycle_memory() {
 async fn lifecycle(server: TestServer) {
     let agent: Value = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({"name":format!("health-{}", uuid::Uuid::now_v7()),"system_prompt":"test"}),
         )
         .await
         .assert_status(StatusCode::CREATED)
         .json();
     let agent_id = agent["id"].as_str().unwrap();
-    let channel: Value = server.post(&format!("/v1/agents/{agent_id}/channels"),
+    let channel: Value = server.post(&format!("/v1/platform/agents/{agent_id}/channels"),
         json!({"channel_type":"slack","channel_config":{"bot_token":"xoxb-test","signing_secret":"test","team_id":"T1"}}))
         .await.assert_status(StatusCode::CREATED).json();
     let channel_id = channel["id"].as_str().unwrap();
@@ -54,13 +54,13 @@ async fn lifecycle(server: TestServer) {
             .await
             .unwrap();
     }
-    let url = format!("/v1/health-issues?channel_id={channel_id}");
+    let url = format!("/v1/platform/health-issues?channel_id={channel_id}");
     let list: Value = server.get(&url).await.assert_status(StatusCode::OK).json();
     assert_eq!(list["total"], 1);
     assert_eq!(list["data"][0]["agent_id"], agent_id);
     let id = list["data"][0]["id"].as_str().unwrap();
     server
-        .get(&format!("/v1/health-issues/{id}"))
+        .get(&format!("/v1/platform/health-issues/{id}"))
         .await
         .assert_status(StatusCode::OK);
     server
@@ -201,11 +201,13 @@ async fn lifecycle(server: TestServer) {
     assert_eq!(restored.payload["status"], "resolved");
     assert!(restored.viewed_at.is_some());
     server
-        .delete(&format!("/v1/agents/{agent_id}/channels/{channel_id}"))
+        .delete(&format!(
+            "/v1/platform/agents/{agent_id}/channels/{channel_id}"
+        ))
         .await
         .assert_status(StatusCode::OK);
     server
-        .get(&format!("/v1/health-issues/{id}"))
+        .get(&format!("/v1/platform/health-issues/{id}"))
         .await
         .assert_status(StatusCode::NOT_FOUND);
 }

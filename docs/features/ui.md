@@ -177,14 +177,14 @@ remove it.
 The avatar shows on agent cards and the agent page, in the A2A Agent Card (`iconUrl`), on the MCP
 agent card, and as the icon of Slack apps created with one-click setup.
 
-Through the API, `PUT /v1/agents/{agent_id}/avatar` takes the image as the multipart field
+Through the API, `PUT /v1/platform/agents/{agent_id}/avatar` takes the image as the multipart field
 `file`, and `DELETE` removes it. The agent's `avatar` field lists the URLs. Preset URLs look like
 `/v1/avatars/{avatar_id}/circle-64.png`; they are public and cached as immutable, and a new upload
 gets a new `avatar_id`. `GET /v1/avatar-presets` lists the curated catalog;
-`PUT /v1/agents/{agent_id}/avatar/preset` selects one with `{"preset_id": "familiars-patch"}`.
+`PUT /v1/platform/agents/{agent_id}/avatar/preset` selects one with `{"preset_id": "familiars-patch"}`.
 `GET` on that selection endpoint reports the current preset ID, or `null` for a custom image
 or no avatar. Preset selection uses the same agent-management permission as upload.
-`POST /v1/agents/{agent_id}/avatar/generate` (`everruns agents avatar generate --prompt ...`,
+`POST /v1/platform/agents/{agent_id}/avatar/generate` (`everruns agents avatar generate --prompt ...`,
 MCP `generate_agent_avatar`) draws an avatar with the organization's default image model and
 sets it in one step; without a prompt it draws from the agent's name and description.
 
@@ -252,7 +252,7 @@ See what a session spent and why:
 - **Context now**: what the next model call will send, by section, with the sources folded.
 
 A notice appears when most spend is prompt that was not read from cache. The same data is
-available from `GET /v1/sessions/{session_id}/cost` and `everruns sessions cost get`.
+available from `GET /v1/platform/sessions/{session_id}/cost` and `everruns sessions cost get`.
 
 ### Session Status
 
@@ -357,12 +357,12 @@ A read-only token can never:
 - change organizations, members, or invitations, or connect providers and
   other accounts;
 - download the full export of your account data
-  (`GET /v1/users/me/export`).
+  (`GET /v1/platform/users/me/export`).
 
 A request outside the token's access fails with `403 Forbidden`, a
 `WWW-Authenticate: Bearer error="insufficient_scope"` header, and a problem
 body with `"code": "insufficient_scope"`. Use a full-access token for that
-operation. `GET /v1/auth/me` reports the scope of the token you called it
+operation. `GET /v1/platform/auth/me` reports the scope of the token you called it
 with as `token_scope` (`"*"` or `"read"`; `null` when you are signed in
 another way).
 
@@ -370,7 +370,7 @@ Tokens are created from a signed-in session; a personal access token cannot
 create another one. Through the API, pass `scopes`:
 
 ```bash
-curl -X POST "$EVERRUNS_URL/api/v1/auth/personal-access-tokens" \
+curl -X POST "$EVERRUNS_URL/api/v1/platform/auth/personal-access-tokens" \
   -H "Authorization: Bearer $SESSION_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"name": "ci-reader", "scopes": ["read"], "expires_in_days": 90}'
@@ -384,7 +384,7 @@ or `["read"]` is rejected with `400` and `"code": "unsupported_pat_scopes"`.
 View and manage team members (when authentication is enabled). Owners and
 admins add people by invitation; the invitee accepts with a verified matching
 email. Adding an existing user directly by ID
-(`POST /v1/orgs/{org}/members`) is limited to platform admins.
+(`POST /v1/platform/orgs/{org}/members`) is limited to platform admins.
 
 ## Virtual users and personal settings
 

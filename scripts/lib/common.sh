@@ -62,7 +62,7 @@ apply_port_prefix_defaults() {
   # COMPOSE_PROJECT_NAME is still used by example.just for the Docker-based example deployment
   : "${COMPOSE_PROJECT_NAME:=everruns${PORT_PREFIX:+-$PORT_PREFIX}}"
 
-  # Where the proxy sends /api/v1/sessions and below: the API server, or the
+  # Where the proxy sends /api/v1/platform/sessions and below: the API server, or the
   # local data plane's edge with DATA_PLANE=v2 (data-plane-local.sh).
   : "${SESSIONS_UPSTREAM:=127.0.0.1:${API_PORT}}"
   export SESSIONS_UPSTREAM

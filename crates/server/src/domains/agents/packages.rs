@@ -994,7 +994,7 @@ impl Command for ExportAgent {
             category: "agents",
             description: "Export a portable agent definition as JSON, without IDs or credentials.",
             method: "GET",
-            path: "/v1/agents/{id}/export",
+            path: "/v1/platform/agents/{id}/export",
         }
     }
     fn policy() -> Option<&'static everruns_core::Policy> {
@@ -1078,7 +1078,7 @@ impl Command for ImportAgent {
             category: "agents",
             description: "Import an agent package; target explicitly updates an existing agent by name.",
             method: "POST",
-            path: "/v1/agents/import",
+            path: "/v1/platform/agents/import",
         }
     }
     fn policy() -> Option<&'static everruns_core::Policy> {
@@ -1129,7 +1129,7 @@ impl Command for ValidateAgentPackage {
             category: "agents",
             description: "Validate an agent package and destination dependencies without changing resources.",
             method: "POST",
-            path: "/v1/agents/validate",
+            path: "/v1/platform/agents/validate",
         }
     }
     fn policy() -> Option<&'static everruns_core::Policy> {
@@ -1208,7 +1208,7 @@ impl Command for DiffAgentPackage {
             category: "agents",
             description: "Compare an agent package with an existing agent by name without applying changes.",
             method: "POST",
-            path: "/v1/agents/diff",
+            path: "/v1/platform/agents/diff",
         }
     }
     fn policy() -> Option<&'static everruns_core::Policy> {

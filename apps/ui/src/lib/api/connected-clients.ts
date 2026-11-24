@@ -5,10 +5,10 @@ import { api } from "./client";
 import type { ConnectedClientsResponse } from "./types";
 
 export async function getConnectedClients(): Promise<ConnectedClientsResponse> {
-  const response = await api.get<ConnectedClientsResponse>("/v1/user/connected-clients");
+  const response = await api.get<ConnectedClientsResponse>("/v1/platform/user/connected-clients");
   return response.data;
 }
 
 export async function revokeConnectedClient(grantId: string): Promise<void> {
-  await api.delete(`/v1/user/connected-clients/${encodeURIComponent(grantId)}`);
+  await api.delete(`/v1/platform/user/connected-clients/${encodeURIComponent(grantId)}`);
 }

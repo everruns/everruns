@@ -236,7 +236,7 @@ fn render_auth_md(state: &AppState) -> String {
          | Token format | opaque string prefixed `evr_pat_` |\n\
          | Credential presentation | `Authorization: Bearer evr_pat_...` |\n\n\
          ```bash\n\
-         curl -X POST {api}/v1/agents \\\n  \
+         curl -X POST {api}/v1/platform/agents \\\n  \
          -H \"Authorization: Bearer $EVERRUNS_TOKEN\" \\\n  \
          -H \"Content-Type: application/json\" \\\n  \
          -d '{{\"name\":\"Assistant\",\"system_prompt\":\"You are helpful.\"}}'\n\
@@ -467,7 +467,7 @@ mod tests {
         assert!(md.contains("https://app.example.com/mcp"));
         assert!(md.contains("/.well-known/oauth-protected-resource/mcp"));
         assert!(md.contains("evr_pat_"));
-        assert!(md.contains("https://app.example.com/api/v1/agents"));
+        assert!(md.contains("https://app.example.com/api/v1/platform/agents"));
     }
 
     #[test]

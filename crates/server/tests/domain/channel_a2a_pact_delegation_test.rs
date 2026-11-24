@@ -530,7 +530,7 @@ async fn delegation_config_is_validated() {
     config["delegation"]["login_url"] = json!("http://brand.example/login");
     let agent: Value = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({ "name": format!("pact-{}", uuid::Uuid::new_v4().simple()), "system_prompt": "x" }),
         )
         .await
@@ -538,7 +538,10 @@ async fn delegation_config_is_validated() {
         .json();
     let response = server
         .post(
-            &format!("/v1/agents/{}/channels", agent["id"].as_str().unwrap()),
+            &format!(
+                "/v1/platform/agents/{}/channels",
+                agent["id"].as_str().unwrap()
+            ),
             json!({
                 "channel_type": "a2a",
                 "channel_config": {

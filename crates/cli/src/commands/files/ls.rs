@@ -15,7 +15,7 @@ pub async fn run(
     recursive: bool,
     long: bool,
 ) -> Result<()> {
-    let client = RemoteClient::new_with_org(api_url, api_key, &session_id, org_id);
+    let client = RemoteClient::connect(api_url, api_key, &session_id, org_id).await?;
     let entries = client.list(&path, recursive).await?;
 
     if output.is_text() {

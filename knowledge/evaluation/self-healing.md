@@ -26,7 +26,7 @@ finding opens:
 | `off` | neither |
 
 The policy is `self_healing` on the organization (Settings → Limits, "When a
-finding opens"; `PATCH /v1/orgs/{id}` with `self_healing`). Two kinds today:
+finding opens"; `PATCH /v1/platform/orgs/{id}` with `self_healing`). Two kinds today:
 
 - `runaway_schedules` (default `auto`): pause a schedule whose runs ended the
   same way 24 times in a row, instead of letting it run to the 48-run stop.

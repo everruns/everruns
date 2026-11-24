@@ -30,7 +30,7 @@ Verify archive-before-delete enforcement, cancellation, dangerous permission che
 ## Steps
 
 1. Open Settings > Organization > MCP catalog. Confirm the active preset offers Archive and no permanent Delete action.
-2. As the owner, call `POST /api/v1/mcp-servers/<id>/delete` while it is active; inspect the result and re-read the preset.
+2. As the owner, call `POST /api/v1/platform/mcp-servers/<id>/delete` while it is active; inspect the result and re-read the preset.
 3. Archive it, switch to Archived, and choose Delete. Cancel; reload and verify it remains archived.
 4. Sign in as the restricted fixture. Confirm permanent Delete is unavailable and a direct delete request is rejected.
 5. Return to the owner, delete the archived preset, and confirm.

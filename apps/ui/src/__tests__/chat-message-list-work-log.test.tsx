@@ -362,11 +362,11 @@ describe("ChatMessageList work-log narration", () => {
     expect(links.map((link) => link.textContent)).toEqual(["signups.png", "raw data.csv"]);
     expect(links[0]).toHaveAttribute(
       "href",
-      expect.stringContaining("/v1/sessions/session-1/fs/_/download/out/signups.png"),
+      expect.stringContaining("/v1/platform/sessions/session-1/fs/_/download/out/signups.png"),
     );
     expect(links[1]).toHaveAttribute(
       "href",
-      expect.stringContaining("/v1/sessions/session-1/fs/_/download/out/raw%20data.csv"),
+      expect.stringContaining("/v1/platform/sessions/session-1/fs/_/download/out/raw%20data.csv"),
     );
   });
 

@@ -26,7 +26,7 @@ Model resolution priority on each turn:
 ## Add a new provider
 
 ```bash
-curl -X POST http://localhost:9300/api/v1/providers \
+curl -X POST http://localhost:9300/api/v1/platform/providers \
   -H "Content-Type: application/json" \
   -d '{
     "name": "anthropic",
@@ -40,12 +40,12 @@ The API key is encrypted at rest. The provider's models are discovered on creati
 ## Switch an agent's default model
 
 ```bash
-curl -X PATCH http://localhost:9300/api/v1/agents/$AGENT_ID \
+curl -X PATCH http://localhost:9300/api/v1/platform/agents/$AGENT_ID \
   -H "Content-Type: application/json" \
   -d '{ "default_model_id": "model_..." }'
 ```
 
-Model IDs have the form `model_` followed by 32 hex characters. Find the ID of the model you want with `GET /api/v1/models` (or the model list in the UI), and substitute it for `model_...` throughout this guide.
+Model IDs have the form `model_` followed by 32 hex characters. Find the ID of the model you want with `GET /api/v1/platform/models` (or the model list in the UI), and substitute it for `model_...` throughout this guide.
 
 New sessions inherit the new default. **Existing sessions keep running on the model they started with** unless you override per-session or per-message.
 
@@ -54,7 +54,7 @@ New sessions inherit the new default. **Existing sessions keep running on the mo
 For an A/B comparison, override at the session level:
 
 ```bash
-curl -X POST http://localhost:9300/api/v1/sessions \
+curl -X POST http://localhost:9300/api/v1/platform/sessions \
   -H "Content-Type: application/json" \
   -d '{
     "agent_id": "agent_...",

@@ -21,9 +21,9 @@ Verifies that a newly created organization immediately appears in the user's org
 
 ## Steps
 
-1. Call `GET /v1/orgs` and note the current org count
-2. Call `POST /v1/orgs` with `{"name": "New Org"}` — expect 201
-3. Call `GET /v1/orgs` again
+1. Call `GET /v1/platform/orgs` and note the current org count
+2. Call `POST /v1/platform/orgs` with `{"name": "New Org"}` — expect 201
+3. Call `GET /v1/platform/orgs` again
 
 ## Expected Result
 

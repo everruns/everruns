@@ -8,7 +8,7 @@
 import { listSessions, type SessionListFilters } from "@/lib/api/sessions";
 import type { Session } from "@/lib/api/types";
 
-/** Server maximum for `limit` on `GET /v1/sessions`. */
+/** Server maximum for `limit` on `GET /v1/platform/sessions`. */
 const EXPORT_PAGE_SIZE = 100;
 
 /**

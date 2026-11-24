@@ -163,7 +163,7 @@ record fork provenance:
   display and for future arbitrary-point forking.
 
 Both surface on the `Session` model and API response. Listing a session's forks
-is `GET /v1/sessions?forked_from={id}` (filter), and the child carries
+is `GET /v1/platform/sessions?forked_from={id}` (filter), and the child carries
 `forked_from_session_id` for "forked from …" UI. Detached session spawning also
 sets `forked_from_session_id` to the spawning session while leaving
 `parent_session_id = NULL`; lineage is provenance, not subagent nesting.
@@ -206,7 +206,7 @@ The copy routine and `forked_from_sequence` are written in terms of an
 ## API
 
 ```
-POST /v1/sessions/{session_id}/fork
+POST /v1/platform/sessions/{session_id}/fork
 ```
 
 Request body (all fields optional, omitted fields inherit from the parent):
@@ -256,7 +256,7 @@ Phased so each phase is independently reviewable and lands a coherent slice.
    `set_session_fork_lineage` update so the many `CreateSessionRow` call sites
    stay untouched). `SessionService::fork()` copies **config + conversation
    history (events) + workspace files**; `ForkSession` command (policy
-   `SESSION_MANAGE`); `POST /v1/sessions/{id}/fork`. The skip-list is enforced
+   `SESSION_MANAGE`); `POST /v1/platform/sessions/{id}/fork`. The skip-list is enforced
    by simply not copying those tables.
 2. **KV + secrets copy.** Copy `session_key_values` and `session_secrets`.
    Requires exposing `upsert_session_key_value` and `get_session_secret`
@@ -266,7 +266,7 @@ Phased so each phase is independently reviewable and lands a coherent slice.
 4. **Atomicity + arbitrary fork point.** Move the multi-table copy into a single
    transaction (bulk copy methods), and add optional `up_to_sequence` /
    `up_to_message_id` with turn-boundary sealing.
-5. **UI + list filter.** `GET /v1/sessions?forked_from={id}` filter; a "Fork"
+5. **UI + list filter.** `GET /v1/platform/sessions?forked_from={id}` filter; a "Fork"
    action on a session (chat header / session card); "forked from …" provenance
    link; optional fork-tree view.
 

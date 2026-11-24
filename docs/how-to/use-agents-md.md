@@ -9,7 +9,7 @@ appliesTo: [platform, cloud]
 ## Enable the capability
 
 ```bash
-curl -X PATCH http://localhost:9300/api/v1/agents/$AGENT_ID \
+curl -X PATCH http://localhost:9300/api/v1/platform/agents/$AGENT_ID \
   -H "Content-Type: application/json" \
   -d '{
     "capabilities": [
@@ -24,7 +24,7 @@ curl -X PATCH http://localhost:9300/api/v1/agents/$AGENT_ID \
 To also read another instruction file, configure `files` on the capability:
 
 ```bash
-curl -X PATCH http://localhost:9300/api/v1/agents/$AGENT_ID \
+curl -X PATCH http://localhost:9300/api/v1/platform/agents/$AGENT_ID \
   -H "Content-Type: application/json" \
   -d '{
     "capabilities": [

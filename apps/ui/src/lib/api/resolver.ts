@@ -18,7 +18,7 @@ export interface ResolveOrgResult {
 export async function resolveOrgForResource(id: string): Promise<ResolveOrgResult | null> {
   try {
     const response = await api.get<ResolveOrgResult>(
-      `/v1/resolve-org?id=${encodeURIComponent(id)}`,
+      `/v1/platform/resolve-org?id=${encodeURIComponent(id)}`,
     );
     return response.data;
   } catch (error) {

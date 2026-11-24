@@ -335,10 +335,10 @@ impl From<CommandError> for (StatusCode, Json<ErrorResponse>) {
 /// in-process worker reach them through the same `dispatch` instead of a
 /// bespoke RPC plus a direct adapter each. The prefix keeps them off every
 /// public surface: no REST route (`/v1/` only), no OpenAPI entry, no MCP
-/// discover/query/execute, no `/v1/commands`, no command tree. `Command::run`
+/// discover/query/execute, no `/v1/platform/commands`, no command tree. `Command::run`
 /// refuses them to any caller but `Caller::internal`, so a worker token acting
 /// for a user cannot reach them either. A path rather than a new `#[command]`
-/// argument because exposure is already decided by path (`/v1/durable/`,
+/// argument because exposure is already decided by path (`/v1/platform/durable/`,
 /// `/test/`), and one rule is easier to audit than two.
 pub const INTERNAL_COMMAND_PATH_PREFIX: &str = "/internal/";
 
@@ -646,7 +646,7 @@ pub trait Command: DeserializeOwned + Serialize + Send + 'static + CommandSchema
     }
 
     /// Whether `run` holds the mutation, its history entry and (over
-    /// `/v1/commands`) its idempotency record in one database transaction. See
+    /// `/v1/platform/commands`) its idempotency record in one database transaction. See
     /// `change_history::registry::transactional` for the default.
     fn transactional() -> bool {
         crate::domains::change_history::registry::transactional(

@@ -79,7 +79,7 @@ function Enabled({ org, children }: { org: string; children: ReactNode }) {
     formResource(mode?.page.entity_type ?? "", mode?.page.entity_id, mode?.page.form_name) ??
     resourceWrite(
       "PATCH",
-      `/v1${(mode?.page.route ?? "").replace(/^\/models\/providers\//, "/providers/")}`,
+      `/v1/platform${(mode?.page.route ?? "").replace(/^\/models\/providers\//, "/providers/")}`,
     );
   useLayoutEffect(() => {
     controller.watch(activeResource, mode?.threadId);

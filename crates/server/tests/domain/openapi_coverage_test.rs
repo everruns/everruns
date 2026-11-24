@@ -313,3 +313,75 @@ fn retired_command_routes_are_absent_from_openapi() {
         }
     }
 }
+
+// Namespace changes must not accidentally move published execution protocols
+// or leave account-wide operations reachable at the old resource addresses.
+#[test]
+fn platform_namespace_preserves_agent_execution_addresses() {
+    use utoipa::OpenApi;
+    let spec = everruns_server::openapi::ApiDoc::openapi();
+    for path in spec.paths.paths.keys() {
+        assert!(
+            path.starts_with("/v1/platform/")
+                || [
+                    "/v1/channels/",
+                    "/v1/e/",
+                    "/v1/apps/",
+                    "/v1/avatars/",
+                    "/v1/avatar-presets",
+                    "/v1/virtual-users/",
+                    "/v1/connection-providers",
+                    "/v1/work-chat/",
+                    "/v1/public/"
+                ]
+                .iter()
+                .any(|prefix| path.starts_with(prefix)),
+            "REST route has no declared namespace: {path}"
+        );
+    }
+    for path in [
+        "/v1/platform/agents",
+        "/v1/platform/harnesses",
+        "/v1/platform/sessions",
+        "/v1/platform/providers",
+        "/v1/platform/orgs",
+        "/v1/platform/commands",
+        "/v1/platform/durable/workers",
+    ] {
+        assert!(spec.paths.paths.contains_key(path), "missing {path}");
+        assert!(
+            !spec
+                .paths
+                .paths
+                .contains_key(&path.replacen("/platform", "", 1))
+        );
+    }
+    for path in [
+        "/v1/channels/{channel_id}",
+        "/v1/channels/{channel_id}/sessions",
+        "/v1/channels/{channel_id}/sessions/{session_id}/sse",
+        "/v1/channels/{channel_id}/a2a",
+        "/v1/avatars/{avatar_id}/{variant}",
+    ] {
+        assert!(
+            spec.paths.paths.contains_key(path),
+            "moved public route {path}"
+        );
+    }
+    assert_eq!(
+        everruns_server::auth::pat_scope::classify(
+            &axum::http::Method::GET,
+            "/v1/auth/cli/callback"
+        ),
+        Some(everruns_server::auth::pat_scope::RouteAccess::Never)
+    );
+    assert_eq!(
+        spec.paths.paths["/v1/platform/agents"]
+            .get
+            .as_ref()
+            .unwrap()
+            .operation_id
+            .as_deref(),
+        Some("list_agents")
+    );
+}

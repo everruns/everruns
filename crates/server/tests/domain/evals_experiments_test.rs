@@ -13,13 +13,16 @@ use test_harness::TestServer;
 
 async fn seed_eval(server: &TestServer, cases: usize) -> Value {
     let harness: Value = server
-        .post("/v1/harnesses", json!({"name": "experiments-harness"}))
+        .post(
+            "/v1/platform/harnesses",
+            json!({"name": "experiments-harness"}),
+        )
         .await
         .assert_success()
         .json();
     let eval: Value = server
         .post(
-            "/v1/evals",
+            "/v1/platform/evals",
             json!({
                 "name": "experiments eval",
                 "target": {"type": "session", "harness_id": harness["id"]},
@@ -31,7 +34,7 @@ async fn seed_eval(server: &TestServer, cases: usize) -> Value {
     for index in 0..cases {
         server
             .post(
-                &format!("/v1/evals/{}/cases", eval["id"].as_str().unwrap()),
+                &format!("/v1/platform/evals/{}/cases", eval["id"].as_str().unwrap()),
                 json!({
                     "name": format!("case-{index}"),
                     "conversation": [{"content": "hello"}],
@@ -43,7 +46,10 @@ async fn seed_eval(server: &TestServer, cases: usize) -> Value {
             .assert_status(StatusCode::CREATED);
     }
     server
-        .get(&format!("/v1/evals/{}", eval["id"].as_str().unwrap()))
+        .get(&format!(
+            "/v1/platform/evals/{}",
+            eval["id"].as_str().unwrap()
+        ))
         .await
         .assert_status(StatusCode::OK)
         .json()
@@ -59,7 +65,7 @@ async fn an_experiment_runs_each_variant_and_gates_on_the_comparison() {
 
     let experiment: Value = server
         .post(
-            &format!("/v1/evals/{eval_id}/experiments"),
+            &format!("/v1/platform/evals/{eval_id}/experiments"),
             json!({
                 "variants": [
                     {"label": "base"},
@@ -85,7 +91,7 @@ async fn an_experiment_runs_each_variant_and_gates_on_the_comparison() {
     // experiment and the dataset version.
     let run: Value = server
         .get(&format!(
-            "/v1/evals/{eval_id}/runs/{}",
+            "/v1/platform/evals/{eval_id}/runs/{}",
             variants[1]["run_id"].as_str().unwrap()
         ))
         .await
@@ -97,12 +103,12 @@ async fn an_experiment_runs_each_variant_and_gates_on_the_comparison() {
     assert_eq!(run["max_cost_usd"], 2.0);
     assert_eq!(run["model_override"], "gpt-6-luna");
 
-    let gate = format!("/v1/evals/{eval_id}/experiments/{experiment_id}/gate");
+    let gate = format!("/v1/platform/evals/{eval_id}/experiments/{experiment_id}/gate");
     let early = server.get(&gate).await;
     assert_eq!(early.status(), StatusCode::CONFLICT);
     let _ = early.text();
 
-    let path = format!("/v1/evals/{eval_id}/experiments/{experiment_id}");
+    let path = format!("/v1/platform/evals/{eval_id}/experiments/{experiment_id}");
     let mut done = Value::Null;
     for _ in 0..120 {
         done = server.get(&path).await.assert_status(StatusCode::OK).json();
@@ -138,12 +144,12 @@ async fn an_experiment_runs_each_variant_and_gates_on_the_comparison() {
     assert_eq!(passed["variant"], "base");
 
     let mine: Value = server
-        .get(&format!("/v1/evals/{eval_id}/experiments"))
+        .get(&format!("/v1/platform/evals/{eval_id}/experiments"))
         .await
         .assert_status(StatusCode::OK)
         .json();
     let all: Value = server
-        .get("/v1/evals/experiments")
+        .get("/v1/platform/evals/experiments")
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -157,7 +163,7 @@ async fn an_experiment_runs_each_variant_and_gates_on_the_comparison() {
 
     // Changing a case is a new dataset version; the experiment keeps its own.
     let case_id = server
-        .get(&format!("/v1/evals/{eval_id}/cases"))
+        .get(&format!("/v1/platform/evals/{eval_id}/cases"))
         .await
         .assert_status(StatusCode::OK)
         .json::<Value>()["data"][0]["id"]
@@ -166,13 +172,13 @@ async fn an_experiment_runs_each_variant_and_gates_on_the_comparison() {
         .to_string();
     server
         .patch(
-            &format!("/v1/evals/{eval_id}/cases/{case_id}"),
+            &format!("/v1/platform/evals/{eval_id}/cases/{case_id}"),
             json!({"name": "renamed"}),
         )
         .await
         .assert_status(StatusCode::OK);
     let eval: Value = server
-        .get(&format!("/v1/evals/{eval_id}"))
+        .get(&format!("/v1/platform/evals/{eval_id}"))
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -183,7 +189,10 @@ async fn an_experiment_runs_each_variant_and_gates_on_the_comparison() {
 async fn experiments_outside_bounds_are_rejected() {
     let server = TestServer::in_memory().await;
     let eval = seed_eval(&server, 1).await;
-    let path = format!("/v1/evals/{}/experiments", eval["id"].as_str().unwrap());
+    let path = format!(
+        "/v1/platform/evals/{}/experiments",
+        eval["id"].as_str().unwrap()
+    );
     let bad = [
         json!({"variants": []}),
         json!({"variants": [{"label": "a"}, {"label": "b"}, {"label": "c"}, {"label": "d"}, {"label": "e"}]}),

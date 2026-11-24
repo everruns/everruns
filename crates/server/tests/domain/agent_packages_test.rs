@@ -13,7 +13,7 @@ async fn api_import_export_zip_and_diff_round_trip_without_ids() {
     let content = definition("package-test").to_string();
     let body = json!({"content":content,"format":"json"});
     let validation = server
-        .post("/v1/agents/validate", &body)
+        .post("/v1/platform/agents/validate", &body)
         .await
         .assert_success()
         .json_value();
@@ -31,12 +31,12 @@ async fn api_import_export_zip_and_diff_round_trip_without_ids() {
     );
     assert!(validation["preview"].get("id").is_none());
     let agent = server
-        .post("/v1/agents/import", &body)
+        .post("/v1/platform/agents/import", &body)
         .await
         .assert_status(StatusCode::CREATED)
         .json_value();
     let exported = server
-        .get("/v1/agents/package-test/export?format=json")
+        .get("/v1/platform/agents/package-test/export?format=json")
         .await
         .assert_success()
         .json_value();
@@ -51,7 +51,7 @@ async fn api_import_export_zip_and_diff_round_trip_without_ids() {
     proposed["instructions"] = json!("Changed instructions");
     let diff = server
         .post(
-            "/v1/agents/diff",
+            "/v1/platform/agents/diff",
             json!({"content":proposed.to_string(),"format":"json","target":"package-test"}),
         )
         .await
@@ -63,7 +63,7 @@ async fn api_import_export_zip_and_diff_round_trip_without_ids() {
     let imported = server
         .request_raw(
             Method::POST,
-            "/v1/agents/import?target=package-test&format=zip",
+            "/v1/platform/agents/import?target=package-test&format=zip",
             vec![("Content-Type", "application/zip")],
             package.to_zip().unwrap(),
         )
@@ -74,7 +74,7 @@ async fn api_import_export_zip_and_diff_round_trip_without_ids() {
     assert_eq!(imported["localizations"], exported["localizations"]);
     let diff = server
         .post(
-            "/v1/agents/diff",
+            "/v1/platform/agents/diff",
             json!({"content":proposed.to_string(),"format":"json","target":"package-test"}),
         )
         .await
@@ -90,7 +90,7 @@ async fn validation_and_dependency_failure_never_create_an_agent() {
     value["capabilities"] = json!(["missing-capability"]);
     let body = json!({"content":value.to_string(),"format":"json"});
     let validation = server
-        .post("/v1/agents/validate", &body)
+        .post("/v1/platform/agents/validate", &body)
         .await
         .assert_success()
         .json_value();
@@ -98,21 +98,24 @@ async fn validation_and_dependency_failure_never_create_an_agent() {
     assert_eq!(validation["preview"]["name"], "invalid-package");
     assert_eq!(validation["preview"]["instructions"], "Read the runbook.");
     server
-        .post("/v1/agents/import", &body)
+        .post("/v1/platform/agents/import", &body)
         .await
         .assert_status(StatusCode::NOT_FOUND);
     server
-        .get("/v1/agents/invalid-package")
+        .get("/v1/platform/agents/invalid-package")
         .await
         .assert_status(StatusCode::NOT_FOUND);
     value = definition("invalid-package");
     value["channels"]["chat"]["type"] = json!("webhook");
     server
-        .post("/v1/agents/import", json!({"content":value.to_string()}))
+        .post(
+            "/v1/platform/agents/import",
+            json!({"content":value.to_string()}),
+        )
         .await
         .assert_status(StatusCode::BAD_REQUEST);
     server
-        .get("/v1/agents/invalid-package")
+        .get("/v1/platform/agents/invalid-package")
         .await
         .assert_status(StatusCode::NOT_FOUND);
 }
@@ -123,14 +126,14 @@ async fn legacy_markdown_is_accepted_and_versioned_ids_are_rejected() {
     server
         .request_raw(
             Method::POST,
-            "/v1/agents/import",
+            "/v1/platform/agents/import",
             vec![("Content-Type", "text/markdown")],
             b"---\nname: Simple Agent\n---\nBe helpful.".to_vec(),
         )
         .await
         .assert_status(StatusCode::CREATED);
     let exported = server
-        .get("/v1/agents/simple-agent/export")
+        .get("/v1/platform/agents/simple-agent/export")
         .await
         .assert_success()
         .text();
@@ -139,7 +142,10 @@ async fn legacy_markdown_is_accepted_and_versioned_ids_are_rejected() {
     let mut bad = definition("versioned-id");
     bad["id"] = json!("agent_01933b5a000070008000000000000001");
     server
-        .post("/v1/agents/import", json!({"content":bad.to_string()}))
+        .post(
+            "/v1/platform/agents/import",
+            json!({"content":bad.to_string()}),
+        )
         .await
         .assert_status(StatusCode::BAD_REQUEST);
 }
@@ -174,7 +180,10 @@ async fn mcp_import_and_export_use_the_shared_codec() {
             "{response}"
         );
     }
-    server.get("/v1/agents/mcp-package").await.assert_success();
+    server
+        .get("/v1/platform/agents/mcp-package")
+        .await
+        .assert_success();
 }
 
 #[tokio::test]
@@ -188,7 +197,7 @@ async fn platform_chat_cli_resolves_workspace_folders_and_exports_zip_artifacts(
     let server = TestServer::in_memory().await;
     let session = server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             json!({"harness_id":server.seed_base_harness_id}),
         )
         .await
@@ -281,7 +290,7 @@ async fn platform_chat_cli_resolves_workspace_folders_and_exports_zip_artifacts(
         assert!(!result.contains("\"valid\":false"), "{result}");
     }
     let response = server
-        .get(&format!("/v1/sessions/{id}/fs/exports/chat.zip"))
+        .get(&format!("/v1/platform/sessions/{id}/fs/exports/chat.zip"))
         .await
         .assert_success()
         .json_value();
@@ -316,7 +325,7 @@ async fn full_replacement_removes_old_capabilities_and_reports_field_diagnostics
     let mut definition = definition("replace-package");
     server
         .post(
-            "/v1/agents/import",
+            "/v1/platform/agents/import",
             json!({"content":definition.to_string()}),
         )
         .await
@@ -325,13 +334,13 @@ async fn full_replacement_removes_old_capabilities_and_reports_field_diagnostics
     definition["initial_files"] = json!([]);
     server
         .post(
-            "/v1/agents/import?target=replace-package",
+            "/v1/platform/agents/import?target=replace-package",
             json!({"content":definition.to_string()}),
         )
         .await
         .assert_success();
     let exported = server
-        .get("/v1/agents/replace-package/export?format=json")
+        .get("/v1/platform/agents/replace-package/export?format=json")
         .await
         .assert_success()
         .json_value();
@@ -340,7 +349,7 @@ async fn full_replacement_removes_old_capabilities_and_reports_field_diagnostics
     definition["max_iterations"] = json!(0);
     let validation = server
         .post(
-            "/v1/agents/validate",
+            "/v1/platform/agents/validate",
             json!({"content":definition.to_string()}),
         )
         .await
@@ -364,28 +373,28 @@ async fn importing_configuration_preserves_existing_channel_activation() {
     let definition = definition("channel-package");
     let body = json!({"content":definition.to_string()});
     server
-        .post("/v1/agents/import", &body)
+        .post("/v1/platform/agents/import", &body)
         .await
         .assert_success();
     let channels = server
-        .get("/v1/agents/channel-package/channels")
+        .get("/v1/platform/agents/channel-package/channels")
         .await
         .assert_success()
         .json_value();
     let id = channels[0]["id"].as_str().unwrap();
     server
         .patch(
-            &format!("/v1/agents/channel-package/channels/{id}"),
+            &format!("/v1/platform/agents/channel-package/channels/{id}"),
             json!({"enabled":true}),
         )
         .await
         .assert_success();
     server
-        .post("/v1/agents/import?target=channel-package", &body)
+        .post("/v1/platform/agents/import?target=channel-package", &body)
         .await
         .assert_success();
     let channels = server
-        .get("/v1/agents/channel-package/channels")
+        .get("/v1/platform/agents/channel-package/channels")
         .await
         .assert_success()
         .json_value();
@@ -399,13 +408,13 @@ async fn channel_enablement_is_opt_in_and_requires_publication() {
     definition["channels"]["chat"]["enabled"] = json!(true);
     server
         .post(
-            "/v1/agents/import",
+            "/v1/platform/agents/import",
             json!({"content":definition.to_string()}),
         )
         .await
         .assert_success();
     let channels = server
-        .get("/v1/agents/enabled-package/channels")
+        .get("/v1/platform/agents/enabled-package/channels")
         .await
         .assert_success()
         .json_value();
@@ -422,18 +431,21 @@ async fn denied_live_channel_update_does_not_partially_import_agent() {
     let mut manifest = definition("live-package");
     manifest["channels"]["chat"]["enabled"] = json!(true);
     server
-        .post("/v1/agents/import", json!({"content":manifest.to_string()}))
+        .post(
+            "/v1/platform/agents/import",
+            json!({"content":manifest.to_string()}),
+        )
         .await
         .assert_success();
     let channels = server
-        .get("/v1/agents/live-package/channels")
+        .get("/v1/platform/agents/live-package/channels")
         .await
         .assert_success()
         .json_value();
     let id = channels[0]["id"].as_str().unwrap();
     server
         .post(
-            &format!("/v1/agents/live-package/channels/{id}/publish"),
+            &format!("/v1/platform/agents/live-package/channels/{id}/publish"),
             json!({}),
         )
         .await
@@ -465,7 +477,7 @@ async fn denied_live_channel_update_does_not_partially_import_agent() {
     .expect_err("live change requires publication permission");
     assert_eq!(error.status(), StatusCode::FORBIDDEN);
     let unchanged = server
-        .get("/v1/agents/live-package")
+        .get("/v1/platform/agents/live-package")
         .await
         .assert_success()
         .json_value();
@@ -479,7 +491,7 @@ async fn bundled_agents_import_as_created_here_and_linked_agents_by_name() {
     let review = json!({"schema_version":1,"name":"review","instructions":"Review.","description":"Reviews changes."});
     server
         .post(
-            "/v1/agents/import",
+            "/v1/platform/agents/import",
             &json!({"content":review.to_string(),"format":"json"}),
         )
         .await
@@ -491,12 +503,12 @@ async fn bundled_agents_import_as_created_here_and_linked_agents_by_name() {
     });
     let body = json!({"content":factory.to_string(),"format":"json"});
     let lead = server
-        .post("/v1/agents/import", &body)
+        .post("/v1/platform/agents/import", &body)
         .await
         .assert_status(StatusCode::CREATED)
         .json_value();
     let implement = server
-        .get("/v1/agents/implement")
+        .get("/v1/platform/agents/implement")
         .await
         .assert_success()
         .json_value();
@@ -522,7 +534,7 @@ async fn bundled_agents_import_as_created_here_and_linked_agents_by_name() {
 
     // Export bundles the created-here agent and links the other by name.
     let exported = server
-        .get("/v1/agents/factory/export?format=json")
+        .get("/v1/platform/agents/factory/export?format=json")
         .await
         .assert_success()
         .json_value();
@@ -538,7 +550,7 @@ async fn bundled_agents_import_as_created_here_and_linked_agents_by_name() {
     // Re-importing updates the agent created here rather than conflicting.
     server
         .post(
-            "/v1/agents/import",
+            "/v1/platform/agents/import",
             &json!({"content":exported.to_string(),"format":"json","target":"factory"}),
         )
         .await
@@ -552,7 +564,7 @@ async fn bundled_agents_import_as_created_here_and_linked_agents_by_name() {
     });
     let validation = server
         .post(
-            "/v1/agents/validate",
+            "/v1/platform/agents/validate",
             &json!({"content":clash.to_string(),"format":"json"}),
         )
         .await
@@ -563,13 +575,13 @@ async fn bundled_agents_import_as_created_here_and_linked_agents_by_name() {
         json!({"schema_version":1,"name":"other","instructions":"X.","members":["nobody"]});
     server
         .post(
-            "/v1/agents/import",
+            "/v1/platform/agents/import",
             &json!({"content":missing.to_string(),"format":"json"}),
         )
         .await
         .assert_status(StatusCode::BAD_REQUEST);
     server
-        .get("/v1/agents/other")
+        .get("/v1/platform/agents/other")
         .await
         .assert_status(StatusCode::NOT_FOUND);
 }

@@ -40,7 +40,7 @@ impl Command for ListApps {
             category: "apps",
             description: "List frozen App records for archival access.",
             method: "GET",
-            path: "/v1/apps",
+            path: "/v1/platform/apps",
         }
     }
 
@@ -78,7 +78,7 @@ impl Command for GetApp {
             category: "apps",
             description: "Get one frozen App record for archival access.",
             method: "GET",
-            path: "/v1/apps/{id}",
+            path: "/v1/platform/apps/{id}",
         }
     }
 

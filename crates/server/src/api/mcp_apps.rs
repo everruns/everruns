@@ -24,13 +24,16 @@ use serde_json::Value;
 
 pub fn routes(state: AppState) -> Router {
     Router::new()
-        .route("/v1/sessions/{session_id}/mcp-apps/view", get(get_view))
         .route(
-            "/v1/sessions/{session_id}/mcp-apps/tools-call",
+            "/v1/platform/sessions/{session_id}/mcp-apps/view",
+            get(get_view),
+        )
+        .route(
+            "/v1/platform/sessions/{session_id}/mcp-apps/tools-call",
             post(call_tool),
         )
         .route(
-            "/v1/sessions/{session_id}/mcp-apps/resources-read",
+            "/v1/platform/sessions/{session_id}/mcp-apps/resources-read",
             post(read_resource),
         )
         .with_state(state)
@@ -42,7 +45,7 @@ struct ViewQuery {
     uri: String,
 }
 
-/// GET /v1/sessions/{session_id}/mcp-apps/view?server=&uri=
+/// GET /v1/platform/sessions/{session_id}/mcp-apps/view?server=&uri=
 async fn get_view(
     State(state): State<AppState>,
     org: ResolvedOrg,
@@ -62,7 +65,7 @@ async fn get_view(
     Ok(Json(view))
 }
 
-/// POST /v1/sessions/{session_id}/mcp-apps/tools-call
+/// POST /v1/platform/sessions/{session_id}/mcp-apps/tools-call
 async fn call_tool(
     State(state): State<AppState>,
     org: ResolvedOrg,
@@ -82,7 +85,7 @@ async fn call_tool(
     Ok(Json(response))
 }
 
-/// POST /v1/sessions/{session_id}/mcp-apps/resources-read
+/// POST /v1/platform/sessions/{session_id}/mcp-apps/resources-read
 async fn read_resource(
     State(state): State<AppState>,
     org: ResolvedOrg,

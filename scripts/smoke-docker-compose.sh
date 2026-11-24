@@ -124,11 +124,12 @@ esac
 echo "ok (${COMPOSE_PROFILES:-default set})"
 
 step "Sign in and create a personal access token"
-access_token="$(curl -fsS -X POST "$BASE/api/v1/auth/login" \
+management_api="$(smoke_management_api_url "$BASE")" || fail "could not select the management API"
+access_token="$(curl -fsS -X POST "$management_api/auth/login" \
   -H "Content-Type: application/json" \
   -d "{\"email\":\"$AUTH_ADMIN_EMAIL\",\"password\":\"$AUTH_ADMIN_PASSWORD\"}" | jq -r .access_token)"
 [ -n "$access_token" ] && [ "$access_token" != null ] || fail "login returned no access_token"
-EVERRUNS_TOKEN="$(curl -fsS -X POST "$BASE/api/v1/auth/personal-access-tokens" \
+EVERRUNS_TOKEN="$(curl -fsS -X POST "$management_api/auth/personal-access-tokens" \
   -H "Authorization: Bearer $access_token" \
   -H "Content-Type: application/json" \
   -d '{"name":"compose-smoke"}' | jq -r .token)"

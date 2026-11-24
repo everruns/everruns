@@ -75,7 +75,7 @@ u4,2026-06-16T00:00:00Z,2026-06-01T00:00:00Z
 ## Steps
 
 1. **Create a Knowledge Base** named "Analytics Knowledge" and **import** the
-   bundle above (`POST /v1/knowledge-bases/{kb_id}/okf_import` with the two
+   bundle above (`POST /v1/platform/knowledge-bases/{kb_id}/okf_import` with the two
    files). Confirm `created: 2`.
 
 2. **Create a Data Analyst agent** ("Analytics Analyst") on the `data-analyst`
@@ -118,7 +118,7 @@ u4,2026-06-16T00:00:00Z,2026-06-01T00:00:00Z
 Captured against `just start-dev` (embedded PostgreSQL) with `claude-sonnet-4-6`,
 proving the OKF→agent loop end to end:
 
-1. **Import** — `POST /v1/knowledge-bases/{kb}/okf_import` →
+1. **Import** — `POST /v1/platform/knowledge-bases/{kb}/okf_import` →
    `{"created":2,"updated":0,"skipped":0,"pruned":0,"warnings":[]}`. Entries:
    `Active User` (`kind: business`, from `type: Metric Definition`) and `users`
    (`kind: table`, `resource` set, raw `type: BigQuery Table` preserved).

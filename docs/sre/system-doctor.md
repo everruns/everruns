@@ -38,7 +38,7 @@ From the CLI:
 everruns system doctor --refresh true
 ```
 
-The same report is at `GET /v1/system/doctor`. Without `refresh` you get the
+The same report is at `GET /v1/platform/system/doctor`. Without `refresh` you get the
 report from the last minute; the checks write a small test file to S3 and
 connect to NATS and Valkey, so they do not run on every request.
 

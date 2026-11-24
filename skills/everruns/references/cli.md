@@ -33,6 +33,17 @@ without an output flag. An external MCP connection does not require a local CLI.
 
 ## Discover, inspect, and make a focused change
 
+Platform management REST calls use `/api/v1/platform/`. Keep the installed
+CLI's `--api-url` or profile URL at the API base, such as
+`https://everruns.example.com/api`; the CLI adds `/v1/platform` itself.
+The CLI detects older servers through public configuration before sending
+credentials, and uses their legacy management routes when needed.
+This changes the wire URL, not command names: keep using `everruns agents`,
+`everruns sessions`, and the command tree returned by the current host.
+Legacy management URLs remain supported and become deprecated on December 22,
+2026; that date does not automatically remove them. Agent Execution API,
+AG-UI and A2A URLs stay as published by the deployment.
+
 In the Platform Chat shell or installed CLI, progressively read help:
 
 ```bash
@@ -71,7 +82,7 @@ write failure, inspect current state before repeating it.
 - **Configure an LLM provider:** inspect `everruns providers --help` and the
   current create/update schema. Select the chat API on the provider connection
   using `api` (`--api` in CLI commands), rather than agent model settings or raw
-  driver options. Supported choices come from `GET /v1/providers/config`;
+  driver options. Supported choices come from `GET /v1/platform/providers/config`;
   OpenAI and Mistral support `responses` and `chat_completions`. Omit the field
   on update to retain the choice, or use `default` to restore the driver default.
   Verify the saved provider after the authorized change. Keep credentials in

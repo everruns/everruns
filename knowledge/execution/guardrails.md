@@ -280,7 +280,7 @@ the turn pipeline.
 
 ## Dry run
 
-`POST /v1/capabilities/guardrails/dry-run` evaluates a `GuardrailsConfig`
+`POST /v1/platform/capabilities/guardrails/dry-run` evaluates a `GuardrailsConfig`
 against sample text for a given stage, with no session and nothing persisted.
 It returns the triggered checks (id, rule type, effective action, reason code,
 matched excerpt) and whether the content would be blocked. This is the
@@ -296,7 +296,7 @@ presets (secret detection, a model-backed secret-leak judge, PII detection, a
 profanity starter, dangerous-shell blocking, shell-access blocking,
 prompt-injection heuristics). It mirrors the harness-examples pattern: presets
 live in code (`everruns_core::guardrail_gallery`), not the DB, and are served
-read-only via `GET /v1/capabilities/guardrails/examples` (gated by
+read-only via `GET /v1/platform/capabilities/guardrails/examples` (gated by
 `capability.view`).
 
 The `secret-leak-judge` preset is the model-backed complement to the

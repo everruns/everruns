@@ -58,7 +58,7 @@ async fn call_tool(server: &TestServer, tool: &str, arguments: Value, extra: Val
 async fn create_session(server: &TestServer) -> String {
     let agent: Agent = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": "elicitation-test-agent",
                 "display_name": "Elicitation Test",
@@ -70,7 +70,10 @@ async fn create_session(server: &TestServer) -> String {
         .assert_status(StatusCode::CREATED)
         .json();
     let session: Session = server
-        .post("/v1/sessions", json!({ "agent_id": agent.public_id }))
+        .post(
+            "/v1/platform/sessions",
+            json!({ "agent_id": agent.public_id }),
+        )
         .await
         .assert_status(StatusCode::CREATED)
         .json();
@@ -166,7 +169,9 @@ async fn setting_a_session_secret_elicits_a_server_rendered_form_and_stores_the_
 
     // And the value really is stored, without ever passing through MCP.
     let secrets: Value = server
-        .get(&format!("/v1/sessions/{session_id}/storage/secrets"))
+        .get(&format!(
+            "/v1/platform/sessions/{session_id}/storage/secrets"
+        ))
         .await
         .assert_success()
         .json();

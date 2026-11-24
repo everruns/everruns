@@ -835,7 +835,7 @@ Set `EXPECTED_INSTANCES=N` to inform each instance about the total count:
 
 - **SSE connection limits**: Global and per-org limits divided by N. Per-session limits unchanged.
 - **Database pool sizing**: Set `DATABASE_POOL_MAX = pg_max_connections / N - margin`. An instance opens `DATABASE_POOL_MAX + DATABASE_BACKGROUND_POOL_MAX` connections, and the startup warning fires when that sum × instances exceeds 80% of `PG_MAX_CONNECTIONS` (default 100).
-- **Metrics**: Each instance maintains its own ring buffer. The `/v1/durable/metrics/timeseries` response includes `instance_count` when >1.
+- **Metrics**: Each instance maintains its own ring buffer. The `/v1/platform/durable/metrics/timeseries` response includes `instance_count` when >1.
 
 ### Load Balancer Requirements
 

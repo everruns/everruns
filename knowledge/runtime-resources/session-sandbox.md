@@ -242,7 +242,7 @@ to a disposable incarnation and may change after recovery.
 
 ### Fleet view and history
 
-The Sandboxes page (`/sandboxes`, `GET /v1/sandboxes[/stats|/timeline|/{id}]`,
+The Sandboxes page (`/sandboxes`, `GET /v1/platform/sandboxes[/stats|/timeline|/{id}]`,
 [`domains/sandboxes`](../../crates/server/src/domains/sandboxes/commands.rs))
 lists every logical Sandbox in an organization across providers, on the
 first of its tabs; Templates (`/sandboxes/templates`) and provider accounts

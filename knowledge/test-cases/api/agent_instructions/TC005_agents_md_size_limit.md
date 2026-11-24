@@ -33,7 +33,7 @@ Verify that AGENTS.md content exceeding 32 KiB is truncated with a warning, not 
    ```bash
    # Generate content > 32 KiB
    CONTENT=$(python3 -c "print('x' * 40000)")
-   curl -s -X POST "http://localhost:9000/v1/sessions/{session_id}/fs/AGENTS.md" \
+   curl -s -X POST "http://localhost:9000/v1/platform/sessions/{session_id}/fs/AGENTS.md" \
      -H "Content-Type: application/json" \
      -d "{\"content\": \"$CONTENT\"}"
    ```

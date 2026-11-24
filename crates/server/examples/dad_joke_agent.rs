@@ -68,7 +68,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Step 1: Create a Dad Joke Agent with current_time capability
     println!("Creating Dad Joke Agent...");
     let create_response = client
-        .post(format!("{}/v1/agents", API_BASE_URL))
+        .post(format!("{}/v1/platform/agents", API_BASE_URL))
         .json(&json!({
             "name": "Dad Joke Agent",
             "description": "A witty agent that tells dad jokes about the current time",
@@ -94,7 +94,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Step 2: Create a session
     println!("\nCreating session...");
     let session_response = client
-        .post(format!("{}/v1/sessions", API_BASE_URL))
+        .post(format!("{}/v1/platform/sessions", API_BASE_URL))
         .json(&json!({
             "agent_id": agent.public_id,
             "title": "Dad Joke Time"
@@ -115,7 +115,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\nSending message: \"Tell me a joke about the current time!\"");
     let message_response = client
         .post(format!(
-            "{}/v1/sessions/{}/messages",
+            "{}/v1/platform/sessions/{}/messages",
             API_BASE_URL, session.id
         ))
         .json(&json!({
@@ -142,7 +142,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\nListening to SSE events...");
     println!("-------------------------------------------");
 
-    let sse_url = format!("{}/v1/sessions/{}/sse", API_BASE_URL, session.id);
+    let sse_url = format!("{}/v1/platform/sessions/{}/sse", API_BASE_URL, session.id);
 
     // Use blocking client for SSE streaming (reqwest-eventsource alternative)
     let result = listen_to_sse(&sse_url).await;
@@ -269,7 +269,7 @@ async fn listen_to_sse(url: &str) -> Result<String, Box<dyn std::error::Error + 
 async fn cleanup(client: &reqwest::Client, agent_id: &str) {
     println!("\nCleaning up...");
     let _ = client
-        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent_id))
+        .delete(format!("{}/v1/platform/agents/{}", API_BASE_URL, agent_id))
         .send()
         .await;
     println!("   Agent deleted");

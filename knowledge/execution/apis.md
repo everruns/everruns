@@ -62,7 +62,40 @@ Operational endpoints stay at the server root:
 
 ### Base URL
 
-REST endpoints are mounted under `/api`, so the public REST base URL is `/api/v1/`.
+The Platform REST API is mounted at `/api/v1/platform/`. This includes
+console authentication, organization-scoped resources, operator access to
+sessions, and global operations. The namespace does not grant platform-admin
+permissions; every route retains its existing authorization and PAT scopes.
+
+Agent Execution API, AG-UI and A2A channel URLs remain under
+`/api/v1/channels/` (and their existing aliases). Runtime self-service, public
+assets/shares, inbound webhooks, and registered OAuth callbacks keep their
+existing URLs. Internal `/dp/v1` and injected MCP endpoints are separate
+protocols, not Platform REST APIs.
+
+The edge continues routing Platform session operations to the owning data
+plane. A Platform API path does not require execution in the control plane.
+The edge translates only the downstream path to agentd's native session API;
+standalone agentd and serve retain their native wire API.
+
+Legacy management URLs under `/api/v1/` remain supported as compatibility
+aliases. They invoke the same handlers, authorization, PAT scopes and rate-limit
+buckets as canonical requests, without HTTP redirects. Responses carry the
+RFC 9745 `Deprecation` date December 22, 2026 (America/Chicago), plus `Link`
+headers for the successor URL and migration guide. That date starts deprecation;
+it does not automatically disable the aliases, and no removal date is scheduled.
+
+New CLI and Platform SDK clients use the canonical namespace. Existing released
+clients remain supported through the aliases, including the published SDK
+compatibility cohorts. The schema and generated resource links advertise the
+canonical paths. Embedders declare their own namespaces and preserved public
+receivers through `ServerAppBuilder::legacy_api_paths`.
+
+CLI commands, self-hosted launcher sign-in and published-image smoke checks probe public
+authentication configuration before sending credentials. They prefer canonical
+management URLs and select legacy routes only when the older image lacks that
+namespace. Denials and server errors do not trigger fallback; credential requests
+and writes are never retried across namespaces.
 
 ### Reverse Proxy Contract
 
@@ -101,17 +134,17 @@ Exposes Everruns as an MCP server. Tier 1 tools (`agent_run`, `session_send_mess
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/v1/auth/config` | Get authentication configuration |
-| POST | `/api/v1/auth/login` | Login with email/password |
-| POST | `/api/v1/auth/register` | Register new user |
-| POST | `/api/v1/auth/refresh` | Refresh access token |
-| POST | `/api/v1/auth/logout` | Logout (clear cookies) |
-| GET | `/api/v1/auth/oauth/{provider}` | Redirect to OAuth provider |
+| GET | `/api/v1/platform/auth/config` | Get authentication configuration |
+| POST | `/api/v1/platform/auth/login` | Login with email/password |
+| POST | `/api/v1/platform/auth/register` | Register new user |
+| POST | `/api/v1/platform/auth/refresh` | Refresh access token |
+| POST | `/api/v1/platform/auth/logout` | Logout (clear cookies) |
+| GET | `/api/v1/platform/auth/oauth/{provider}` | Redirect to OAuth provider |
 | GET | `/api/v1/auth/callback/{provider}` | OAuth callback |
-| GET | `/api/v1/auth/me` | Get current user info |
-| GET | `/api/v1/auth/personal-access-tokens` | List user's personal access tokens |
-| POST | `/api/v1/auth/personal-access-tokens` | Create personal access token |
-| DELETE | `/api/v1/auth/personal-access-tokens/{token_id}` | Delete personal access token |
+| GET | `/api/v1/platform/auth/me` | Get current user info |
+| GET | `/api/v1/platform/auth/personal-access-tokens` | List user's personal access tokens |
+| POST | `/api/v1/platform/auth/personal-access-tokens` | Create personal access token |
+| DELETE | `/api/v1/platform/auth/personal-access-tokens/{token_id}` | Delete personal access token |
 
 See [authentication.md](../security/authentication.md) for full authentication specification.
 
@@ -119,36 +152,36 @@ See [authentication.md](../security/authentication.md) for full authentication s
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/v1/orgs` | List organizations for current user |
-| POST | `/v1/orgs` | Create organization |
-| GET | `/v1/orgs/{org}` | Get organization details |
-| PATCH | `/v1/orgs/{org}` | Update organization name and harness defaults |
+| GET | `/v1/platform/orgs` | List organizations for current user |
+| POST | `/v1/platform/orgs` | Create organization |
+| GET | `/v1/platform/orgs/{org}` | Get organization details |
+| PATCH | `/v1/platform/orgs/{org}` | Update organization name and harness defaults |
 
 Organization details include two org-scoped harness settings:
 - `default_harness_id` - the harness the UI should preselect for normal new-session flows
-- `base_harness_id` - the harness used when `POST /v1/sessions` omits `harness_id`
+- `base_harness_id` - the harness used when `POST /v1/platform/sessions` omits `harness_id`
 
 New organizations initialize these to the built-in `Generic` and `Base` harnesses respectively. Initialization fills missing values but does not overwrite user-selected values.
 
 ### Agents
 
-Earlier agent configurations are entity history revisions (`/v1/history/{agent_id}`, see
+Earlier agent configurations are entity history revisions (`/v1/platform/history/{agent_id}`, see
 [Change Reasons and Manager Context](change-reasons-and-manager-context.md)); agents have no
 versions of their own.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/v1/agents` | Create agent (optional client-supplied `id`) |
-| GET | `/v1/agents` | List active agents by default (`include_archived=true` to include archived) |
-| GET | `/v1/agents/{id}` | Get agent by ID |
-| PUT | `/v1/agents/{id}` | Upsert agent (create 201, update 200) |
-| PATCH | `/v1/agents/{id}` | Update agent |
-| DELETE | `/v1/agents/{id}` | Archive agent (soft delete) |
-| POST | `/v1/agents/{id}/delete` | Dangerous delete of archived agent |
-| POST | `/v1/agents/import` | Import agent from file content |
-| GET | `/v1/agents/{id}/export` | Export agent as Markdown |
-| POST | `/v1/agents/preview` | Preview final agent shape |
-| POST | `/v1/agents/{id}/copy` | Copy agent (new ID, "{name} (copy)") |
+| POST | `/v1/platform/agents` | Create agent (optional client-supplied `id`) |
+| GET | `/v1/platform/agents` | List active agents by default (`include_archived=true` to include archived) |
+| GET | `/v1/platform/agents/{id}` | Get agent by ID |
+| PUT | `/v1/platform/agents/{id}` | Upsert agent (create 201, update 200) |
+| PATCH | `/v1/platform/agents/{id}` | Update agent |
+| DELETE | `/v1/platform/agents/{id}` | Archive agent (soft delete) |
+| POST | `/v1/platform/agents/{id}/delete` | Dangerous delete of archived agent |
+| POST | `/v1/platform/agents/import` | Import agent from file content |
+| GET | `/v1/platform/agents/{id}/export` | Export agent as Markdown |
+| POST | `/v1/platform/agents/preview` | Preview final agent shape |
+| POST | `/v1/platform/agents/{id}/copy` | Copy agent (new ID, "{name} (copy)") |
 
 #### Agent Preview
 
@@ -166,14 +199,14 @@ Harness create/update payloads include optional `parent_harness_id`. When presen
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/v1/harnesses` | Create harness |
-| GET | `/v1/harnesses` | List active harnesses by default (`include_archived=true` to include archived) |
-| GET | `/v1/harnesses/{id}` | Get harness |
-| PATCH | `/v1/harnesses/{id}` | Update harness |
-| DELETE | `/v1/harnesses/{id}` | Archive harness |
-| POST | `/v1/harnesses/{id}/delete` | Dangerous delete of archived harness |
-| POST | `/v1/harnesses/{id}/copy` | Copy harness (new ID, "{name} (copy)") |
-| POST | `/v1/harnesses/preview` | Preview merged system prompt + tools |
+| POST | `/v1/platform/harnesses` | Create harness |
+| GET | `/v1/platform/harnesses` | List active harnesses by default (`include_archived=true` to include archived) |
+| GET | `/v1/platform/harnesses/{id}` | Get harness |
+| PATCH | `/v1/platform/harnesses/{id}` | Update harness |
+| DELETE | `/v1/platform/harnesses/{id}` | Archive harness |
+| POST | `/v1/platform/harnesses/{id}/delete` | Dangerous delete of archived harness |
+| POST | `/v1/platform/harnesses/{id}/copy` | Copy harness (new ID, "{name} (copy)") |
+| POST | `/v1/platform/harnesses/preview` | Preview merged system prompt + tools |
 
 ### Building Block Lifecycle API Rules
 
@@ -196,12 +229,12 @@ See `knowledge/operations/localization.md` for locale/timezone precedence and ex
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/v1/sessions` | Create session |
-| GET | `/v1/sessions` | List sessions (paginated) |
-| GET | `/v1/sessions/{session_id}` | Get session |
-| PATCH | `/v1/sessions/{session_id}` | Update session |
-| DELETE | `/v1/sessions/{session_id}` | Delete session |
-| POST | `/v1/sessions/{session_id}/cancel` | Cancel current turn |
+| POST | `/v1/platform/sessions` | Create session |
+| GET | `/v1/platform/sessions` | List sessions (paginated) |
+| GET | `/v1/platform/sessions/{session_id}` | Get session |
+| PATCH | `/v1/platform/sessions/{session_id}` | Update session |
+| DELETE | `/v1/platform/sessions/{session_id}` | Delete session |
+| POST | `/v1/platform/sessions/{session_id}/cancel` | Cancel current turn |
 
 #### Create Session
 
@@ -228,9 +261,9 @@ Session creation and any other assignment flow must reject archived or deleted h
 
 #### Retired: Global Chat Session
 
-`POST /v1/sessions/chat` and its voice sibling `POST /v1/sessions/chat/voice` resolved a per-user
+`POST /v1/platform/sessions/chat` and its voice sibling `POST /v1/platform/sessions/chat/voice` resolved a per-user
 singleton Platform Chat session via tag lookup (`global-chat` + `user:{user_id}`). Both are removed
-with EVE-855: a chat thread is an ordinary session created with `POST /v1/sessions` bound to an
+with EVE-855: a chat thread is an ordinary session created with `POST /v1/platform/sessions` bound to an
 agent (EVE-851), which left the singleton without a caller. The Platform Chat harness itself is
 unchanged, and sessions already tagged `global-chat` stay readable through the ordinary session
 routes.
@@ -240,7 +273,7 @@ routes.
 Supports optional filtering by agent:
 
 ```
-GET /v1/sessions?agent_id=agent_01234567-...
+GET /v1/platform/sessions?agent_id=agent_01234567-...
 ```
 
 Without the `agent_id` query parameter, returns all sessions in the organization.
@@ -267,8 +300,8 @@ Messages store all conversation content (user, agent, tool calls, tool results).
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/v1/sessions/{session_id}/messages` | Create message (triggers workflow) |
-| GET | `/v1/sessions/{session_id}/messages` | List messages |
+| POST | `/v1/platform/sessions/{session_id}/messages` | Create message (triggers workflow) |
+| GET | `/v1/platform/sessions/{session_id}/messages` | List messages |
 
 `CreateMessageRequest.metadata.locale` and `CreateMessageRequest.metadata.timezone` are reserved for per-turn execution-context overrides. They take precedence over session and user defaults for the triggered turn only.
 
@@ -283,11 +316,11 @@ realtime state is ephemeral. See [voice.md](../operations/voice.md).
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/v1/sessions/{session_id}/voice/client-secret` | Create a Voice Connection and mint a browser-safe Realtime client secret |
-| POST | `/v1/sessions/{session_id}/voice/calls` | Proxy browser SDP to the Realtime API and return the SDP answer |
-| POST | `/v1/sessions/{session_id}/voice/{voice_connection_id}/attach` | Attach a provider call ID after client-secret bootstrap |
-| POST | `/v1/sessions/{session_id}/voice/{voice_connection_id}/end` | End a Voice Connection |
-| POST | `/v1/agents/{agent_id}/voice/sessions` | Create an agent session and bootstrap voice |
+| POST | `/v1/platform/sessions/{session_id}/voice/client-secret` | Create a Voice Connection and mint a browser-safe Realtime client secret |
+| POST | `/v1/platform/sessions/{session_id}/voice/calls` | Proxy browser SDP to the Realtime API and return the SDP answer |
+| POST | `/v1/platform/sessions/{session_id}/voice/{voice_connection_id}/attach` | Attach a provider call ID after client-secret bootstrap |
+| POST | `/v1/platform/sessions/{session_id}/voice/{voice_connection_id}/end` | End a Voice Connection |
+| POST | `/v1/platform/agents/{agent_id}/voice/sessions` | Create an agent session and bootstrap voice |
 
 Voice endpoints are gated by the `voice` feature flag. V1 supports OpenAI
 `gpt-realtime-2` with WebRTC. Standard provider API keys stay server-side;
@@ -300,11 +333,11 @@ Org-scoped image storage for message attachments. Images are stored with optiona
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/v1/images` | Upload image (multipart/form-data) |
-| GET | `/v1/images` | List images (paginated) |
-| GET | `/v1/images/{id}` | Get image data |
-| GET | `/v1/images/{id}/thumbnail` | Get thumbnail (200x200 max) |
-| DELETE | `/v1/images/{id}` | Delete image |
+| POST | `/v1/platform/images` | Upload image (multipart/form-data) |
+| GET | `/v1/platform/images` | List images (paginated) |
+| GET | `/v1/platform/images/{id}` | Get image data |
+| GET | `/v1/platform/images/{id}/thumbnail` | Get thumbnail (200x200 max) |
+| DELETE | `/v1/platform/images/{id}` | Delete image |
 
 For the complete request/response schemas, run `./scripts/export-openapi.sh` or see the generated OpenAPI spec.
 
@@ -321,17 +354,17 @@ Virtual filesystem scoped to each session. See [workspace.md](../runtime-resourc
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/v1/sessions/{session_id}/fs` | List root directory |
-| GET | `/v1/sessions/{session_id}/fs/{path}` | Read file or list directory; `Accept: application/octet-stream` returns raw file bytes |
-| POST | `/v1/sessions/{session_id}/fs/{path}` | Create file or directory |
-| PUT | `/v1/sessions/{session_id}/fs/{path}` | Update file content |
-| DELETE | `/v1/sessions/{session_id}/fs/{path}` | Delete file |
-| DELETE | `/v1/sessions/{session_id}/fs/{path}?recursive=true` | Delete directory recursively |
-| GET | `/v1/sessions/{session_id}/fs/_/download/{path}` | Download raw file bytes |
-| POST | `/v1/sessions/{session_id}/fs/_/stat` | Get file metadata |
-| POST | `/v1/sessions/{session_id}/fs/_/move` | Move/rename file |
-| POST | `/v1/sessions/{session_id}/fs/_/copy` | Copy file |
-| POST | `/v1/sessions/{session_id}/fs/_/grep` | Search files by content |
+| GET | `/v1/platform/sessions/{session_id}/fs` | List root directory |
+| GET | `/v1/platform/sessions/{session_id}/fs/{path}` | Read file or list directory; `Accept: application/octet-stream` returns raw file bytes |
+| POST | `/v1/platform/sessions/{session_id}/fs/{path}` | Create file or directory |
+| PUT | `/v1/platform/sessions/{session_id}/fs/{path}` | Update file content |
+| DELETE | `/v1/platform/sessions/{session_id}/fs/{path}` | Delete file |
+| DELETE | `/v1/platform/sessions/{session_id}/fs/{path}?recursive=true` | Delete directory recursively |
+| GET | `/v1/platform/sessions/{session_id}/fs/_/download/{path}` | Download raw file bytes |
+| POST | `/v1/platform/sessions/{session_id}/fs/_/stat` | Get file metadata |
+| POST | `/v1/platform/sessions/{session_id}/fs/_/move` | Move/rename file |
+| POST | `/v1/platform/sessions/{session_id}/fs/_/copy` | Copy file |
+| POST | `/v1/platform/sessions/{session_id}/fs/_/grep` | Search files by content |
 
 **Note:** Paths starting with `_` are reserved for system actions and cannot be used for file creation or updates.
 
@@ -341,8 +374,8 @@ Server-Sent Events (SSE) for real-time UI updates and event listing.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/v1/sessions/{session_id}/sse` | Stream events (SSE) |
-| GET | `/v1/sessions/{session_id}/events` | List events (JSON) |
+| GET | `/v1/platform/sessions/{session_id}/sse` | Stream events (SSE) |
+| GET | `/v1/platform/sessions/{session_id}/events` | List events (JSON) |
 
 **Query Parameters** (both endpoints):
 
@@ -371,18 +404,18 @@ When `limit` is provided:
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/v1/providers` | List providers |
-| POST | `/v1/providers` | Create provider |
-| GET | `/v1/providers/{id}` | Get provider |
-| PATCH | `/v1/providers/{id}` | Update provider (API key, base URL) |
-| DELETE | `/v1/providers/{id}` | Delete provider |
-| POST | `/v1/providers/{id}/sync-models` | Sync models from provider API |
-| GET | `/v1/providers/{id}/models` | List models for provider |
-| POST | `/v1/providers/{id}/models` | Create model for provider |
-| GET | `/v1/models` | List all models |
-| GET | `/v1/models/{id}` | Get model |
-| PATCH | `/v1/models/{id}` | Update model, including provider assignment |
-| DELETE | `/v1/models/{id}` | Delete model |
+| GET | `/v1/platform/providers` | List providers |
+| POST | `/v1/platform/providers` | Create provider |
+| GET | `/v1/platform/providers/{id}` | Get provider |
+| PATCH | `/v1/platform/providers/{id}` | Update provider (API key, base URL) |
+| DELETE | `/v1/platform/providers/{id}` | Delete provider |
+| POST | `/v1/platform/providers/{id}/sync-models` | Sync models from provider API |
+| GET | `/v1/platform/providers/{id}/models` | List models for provider |
+| POST | `/v1/platform/providers/{id}/models` | Create model for provider |
+| GET | `/v1/platform/models` | List all models |
+| GET | `/v1/platform/models/{id}` | Get model |
+| PATCH | `/v1/platform/models/{id}` | Update model, including provider assignment |
+| DELETE | `/v1/platform/models/{id}` | Delete model |
 
 #### Model Sync
 
@@ -390,7 +423,7 @@ The sync endpoint discovers available models from a provider's API. Returns `"st
 
 #### List Models Query Parameters
 
-`GET /v1/models` supports:
+`GET /v1/platform/models` supports:
 - `source` - Filter by source: `manual`, `discovered`, `predefined`
 - `include_stale` - Include stale models (default: `true`)
 - `favorites_only` - Only return favorites (default: `false`)
@@ -401,22 +434,22 @@ User-scoped external service accounts (e.g., GitHub) for repo access. See [user-
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/v1/user/connections` | List user's connected accounts |
-| DELETE | `/v1/user/connections/{provider}` | Disconnect (delete stored token) |
-| GET | `/v1/user/connections/github/authorize` | Start GitHub OAuth flow |
+| GET | `/v1/platform/user/connections` | List user's connected accounts |
+| DELETE | `/v1/platform/user/connections/{provider}` | Disconnect (delete stored token) |
+| GET | `/v1/platform/user/connections/github/authorize` | Start GitHub OAuth flow |
 | GET | `/v1/user/connections/github/callback` | GitHub OAuth callback |
 
 ### Users
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/v1/users` | List users in current organization (supports `?search=` query) |
-| PATCH | `/v1/users/me` | Update current user's profile (`name`, `locale`, `timezone`). |
-| DELETE | `/v1/users/me` | Delete current user's account and all associated data |
-| GET | `/v1/users/me/export` | Export current user's data (GDPR data portability) |
-| POST | `/v1/users/me/switch-org` | Switch current organization context |
+| GET | `/v1/platform/users` | List users in current organization (supports `?search=` query) |
+| PATCH | `/v1/platform/users/me` | Update current user's profile (`name`, `locale`, `timezone`). |
+| DELETE | `/v1/platform/users/me` | Delete current user's account and all associated data |
+| GET | `/v1/platform/users/me/export` | Export current user's data (GDPR data portability) |
+| POST | `/v1/platform/users/me/switch-org` | Switch current organization context |
 
-`PATCH /v1/users/me` should use patch semantics:
+`PATCH /v1/platform/users/me` should use patch semantics:
 - `name`: optional display name
 - `locale`: optional BCP 47 locale
 - `timezone`: optional IANA timezone
@@ -427,22 +460,22 @@ These values are durable user defaults. They do not override explicit per-messag
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/v1/capabilities` | List available capabilities |
-| POST | `/v1/capabilities` | Create a persisted declarative capability |
-| GET | `/v1/capabilities/{capability_id}` | Get capability details |
-| GET | `/v1/capabilities/declarative/config` | Declarative capability policy results for UI gating |
-| GET | `/v1/capabilities/declarative` | List persisted declarative capability resources |
-| GET | `/v1/capabilities/declarative/{public_id}` | Get a persisted declarative capability resource |
-| PATCH | `/v1/capabilities/declarative/{public_id}` | Update a persisted declarative capability resource |
-| DELETE | `/v1/capabilities/declarative/{public_id}` | Archive a persisted declarative capability resource |
-| POST | `/v1/capabilities/declarative/{public_id}/delete` | Permanently delete an archived declarative capability resource |
+| GET | `/v1/platform/capabilities` | List available capabilities |
+| POST | `/v1/platform/capabilities` | Create a persisted declarative capability |
+| GET | `/v1/platform/capabilities/{capability_id}` | Get capability details |
+| GET | `/v1/platform/capabilities/declarative/config` | Declarative capability policy results for UI gating |
+| GET | `/v1/platform/capabilities/declarative` | List persisted declarative capability resources |
+| GET | `/v1/platform/capabilities/declarative/{public_id}` | Get a persisted declarative capability resource |
+| PATCH | `/v1/platform/capabilities/declarative/{public_id}` | Update a persisted declarative capability resource |
+| DELETE | `/v1/platform/capabilities/declarative/{public_id}` | Archive a persisted declarative capability resource |
+| POST | `/v1/platform/capabilities/declarative/{public_id}/delete` | Permanently delete an archived declarative capability resource |
 
 Capabilities are modular functionality units that can be enabled on agents. They provide:
 - **Tool groups**: Sets of related tools (e.g., `session_file_system` provides read/write/grep tools)
 - **System prompt additions**: Context injected into the agent's prompt
 - **Documentation**: User-facing descriptions of what the capability provides
 
-For the complete request/response schemas, run `./scripts/export-openapi.sh` or see the generated OpenAPI spec. Note: the `/v1/capabilities` endpoint uses `items` instead of `data` for historical reasons.
+For the complete request/response schemas, run `./scripts/export-openapi.sh` or see the generated OpenAPI spec. Note: the `/v1/platform/capabilities` endpoint uses `items` instead of `data` for historical reasons.
 
 ### API Documentation
 
@@ -481,18 +514,18 @@ Platform-user endpoints for monitoring and managing the durable execution engine
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/v1/durable/config` | Durable policy results for UI gating |
-| GET | `/v1/durable/workers` | List registered workers |
-| POST | `/v1/durable/workers/{id}/drain` | Drain worker (stop accepting tasks) |
-| POST | `/v1/durable/workers/{id}/resume` | Resume draining worker |
-| GET | `/v1/durable/workflows` | List workflows |
-| GET | `/v1/durable/workflows/{id}` | Get workflow details |
-| GET | `/v1/durable/workflows/{id}/events` | Get workflow event history |
-| GET | `/v1/durable/tasks` | List task queue |
-| POST | `/v1/durable/tasks` | Enqueue standalone task (generic queue) |
-| GET | `/v1/durable/metrics/timeseries` | Get metrics time series (ring buffer) |
-| GET | `/v1/durable/dlq` | List dead letter queue |
-| GET | `/v1/durable/circuit-breakers` | List circuit breakers |
+| GET | `/v1/platform/durable/config` | Durable policy results for UI gating |
+| GET | `/v1/platform/durable/workers` | List registered workers |
+| POST | `/v1/platform/durable/workers/{id}/drain` | Drain worker (stop accepting tasks) |
+| POST | `/v1/platform/durable/workers/{id}/resume` | Resume draining worker |
+| GET | `/v1/platform/durable/workflows` | List workflows |
+| GET | `/v1/platform/durable/workflows/{id}` | Get workflow details |
+| GET | `/v1/platform/durable/workflows/{id}/events` | Get workflow event history |
+| GET | `/v1/platform/durable/tasks` | List task queue |
+| POST | `/v1/platform/durable/tasks` | Enqueue standalone task (generic queue) |
+| GET | `/v1/platform/durable/metrics/timeseries` | Get metrics time series (ring buffer) |
+| GET | `/v1/platform/durable/dlq` | List dead letter queue |
+| GET | `/v1/platform/durable/circuit-breakers` | List circuit breakers |
 
 ### Response Formats
 
@@ -513,26 +546,26 @@ Endpoints that return lists support pagination via query parameters:
 
 | Endpoint | Default Limit | Notes |
 |----------|---------------|-------|
-| `GET /v1/sessions` | 20 | Ordered by `created_at DESC`, optional `agent_id` filter |
+| `GET /v1/platform/sessions` | 20 | Ordered by `created_at DESC`, optional `agent_id` filter |
 
 **Non-Paginated List Endpoints:**
 
 These endpoints return all items wrapped in `{"data": [...], "total": N}`:
-- `GET /v1/agents` - Returns all agents
-- `GET /v1/sessions/{session_id}/messages` - Returns all messages
-- `GET /v1/sessions/{session_id}/events` - Returns all events (supports optional `limit`/`before_sequence` pagination)
-- `GET /v1/providers` - Returns all providers
-- `GET /v1/models` - Returns all models
-- `GET /v1/durable/workers` - Returns all workers
-- `GET /v1/durable/workflows` - Returns all workflows
-- `GET /v1/durable/workflows/{id}/events` - Returns workflow events
-- `GET /v1/durable/tasks` - Returns all tasks
-- `GET /v1/durable/metrics/timeseries` - Returns metrics ring buffer (max 360 points)
-- `GET /v1/durable/dlq` - Returns all DLQ entries
-- `GET /v1/durable/circuit-breakers` - Returns all circuit breakers
-- `GET /v1/user/connections` - Returns all user connections (array, no wrapper)
+- `GET /v1/platform/agents` - Returns all agents
+- `GET /v1/platform/sessions/{session_id}/messages` - Returns all messages
+- `GET /v1/platform/sessions/{session_id}/events` - Returns all events (supports optional `limit`/`before_sequence` pagination)
+- `GET /v1/platform/providers` - Returns all providers
+- `GET /v1/platform/models` - Returns all models
+- `GET /v1/platform/durable/workers` - Returns all workers
+- `GET /v1/platform/durable/workflows` - Returns all workflows
+- `GET /v1/platform/durable/workflows/{id}/events` - Returns workflow events
+- `GET /v1/platform/durable/tasks` - Returns all tasks
+- `GET /v1/platform/durable/metrics/timeseries` - Returns metrics ring buffer (max 360 points)
+- `GET /v1/platform/durable/dlq` - Returns all DLQ entries
+- `GET /v1/platform/durable/circuit-breakers` - Returns all circuit breakers
+- `GET /v1/platform/user/connections` - Returns all user connections (array, no wrapper)
 
-**Exception:** The `/v1/capabilities` endpoint uses `items` instead of `data` for historical reasons.
+**Exception:** The `/v1/platform/capabilities` endpoint uses `items` instead of `data` for historical reasons.
 
 ### Search
 
@@ -549,11 +582,11 @@ All entity list endpoints support an optional `?search=` query parameter for tok
 
 | Endpoint | Fields searched |
 |----------|---------------|
-| `GET /v1/agents?search=` | `name`, `description` |
-| `GET /v1/sessions?search=` | `title` |
-| `GET /v1/harnesses?search=` | `name`, `description` |
-| `GET /v1/skills?search=` | `name`, `description` |
-| `GET /v1/mcp-servers?search=` | `name`, `description` |
+| `GET /v1/platform/agents?search=` | `name`, `description` |
+| `GET /v1/platform/sessions?search=` | `title` |
+| `GET /v1/platform/harnesses?search=` | `name`, `description` |
+| `GET /v1/platform/skills?search=` | `name`, `description` |
+| `GET /v1/platform/mcp-servers?search=` | `name`, `description` |
 
 **Convention:** When adding new entity types, always include `?search=` support on the list endpoint. Search should match against `name` and `description` at minimum (case-insensitive, tokenized). Empty or whitespace-only search values are treated as no filter.
 
@@ -567,13 +600,13 @@ GET /v1/{resource}/config → ResourceConfigResponse
 
 | Endpoint | Description |
 |----------|-------------|
-| `GET /v1/harnesses/config` | Harness policies |
-| `GET /v1/agents/config` | Agent policies |
-| `GET /v1/sessions/config` | Session policies |
-| `GET /v1/mcp-servers/config` | MCP server policies |
-| `GET /v1/providers/config` | LLM provider policies |
-| `GET /v1/models/config` | LLM model policies |
-| `GET /v1/skills/config` | Skill policies |
+| `GET /v1/platform/harnesses/config` | Harness policies |
+| `GET /v1/platform/agents/config` | Agent policies |
+| `GET /v1/platform/sessions/config` | Session policies |
+| `GET /v1/platform/mcp-servers/config` | MCP server policies |
+| `GET /v1/platform/providers/config` | LLM provider policies |
+| `GET /v1/platform/models/config` | LLM model policies |
+| `GET /v1/platform/skills/config` | Skill policies |
 
 See `knowledge/security/permissions.md` for the full policy model, `ResourceConfigResponse` details, and response format.
 
@@ -633,7 +666,7 @@ served as `application/problem+json`:
   "title": "Validation failed",
   "status": 422,
   "detail": "Agent name exceeds the 200-character limit.",
-  "instance": "/v1/agents",
+  "instance": "/v1/platform/agents",
   "code": "agent_name_too_long",
   "allowed_actions": [
     { "rel": "retry", "operation_id": "create_agent", "hint": "Shorten 'name' to <= 200 chars." }

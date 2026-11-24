@@ -54,7 +54,7 @@ pub use everruns_core::{
 // Message API Contracts
 // ============================================
 
-/// Query options for `POST /v1/sessions/{session_id}/messages`.
+/// Query options for `POST /v1/platform/sessions/{session_id}/messages`.
 ///
 /// By default the endpoint enqueues the turn and returns `201` immediately.
 /// Pass `wait=true` to block until the triggered turn reaches a terminal
@@ -84,7 +84,7 @@ pub enum TurnWaitStatus {
     Timeout,
 }
 
-/// Waited result for `POST /v1/sessions/{session_id}/messages?wait=true`.
+/// Waited result for `POST /v1/platform/sessions/{session_id}/messages?wait=true`.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct TurnWaitResponse {
     /// Wait outcome for the triggered turn.
@@ -181,11 +181,11 @@ impl_dispatchable!(AppState);
 pub fn routes(state: AppState) -> Router {
     Router::new()
         .route(
-            "/v1/sessions/{session_id}/messages",
+            "/v1/platform/sessions/{session_id}/messages",
             post(create_message).get(list_messages),
         )
         .route(
-            "/v1/sessions/{session_id}/export",
+            "/v1/platform/sessions/{session_id}/export",
             get(export_session_jsonl),
         )
         .command::<crate::domains::messages::feedback::SetMessageFeedback>()
@@ -249,10 +249,10 @@ async fn wait_for_turn(
         }
     })
 }
-/// POST /v1/sessions/{session_id}/messages - Create message (user message makes the session runnable)
+/// POST /v1/platform/sessions/{session_id}/messages - Create message (user message makes the session runnable)
 #[utoipa::path(
     post,
-    path = "/v1/sessions/{session_id}/messages",
+    path = "/v1/platform/sessions/{session_id}/messages",
     params(
         ("session_id" = String, Path, description = "Session ID (prefixed, e.g., sess_...)"),
         CreateMessageQuery
@@ -364,10 +364,10 @@ pub async fn create_message(
     ))
 }
 
-/// GET /v1/sessions/{session_id}/messages - List messages (PRIMARY data)
+/// GET /v1/platform/sessions/{session_id}/messages - List messages (PRIMARY data)
 #[utoipa::path(
     get,
-    path = "/v1/sessions/{session_id}/messages",
+    path = "/v1/platform/sessions/{session_id}/messages",
     params(
         ("session_id" = String, Path, description = "Session ID (prefixed, e.g., sess_...)")
     ),
@@ -431,7 +431,7 @@ pub struct ExportSessionQuery {
 /// download.
 #[utoipa::path(
     get,
-    path = "/v1/sessions/{session_id}/export",
+    path = "/v1/platform/sessions/{session_id}/export",
     params(
         ("session_id" = String, Path, description = "Session ID (prefixed, e.g., session_...)"),
         ("format" = Option<String>, Query, description = "Output format: jsonl (default) or atif"),
@@ -522,7 +522,7 @@ async fn segmented_atif_response(
     cursor: Option<String>,
 ) -> Result<axum::response::Response, (StatusCode, Json<ErrorResponse>)> {
     let ctx = state.ctx(org);
-    let link_base = format!("/v1/sessions/{session_id}/export");
+    let link_base = format!("/v1/platform/sessions/{session_id}/export");
     let segment = crate::domains::messages::export_session_segment(
         &ctx,
         &session_id,

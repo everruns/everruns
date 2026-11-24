@@ -1,5 +1,5 @@
 //! Integration tests for the canonical workspace filesystem HTTP surface
-//! (`/v1/workspaces/{workspace_id}/fs/*`).
+//! (`/v1/platform/workspaces/{workspace_id}/fs/*`).
 //!
 //! Covers the endpoints added on top of #2140's CRUD/list surface — move,
 //! copy, raw download, and `Accept: application/octet-stream` raw GET — plus
@@ -17,7 +17,7 @@ use test_harness::TestServer;
 async fn create_session_with_workspace(server: &TestServer) -> (String, String) {
     let session: Value = server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             json!({
                 "harness_id": server.seed_base_harness_id,
                 "title": "workspace-fs-test"
@@ -39,7 +39,7 @@ async fn create_session_with_workspace(server: &TestServer) -> (String, String) 
 async fn workspace_fs_move_copy_download_roundtrip() {
     let server = TestServer::in_memory().await;
     let (_session_id, workspace_id) = create_session_with_workspace(&server).await;
-    let base = format!("/v1/workspaces/{workspace_id}/fs");
+    let base = format!("/v1/platform/workspaces/{workspace_id}/fs");
 
     // Create a file.
     server
@@ -117,7 +117,7 @@ async fn workspace_fs_move_copy_download_roundtrip() {
 async fn workspace_fs_rejects_unknown_workspace() {
     let server = TestServer::in_memory().await;
     server
-        .get("/v1/workspaces/wsp_ffffffffffffffffffffffffffffffff/fs")
+        .get("/v1/platform/workspaces/wsp_ffffffffffffffffffffffffffffffff/fs")
         .await
         .assert_status(StatusCode::NOT_FOUND);
 }

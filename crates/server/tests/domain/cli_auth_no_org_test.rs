@@ -90,10 +90,10 @@ async fn test_cli_exchange_no_orgs_returns_422() {
         .await
         .expect("complete session failed");
 
-    // 4. POST /v1/auth/cli/exchange — should return 422
+    // 4. POST /v1/platform/auth/cli/exchange — should return 422
     let request = Request::builder()
         .method("POST")
-        .uri("/v1/auth/cli/exchange")
+        .uri("/v1/platform/auth/cli/exchange")
         .header("content-type", "application/json")
         .body(Body::from(
             serde_json::to_string(&json!({
@@ -216,7 +216,7 @@ async fn test_cli_exchange_code_is_one_time_use() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/v1/auth/cli/exchange")
+                .uri("/v1/platform/auth/cli/exchange")
                 .header("content-type", "application/json")
                 .body(Body::from(payload.clone()))
                 .unwrap(),
@@ -233,7 +233,7 @@ async fn test_cli_exchange_code_is_one_time_use() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/v1/auth/cli/exchange")
+                .uri("/v1/platform/auth/cli/exchange")
                 .header("content-type", "application/json")
                 .body(Body::from(payload))
                 .unwrap(),

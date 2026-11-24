@@ -127,7 +127,7 @@ export function callToolResultFor(
 export async function getMcpAppView(sessionId: string, app: McpAppCall): Promise<McpAppView> {
   const params = new URLSearchParams({ server: app.server, uri: app.resource_uri });
   const response = await api.get<McpAppView>(
-    `/v1/sessions/${sessionId}/mcp-apps/view?${params.toString()}`,
+    `/v1/platform/sessions/${sessionId}/mcp-apps/view?${params.toString()}`,
   );
   return response.data;
 }
@@ -137,7 +137,7 @@ export async function callMcpAppTool(
   request: { server: string; name: string; arguments: unknown; confirmed: boolean },
 ): Promise<McpAppToolCallResponse> {
   const response = await api.post<McpAppToolCallResponse>(
-    `/v1/sessions/${sessionId}/mcp-apps/tools-call`,
+    `/v1/platform/sessions/${sessionId}/mcp-apps/tools-call`,
     request,
   );
   return response.data;
@@ -148,7 +148,7 @@ export async function readMcpAppResource(
   request: { server: string; uri: string },
 ): Promise<Record<string, unknown>> {
   const response = await api.post<Record<string, unknown>>(
-    `/v1/sessions/${sessionId}/mcp-apps/resources-read`,
+    `/v1/platform/sessions/${sessionId}/mcp-apps/resources-read`,
     request,
   );
   return response.data;

@@ -120,24 +120,24 @@ export async function mockKnowledgeApi(
     const pathname = url.pathname;
     let json: unknown = { data: [], has_more: false, total: 0 };
 
-    if (pathname.startsWith("/api/v1/user/preferences/")) {
+    if (pathname.startsWith("/api/v1/platform/user/preferences/")) {
       // These specs cover Chat beside the page, an explicit choice since Classic
       // became the default. A PUT is kept, as the server would.
-      const key = decodeURIComponent(pathname.slice("/api/v1/user/preferences/".length));
+      const key = decodeURIComponent(pathname.slice("/api/v1/platform/user/preferences/".length));
       if (route.request().method() === "PUT")
         preferences[key] = route.request().postDataJSON().value;
       json =
         key in preferences
           ? { key, value: preferences[key], updated_at: "" }
           : { key, value: null, updated_at: "" };
-    } else if (pathname === "/api/v1/auth/config") {
+    } else if (pathname === "/api/v1/platform/auth/config") {
       json = {
         mode: "none",
         password_auth_enabled: false,
         oauth_providers: [],
         signup_enabled: false,
       };
-    } else if (pathname === "/api/v1/auth/me") {
+    } else if (pathname === "/api/v1/platform/auth/me") {
       json = {
         id: "user-1",
         email: "dev@example.com",
@@ -154,11 +154,11 @@ export async function mockKnowledgeApi(
       };
     } else if (pathname.endsWith("/switch-org")) {
       json = { success: true, org_id: DEFAULT_ORG_ID };
-    } else if (/^\/api\/v1\/orgs\/[^/]+$/.test(pathname)) {
+    } else if (/^\/api\/v1\/platform\/orgs\/[^/]+$/.test(pathname)) {
       json = { id: DEFAULT_ORG_ID, name: "Default" };
-    } else if (pathname === "/api/v1/knowledge") {
+    } else if (pathname === "/api/v1/platform/knowledge") {
       json = { data: [docs, playbooks], next_cursor: null };
-    } else if (pathname === "/api/v1/knowledge-indexers") {
+    } else if (pathname === "/api/v1/platform/knowledge-indexers") {
       json = {
         data: [
           {
@@ -171,8 +171,8 @@ export async function mockKnowledgeApi(
         ],
       };
     } else if (
-      pathname === "/api/v1/sessions/platform-chat" ||
-      pathname === "/api/v1/sessions/session_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      pathname === "/api/v1/platform/sessions/platform-chat" ||
+      pathname === "/api/v1/platform/sessions/session_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
     ) {
       json = {
         id: "session_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -188,7 +188,7 @@ export async function mockKnowledgeApi(
         created_at: "2026-10-27T10:00:00Z",
         updated_at: "2026-10-27T10:00:00Z",
       };
-    } else if (pathname === "/api/v1/agents/agent_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") {
+    } else if (pathname === "/api/v1/platform/agents/agent_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") {
       json = {
         id: "agent_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         name: "platform-chat",
@@ -200,9 +200,9 @@ export async function mockKnowledgeApi(
         initial_files: [],
         status: "active",
       };
-    } else if (pathname === "/api/v1/models") {
+    } else if (pathname === "/api/v1/platform/models") {
       json = { data: [model], has_more: false, total: 1 };
-    } else if (pathname === `/api/v1/models/${model.id}`) {
+    } else if (pathname === `/api/v1/platform/models/${model.id}`) {
       json = model;
     } else if (pathname.endsWith("/resolved-model")) {
       json = { model_id: model.id };
@@ -210,7 +210,7 @@ export async function mockKnowledgeApi(
       json = [];
     } else if (pathname.endsWith("/config")) {
       json = { policies: {} };
-    } else if (pathname.startsWith("/api/v1/history/")) {
+    } else if (pathname.startsWith("/api/v1/platform/history/")) {
       json = [];
     } else if (pathname.endsWith("/events") || pathname.endsWith("/messages")) {
       json = { data: [], has_more: false };
@@ -228,7 +228,7 @@ export async function mockKnowledgeApi(
       });
       return;
     } else {
-      const match = pathname.match(/^\/api\/v1\/knowledge\/([^/]+)(\/files)?$/);
+      const match = pathname.match(/^\/api\/v1\/platform\/knowledge\/([^/]+)(\/files)?$/);
       if (match) {
         const collection = match[1] === DOCS_ID ? docs : playbooks;
         if (match[2]) {

@@ -32,7 +32,7 @@ Verify that after spawning multiple subagents, `list_tasks` (from the generic se
 
 1. Create agent:
    ```bash
-   curl -s -X POST "http://localhost:9300/api/v1/agents" \
+   curl -s -X POST "http://localhost:9300/api/v1/platform/agents" \
      -H "Content-Type: application/json" \
      -d '{
        "name": "Multi-Spawner",
@@ -44,7 +44,7 @@ Verify that after spawning multiple subagents, `list_tasks` (from the generic se
 
 2. Create session:
    ```bash
-   curl -s -X POST "http://localhost:9300/api/v1/sessions" \
+   curl -s -X POST "http://localhost:9300/api/v1/platform/sessions" \
      -H "Content-Type: application/json" \
      -d '{"agent_id": "{agent_id}"}'
    ```
@@ -52,7 +52,7 @@ Verify that after spawning multiple subagents, `list_tasks` (from the generic se
 
 3. Send message requesting two subagents and a listing:
    ```bash
-   curl -s -X POST "http://localhost:9300/api/v1/sessions/{session_id}/messages" \
+   curl -s -X POST "http://localhost:9300/api/v1/platform/sessions/{session_id}/messages" \
      -H "Content-Type: application/json" \
      -d '{
        "message": {
@@ -66,7 +66,7 @@ Verify that after spawning multiple subagents, `list_tasks` (from the generic se
 
 5. Retrieve events:
    ```bash
-   curl -s "http://localhost:9300/api/v1/sessions/{session_id}/events"
+   curl -s "http://localhost:9300/api/v1/platform/sessions/{session_id}/events"
    ```
 
 ## Expected Result

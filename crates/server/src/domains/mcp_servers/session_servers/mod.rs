@@ -255,7 +255,7 @@ pub struct ListChatMcpServers {
     category = "sessions",
     description = "List the MCP servers added to one chat only.",
     method = "GET",
-    path = "/v1/sessions/{session_id}/mcp-servers",
+    path = "/v1/platform/sessions/{session_id}/mcp-servers",
     cli = CliRoute::new(&["sessions", "mcp-servers"], "list").with_args(&[CliArg::new("session_id").at(1)]).with_examples(&[CliExample::new("See which MCP servers were added to one chat only", "everruns sessions mcp-servers list session_01h9")]),
     positional = "session_id",
     policy = crate::domains::sessions::SESSION_VIEW,
@@ -363,7 +363,7 @@ pub struct RemoveChatMcpServer {
     category = "sessions",
     description = "Remove an MCP server added to one chat only. Its tools leave from the next turn.",
     method = "DELETE",
-    path = "/v1/sessions/{session_id}/mcp-servers/{name}",
+    path = "/v1/platform/sessions/{session_id}/mcp-servers/{name}",
     policy = crate::domains::sessions::SESSION_MANAGE,
     cli = CliRoute::new(&["sessions", "mcp-servers"], "remove").with_examples(&[CliExample::new("Drop a chat-only MCP server so its tools leave from the next turn", "everruns sessions mcp-servers remove --session-id session_01h9 --name github --reason 'No longer needed in this chat'")]),
 )]

@@ -1,4 +1,4 @@
-// Rooms HTTP routes: `/v1/rooms` (knowledge/runtime-resources/rooms.md).
+// Rooms HTTP routes: `/v1/platform/rooms` (knowledge/runtime-resources/rooms.md).
 //
 // Every route is a domain command. The router carries the session and message
 // services because posting a message wakes the agent members it addresses.
@@ -64,7 +64,7 @@ pub fn routes_from(api: &super::state::ApiState, messages: &super::messages::App
 
 pub fn routes(state: AppState) -> Router {
     Router::new()
-        // The org-wide feed is registered before `/v1/rooms/{room_id}` reads.
+        // The org-wide feed is registered before `/v1/platform/rooms/{room_id}` reads.
         .command::<ListOrgRoomEvents>()
         .command::<CreateRoom>()
         .command::<ListRooms>()

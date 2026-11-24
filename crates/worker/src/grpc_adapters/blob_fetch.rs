@@ -181,7 +181,7 @@ mod tests {
         let channel = tonic::transport::Endpoint::from_static("http://127.0.0.1:1").connect_lazy();
         let fetcher = BlobFetcher::new(channel, Some("token"));
         for path in [
-            "/v1/sessions",
+            "/v1/platform/sessions",
             "http://evil.example/internal/blobs/images/x",
             "",
         ] {

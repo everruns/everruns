@@ -46,14 +46,14 @@ async function mockAppApi(page: Page) {
     const pathname = new URL(route.request().url()).pathname;
     let json: unknown;
 
-    if (pathname === "/api/v1/auth/config") {
+    if (pathname === "/api/v1/platform/auth/config") {
       json = {
         mode: "none",
         password_auth_enabled: false,
         oauth_providers: [],
         signup_enabled: false,
       };
-    } else if (pathname === "/api/v1/auth/me") {
+    } else if (pathname === "/api/v1/platform/auth/me") {
       json = {
         id: "user-1",
         email: "dev@example.com",
@@ -71,14 +71,14 @@ async function mockAppApi(page: Page) {
       };
     } else if (pathname.endsWith("/switch-org")) {
       json = { success: true, org_id: DEFAULT_ORG_ID };
-    } else if (pathname === "/api/v1/providers") {
+    } else if (pathname === "/api/v1/platform/providers") {
       json = { data: providers, has_more: false, total: providers.length };
-    } else if (pathname === "/api/v1/models/config") {
+    } else if (pathname === "/api/v1/platform/models/config") {
       // Manage controls render only for callers holding `org:models:manage`.
       json = { policies: { "model.view": true, "model.manage": true } };
-    } else if (pathname === "/api/v1/models") {
+    } else if (pathname === "/api/v1/platform/models") {
       json = { data: models, has_more: false, total: models.length };
-    } else if (/^\/api\/v1\/orgs\/[^/]+$/.test(pathname)) {
+    } else if (/^\/api\/v1\/platform\/orgs\/[^/]+$/.test(pathname)) {
       json = {
         id: DEFAULT_ORG_ID,
         name: "Default",

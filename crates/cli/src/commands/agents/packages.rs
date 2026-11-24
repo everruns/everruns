@@ -109,8 +109,9 @@ pub(super) async fn run(
                 everruns_core::agent_package::AgentPackage::load(file.as_deref().unwrap_or("."))?
             };
             let body = serde_json::json!({"content":package.to_string(everruns_core::agent_package::Format::Json)?,"format":"json","target":target});
-            let response = super::super::api::ApiClient::new(api_url, api_key, org_id)
-                .post_with_reason("/v1/agents/import", Some(&body), reason.as_deref())
+            let response = super::super::api::ApiClient::connect(api_url, api_key, org_id)
+                .await?
+                .post_with_reason("/v1/platform/agents/import", Some(&body), reason.as_deref())
                 .await?;
             print_package_report(output, &response);
             Ok(())
@@ -121,8 +122,9 @@ pub(super) async fn run(
             out,
         } => {
             let id = urlencoding::encode(&agent);
-            let response = super::super::api::ApiClient::new(api_url, api_key, org_id)
-                .get(&format!("/v1/agents/{id}/export?format=json"))
+            let response = super::super::api::ApiClient::connect(api_url, api_key, org_id)
+                .await?
+                .get(&format!("/v1/platform/agents/{id}/export?format=json"))
                 .await?;
             let package = everruns_core::agent_package::AgentPackage::parse(
                 &response.to_string(),
@@ -152,8 +154,9 @@ pub(super) async fn run(
             let package = everruns_core::agent_package::AgentPackage::load(&file)?;
             if remote {
                 let body = serde_json::json!({"content":package.to_string(everruns_core::agent_package::Format::Json)?,"format":"json"});
-                let response = super::super::api::ApiClient::new(api_url, api_key, org_id)
-                    .post("/v1/agents/validate", Some(&body))
+                let response = super::super::api::ApiClient::connect(api_url, api_key, org_id)
+                    .await?
+                    .post("/v1/platform/agents/validate", Some(&body))
                     .await?;
                 print_package_report(output, &response);
                 anyhow::ensure!(response["valid"] == true, "Agent package validation failed");
@@ -163,8 +166,9 @@ pub(super) async fn run(
         AgentsCommand::Diff { file, target, .. } => {
             let package = everruns_core::agent_package::AgentPackage::load(&file)?;
             let body = serde_json::json!({"content":package.to_string(everruns_core::agent_package::Format::Json)?,"format":"json","target":target.context("provide --against PATH or --target AGENT_NAME")?});
-            let response = super::super::api::ApiClient::new(api_url, api_key, org_id)
-                .post("/v1/agents/diff", Some(&body))
+            let response = super::super::api::ApiClient::connect(api_url, api_key, org_id)
+                .await?
+                .post("/v1/platform/agents/diff", Some(&body))
                 .await?;
             print_package_report(output, &response);
             Ok(())

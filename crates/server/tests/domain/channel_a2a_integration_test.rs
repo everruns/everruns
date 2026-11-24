@@ -62,7 +62,7 @@ async fn create_app_with_a2a_mode(
 ) -> (Value, String) {
     let agent: Value = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": format!("{name}-agent"),
                 "display_name": format!("{name} agent"),
@@ -142,7 +142,7 @@ async fn a2a_legacy_alias_channel_mismatch_is_not_found() {
 
 async fn list_user_message_texts(server: &TestServer, session_id: &str) -> Vec<String> {
     let body: Value = server
-        .get(&format!("/v1/sessions/{session_id}/messages"))
+        .get(&format!("/v1/platform/sessions/{session_id}/messages"))
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -1839,7 +1839,7 @@ async fn a2a_channel_read_redacts_signing_secret_with_configured_flag() {
     enable_a2a_signing(&server, channel_id, A2A_SIGNING_SECRET).await;
 
     let app_after: Value = server
-        .get(&format!("/v1/apps/{app_id}"))
+        .get(&format!("/v1/platform/apps/{app_id}"))
         .await
         .assert_status(StatusCode::OK)
         .json();

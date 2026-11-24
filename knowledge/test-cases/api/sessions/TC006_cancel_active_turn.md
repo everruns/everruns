@@ -33,7 +33,7 @@ Verify that an active turn can be cancelled and the session returns to idle stat
 
 1. Create agent:
    ```bash
-   curl -s -X POST "${BASE_URL}/api/v1/agents" \
+   curl -s -X POST "${BASE_URL}/api/v1/platform/agents" \
      -H "Content-Type: application/json" \
      -d '{
        "name": "slow-agent",
@@ -44,7 +44,7 @@ Verify that an active turn can be cancelled and the session returns to idle stat
 
 2. Create session:
    ```bash
-   curl -s -X POST "${BASE_URL}/api/v1/sessions" \
+   curl -s -X POST "${BASE_URL}/api/v1/platform/sessions" \
      -H "Content-Type: application/json" \
      -d '{"agent_id": "{agent_id}"}'
    ```
@@ -52,7 +52,7 @@ Verify that an active turn can be cancelled and the session returns to idle stat
 
 3. Send message to trigger a long response:
    ```bash
-   curl -s -X POST "${BASE_URL}/api/v1/sessions/{session_id}/messages" \
+   curl -s -X POST "${BASE_URL}/api/v1/platform/sessions/{session_id}/messages" \
      -H "Content-Type: application/json" \
      -d '{
        "message": {
@@ -64,12 +64,12 @@ Verify that an active turn can be cancelled and the session returns to idle stat
 
 4. Record the event cursor, then wait (at most 30 seconds) until this session reports an active turn. If it already completed, use a new disposable turn; cancelling an idle session does not satisfy this case. Cancel the active turn:
    ```bash
-   curl -s -X POST "${BASE_URL}/api/v1/sessions/{session_id}/cancel"
+   curl -s -X POST "${BASE_URL}/api/v1/platform/sessions/{session_id}/cancel"
    ```
 
 5. Poll for at most 30 seconds, then check session status:
    ```bash
-   curl -s "${BASE_URL}/api/v1/sessions/{session_id}"
+   curl -s "${BASE_URL}/api/v1/platform/sessions/{session_id}"
    ```
 
 ## Expected Result

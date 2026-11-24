@@ -8,7 +8,7 @@
 // per-request span built by `TraceLayer` in `app_builder/http_layers.rs`.
 //
 // Decisions:
-// - Uses `MatchedPath` (e.g. `/v1/sessions/{id}`) instead of the raw URI to
+// - Uses `MatchedPath` (e.g. `/v1/platform/sessions/{id}`) instead of the raw URI to
 //   keep log/index cardinality bounded. Falls back to `unmatched` only when
 //   `MatchedPath` is unavailable while this middleware still runs (e.g. a
 //   fallback handler), so mis-wired usage cannot blow up downstream indexes.

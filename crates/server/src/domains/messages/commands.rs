@@ -43,7 +43,7 @@ pub struct CreateMessage {
     category = "messages",
     description = "Create a user message in a session and start the next run. Pass the message as one JSON object whose `content` is an array of content parts (there is no separate --content flag), e.g. --message '{\"content\":[{\"type\":\"text\",\"text\":\"Tell me a short, family-friendly joke.\"}]}'.",
     method = "POST",
-    path = "/v1/sessions/{session_id}/messages",
+    path = "/v1/platform/sessions/{session_id}/messages",
     policy = crate::domains::sessions::SESSION_MANAGE,
     cli = CliRoute::new(&["sessions", "messages"], "create").with_examples(&[CliExample::new("Send a user message to a session and start the next run", "everruns sessions messages create --session-id session_01h9 --message '{\"content\":[{\"type\":\"text\",\"text\":\"Why is the build failing on main?\"}]}' --reason 'Ask about the failing build'",)]),
 )]
@@ -216,7 +216,7 @@ pub struct ListMessages {
     category = "messages",
     description = "List materialized messages in a session, optionally limited to the most recent N.",
     method = "GET",
-    path = "/v1/sessions/{session_id}/messages",
+    path = "/v1/platform/sessions/{session_id}/messages",
     positional = "session_id",
     cli = CliRoute::new(&["sessions", "messages"], "list").with_args(&[CliArg::new("session_id").at(1)]).with_examples(&[CliExample::new("Read the latest messages of a session", "everruns sessions messages list session_01h9 --limit 20",)]),
 )]
@@ -274,7 +274,7 @@ pub struct ExportSessionMessages {
     category = "messages",
     description = "Export session messages as JSONL.",
     method = "GET",
-    path = "/v1/sessions/{session_id}/export",
+    path = "/v1/platform/sessions/{session_id}/export",
     policy = crate::domains::sessions::SESSION_VIEW,
     positional = "session_id",
     cli = CliRoute::new(&["sessions"], "export").with_args(&[CliArg::new("session_id").at(1)]).with_examples(&[CliExample::new("Save a session's transcript for review or audit", "everruns sessions export session_01h9 --format jsonl",)]),

@@ -20,7 +20,7 @@ async fn http_messages_events_exports_and_sse_hide_internal_state() {
 
     let agent: Agent = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": "events-reasoning-projection-agent",
                 "display_name": "Events Reasoning Projection",
@@ -33,7 +33,10 @@ async fn http_messages_events_exports_and_sse_hide_internal_state() {
         .json();
 
     let session: Session = server
-        .post("/v1/sessions", json!({ "agent_id": agent.public_id }))
+        .post(
+            "/v1/platform/sessions",
+            json!({ "agent_id": agent.public_id }),
+        )
         .await
         .assert_status(StatusCode::CREATED)
         .json();
@@ -70,14 +73,14 @@ async fn http_messages_events_exports_and_sse_hide_internal_state() {
         .expect("store the event with its replay state intact");
 
     let body: Value = server
-        .get(&format!("/v1/sessions/{}/events", session.id))
+        .get(&format!("/v1/platform/sessions/{}/events", session.id))
         .await
         .assert_status(StatusCode::OK)
         .json();
 
     for path in [
-        format!("/v1/sessions/{}/messages", session.id),
-        format!("/v1/sessions/{}/export?format=jsonl", session.id),
+        format!("/v1/platform/sessions/{}/messages", session.id),
+        format!("/v1/platform/sessions/{}/export?format=jsonl", session.id),
     ] {
         let response = server.get(&path).await.assert_status(StatusCode::OK);
         assert!(!response.text().contains("METADATA-CANARY"));
@@ -104,7 +107,7 @@ async fn http_messages_events_exports_and_sse_hide_internal_state() {
 
     let replay = server
         .get_stream_prefix(
-            &format!("/v1/sessions/{}/sse?after_sequence=0", session.id),
+            &format!("/v1/platform/sessions/{}/sse?after_sequence=0", session.id),
             64 * 1024,
             Duration::from_secs(2),
         )
@@ -126,7 +129,7 @@ async fn http_messages_events_exports_and_sse_hide_internal_state() {
             .await
             .expect("publish live event");
     };
-    let route = format!("/v1/sessions/{}/sse", session.id);
+    let route = format!("/v1/platform/sessions/{}/sse", session.id);
     let reader = server.get_stream_prefix(&route, 64 * 1024, Duration::from_secs(2));
     let (live, ()) = tokio::join!(reader, writer);
     assert_public_stream(&live);
@@ -152,14 +155,17 @@ async fn context_report_publishes_policy_before_the_first_model_request() {
     let server = TestServer::in_memory().await;
     let session: Session = server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             json!({ "harness_id": server.seed_base_harness_id, "title": "Context inspection" }),
         )
         .await
         .assert_status(StatusCode::CREATED)
         .json();
     let report: everruns_core::SessionContextReport = server
-        .get(&format!("/v1/sessions/{}/context-report", session.id))
+        .get(&format!(
+            "/v1/platform/sessions/{}/context-report",
+            session.id
+        ))
         .await
         .assert_status(StatusCode::OK)
         .json();

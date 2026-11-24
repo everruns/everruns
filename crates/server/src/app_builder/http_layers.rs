@@ -19,6 +19,23 @@ use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::set_header::SetResponseHeaderLayer;
 use tower_http::trace::TraceLayer;
 
+/// Internal calls retain authorization; public API calls use one rate limiter.
+pub(super) fn api_routers(
+    router: Router,
+    auth: &crate::auth::AuthConfig,
+    prefix: &str,
+    classes: &crate::auth::pat_scope::ExtraRouteClasses,
+    valkey: Option<crate::valkey::ValkeyClient>,
+) -> (Router, Router, Option<ApiRateLimiter>) {
+    let router = decorate_api_routes(router, auth);
+    let internal = crate::auth::pat_scope::classify_api_routes(router, prefix, classes.clone());
+    // Internal MCP calls are already throttled at the outer MCP boundary.
+    // TM-DOS: public API requests use one per-IP limiter across both prefixes.
+    let limiter = api_rate_limiter(valkey);
+    let public = rate_limit(internal.clone(), limiter.as_ref());
+    (internal, public, limiter)
+}
+
 /// Response decoration for the `/v1` API surface: entity links, pagination
 /// links, problem details, and change-intent capture.
 pub(super) fn decorate_api_routes(
@@ -124,7 +141,11 @@ fn cors_layer(
             HeaderName::from_static(CHANGE_REASON_HEADER),
             HeaderName::from_static(CONTEXT_REVISION_HEADER),
         ])
-        .expose_headers([HeaderName::from_static("idempotent-replayed")])
+        .expose_headers([
+            HeaderName::from_static("idempotent-replayed"),
+            HeaderName::from_static("deprecation"),
+            header::LINK,
+        ])
         .allow_credentials(true)
 }
 
@@ -238,12 +259,12 @@ mod tests {
 
     async fn preflight(request_headers: &str) -> axum::http::Response<Body> {
         let app = Router::new()
-            .route("/v1/agents", post(|| async { "ok" }))
+            .route("/v1/platform/agents", post(|| async { "ok" }))
             .layer(cors_layer(&[HeaderValue::from_static(ORIGIN)], None));
         app.oneshot(
             Request::builder()
                 .method(Method::OPTIONS)
-                .uri("/v1/agents")
+                .uri("/v1/platform/agents")
                 .header(header::ORIGIN, ORIGIN)
                 .header(header::ACCESS_CONTROL_REQUEST_METHOD, "POST")
                 .header(header::ACCESS_CONTROL_REQUEST_HEADERS, request_headers)

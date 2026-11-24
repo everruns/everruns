@@ -170,7 +170,7 @@ python3 examples/custom-data-agent/smoke.py \
 ```
 
 The API URL can be the direct CP origin, the normal reverse-proxy origin, or an
-origin ending in `/api`. The runner uses the server's `/api/v1` namespace and
+origin ending in `/api`. The runner uses the server's `/api/v1/platform` namespace and
 checks `/health` separately.
 
 It proves queuing without built-in fallback; real model/tool execution; canonical

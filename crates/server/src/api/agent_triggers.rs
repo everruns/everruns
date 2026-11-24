@@ -1,6 +1,6 @@
 // Agent-trigger HTTP routes (EVE-757).
 //
-// Sub-resource of an agent: `/v1/agents/{agent_id}/triggers`. Policy enforcement
+// Sub-resource of an agent: `/v1/platform/agents/{agent_id}/triggers`. Policy enforcement
 // happens inside the domain commands (AGENT_VIEW / AGENT_MANAGE). Creating and
 // firing triggers needs the durable workflow store plus the session/message
 // services, so this router carries its own state rather than reusing the
@@ -131,32 +131,32 @@ pub fn routes(state: AppState) -> Router {
 fn trigger_routes(state: AppState) -> Router {
     Router::new()
         .route(
-            "/v1/agents/{agent_id}/triggers",
+            "/v1/platform/agents/{agent_id}/triggers",
             get(list_agent_triggers).post(create_agent_trigger),
         )
         .route(
-            "/v1/agents/{agent_id}/triggers/{trigger_id}",
+            "/v1/platform/agents/{agent_id}/triggers/{trigger_id}",
             get(get_agent_trigger)
                 .patch(update_agent_trigger)
                 .put(update_agent_trigger)
                 .delete(delete_agent_trigger),
         )
         .route(
-            "/v1/agents/{agent_id}/triggers/{trigger_id}/trigger",
+            "/v1/platform/agents/{agent_id}/triggers/{trigger_id}/trigger",
             post(trigger_agent_trigger),
         )
         .route(
-            "/v1/agents/{agent_id}/triggers/{trigger_id}/runs",
+            "/v1/platform/agents/{agent_id}/triggers/{trigger_id}/runs",
             get(list_agent_trigger_runs),
         )
         .route(
-            "/v1/agents/{agent_id}/triggers/{trigger_id}/deliveries",
+            "/v1/platform/agents/{agent_id}/triggers/{trigger_id}/deliveries",
             get(list_agent_trigger_deliveries),
         )
         .with_state(state)
 }
 
-/// GET /v1/agents/{agent_id}/triggers
+/// GET /v1/platform/agents/{agent_id}/triggers
 #[derive(Debug, Deserialize, IntoParams)]
 pub struct ListAgentTriggersQuery {
     /// Include archived triggers (default false).
@@ -166,7 +166,7 @@ pub struct ListAgentTriggersQuery {
 
 #[utoipa::path(
     get,
-    path = "/v1/agents/{agent_id}/triggers",
+    path = "/v1/platform/agents/{agent_id}/triggers",
     description = "List an agent's triggers. Set include_archived=true to also return archived triggers.",
     params(
         ("agent_id" = String, Path, description = "Agent ID (prefixed)"),
@@ -193,10 +193,10 @@ pub async fn list_agent_triggers(
     Ok(Json(triggers))
 }
 
-/// POST /v1/agents/{agent_id}/triggers
+/// POST /v1/platform/agents/{agent_id}/triggers
 #[utoipa::path(
     post,
-    path = "/v1/agents/{agent_id}/triggers",
+    path = "/v1/platform/agents/{agent_id}/triggers",
     params(("agent_id" = String, Path, description = "Agent ID (prefixed)")),
     request_body = CreateAgentTriggerRequest,
     responses(
@@ -218,10 +218,10 @@ pub async fn create_agent_trigger(
     Ok((StatusCode::CREATED, Json(trigger)))
 }
 
-/// GET /v1/agents/{agent_id}/triggers/{trigger_id}
+/// GET /v1/platform/agents/{agent_id}/triggers/{trigger_id}
 #[utoipa::path(
     get,
-    path = "/v1/agents/{agent_id}/triggers/{trigger_id}",
+    path = "/v1/platform/agents/{agent_id}/triggers/{trigger_id}",
     params(
         ("agent_id" = String, Path, description = "Agent ID (prefixed)"),
         ("trigger_id" = String, Path, description = "Trigger ID (prefixed)")
@@ -248,7 +248,7 @@ pub async fn get_agent_trigger(
 
 #[utoipa::path(
     get,
-    path = "/v1/agents/{agent_id}/triggers/{trigger_id}/runs",
+    path = "/v1/platform/agents/{agent_id}/triggers/{trigger_id}/runs",
     description = "List the ten most recent durable execution outcomes for an agent trigger.",
     params(
         ("agent_id" = String, Path, description = "Agent ID (prefixed)"),
@@ -283,7 +283,7 @@ pub struct DeliveriesQuery {
 
 #[utoipa::path(
     get,
-    path = "/v1/agents/{agent_id}/triggers/{trigger_id}/deliveries",
+    path = "/v1/platform/agents/{agent_id}/triggers/{trigger_id}/deliveries",
     description = "List recent events delivered to an agent trigger, newest first, with what happened to each: dispatched, filtered, duplicate or failed.",
     params(
         ("agent_id" = String, Path, description = "Agent ID (prefixed)"),
@@ -312,10 +312,11 @@ pub async fn list_agent_trigger_deliveries(
     Ok(Json(deliveries))
 }
 
-/// PATCH|PUT /v1/agents/{agent_id}/triggers/{trigger_id}
+/// Update an agent trigger.
 #[utoipa::path(
+    summary = "Update agent trigger",
     patch,
-    path = "/v1/agents/{agent_id}/triggers/{trigger_id}",
+    path = "/v1/platform/agents/{agent_id}/triggers/{trigger_id}",
     params(
         ("agent_id" = String, Path, description = "Agent ID (prefixed)"),
         ("trigger_id" = String, Path, description = "Trigger ID (prefixed)")
@@ -344,10 +345,10 @@ pub async fn update_agent_trigger(
     Ok(Json(trigger))
 }
 
-/// DELETE /v1/agents/{agent_id}/triggers/{trigger_id}
+/// DELETE /v1/platform/agents/{agent_id}/triggers/{trigger_id}
 #[utoipa::path(
     delete,
-    path = "/v1/agents/{agent_id}/triggers/{trigger_id}",
+    path = "/v1/platform/agents/{agent_id}/triggers/{trigger_id}",
     params(
         ("agent_id" = String, Path, description = "Agent ID (prefixed)"),
         ("trigger_id" = String, Path, description = "Trigger ID (prefixed)")
@@ -380,10 +381,10 @@ pub struct FireAgentTriggerRequest {
     pub event: Option<ManualTriggerEvent>,
 }
 
-/// POST /v1/agents/{agent_id}/triggers/{trigger_id}/trigger
+/// POST /v1/platform/agents/{agent_id}/triggers/{trigger_id}/trigger
 #[utoipa::path(
     post,
-    path = "/v1/agents/{agent_id}/triggers/{trigger_id}/trigger",
+    path = "/v1/platform/agents/{agent_id}/triggers/{trigger_id}/trigger",
     params(
         ("agent_id" = String, Path, description = "Agent ID (prefixed)"),
         ("trigger_id" = String, Path, description = "Trigger ID (prefixed)")

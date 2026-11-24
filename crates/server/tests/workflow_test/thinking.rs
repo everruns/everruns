@@ -36,7 +36,7 @@ async fn test_anthropic_extended_thinking() {
     };
 
     let provider_response = client
-        .post(format!("{}/v1/providers", API_BASE_URL))
+        .post(format!("{}/v1/platform/providers", API_BASE_URL))
         .json(&json!({
             "name": "Anthropic Thinking Test Provider",
             "provider_type": "anthropic",
@@ -64,7 +64,7 @@ async fn test_anthropic_extended_thinking() {
     // Create model (the live thinking model supports extended thinking)
     let model_response = client
         .post(format!(
-            "{}/v1/providers/{}/models",
+            "{}/v1/platform/providers/{}/models",
             API_BASE_URL, provider.id
         ))
         .json(&json!({
@@ -87,7 +87,7 @@ async fn test_anthropic_extended_thinking() {
     // Step 2: Create agent (no tool calls - tests basic thinking flow)
     println!("\nStep 2: Creating agent...");
     let agent_response = client
-        .post(format!("{}/v1/agents", API_BASE_URL))
+        .post(format!("{}/v1/platform/agents", API_BASE_URL))
         .json(&json!({
             "name": "thinking-test-agent",
             "display_name": "Thinking Test Agent",
@@ -105,7 +105,7 @@ async fn test_anthropic_extended_thinking() {
     // Step 3: Create session
     println!("\nStep 3: Creating session...");
     let session_response = client
-        .post(format!("{}/v1/sessions", API_BASE_URL))
+        .post(format!("{}/v1/platform/sessions", API_BASE_URL))
         .json(&json!({
             "harness_name": SEED_HARNESS_NAME,
             "agent_id": agent.public_id,
@@ -127,7 +127,7 @@ async fn test_anthropic_extended_thinking() {
     println!("\nStep 4: Sending message with reasoning effort=low...");
     let message_response = client
         .post(format!(
-            "{}/v1/sessions/{}/messages",
+            "{}/v1/platform/sessions/{}/messages",
             API_BASE_URL, session.id
         ))
         .json(&json!({
@@ -161,7 +161,10 @@ async fn test_anthropic_extended_thinking() {
 
         // Check session status
         let session_response = client
-            .get(format!("{}/v1/sessions/{}", API_BASE_URL, session.id))
+            .get(format!(
+                "{}/v1/platform/sessions/{}",
+                API_BASE_URL, session.id
+            ))
             .send()
             .await;
 
@@ -185,7 +188,7 @@ async fn test_anthropic_extended_thinking() {
     // Fetch all events
     let events_response = client
         .get(format!(
-            "{}/v1/sessions/{}/events",
+            "{}/v1/platform/sessions/{}/events",
             API_BASE_URL, session.id
         ))
         .send()
@@ -272,7 +275,7 @@ async fn test_anthropic_extended_thinking() {
     println!("\nStep 6: Sending follow-up message to test multi-turn with thinking...");
     let followup_response = client
         .post(format!(
-            "{}/v1/sessions/{}/messages",
+            "{}/v1/platform/sessions/{}/messages",
             API_BASE_URL, session.id
         ))
         .json(&json!({
@@ -298,7 +301,10 @@ async fn test_anthropic_extended_thinking() {
         tokio::time::sleep(Duration::from_secs(1)).await;
 
         let session_response = client
-            .get(format!("{}/v1/sessions/{}", API_BASE_URL, session.id))
+            .get(format!(
+                "{}/v1/platform/sessions/{}",
+                API_BASE_URL, session.id
+            ))
             .send()
             .await;
 
@@ -334,7 +340,7 @@ async fn test_anthropic_extended_thinking() {
     // model/provider delete is refused (EVE-955).
     cleanup_delete(
         &client,
-        format!("{}/v1/sessions/{}", API_BASE_URL, session.id),
+        format!("{}/v1/platform/sessions/{}", API_BASE_URL, session.id),
         "session",
     )
     .await;
@@ -342,7 +348,7 @@ async fn test_anthropic_extended_thinking() {
     cleanup_delete(
         &client,
         format!(
-            "{}/v1/providers/{}/models/{}",
+            "{}/v1/platform/providers/{}/models/{}",
             API_BASE_URL, provider.id, model.id
         ),
         "model",
@@ -350,7 +356,7 @@ async fn test_anthropic_extended_thinking() {
     .await;
     cleanup_delete(
         &client,
-        format!("{}/v1/providers/{}", API_BASE_URL, provider.id),
+        format!("{}/v1/platform/providers/{}", API_BASE_URL, provider.id),
         "provider",
     )
     .await;
@@ -417,7 +423,7 @@ async fn test_anthropic_extended_thinking_with_tools() {
     };
 
     let provider_response = client
-        .post(format!("{}/v1/providers", API_BASE_URL))
+        .post(format!("{}/v1/platform/providers", API_BASE_URL))
         .json(&json!({
             "name": "Anthropic Thinking+Tools Test",
             "provider_type": "anthropic",
@@ -445,7 +451,7 @@ async fn test_anthropic_extended_thinking_with_tools() {
     // Create model (the live thinking model supports extended thinking)
     let model_response = client
         .post(format!(
-            "{}/v1/providers/{}/models",
+            "{}/v1/platform/providers/{}/models",
             API_BASE_URL, provider.id
         ))
         .json(&json!({
@@ -468,7 +474,7 @@ async fn test_anthropic_extended_thinking_with_tools() {
     // Step 2: Create agent WITH current_time tool
     println!("\nStep 2: Creating agent with current_time tool...");
     let agent_response = client
-        .post(format!("{}/v1/agents", API_BASE_URL))
+        .post(format!("{}/v1/platform/agents", API_BASE_URL))
         .json(&json!({
             "name": "time-reporter-agent",
             "display_name": "Time Reporter Agent",
@@ -492,7 +498,7 @@ async fn test_anthropic_extended_thinking_with_tools() {
     // Step 3: Create session
     println!("\nStep 3: Creating session...");
     let session_response = client
-        .post(format!("{}/v1/sessions", API_BASE_URL))
+        .post(format!("{}/v1/platform/sessions", API_BASE_URL))
         .json(&json!({
             "harness_name": SEED_HARNESS_NAME,
             "agent_id": agent.public_id,
@@ -517,7 +523,7 @@ async fn test_anthropic_extended_thinking_with_tools() {
     println!("\nStep 4: Sending message (expecting thinking + tool use)...");
     let message_response = client
         .post(format!(
-            "{}/v1/sessions/{}/messages",
+            "{}/v1/platform/sessions/{}/messages",
             API_BASE_URL, session.id
         ))
         .json(&json!({
@@ -549,7 +555,10 @@ async fn test_anthropic_extended_thinking_with_tools() {
         tokio::time::sleep(Duration::from_secs(1)).await;
 
         let session_response = client
-            .get(format!("{}/v1/sessions/{}", API_BASE_URL, session.id))
+            .get(format!(
+                "{}/v1/platform/sessions/{}",
+                API_BASE_URL, session.id
+            ))
             .send()
             .await;
 
@@ -581,7 +590,7 @@ async fn test_anthropic_extended_thinking_with_tools() {
     // Fetch all events
     let events_response = client
         .get(format!(
-            "{}/v1/sessions/{}/events",
+            "{}/v1/platform/sessions/{}/events",
             API_BASE_URL, session.id
         ))
         .send()
@@ -644,7 +653,7 @@ async fn test_anthropic_extended_thinking_with_tools() {
     println!("\nStep 6: Sending follow-up message (multi-turn with thinking+tools)...");
     let followup_response = client
         .post(format!(
-            "{}/v1/sessions/{}/messages",
+            "{}/v1/platform/sessions/{}/messages",
             API_BASE_URL, session.id
         ))
         .json(&json!({
@@ -670,7 +679,10 @@ async fn test_anthropic_extended_thinking_with_tools() {
         tokio::time::sleep(Duration::from_secs(1)).await;
 
         let session_response = client
-            .get(format!("{}/v1/sessions/{}", API_BASE_URL, session.id))
+            .get(format!(
+                "{}/v1/platform/sessions/{}",
+                API_BASE_URL, session.id
+            ))
             .send()
             .await;
 
@@ -717,7 +729,7 @@ async fn test_anthropic_extended_thinking_with_tools() {
     // model/provider delete is refused (EVE-955).
     cleanup_delete(
         &client,
-        format!("{}/v1/sessions/{}", API_BASE_URL, session.id),
+        format!("{}/v1/platform/sessions/{}", API_BASE_URL, session.id),
         "session",
     )
     .await;
@@ -725,7 +737,7 @@ async fn test_anthropic_extended_thinking_with_tools() {
     cleanup_delete(
         &client,
         format!(
-            "{}/v1/providers/{}/models/{}",
+            "{}/v1/platform/providers/{}/models/{}",
             API_BASE_URL, provider.id, model.id
         ),
         "model",
@@ -733,7 +745,7 @@ async fn test_anthropic_extended_thinking_with_tools() {
     .await;
     cleanup_delete(
         &client,
-        format!("{}/v1/providers/{}", API_BASE_URL, provider.id),
+        format!("{}/v1/platform/providers/{}", API_BASE_URL, provider.id),
         "provider",
     )
     .await;
@@ -836,7 +848,7 @@ async fn test_reasoning_reaches_api_sanitized_and_classified() {
         .as_nanos();
 
     let agent_response = client
-        .post(format!("{}/v1/agents", API_BASE_URL))
+        .post(format!("{}/v1/platform/agents", API_BASE_URL))
         .json(&json!({
             "name": format!("reasoning-projection-agent-{run_id}"),
             "system_prompt": "You are a helpful assistant.",
@@ -851,7 +863,7 @@ async fn test_reasoning_reaches_api_sanitized_and_classified() {
     let agent: Agent = agent_response.json().await.expect("Failed to parse agent");
 
     let session_response = client
-        .post(format!("{}/v1/sessions", API_BASE_URL))
+        .post(format!("{}/v1/platform/sessions", API_BASE_URL))
         .json(&json!({
             "harness_name": SEED_HARNESS_NAME,
             "agent_id": agent.public_id,
@@ -869,7 +881,7 @@ async fn test_reasoning_reaches_api_sanitized_and_classified() {
     // The effort is what makes llmsim reason, mirroring a real provider.
     let message_response = client
         .post(format!(
-            "{}/v1/sessions/{}/messages",
+            "{}/v1/platform/sessions/{}/messages",
             API_BASE_URL, session.id
         ))
         .json(&json!({
@@ -889,7 +901,7 @@ async fn test_reasoning_reaches_api_sanitized_and_classified() {
         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
         let Ok(resp) = client
             .get(format!(
-                "{}/v1/sessions/{}/messages",
+                "{}/v1/platform/sessions/{}/messages",
                 API_BASE_URL, session.id
             ))
             .send()
@@ -1027,7 +1039,7 @@ async fn test_reasoning_reaches_api_sanitized_and_classified() {
     //    projection and so a separate way for the payload to escape.
     let events: Value = client
         .get(format!(
-            "{}/v1/sessions/{}/events?limit=200",
+            "{}/v1/platform/sessions/{}/events?limit=200",
             API_BASE_URL, session.id
         ))
         .send()
@@ -1063,7 +1075,7 @@ async fn test_reasoning_reaches_api_sanitized_and_classified() {
     // Cleanup
     cleanup_delete(
         &client,
-        format!("{}/v1/sessions/{}", API_BASE_URL, session.id),
+        format!("{}/v1/platform/sessions/{}", API_BASE_URL, session.id),
         "session",
     )
     .await;

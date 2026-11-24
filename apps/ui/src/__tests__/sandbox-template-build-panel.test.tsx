@@ -91,7 +91,7 @@ it("submits the exact authored script against the saved revision and build polic
   fireEvent.click(screen.getByRole("button", { name: "Build snapshot" }));
   await waitFor(() =>
     expect(post).toHaveBeenCalledWith(
-      `/v1/sandbox-templates/${template.id}/builds`,
+      `/v1/platform/sandbox-templates/${template.id}/builds`,
       expect.objectContaining({
         source_revision_id: template.current_revision.id,
         install_script: script,
@@ -140,7 +140,7 @@ it("requests cancellation without treating it as completed cleanup", async () =>
   panel();
   fireEvent.click(await screen.findByRole("button", { name: "Cancel build" }));
   await waitFor(() =>
-    expect(post).toHaveBeenCalledWith("/v1/sandbox-template-builds/sbxbuild_test/cancel"),
+    expect(post).toHaveBeenCalledWith("/v1/platform/sandbox-template-builds/sbxbuild_test/cancel"),
   );
   expect(screen.queryByRole("button", { name: "Save new revision" })).not.toBeInTheDocument();
 });

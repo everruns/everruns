@@ -10,7 +10,7 @@ export interface AgentViewDefinition {
 }
 
 function sessionViewPath(sessionId: string, agentId?: string) {
-  const path = `/v1/sessions/${sessionId}/agent-view`;
+  const path = `/v1/platform/sessions/${sessionId}/agent-view`;
   return agentId ? path + "?view_agent=" + encodeURIComponent(agentId) : path;
 }
 
@@ -41,12 +41,12 @@ export interface AgentViewSettings {
 }
 
 export async function getAgentViewSettings(agentId: string): Promise<AgentViewSettings> {
-  return (await api.get<AgentViewSettings>(`/v1/agents/${agentId}/view`)).data;
+  return (await api.get<AgentViewSettings>(`/v1/platform/agents/${agentId}/view`)).data;
 }
 
 export async function replaceAgentView(
   agentId: string,
   settings: AgentViewSettings,
 ): Promise<AgentViewSettings> {
-  return (await api.put<AgentViewSettings>(`/v1/agents/${agentId}/view`, settings)).data;
+  return (await api.put<AgentViewSettings>(`/v1/platform/agents/${agentId}/view`, settings)).data;
 }

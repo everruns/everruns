@@ -16,7 +16,9 @@ export const QUICK_REACTIONS = ["👍", "❤️", "😂", "🎉", "👀", "✅",
 
 /** Reactions on the messages of a session, with `me` marking the caller's own. */
 export async function listMessageReactions(sessionId: string): Promise<MessageReactions[]> {
-  const response = await api.get<MessageReactions[]>(`/v1/sessions/${sessionId}/reactions`);
+  const response = await api.get<MessageReactions[]>(
+    `/v1/platform/sessions/${sessionId}/reactions`,
+  );
   return response.data;
 }
 
@@ -27,7 +29,7 @@ export async function setMessageReaction(
   emoji: string,
   add: boolean,
 ): Promise<ReactionChange> {
-  const path = `/v1/sessions/${sessionId}/messages/${messageId}/reactions/${encodeURIComponent(emoji)}`;
+  const path = `/v1/platform/sessions/${sessionId}/messages/${messageId}/reactions/${encodeURIComponent(emoji)}`;
   const response = add
     ? await api.put<ReactionChange>(path)
     : await api.delete<ReactionChange>(path);

@@ -33,7 +33,7 @@ the facet rail enumerates it. See
 Three rules govern it:
 
 * **Server-owned.** Each ingress path sets the value at creation. A client may
-  declare only `chat` or `api` on `POST /v1/sessions`; anything else is
+  declare only `chat` or `api` on `POST /v1/platform/sessions`; anything else is
   rejected. A facet that says "started by a schedule" is worthless if a caller
   can claim it.
 * **Structurally derived where possible.** A session created under a
@@ -57,7 +57,7 @@ over existing rows are unchanged by that migration.
 ### A chat thread is an ordinary session
 
 There is no chat API. A chat thread is a session created via
-`POST /v1/sessions` with an agent and `source: "chat"`; the Chats sidebar is
+`POST /v1/platform/sessions` with an agent and `source: "chat"`; the Chats sidebar is
 this list endpoint with `source=chat`, `mine=true`, `order=last_activity`.
 Making threads findable is a filter, not a surface.
 
@@ -135,8 +135,8 @@ session whose transcript contains instructions cannot steer its own summary.
 
 ## Counts
 
-`GET /v1/sessions/facets` serves the facet rail and the masthead as aggregates
-over the *same* filter predicate as `GET /v1/sessions`. Two decisions are worth
+`GET /v1/platform/sessions/facets` serves the facet rail and the masthead as aggregates
+over the *same* filter predicate as `GET /v1/platform/sessions`. Two decisions are worth
 recording:
 
 **Each facet excludes its own selection.** A dimension is counted with every
@@ -160,7 +160,7 @@ every other predicate.
 `sessions.archived_at` (migration 124) records that a session was deliberately
 set aside. Default list results and every facet count exclude archived rows;
 `include_archived=true` widens both together, so the counts still describe the
-page. `PUT`/`DELETE /v1/sessions/{id}/archive` set and clear it, idempotently:
+page. `PUT`/`DELETE /v1/platform/sessions/{id}/archive` set and clear it, idempotently:
 re-archiving keeps the original timestamp, so it records when the session was
 *first* put away.
 

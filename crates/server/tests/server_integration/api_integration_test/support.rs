@@ -63,7 +63,7 @@ pub(crate) async fn seed_archival_app(
 pub(crate) async fn create_schedule_test_session(server: &TestServer, title: &str) -> Session {
     server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             json!({
                 "harness_id": server.seed_base_harness_id,
                 "title": title
@@ -104,7 +104,7 @@ pub(crate) async fn seed_session_schedule(server: &TestServer, session: &Session
 pub(crate) async fn create_llmsim_agent(server: &TestServer, name: &str) -> Agent {
     let provider: Value = server
         .post(
-            "/v1/providers",
+            "/v1/platform/providers",
             json!({
                 "name": format!("{name}-provider"),
                 "provider_type": "llmsim"
@@ -117,7 +117,7 @@ pub(crate) async fn create_llmsim_agent(server: &TestServer, name: &str) -> Agen
     let model: Value = server
         .post(
             &format!(
-                "/v1/providers/{}/models",
+                "/v1/platform/providers/{}/models",
                 provider["id"].as_str().expect("provider id")
             ),
             json!({
@@ -132,7 +132,7 @@ pub(crate) async fn create_llmsim_agent(server: &TestServer, name: &str) -> Agen
 
     server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": format!("{name}-agent"),
                 "display_name": format!("{name} Agent"),

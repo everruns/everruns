@@ -37,15 +37,15 @@ class LoadDriverTests(unittest.IsolatedAsyncioTestCase):
             with self.assertRaisesRegex(ValueError, "enabled llmsim"):
                 await driver.run(args)
         self.assertTrue(client.is_closed)
-        self.assertEqual(requests, [("GET", "/api/v1/models/model"), ("GET", "/api/v1/providers/provider")])
+        self.assertEqual(requests, [("GET", "/api/v1/platform/models/model"), ("GET", "/api/v1/platform/providers/provider")])
 
     async def test_real_and_disabled_models_are_rejected_before_work(self):
         for provider_type, enabled, accepted in (("openai", True, False), ("llmsim", False, False), ("llmsim", True, True)):
             with self.subTest(provider_type=provider_type, enabled=enabled):
                 def respond(request):
-                    if request.url.path == "/api/v1/models/model":
+                    if request.url.path == "/api/v1/platform/models/model":
                         return httpx.Response(200, json={"provider_id": "provider", "enabled": enabled})
-                    self.assertEqual(request.url.path, "/api/v1/providers/provider")
+                    self.assertEqual(request.url.path, "/api/v1/platform/providers/provider")
                     return httpx.Response(200, json={"provider_type": provider_type})
 
                 async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
@@ -78,20 +78,20 @@ class FakeApi:
     async def handle(self, request):
         path, method = request.url.path, request.method
         self.requests.append((method, path))
-        if path.startswith("/api/v1/models/"):
+        if path.startswith("/api/v1/platform/models/"):
             return httpx.Response(200, json={"provider_id": "provider", "enabled": True})
-        if path.startswith("/api/v1/providers/"):
+        if path.startswith("/api/v1/platform/providers/"):
             return httpx.Response(200, json={"provider_type": "llmsim"})
-        if path == "/api/v1/harnesses":
+        if path == "/api/v1/platform/harnesses":
             return httpx.Response(200, json={"data": [{"id": "harness", "name": "generic"}]})
-        if path == "/api/v1/agents":
+        if path == "/api/v1/platform/agents":
             self.agent = json.loads(request.content)
             return httpx.Response(200, json={"id": "agent"})
-        if path == "/api/v1/sessions":
+        if path == "/api/v1/platform/sessions":
             sid = f"session-{len(self.events)}"
             self.events[sid], self.streams[sid] = [], []
             return httpx.Response(200, json={"id": sid})
-        sid = path.split("/")[4]
+        sid = path.removeprefix("/api/v1/platform/sessions/").split("/", 1)[0]
         if "/fs/" in path:
             return httpx.Response(200, json={})
         if method == "PATCH":
@@ -166,7 +166,7 @@ class EndToEndTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["switches"], 6)
         self.assertEqual(result["integrity"], {"checked": 2, "failures": [], "failure_count": 0})
         self.assertEqual(api.agent["capabilities"], [{"ref": "bashkit_shell"}, {"ref": "subagents"}])
-        self.assertIn(("GET", "/api/v1/models/other"), api.requests)
+        self.assertIn(("GET", "/api/v1/platform/models/other"), api.requests)
 
     async def test_lost_messages_fail_the_integrity_check(self):
         passed, result = await self.run_fake(FakeApi(drop_every=4), verify=3)

@@ -34,8 +34,8 @@ function useSessionStorage(sessionId: string, enabled: boolean) {
     enabled,
     queryFn: async () => {
       const [keys, secrets] = await Promise.all([
-        api.get<ListResponse<KeyValueInfo>>(`/v1/sessions/${sessionId}/storage/keys`),
-        api.get<ListResponse<SecretInfo>>(`/v1/sessions/${sessionId}/storage/secrets`),
+        api.get<ListResponse<KeyValueInfo>>(`/v1/platform/sessions/${sessionId}/storage/keys`),
+        api.get<ListResponse<SecretInfo>>(`/v1/platform/sessions/${sessionId}/storage/secrets`),
       ]);
       return { keyValues: keys.data.data, secrets: secrets.data.data };
     },

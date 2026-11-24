@@ -12,7 +12,7 @@ async fn test_full_agent_session_workflow() {
     // Step 1: Create an agent
     println!("\nStep 1: Creating agent...");
     let create_agent_response = client
-        .post(format!("{}/v1/agents", API_BASE_URL))
+        .post(format!("{}/v1/platform/agents", API_BASE_URL))
         .json(&json!({
             "name": "test-agent",
             "display_name": "Test Agent",
@@ -42,7 +42,7 @@ async fn test_full_agent_session_workflow() {
     // Step 2: List agents
     println!("\nStep 2: Listing agents...");
     let list_response = client
-        .get(format!("{}/v1/agents", API_BASE_URL))
+        .get(format!("{}/v1/platform/agents", API_BASE_URL))
         .send()
         .await
         .expect("Failed to list agents");
@@ -58,7 +58,10 @@ async fn test_full_agent_session_workflow() {
     // Step 3: Get agent by ID
     println!("\nStep 3: Getting agent by ID...");
     let get_response = client
-        .get(format!("{}/v1/agents/{}", API_BASE_URL, agent.public_id))
+        .get(format!(
+            "{}/v1/platform/agents/{}",
+            API_BASE_URL, agent.public_id
+        ))
         .send()
         .await
         .expect("Failed to get agent");
@@ -71,7 +74,10 @@ async fn test_full_agent_session_workflow() {
     // Step 4: Update agent
     println!("\nStep 4: Updating agent...");
     let update_response = client
-        .patch(format!("{}/v1/agents/{}", API_BASE_URL, agent.public_id))
+        .patch(format!(
+            "{}/v1/platform/agents/{}",
+            API_BASE_URL, agent.public_id
+        ))
         .json(&json!({
             "name": "updated-test-agent",
             "display_name": "Updated Test Agent",
@@ -89,7 +95,7 @@ async fn test_full_agent_session_workflow() {
     // Step 5: Create a session
     println!("\nStep 5: Creating session...");
     let session_response = client
-        .post(format!("{}/v1/sessions", API_BASE_URL))
+        .post(format!("{}/v1/platform/sessions", API_BASE_URL))
         .json(&json!({
             "harness_name": SEED_HARNESS_NAME,
             "agent_id": agent.public_id,
@@ -111,7 +117,7 @@ async fn test_full_agent_session_workflow() {
     println!("\nStep 6: Adding user message...");
     let message_response = client
         .post(format!(
-            "{}/v1/sessions/{}/messages",
+            "{}/v1/platform/sessions/{}/messages",
             API_BASE_URL, session.id
         ))
         .json(&json!({
@@ -136,7 +142,7 @@ async fn test_full_agent_session_workflow() {
     println!("\nStep 7: Listing messages...");
     let messages_response = client
         .get(format!(
-            "{}/v1/sessions/{}/messages",
+            "{}/v1/platform/sessions/{}/messages",
             API_BASE_URL, session.id
         ))
         .send()
@@ -154,7 +160,10 @@ async fn test_full_agent_session_workflow() {
     // Step 8: Get session
     println!("\nStep 8: Getting session...");
     let get_session_response = client
-        .get(format!("{}/v1/sessions/{}", API_BASE_URL, session.id))
+        .get(format!(
+            "{}/v1/platform/sessions/{}",
+            API_BASE_URL, session.id
+        ))
         .send()
         .await
         .expect("Failed to get session");
@@ -171,7 +180,7 @@ async fn test_full_agent_session_workflow() {
     println!("\nStep 9: Listing events...");
     let events_response = client
         .get(format!(
-            "{}/v1/sessions/{}/events",
+            "{}/v1/platform/sessions/{}/events",
             API_BASE_URL, session.id
         ))
         .send()
@@ -198,7 +207,7 @@ async fn test_full_agent_session_workflow() {
     println!("\nCleaning up...");
     cleanup_delete(
         &client,
-        format!("{}/v1/sessions/{}", API_BASE_URL, session.id),
+        format!("{}/v1/platform/sessions/{}", API_BASE_URL, session.id),
         "session",
     )
     .await;

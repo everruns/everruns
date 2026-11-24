@@ -40,7 +40,7 @@ it("submits the configured model and preserves nullable evidence in the result",
   fireEvent.click(screen.getByRole("button", { name: "Extract" }));
   await waitFor(() =>
     expect(api.post).toHaveBeenCalledWith(
-      "/v1/extractions",
+      "/v1/platform/extractions",
       expect.objectContaining({
         model_id: "model_test",
         input: expect.objectContaining({ state: "Invoice total unknown" }),

@@ -1,5 +1,5 @@
 // Image upload HTTP routes
-// Routes: /v1/images/...
+// Routes: /v1/platform/images/...
 //
 // Organization image storage for message attachments.
 // Supports PNG, JPEG, GIF, WebP (OpenAI Vision compatible formats).
@@ -85,13 +85,19 @@ pub fn routes(state: ApiState) -> Router {
     Router::new()
         // Upload needs larger body limit (100MB + some overhead for multipart encoding)
         .route(
-            "/v1/images",
+            "/v1/platform/images",
             post(upload_image)
                 .layer(DefaultBodyLimit::max(MAX_IMAGE_SIZE + 1024 * 1024))
                 .get(list_images),
         )
-        .route("/v1/images/{image_id}", get(get_image).delete(delete_image))
-        .route("/v1/images/{image_id}/thumbnail", get(get_thumbnail))
+        .route(
+            "/v1/platform/images/{image_id}",
+            get(get_image).delete(delete_image),
+        )
+        .route(
+            "/v1/platform/images/{image_id}/thumbnail",
+            get(get_thumbnail),
+        )
         .with_state(state)
 }
 
@@ -159,10 +165,10 @@ pub(crate) fn generate_thumbnail(data: &[u8], content_type: &str) -> Option<(Vec
 // HTTP Handlers
 // ============================================
 
-/// POST /v1/images - Upload an image
+/// POST /v1/platform/images - Upload an image
 #[utoipa::path(
     post,
-    path = "/v1/images",
+    path = "/v1/platform/images",
     params(
         ("session_id" = Option<String>, Query, description = "Optional: session ID stored as metadata for tracking (not required for upload)")
     ),
@@ -289,10 +295,10 @@ pub async fn upload_image(
     ))
 }
 
-/// GET /v1/images - List images
+/// GET /v1/platform/images - List images
 #[utoipa::path(
     get,
-    path = "/v1/images",
+    path = "/v1/platform/images",
     params(
         ("limit" = Option<i64>, Query, description = "Max items to return (default 50)"),
         ("offset" = Option<i64>, Query, description = "Items to skip")
@@ -332,10 +338,10 @@ pub async fn list_images(
     Ok(Json(images))
 }
 
-/// GET /v1/images/{image_id} - Get image (returns binary data)
+/// GET /v1/platform/images/{image_id} - Get image (returns binary data)
 #[utoipa::path(
     get,
-    path = "/v1/images/{image_id}",
+    path = "/v1/platform/images/{image_id}",
     params(
         ("image_id" = String, Path, description = "Image ID (prefixed, e.g., img_...)")
     ),
@@ -407,10 +413,10 @@ fn served_image_headers(stored_type: &str, filename: &str) -> (String, String) {
     }
 }
 
-/// GET /v1/images/{image_id}/thumbnail - Get image thumbnail
+/// GET /v1/platform/images/{image_id}/thumbnail - Get image thumbnail
 #[utoipa::path(
     get,
-    path = "/v1/images/{image_id}/thumbnail",
+    path = "/v1/platform/images/{image_id}/thumbnail",
     params(
         ("image_id" = String, Path, description = "Image ID (prefixed, e.g., img_...)")
     ),
@@ -462,10 +468,10 @@ pub async fn get_thumbnail(
     Ok(response)
 }
 
-/// DELETE /v1/images/{image_id} - Delete an image
+/// DELETE /v1/platform/images/{image_id} - Delete an image
 #[utoipa::path(
     delete,
-    path = "/v1/images/{image_id}",
+    path = "/v1/platform/images/{image_id}",
     params(
         ("image_id" = String, Path, description = "Image ID (prefixed, e.g., img_...)")
     ),

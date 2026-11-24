@@ -124,7 +124,7 @@ pub struct CreateProvider {
     description = "Create a new LLM provider.",
     method = "POST",
     cli = CliRoute::new(&["providers"], "create").with_examples(&[CliExample::new("Connect an LLM provider with its API key", "everruns providers create --name openai-prod --provider-type openai --api-key \"$OPENAI_API_KEY\" --reason 'Enable OpenAI models'")]),
-    path = "/v1/providers",
+    path = "/v1/platform/providers",
     policy = LLM_PROVIDER_MANAGE,
 )]
 impl Command for CreateProvider {
@@ -169,7 +169,7 @@ pub struct ListProviders {}
     description = "List all LLM providers.",
     method = "GET",
     cli = CliRoute::new(&["providers"], "list").with_examples(&[CliExample::new("See which LLM providers are connected", "everruns providers list")]),
-    path = "/v1/providers",
+    path = "/v1/platform/providers",
     policy = LLM_PROVIDER_VIEW,
 )]
 impl Command for ListProviders {
@@ -207,7 +207,7 @@ pub struct CheckProviderCredentials {
     description = "Check a provider API key without storing it.",
     method = "POST",
     cli = CliRoute::new(&["providers", "check-credentials"], "check").with_examples(&[CliExample::new("Verify an API key works before saving a provider", "everruns providers check-credentials check --provider-type openai --api-key \"$OPENAI_API_KEY\"")]),
-    path = "/v1/providers/check-credentials",
+    path = "/v1/platform/providers/check-credentials",
     policy = LLM_PROVIDER_MANAGE,
 )]
 impl Command for CheckProviderCredentials {
@@ -245,7 +245,7 @@ pub struct GetProvider {
     description = "Get a specific LLM provider.",
     method = "GET",
     cli = CliRoute::new(&["providers"], "get").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Show a provider's type and status", "everruns providers get provider_01h9")]),
-    path = "/v1/providers/{id}",
+    path = "/v1/platform/providers/{id}",
     policy = LLM_PROVIDER_VIEW,
     positional = "id",
 )]
@@ -292,7 +292,7 @@ pub struct UpdateProvider {
     description = "Update an LLM provider.",
     method = "PATCH",
     cli = CliRoute::new(&["providers"], "update").with_examples(&[CliExample::new("Rotate a provider's API key", "everruns providers update --id provider_01h9 --api-key \"$OPENAI_API_KEY\" --reason 'Scheduled key rotation'")]),
-    path = "/v1/providers/{id}",
+    path = "/v1/platform/providers/{id}",
     policy = LLM_PROVIDER_MANAGE,
 )]
 impl Command for UpdateProvider {
@@ -343,7 +343,7 @@ pub struct DeleteProvider {
     description = "Delete an LLM provider.",
     method = "DELETE",
     cli = CliRoute::new(&["providers"], "delete").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Remove a provider and stop using its models", "everruns providers delete provider_01h9 --reason 'Account closed'")]),
-    path = "/v1/providers/{id}",
+    path = "/v1/platform/providers/{id}",
     policy = LLM_PROVIDER_MANAGE,
     positional = "id",
 )]
@@ -371,7 +371,7 @@ pub struct ReviewProviderModels {
     category = "providers",
     description = "Mark a provider's discovered models as reviewed, clearing their new flag.",
     method = "POST",
-    path = "/v1/providers/{id}/models/review",
+    path = "/v1/platform/providers/{id}/models/review",
     policy = LLM_PROVIDER_MANAGE,
     cli = CliRoute::new(&["providers", "models"], "review").with_examples(&[CliExample::new("Clear the new flag once you have looked at a provider's newly discovered models", "everruns providers models review --id provider_01h9 --reason 'Checked new models'",)]),
 )]
@@ -408,7 +408,7 @@ pub struct SyncProviderModels {
     description = "Discover and sync models from a provider.",
     method = "POST",
     cli = CliRoute::new(&["providers", "sync-models"], "sync").with_examples(&[CliExample::new("Pull a provider's current model list after it ships new models", "everruns providers sync-models sync --id provider_01h9 --reason 'New models released'")]),
-    path = "/v1/providers/{id}/sync-models",
+    path = "/v1/platform/providers/{id}/sync-models",
     policy = LLM_PROVIDER_MANAGE,
 )]
 impl Command for SyncProviderModels {

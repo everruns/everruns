@@ -4,7 +4,7 @@ import { observeResourceWrites, type ObservedWrite } from "@/lib/api/write-obser
 
 let stop: (() => void) | undefined;
 const committed = { kind: "model", id: "model_01933b5a000070008000000000000001", revision: 2 };
-const endpoint = `/v1/models/${committed.id}`;
+const endpoint = `/v1/platform/models/${committed.id}`;
 function response(status: number, value: unknown = { id: committed.id }) {
   return {
     ok: status < 400,
@@ -106,7 +106,7 @@ it("keeps private query parameters outside the write observer", async () => {
 it("forwards a history-read abort signal without treating it as a mutation retry", async () => {
   const controller = new AbortController();
   (fetch as jest.Mock).mockResolvedValue(response(200));
-  await api.get("/v1/history/fixture", { signal: controller.signal });
+  await api.get("/v1/platform/history/fixture", { signal: controller.signal });
   expect((fetch as jest.Mock).mock.calls[0][1].signal).toBe(controller.signal);
   expect(fetch).toHaveBeenCalledTimes(1);
 });

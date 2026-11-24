@@ -24,7 +24,7 @@ describe("listCapabilities", () => {
     const capabilities = await listCapabilities();
 
     expect(capabilities).toEqual([...firstPage, plugin]);
-    expect(mockGet).toHaveBeenLastCalledWith("/v1/capabilities?offset=100&limit=100", {
+    expect(mockGet).toHaveBeenLastCalledWith("/v1/platform/capabilities?offset=100&limit=100", {
       headers: { [ORG_HEADER]: "org-a" },
     });
   });
@@ -41,12 +41,12 @@ describe("listCapabilities", () => {
     expect(getActiveOrgId()).toBe("org-b");
     expect(mockGet).toHaveBeenNthCalledWith(
       1,
-      "/v1/capabilities?offset=0&limit=100&include_retired=true",
+      "/v1/platform/capabilities?offset=0&limit=100&include_retired=true",
       { headers: { [ORG_HEADER]: "org-a" } },
     );
     expect(mockGet).toHaveBeenNthCalledWith(
       2,
-      "/v1/capabilities?offset=100&limit=100&include_retired=true",
+      "/v1/platform/capabilities?offset=100&limit=100&include_retired=true",
       { headers: { [ORG_HEADER]: "org-a" } },
     );
   });
@@ -64,7 +64,7 @@ describe("listCapabilities", () => {
     mockGet.mockResolvedValueOnce({ data: { data: [], total: 0, offset: 0, limit: 100 } });
 
     expect(await listCapabilities(false, "org-a")).toEqual([]);
-    expect(mockGet).toHaveBeenCalledWith("/v1/capabilities?offset=0&limit=100", {
+    expect(mockGet).toHaveBeenCalledWith("/v1/platform/capabilities?offset=0&limit=100", {
       headers: { [ORG_HEADER]: "org-a" },
     });
   });

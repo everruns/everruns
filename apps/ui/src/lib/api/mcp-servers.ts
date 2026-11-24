@@ -1,5 +1,5 @@
 // MCP Server API functions
-// Org is sent via everruns_org cookie (set by OrgProvider via /v1/users/me/switch-org)
+// Org is sent via everruns_org cookie (set by OrgProvider via /v1/platform/users/me/switch-org)
 
 import { createCrudApi } from "./crud";
 import { api } from "./client";
@@ -18,7 +18,7 @@ export const mcpServersCrudApi = createCrudApi<
   McpServer,
   CreateMcpServerRequest,
   UpdateMcpServerRequest
->("/v1/mcp-servers");
+>("/v1/platform/mcp-servers");
 
 export const getMcpServers = mcpServersCrudApi.list;
 export const getMcpServer = mcpServersCrudApi.get;
@@ -33,7 +33,7 @@ export async function getMcpServerCatalog(
   const params = new URLSearchParams({ limit: "50" });
   if (cursor) params.set("cursor", cursor);
   const response = await api.get<McpServerCatalogResponse>(
-    `/v1/mcp-servers/catalog?${params.toString()}`,
+    `/v1/platform/mcp-servers/catalog?${params.toString()}`,
   );
   return {
     data: response.data.data as McpServerCatalogEntry[],
@@ -42,13 +42,13 @@ export async function getMcpServerCatalog(
 }
 
 export async function getMcpServerUsage(serverId: string): Promise<McpServerUsage> {
-  const response = await api.get<McpServerUsage>(`/v1/mcp-servers/${serverId}/usage`);
+  const response = await api.get<McpServerUsage>(`/v1/platform/mcp-servers/${serverId}/usage`);
   return response.data;
 }
 
 /** The tools a server offers, with each tool's saved label and any suggestion. */
 export async function getMcpServerTools(serverId: string): Promise<McpServerTool[]> {
-  const response = await api.get<McpServerTool[]>(`/v1/mcp-servers/${serverId}/tools`);
+  const response = await api.get<McpServerTool[]>(`/v1/platform/mcp-servers/${serverId}/tools`);
   return response.data;
 }
 
@@ -59,7 +59,7 @@ export async function setMcpToolLabel(
   label: McpToolLabel | null,
 ): Promise<McpServerTool> {
   const response = await api.put<McpServerTool>(
-    `/v1/mcp-servers/${serverId}/tools/${encodeURIComponent(toolName)}/label`,
+    `/v1/platform/mcp-servers/${serverId}/tools/${encodeURIComponent(toolName)}/label`,
     { label },
   );
   return response.data;
@@ -68,7 +68,7 @@ export async function setMcpToolLabel(
 /** Ask for suggested labels for every unlabeled tool; returns the refreshed list. */
 export async function suggestMcpToolLabels(serverId: string): Promise<McpServerTool[]> {
   const response = await api.post<McpServerTool[]>(
-    `/v1/mcp-servers/${serverId}/tools/suggest-labels`,
+    `/v1/platform/mcp-servers/${serverId}/tools/suggest-labels`,
     {},
   );
   return response.data;
@@ -76,6 +76,8 @@ export async function suggestMcpToolLabels(serverId: string): Promise<McpServerT
 
 /** Run an OAuth preset's connection check again and return the updated preset. */
 export async function checkMcpServerConnection(serverId: string): Promise<McpServer> {
-  const response = await api.post<McpServer>(`/v1/mcp-servers/${serverId}/check-connection`);
+  const response = await api.post<McpServer>(
+    `/v1/platform/mcp-servers/${serverId}/check-connection`,
+  );
   return response.data;
 }

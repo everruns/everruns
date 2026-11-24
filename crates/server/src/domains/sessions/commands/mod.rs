@@ -39,7 +39,7 @@ impl CommandSchema for CreateSession {
     category = "sessions",
     description = "Create a new session. Optionally assign an agent and harness. Assign the agent with --agent_id or --agent_name (the everruns CLI spelling of this flag is --agent).",
     method = "POST",
-    path = "/v1/sessions",
+    path = "/v1/platform/sessions",
     policy = super::SESSION_MANAGE,
     cli = CliRoute::new(&["sessions"], "create").with_args(&[CliArg::new("agent_id").short('a').long("agent"), CliArg::new("harness_name").short('H').long("harness"), CliArg::new("tag").short('t'),]).with_examples(&[CliExample::new("Start a session for an agent", "everruns sessions create --agent agent_01h9 --reason 'Investigate the failed release'",)]),
 )]
@@ -289,7 +289,7 @@ pub struct ListSessionParticipants {
     category = "sessions",
     description = "List the participant history for a session.",
     method = "GET",
-    path = "/v1/sessions/{session_id}/participants",
+    path = "/v1/platform/sessions/{session_id}/participants",
     policy = super::SESSION_VIEW,
     cli = CliRoute::new(&["sessions", "participants"], "list").with_args(&[CliArg::new("session_id").long("session")]).with_examples(&[CliExample::new("See who is attached to a session", "everruns sessions participants list --session session_01h9",)]),
 )]
@@ -327,7 +327,7 @@ pub struct AddSessionParticipant {
     category = "sessions",
     description = "Add a member participant to a session.",
     method = "POST",
-    path = "/v1/sessions/{session_id}/participants",
+    path = "/v1/platform/sessions/{session_id}/participants",
     policy = super::SESSION_MANAGE,
     cli = CliRoute::new(&["sessions", "participants"], "add").with_args(&[CliArg::new("session_id").long("session")]).with_examples(&[CliExample::new("Bring a user into a running session", "everruns sessions participants add --session session_01h9 --kind user --reason 'Bring in the on-call reviewer'",)]),
 )]
@@ -445,7 +445,7 @@ pub struct LeaveSessionParticipant {
     category = "sessions",
     description = "Mark a session member participant as having left.",
     method = "DELETE",
-    path = "/v1/sessions/{session_id}/participants/{participant_id}",
+    path = "/v1/platform/sessions/{session_id}/participants/{participant_id}",
     policy = super::SESSION_MANAGE,
     cli = CliRoute::new(&["sessions", "participants"], "leave").with_args(&[CliArg::new("session_id").long("session")]).with_examples(&[CliExample::new("Remove one participant from a session", "everruns sessions participants leave --session session_01h9 --participant-id part_01h9 --reason 'Review finished'",)]),
 )]
@@ -509,7 +509,7 @@ pub struct ForkSession {
     category = "sessions",
     description = "Fork a session into a new, independent session that copies its conversation history and workspace files.",
     method = "POST",
-    path = "/v1/sessions/{session_id}/fork",
+    path = "/v1/platform/sessions/{session_id}/fork",
     policy = super::SESSION_MANAGE,
     cli = CliRoute::new(&["sessions"], "fork").with_args(&[CliArg::new("session_id").at(1).long("session")]).with_examples(&[CliExample::new("Branch from a session to try a different direction", "everruns sessions fork session_01h9 --reason 'Try the rollback path'",)]),
 )]
@@ -597,7 +597,7 @@ pub struct ListSessions {
     category = "sessions",
     description = "List sessions. Filter by agent_id, source, status, owner (mine), and creation window; search by title; order by created_at or last_activity. Supports pagination (limit/offset).",
     method = "GET",
-    path = "/v1/sessions",
+    path = "/v1/platform/sessions",
     policy = super::SESSION_VIEW,
     cli = CliRoute::new(&["sessions"], "list").with_examples(&[CliExample::new("Find recent sessions when you do not know the id", "everruns sessions list --limit 20",)]),
 )]
@@ -645,7 +645,7 @@ pub struct GetSessionFacets {
     category = "sessions",
     description = "Counts per status, source, and agent plus masthead metrics for the sessions list, over the same filters as list_sessions.",
     method = "GET",
-    path = "/v1/sessions/facets",
+    path = "/v1/platform/sessions/facets",
     policy = super::SESSION_VIEW,
     cli = CliRoute::new(&["sessions"], "facets").with_examples(&[CliExample::new("Break the session list down by status, agent and source", "everruns sessions facets --search triage",)]),
 )]
@@ -683,7 +683,7 @@ pub struct GetSession {
     category = "sessions",
     description = "Get session details including status, agent, harness, and model.",
     method = "GET",
-    path = "/v1/sessions/{session_id}",
+    path = "/v1/platform/sessions/{session_id}",
     policy = super::SESSION_VIEW,
     positional = "session_id",
     cli = CliRoute::new(&["sessions"], "get").with_args(&[CliArg::new("session_id").at(1).long("session")]).with_examples(&[CliExample::new("Show one session's state and configuration", "everruns sessions get session_01h9",)]),
@@ -719,7 +719,7 @@ pub struct UpdateSessionCmd {
     category = "sessions",
     description = "Update session title, tags, locale, or model. A null `model_id` clears the session model so turns follow the agent's default again.",
     method = "PATCH",
-    path = "/v1/sessions/{session_id}",
+    path = "/v1/platform/sessions/{session_id}",
     policy = super::SESSION_MANAGE,
     cli = CliRoute::new(&["sessions"], "update").with_args(&[CliArg::new("session_id").at(1).long("session")]).with_examples(&[CliExample::new("Retitle a session so it is findable later", "everruns sessions update session_01h9 --title 'Release triage' --reason 'Clarify the session topic'",), CliExample::new("Switch a running session to another model", "everruns sessions update session_01h9 --model-id model_01933b5a00007000800000000000001 --reason 'Provider limit on the current model'",)]),
 )]
@@ -772,7 +772,7 @@ pub struct DeleteSession {
     category = "sessions",
     description = "Delete a session.",
     method = "DELETE",
-    path = "/v1/sessions/{session_id}",
+    path = "/v1/platform/sessions/{session_id}",
     policy = super::SESSION_MANAGE,
     cli = CliRoute::new(&["sessions"], "delete").with_args(&[CliArg::new("session_id").at(1).long("session")]).with_examples(&[CliExample::new("Archive a session, keeping it restorable", "everruns sessions delete session_01h9 --reason 'Duplicate of the release session'",)]),
 )]
@@ -796,7 +796,7 @@ pub struct GetSessionStats;
     category = "sessions",
     description = "Get session counts by status.",
     method = "GET",
-    path = "/v1/sessions/stats",
+    path = "/v1/platform/sessions/stats",
     policy = super::SESSION_VIEW,
     cli = CliRoute::new(&["sessions"], "stats").with_examples(&[CliExample::new("Check token and cost totals across sessions", "everruns sessions stats",)]),
 )]
@@ -826,7 +826,7 @@ pub struct PinSession {
     category = "sessions",
     description = "Pin a session for the current user.",
     method = "PUT",
-    path = "/v1/sessions/{session_id}/pin",
+    path = "/v1/platform/sessions/{session_id}/pin",
     policy = super::SESSION_MANAGE,
     cli = CliRoute::new(&["sessions"], "pin").with_args(&[CliArg::new("session_id").at(1).long("session")]).with_examples(&[CliExample::new("Keep a session at the top of the list", "everruns sessions pin session_01h9 --reason 'Active incident'",)]),
 )]
@@ -856,7 +856,7 @@ pub struct UnpinSession {
     category = "sessions",
     description = "Unpin a session for the current user.",
     method = "DELETE",
-    path = "/v1/sessions/{session_id}/pin",
+    path = "/v1/platform/sessions/{session_id}/pin",
     policy = super::SESSION_MANAGE,
     cli = CliRoute::new(&["sessions"], "unpin").with_args(&[CliArg::new("session_id").at(1).long("session")]).with_examples(&[CliExample::new("Stop keeping a session at the top of the list", "everruns sessions unpin session_01h9 --reason 'Incident resolved'",)]),
 )]
@@ -886,7 +886,7 @@ pub struct ArchiveSession {
     category = "sessions",
     description = "Archive a session so it drops out of default lists.",
     method = "PUT",
-    path = "/v1/sessions/{session_id}/archive",
+    path = "/v1/platform/sessions/{session_id}/archive",
     policy = super::SESSION_MANAGE,
     cli = CliRoute::new(&["sessions"], "archive").with_args(&[CliArg::new("session_id").at(1).long("session")]).with_examples(&[CliExample::new("Move a finished session out of the active list", "everruns sessions archive session_01h9 --reason 'Release shipped'",)]),
 )]
@@ -917,7 +917,7 @@ pub struct UnarchiveSession {
     category = "sessions",
     description = "Restore an archived session to default lists.",
     method = "DELETE",
-    path = "/v1/sessions/{session_id}/archive",
+    path = "/v1/platform/sessions/{session_id}/archive",
     policy = super::SESSION_MANAGE,
     cli = CliRoute::new(&["sessions"], "unarchive").with_args(&[CliArg::new("session_id").at(1).long("session")]).with_examples(&[CliExample::new("Bring an archived session back to the active list", "everruns sessions unarchive session_01h9 --reason 'Release reopened'",)]),
 )]
@@ -945,7 +945,7 @@ pub struct CancelSession {
     category = "sessions",
     description = "Cancel the currently executing turn in a session.",
     method = "POST",
-    path = "/v1/sessions/{session_id}/cancel",
+    path = "/v1/platform/sessions/{session_id}/cancel",
     policy = super::SESSION_MANAGE,
     cli = CliRoute::new(&["sessions"], "cancel").with_args(&[CliArg::new("session_id").at(1).long("session")]).with_examples(&[CliExample::new("Stop a session that is running away", "everruns sessions cancel session_01h9",)]),
 )]

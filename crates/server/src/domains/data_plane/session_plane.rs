@@ -238,7 +238,7 @@ mod tests {
         let spec = serde_json::to_value(crate::openapi::ApiDoc::openapi()).unwrap();
         let mut undeclared = Vec::new();
         for path in spec["paths"].as_object().unwrap().keys() {
-            let Some(rest) = path.strip_prefix("/v1/sessions/{session_id}/") else {
+            let Some(rest) = path.strip_prefix("/v1/platform/sessions/{session_id}/") else {
                 continue;
             };
             let parts: Vec<&str> = rest.split('/').collect();

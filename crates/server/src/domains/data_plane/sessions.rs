@@ -2,7 +2,7 @@
 //! the session's record and the data plane runs it.
 //!
 //! Decisions:
-//! - `POST /v1/sessions` stays the control plane's: it writes the record
+//! - `POST /v1/platform/sessions` stays the control plane's: it writes the record
 //!   (owner, title, tags, budgets) as for any org, then creates the session
 //!   on the org's data plane under the same id, so the record and the
 //!   running session are one session and the edge finds it by id.

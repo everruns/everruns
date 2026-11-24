@@ -7,7 +7,7 @@ async fn canonical_channels_and_endpoint_aliases_share_records_and_liveness() {
     let server = TestServer::new().await;
     let agent: Value = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": format!("channel-rename-{}", uuid::Uuid::new_v4().simple()),
                 "system_prompt": "Test channel routing"
@@ -17,8 +17,8 @@ async fn canonical_channels_and_endpoint_aliases_share_records_and_liveness() {
         .assert_status(StatusCode::CREATED)
         .json();
     let agent_id = agent["id"].as_str().unwrap();
-    let canonical = format!("/v1/agents/{agent_id}/channels");
-    let legacy = format!("/v1/agents/{agent_id}/endpoints");
+    let canonical = format!("/v1/platform/agents/{agent_id}/channels");
+    let legacy = format!("/v1/platform/agents/{agent_id}/endpoints");
     let channel: Value = server
         .post(
             &canonical,
@@ -58,7 +58,7 @@ async fn canonical_channels_and_endpoint_aliases_share_records_and_liveness() {
     // enforcement always use the channel subject after migration.
     let budget: Value = server
         .post(
-            "/v1/budgets",
+            "/v1/platform/budgets",
             json!({
                 "subject_type": "agent_endpoint", "subject_id": id, "limit": 23.0,
                 "currency": "usd"

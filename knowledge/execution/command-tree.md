@@ -81,9 +81,9 @@ a wire name and params, help text, or an error with usage:
 | Session shell (bash tool) and Framework applications | the host's `CliCommandSource::dispatch` |
 | `ScriptedTool` (`/mcp` `execute`/`query`, `platform` capability) | the scripted pipeline, in process |
 | Worker shell | the platform store over gRPC, as the parsed wire name and params (`platform_run`) |
-| `POST /v1/commands/{name}` | the scripted pipeline, from an HTTP client |
+| `POST /v1/platform/commands/{name}` | the scripted pipeline, from an HTTP client |
 
-`POST /v1/commands/{name}` is the one host a network sits in front of, so it
+`POST /v1/platform/commands/{name}` is the one host a network sits in front of, so it
 is the one that takes an `Idempotency-Key`. A client that never saw a
 response cannot tell whether a mutating command ran; with a key it can send
 the same request again and get the first response back (marked
@@ -242,7 +242,7 @@ family (the `tune-cli-help` agent skill runs the loop).
 Every routed command has a spelling, and every surface resolves it through
 the shared mapper: the session shell, the worker shell, the scripted toolset,
 and the external `everruns` binary, which sends contract commands to
-`POST /v1/commands` and keeps hand-written commands only for local work
+`POST /v1/platform/commands` and keeps hand-written commands only for local work
 (login, file sync, streaming, local agent packages). No surface renders a
 parsed command back into a line for another parser: the worker shell sends the
 wire name and params, the binary sends the JSON envelope.

@@ -11321,7 +11321,7 @@
           "type": "string"
         },
         "ExportEvalRunDatasetRequest": {
-          "description": "Request body for `POST /v1/evals/{eval_id}/runs/{run_id}/dataset`.",
+          "description": "Request body for `POST /v1/platform/evals/{eval_id}/runs/{run_id}/dataset`.",
           "properties": {
             "filters": {
               "$ref": "#/$defs/DatasetFilters",
@@ -26430,7 +26430,7 @@
               "oneOf": [
                 {
                   "$ref": "#/$defs/SystemDecisions",
-                  "description": "Who answers deployment-owned decision checks (guardrail `jev` checks\nand the Slack relevance check). `organization` uses the org's default\ndecision model (`PUT /v1/models/decision-default`) on its own provider\naccount; when that model is missing or failing, guardrail checks fail\nopen and Slack stays silent, never falling back to the deployment."
+                  "description": "Who answers deployment-owned decision checks (guardrail `jev` checks\nand the Slack relevance check). `organization` uses the org's default\ndecision model (`PUT /v1/platform/models/decision-default`) on its own provider\naccount; when that model is missing or failing, guardrail checks fail\nopen and Slack stays silent, never falling back to the deployment."
                 },
                 {
                   "type": "null"

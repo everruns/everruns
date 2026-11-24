@@ -11,7 +11,7 @@ import type {
 
 export type MonitoringScope = "organization" | "fleet";
 export function monitoringBase(scope: MonitoringScope) {
-  return scope === "fleet" ? "/v1/durable/monitoring" : "/v1/monitoring";
+  return scope === "fleet" ? "/v1/platform/durable/monitoring" : "/v1/platform/monitoring";
 }
 export async function getMonitoring(scope: MonitoringScope): Promise<MonitoringSnapshot> {
   return (await api.get<MonitoringSnapshot>(monitoringBase(scope))).data;
@@ -70,14 +70,14 @@ export async function getMonitoringTimelineWindow(
 /** Data plane v2 shards and their history (platform only). */
 export async function getMonitoringShards(range: TimelineRange): Promise<MonitoringShards> {
   const params = new URLSearchParams({ range });
-  return (await api.get<MonitoringShards>(`/v1/durable/monitoring/shards?${params}`)).data;
+  return (await api.get<MonitoringShards>(`/v1/platform/durable/monitoring/shards?${params}`)).data;
 }
 
 /** One shard's last hour per node, every 10 seconds, from the optional detail store. */
 export async function getMonitoringShardDetail(shard: string): Promise<MonitoringShardDetail> {
   return (
     await api.get<MonitoringShardDetail>(
-      `/v1/durable/monitoring/shards/${encodeURIComponent(shard)}/detail`,
+      `/v1/platform/durable/monitoring/shards/${encodeURIComponent(shard)}/detail`,
     )
   ).data;
 }

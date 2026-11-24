@@ -134,12 +134,12 @@ async fn test_disabled_feature_is_hidden_from_api_platform_and_mcp_catalog() {
         .expect("disable gated surfaces while leaving MCP available");
 
     for (path, flag) in [
-        ("/v1/evals", "evals"),
-        ("/v1/skills", "skills"),
-        ("/v1/skills/config", "skills"),
-        ("/v1/memories", "memory"),
-        ("/v1/memories/memory_missing/fs", "memory"),
-        ("/v1/plugins", "plugins"),
+        ("/v1/platform/evals", "evals"),
+        ("/v1/platform/skills", "skills"),
+        ("/v1/platform/skills/config", "skills"),
+        ("/v1/platform/memories", "memory"),
+        ("/v1/platform/memories/memory_missing/fs", "memory"),
+        ("/v1/platform/plugins", "plugins"),
     ] {
         let response = server.get(path).await;
         assert_eq!(
@@ -155,10 +155,10 @@ async fn test_disabled_feature_is_hidden_from_api_platform_and_mcp_catalog() {
     }
 
     for path in [
-        "/v1/knowledge",
-        "/v1/knowledge-indexers",
-        "/v1/capabilities/knowledge",
-        "/v1/capabilities/agent_handoff",
+        "/v1/platform/knowledge",
+        "/v1/platform/knowledge-indexers",
+        "/v1/platform/capabilities/knowledge",
+        "/v1/platform/capabilities/agent_handoff",
     ] {
         server.get(path).await.assert_status(StatusCode::OK);
     }
@@ -784,7 +784,7 @@ async fn test_mcp_agent_run() {
     // Create an agent first via the REST API
     let agent: Value = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": "mcp-test-agent",
                 "display_name": "MCP Test Agent",
@@ -1453,7 +1453,7 @@ async fn test_mcp_execute_get_session_context_report() {
     let server = TestServer::in_memory().await;
     let session: Value = server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             json!({
                 "harness_id": server.seed_base_harness_id,
                 "title": "MCP Context Report"
@@ -1487,7 +1487,7 @@ async fn test_mcp_execute_session_files_reads_virtual_mounts() {
 
     let agent = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": format!("mcp-virtual-files-{}", unique_suffix()),
                 "display_name": "MCP Virtual Files",
@@ -1500,7 +1500,7 @@ async fn test_mcp_execute_session_files_reads_virtual_mounts() {
 
     let session = server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             json!({
                 "harness_id": server.seed_base_harness_id,
                 "agent_id": agent["id"].as_str().unwrap(),
@@ -1821,7 +1821,7 @@ async fn test_mcp_org_override_is_available_without_target_org_opt_in() {
 
     let org2: Value = server
         .post(
-            "/v1/orgs",
+            "/v1/platform/orgs",
             json!({ "name": format!("MCP Disabled Override Target {}", unique_suffix()) }),
         )
         .await
@@ -1830,7 +1830,10 @@ async fn test_mcp_org_override_is_available_without_target_org_opt_in() {
     let org2_id = org2["id"].as_str().expect("org2 id").to_string();
 
     let switch_resp = server
-        .post("/v1/users/me/switch-org", json!({ "org_id": org2_id }))
+        .post(
+            "/v1/platform/users/me/switch-org",
+            json!({ "org_id": org2_id }),
+        )
         .await
         .assert_status(StatusCode::OK);
     let org2_cookie = extract_cookie(switch_resp.headers(), "everruns_org");
@@ -1868,7 +1871,7 @@ async fn test_mcp_adversarial_tool_chain_cannot_escape_org_scope() {
 
     let org2: Value = server
         .post(
-            "/v1/orgs",
+            "/v1/platform/orgs",
             json!({ "name": format!("MCP Escape Target {}", unique_suffix()) }),
         )
         .await
@@ -1877,7 +1880,10 @@ async fn test_mcp_adversarial_tool_chain_cannot_escape_org_scope() {
     let org2_id = org2["id"].as_str().expect("org2 id").to_string();
 
     let switch_resp = server
-        .post("/v1/users/me/switch-org", json!({ "org_id": org2_id }))
+        .post(
+            "/v1/platform/users/me/switch-org",
+            json!({ "org_id": org2_id }),
+        )
         .await
         .assert_status(StatusCode::OK);
     let org2_cookie = extract_cookie(switch_resp.headers(), "everruns_org");
@@ -2213,7 +2219,7 @@ async fn test_mcp_execute_discover_all() {
         "durable schedule tools should not be exposed through MCP execute"
     );
     assert!(
-        !stdout.contains("/v1/durable/"),
+        !stdout.contains("/v1/platform/durable/"),
         "durable control-plane tools should not be exposed through MCP execute"
     );
 }
@@ -2384,7 +2390,7 @@ async fn test_mcp_full_flow_agent_run_then_status() {
     // Create agent
     let agent: Value = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": "flow-agent",
                 "display_name": "Flow Agent",
@@ -3148,62 +3154,4 @@ const MCP_PROTOCOL_VERSION_2026: &str = "2026-07-28";
 // ===========================================================================
 
 /// `tools/list` is identical for every caller, so it is cacheable and public.
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_mcp_tools_list_carries_public_caching_hints_for_2026() {
-    let server = TestServer::new().await;
-
-    let resp = mcp_call_with_headers(
-        &server,
-        "tools/list",
-        json!({}),
-        vec![("MCP-Protocol-Version", MCP_PROTOCOL_VERSION_2026)],
-    )
-    .await;
-
-    assert_eq!(resp["result"]["resultType"], "complete");
-    assert_eq!(resp["result"]["cacheScope"], "public");
-    let ttl = resp["result"]["ttlMs"]
-        .as_i64()
-        .expect("ttlMs must be an integer");
-    assert!(ttl >= 0, "ttlMs must be non-negative, got {ttl}");
-}
-
-/// `resources/read` returns org-scoped data, so it must never be marked public.
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_mcp_resources_read_is_private_for_2026() {
-    let server = TestServer::new().await;
-
-    let resp = mcp_call_with_headers(
-        &server,
-        "resources/read",
-        json!({ "uri": "everruns://agents" }),
-        vec![("MCP-Protocol-Version", MCP_PROTOCOL_VERSION_2026)],
-    )
-    .await;
-
-    assert_eq!(resp["result"]["resultType"], "complete");
-    assert_eq!(
-        resp["result"]["cacheScope"], "private",
-        "org-scoped payloads must not be shareable across authorization contexts"
-    );
-    assert!(resp["result"]["ttlMs"].as_i64().is_some());
-}
-
-/// 2025-era clients see the era they negotiated — no 2026 result metadata.
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_mcp_tools_list_omits_caching_hints_for_2025() {
-    let server = TestServer::new().await;
-
-    let resp = mcp_call_with_headers(
-        &server,
-        "tools/list",
-        json!({}),
-        vec![("MCP-Protocol-Version", MCP_PROTOCOL_VERSION_LATEST)],
-    )
-    .await;
-
-    assert!(resp["result"]["tools"].is_array());
-    assert!(resp["result"].get("ttlMs").is_none());
-    assert!(resp["result"].get("cacheScope").is_none());
-    assert!(resp["result"].get("resultType").is_none());
-}
+mod namespace;

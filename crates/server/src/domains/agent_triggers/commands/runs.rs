@@ -19,7 +19,7 @@ pub struct ListAgentTriggerRuns {
     category = "agent_triggers",
     description = "List recent execution outcomes for an agent trigger.",
     method = "GET",
-    path = "/v1/agents/{agent_id}/triggers/{trigger_id}/runs",
+    path = "/v1/platform/agents/{agent_id}/triggers/{trigger_id}/runs",
     policy = AGENT_VIEW,
     cli = CliRoute::new(&["agents", "triggers", "runs"], "list").with_examples(&[CliExample::new("See whether recent firings of a trigger succeeded", "everruns agents triggers runs list --agent-id agent_01h9 --trigger-id trg_01h9")]),
 )]

@@ -111,7 +111,7 @@ This case is based on the successful 2026-04-23 live run captured after fixing t
 
 ### Image Artifacts
 
-- Three image artifacts exist and are retrievable through `/v1/images/{id}`
+- Three image artifacts exist and are retrievable through `/v1/platform/images/{id}`
 - Artifact IDs use the round-trippable `img_*` format
 - Each artifact is a PNG and matches the corresponding session file
 
@@ -125,7 +125,7 @@ This case is based on the successful 2026-04-23 live run captured after fixing t
 | Failure | What to look for |
 |---------|-----------------|
 | False failure after successful generation | Final assistant text says the run hit an internal error or that nothing was saved even though files or artifacts exist |
-| Artifact IDs not reusable | Returned IDs are not `img_*` values or `/v1/images/{id}` cannot fetch them back |
+| Artifact IDs not reusable | Returned IDs are not `img_*` values or `/v1/platform/images/{id}` cannot fetch them back |
 | Filesystem mirror missing | Artifacts exist but `/workspace/.outputs/images/` is missing one or more PNG files |
 | Tool-call mismatch | Fewer than 3 `generate_image` calls, wrong output format/size/quality, or `persist_artifact` / `save_to_session_fs` omitted |
 | Collapsed concepts | Images are duplicates or do not clearly map to raccoon-boardroom, knight-cubicle, and cat-diner concepts |

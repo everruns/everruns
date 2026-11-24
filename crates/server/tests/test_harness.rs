@@ -1,7 +1,7 @@
 //! Test harness for in-process server testing: `TestServer` runs integration
 //! tests against the full API without a TCP listener, sending requests straight
 //! to the router with tower's `oneshot`, e.g.
-//! `TestServer::new().await.post("/v1/agents", json!({"name": "Test"})).await`.
+//! `TestServer::new().await.post("/v1/platform/agents", json!({"name": "Test"})).await`.
 
 // Allow unused code - this is a test utility module and not all
 // functions/methods are used by all tests
@@ -289,7 +289,7 @@ impl TestServer {
             .await
             .expect("create fixture endpoint");
 
-        self.get(&format!("/v1/apps/{app_id}"))
+        self.get(&format!("/v1/platform/apps/{app_id}"))
             .await
             .assert_status(StatusCode::OK)
             .json()
@@ -327,7 +327,7 @@ impl TestServer {
             .set_app_channel_publish(app.id, live)
             .await
             .expect("update fixture endpoint status");
-        self.get(&format!("/v1/apps/{app_public_id}"))
+        self.get(&format!("/v1/platform/apps/{app_public_id}"))
             .await
             .assert_status(StatusCode::OK)
             .json()
@@ -369,7 +369,7 @@ impl TestServer {
             )
             .await
             .expect("create fixture endpoint");
-        self.get(&format!("/v1/apps/{app_public_id}"))
+        self.get(&format!("/v1/platform/apps/{app_public_id}"))
             .await
             .assert_status(StatusCode::OK)
             .json::<Value>()["channels"]
@@ -1232,6 +1232,8 @@ impl TestServer {
             ));
 
         // Build main router with health endpoint
+        let api_routes =
+            auth::pat_scope::classify_api_routes(api_routes, "/api", Default::default());
         let router = Router::new()
             .route(
                 "/health",
@@ -1239,6 +1241,12 @@ impl TestServer {
             )
             .merge(root_routes)
             .nest("/api", api_routes);
+        let router = everruns_server::server::with_platform_api_compatibility(
+            router,
+            "/api",
+            &Default::default(),
+            [],
+        );
 
         let seed_base_harness_id = lookup_built_in_harness(&db, "base").await;
         let seed_generic_harness_id = lookup_built_in_harness(&db, "generic").await;

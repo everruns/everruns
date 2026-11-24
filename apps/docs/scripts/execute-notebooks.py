@@ -23,7 +23,7 @@ def ensure_local_default_model() -> None:
     suffix = uuid.uuid4().hex[:8]
 
     provider = requests.post(
-        f"{base_url}/v1/providers",
+        f"{base_url}/v1/platform/providers",
         headers=headers,
         json={"name": f"Notebook LlmSim {suffix}", "provider_type": "llmsim"},
         timeout=30,
@@ -32,7 +32,7 @@ def ensure_local_default_model() -> None:
     provider_id = provider.json()["id"]
 
     model = requests.post(
-        f"{base_url}/v1/providers/{provider_id}/models",
+        f"{base_url}/v1/platform/providers/{provider_id}/models",
         headers=headers,
         json={
             "model_id": f"llmsim-notebook-{suffix}",
@@ -44,14 +44,14 @@ def ensure_local_default_model() -> None:
     model_id = model.json()["id"]
 
     enable = requests.patch(
-        f"{base_url}/v1/models/{model_id}",
+        f"{base_url}/v1/platform/models/{model_id}",
         headers=headers,
         json={"enabled": True},
         timeout=30,
     )
     enable.raise_for_status()
 
-    orgs = requests.get(f"{base_url}/v1/orgs", headers=headers, timeout=30)
+    orgs = requests.get(f"{base_url}/v1/platform/orgs", headers=headers, timeout=30)
     orgs.raise_for_status()
     org_payload = orgs.json()
     org_list = org_payload.get("data", org_payload)
@@ -59,7 +59,7 @@ def ensure_local_default_model() -> None:
         raise RuntimeError("No organizations available for notebook execution")
 
     update = requests.patch(
-        f"{base_url}/v1/orgs/{org_list[0]['id']}",
+        f"{base_url}/v1/platform/orgs/{org_list[0]['id']}",
         headers=headers,
         json={"default_model_id": model_id},
         timeout=30,

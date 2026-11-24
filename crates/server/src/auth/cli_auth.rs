@@ -70,14 +70,14 @@ fn build_cli_callback_path(frontend_url: &str, base_url: &str, auth_state: &str)
 // Request/Response types
 // ============================================
 
-/// POST /v1/auth/cli/start request
+/// POST /v1/platform/auth/cli/start request
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CliAuthStartRequest {
     /// Port the CLI is listening on for the callback
     pub redirect_port: u16,
 }
 
-/// POST /v1/auth/cli/start response
+/// POST /v1/platform/auth/cli/start response
 #[derive(Debug, Serialize, ToSchema)]
 pub struct CliAuthStartResponse {
     /// URL to open in the browser for login
@@ -92,7 +92,7 @@ pub struct CliCallbackQuery {
     pub state: String,
 }
 
-/// POST /v1/auth/cli/exchange request
+/// POST /v1/platform/auth/cli/exchange request
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CliExchangeRequest {
     /// One-time exchange code from the callback
@@ -105,7 +105,7 @@ pub struct CliExchangeRequest {
     pub os: Option<String>,
 }
 
-/// POST /v1/auth/cli/exchange response
+/// POST /v1/platform/auth/cli/exchange response
 #[derive(Debug, Serialize, ToSchema)]
 pub struct CliExchangeResponse {
     /// Full personal access token (shown only once)
@@ -159,9 +159,9 @@ impl FromRef<CliAuthState> for AuthState {
 /// Create CLI auth routes
 pub fn cli_auth_routes(state: CliAuthState) -> Router {
     Router::new()
-        .route("/v1/auth/cli/start", post(cli_auth_start))
+        .route("/v1/platform/auth/cli/start", post(cli_auth_start))
         .route("/v1/auth/cli/callback", get(cli_auth_callback))
-        .route("/v1/auth/cli/exchange", post(cli_auth_exchange))
+        .route("/v1/platform/auth/cli/exchange", post(cli_auth_exchange))
         .with_state(state)
 }
 
@@ -172,7 +172,7 @@ pub fn cli_auth_public_routes(state: CliAuthState) -> Router {
         .with_state(state)
 }
 
-/// POST /v1/auth/cli/start — Begin CLI auth flow
+/// POST /v1/platform/auth/cli/start — Begin CLI auth flow
 ///
 /// Creates a pending CLI auth session and returns the login URL.
 /// The CLI should open this URL in the user's browser.
@@ -305,7 +305,7 @@ async fn cli_auth_callback(
     Ok(Redirect::to(&redirect_url).into_response())
 }
 
-/// POST /v1/auth/cli/exchange — Exchange code for API key
+/// POST /v1/platform/auth/cli/exchange — Exchange code for API key
 ///
 /// CLI sends the exchange code received via localhost callback.
 /// Server creates an API key and returns it with user/org info.

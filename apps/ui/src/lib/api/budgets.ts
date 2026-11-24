@@ -12,7 +12,7 @@ export async function listBudgets(params?: {
   if (params?.subject_type) search.set("subject_type", params.subject_type);
   if (params?.subject_id) search.set("subject_id", params.subject_id);
   const qs = search.toString();
-  const response = await api.get<Budget[]>(`/v1/budgets${qs ? `?${qs}` : ""}`);
+  const response = await api.get<Budget[]>(`/v1/platform/budgets${qs ? `?${qs}` : ""}`);
   return response.data;
 }
 
@@ -23,20 +23,22 @@ export async function listAppBudgets(
   const params = new URLSearchParams();
   if (options.includeChannels === false) params.set("include_channels", "false");
   const qs = params.toString();
-  const response = await api.get<Budget[]>(`/v1/apps/${appId}/budgets${qs ? `?${qs}` : ""}`);
+  const response = await api.get<Budget[]>(
+    `/v1/platform/apps/${appId}/budgets${qs ? `?${qs}` : ""}`,
+  );
   return response.data;
 }
 
 export async function createBudget(input: CreateBudgetRequest): Promise<Budget> {
-  const response = await api.post<Budget>("/v1/budgets", input);
+  const response = await api.post<Budget>("/v1/platform/budgets", input);
   return response.data;
 }
 
 export async function updateBudget(budgetId: string, input: UpdateBudgetRequest): Promise<Budget> {
-  const response = await api.patch<Budget>(`/v1/budgets/${budgetId}`, input);
+  const response = await api.patch<Budget>(`/v1/platform/budgets/${budgetId}`, input);
   return response.data;
 }
 
 export async function deleteBudget(budgetId: string): Promise<void> {
-  await api.delete(`/v1/budgets/${budgetId}`);
+  await api.delete(`/v1/platform/budgets/${budgetId}`);
 }

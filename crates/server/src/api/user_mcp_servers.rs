@@ -1,7 +1,7 @@
 // User MCP servers: self-service routes for the servers a person adds for
 // themselves. Spec: knowledge/integrations/user-mcp-servers.md.
 //
-// Same authority as the other `/v1/virtual-users/{id}/...` profile routes:
+// Same authority as the other `/v1/platform/virtual-users/{id}/...` profile routes:
 // `me` (or your own id) for yourself, or virtual-user management authority
 // for an account you manage. Organization MCP management grants nothing here.
 
@@ -27,6 +27,28 @@ use super::common::ErrorResponse;
 type ApiError = (StatusCode, Json<ErrorResponse>);
 
 pub fn routes() -> Router<ApiState> {
+    Router::new()
+        .route(
+            "/v1/platform/virtual-users/{identity_id}/mcp-servers",
+            get(list_user_mcp_servers).post(add_user_mcp_server),
+        )
+        .route(
+            "/v1/platform/virtual-users/{identity_id}/mcp-servers/{server_id}",
+            get(get_user_mcp_server)
+                .patch(update_user_mcp_server)
+                .delete(remove_user_mcp_server),
+        )
+        .route(
+            "/v1/platform/virtual-users/{identity_id}/mcp-servers/{server_id}/tools",
+            get(list_user_mcp_server_tools),
+        )
+        .route(
+            "/v1/platform/virtual-users/{identity_id}/mcp-servers/{server_id}/tools/{tool_name}/label",
+            axum::routing::put(set_user_mcp_tool_label),
+        )
+}
+
+pub(crate) fn runtime_routes() -> Router<ApiState> {
     Router::new()
         .route(
             "/v1/virtual-users/{identity_id}/mcp-servers",
@@ -104,7 +126,7 @@ async fn servers<'a>(
     })
 }
 
-#[utoipa::path(summary = "List the person's own MCP servers.", get, path = "/v1/virtual-users/{identity_id}/mcp-servers", params(("identity_id" = String, Path, description = "`me` or a virtual user id")), responses((status = 200, description = "Success", body = UserMcpServersResponse), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied")), tag = "virtual-users")]
+#[utoipa::path(summary = "List the person's own MCP servers.", get, path = "/v1/platform/virtual-users/{identity_id}/mcp-servers", params(("identity_id" = String, Path, description = "`me` or a virtual user id")), responses((status = 200, description = "Success", body = UserMcpServersResponse), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied")), tag = "virtual-users")]
 pub async fn list_user_mcp_servers(
     org: RuntimeAccount,
     State(state): State<ApiState>,
@@ -118,7 +140,7 @@ pub async fn list_user_mcp_servers(
     Ok(Json(UserMcpServersResponse { data }))
 }
 
-#[utoipa::path(summary = "Add an MCP server for the person", description = "Add an MCP server for the person, from the catalog or by URL.", post, path = "/v1/virtual-users/{identity_id}/mcp-servers", params(("identity_id" = String, Path, description = "`me` or a virtual user id")), request_body = AddUserMcpServerRequest, responses((status = 201, description = "Created", body = UserMcpServer), (status = 400, description = "Invalid request"), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied"), (status = 409, description = "Name already used")), tag = "virtual-users")]
+#[utoipa::path(summary = "Add an MCP server for the person", description = "Add an MCP server for the person, from the catalog or by URL.", post, path = "/v1/platform/virtual-users/{identity_id}/mcp-servers", params(("identity_id" = String, Path, description = "`me` or a virtual user id")), request_body = AddUserMcpServerRequest, responses((status = 201, description = "Created", body = UserMcpServer), (status = 400, description = "Invalid request"), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied"), (status = 409, description = "Name already used")), tag = "virtual-users")]
 pub async fn add_user_mcp_server(
     org: RuntimeAccount,
     State(state): State<ApiState>,
@@ -133,7 +155,7 @@ pub async fn add_user_mcp_server(
     Ok((StatusCode::CREATED, Json(server)))
 }
 
-#[utoipa::path(summary = "Read one of the person's MCP servers.", get, path = "/v1/virtual-users/{identity_id}/mcp-servers/{server_id}", params(("identity_id" = String, Path, description = "`me` or a virtual user id"), ("server_id" = String, Path)), responses((status = 200, description = "Success", body = UserMcpServer), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied"), (status = 404, description = "Not found")), tag = "virtual-users")]
+#[utoipa::path(summary = "Read one of the person's MCP servers.", get, path = "/v1/platform/virtual-users/{identity_id}/mcp-servers/{server_id}", params(("identity_id" = String, Path, description = "`me` or a virtual user id"), ("server_id" = String, Path)), responses((status = 200, description = "Success", body = UserMcpServer), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied"), (status = 404, description = "Not found")), tag = "virtual-users")]
 pub async fn get_user_mcp_server(
     org: RuntimeAccount,
     State(state): State<ApiState>,
@@ -148,7 +170,7 @@ pub async fn get_user_mcp_server(
     Ok(Json(server))
 }
 
-#[utoipa::path(summary = "Update one of the person's MCP servers", description = "Rename, enable, disable, set on-demand loading of, or replace the API key of one of the person's MCP servers.", patch, path = "/v1/virtual-users/{identity_id}/mcp-servers/{server_id}", params(("identity_id" = String, Path, description = "`me` or a virtual user id"), ("server_id" = String, Path)), request_body = UpdateUserMcpServerRequest, responses((status = 200, description = "Success", body = UserMcpServer), (status = 400, description = "Invalid request"), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied"), (status = 404, description = "Not found"), (status = 409, description = "Name already used")), tag = "virtual-users")]
+#[utoipa::path(summary = "Update one of the person's MCP servers", description = "Rename, enable, disable, set on-demand loading of, or replace the API key of one of the person's MCP servers.", patch, path = "/v1/platform/virtual-users/{identity_id}/mcp-servers/{server_id}", params(("identity_id" = String, Path, description = "`me` or a virtual user id"), ("server_id" = String, Path)), request_body = UpdateUserMcpServerRequest, responses((status = 200, description = "Success", body = UserMcpServer), (status = 400, description = "Invalid request"), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied"), (status = 404, description = "Not found"), (status = 409, description = "Name already used")), tag = "virtual-users")]
 pub async fn update_user_mcp_server(
     org: RuntimeAccount,
     State(state): State<ApiState>,
@@ -164,7 +186,7 @@ pub async fn update_user_mcp_server(
     Ok(Json(server))
 }
 
-#[utoipa::path(summary = "Remove one of the person's MCP servers and its sign-in.", delete, path = "/v1/virtual-users/{identity_id}/mcp-servers/{server_id}", params(("identity_id" = String, Path, description = "`me` or a virtual user id"), ("server_id" = String, Path)), responses((status = 204, description = "Removed"), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied"), (status = 404, description = "Not found")), tag = "virtual-users")]
+#[utoipa::path(summary = "Remove one of the person's MCP servers and its sign-in.", delete, path = "/v1/platform/virtual-users/{identity_id}/mcp-servers/{server_id}", params(("identity_id" = String, Path, description = "`me` or a virtual user id"), ("server_id" = String, Path)), responses((status = 204, description = "Removed"), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied"), (status = 404, description = "Not found")), tag = "virtual-users")]
 pub async fn remove_user_mcp_server(
     org: RuntimeAccount,
     State(state): State<ApiState>,
@@ -179,7 +201,7 @@ pub async fn remove_user_mcp_server(
     Ok(StatusCode::NO_CONTENT)
 }
 
-#[utoipa::path(summary = "List the tools of one of the person's MCP servers", description = "List the tools of one of the person's custom MCP servers, asked live, with their risk labels.", get, path = "/v1/virtual-users/{identity_id}/mcp-servers/{server_id}/tools", params(("identity_id" = String, Path, description = "`me` or a virtual user id"), ("server_id" = String, Path)), responses((status = 200, description = "Success", body = UserMcpServerToolsResponse), (status = 400, description = "Server was added from the catalog"), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied"), (status = 404, description = "Not found")), tag = "virtual-users")]
+#[utoipa::path(summary = "List the tools of one of the person's MCP servers", description = "List the tools of one of the person's custom MCP servers, asked live, with their risk labels.", get, path = "/v1/platform/virtual-users/{identity_id}/mcp-servers/{server_id}/tools", params(("identity_id" = String, Path, description = "`me` or a virtual user id"), ("server_id" = String, Path)), responses((status = 200, description = "Success", body = UserMcpServerToolsResponse), (status = 400, description = "Server was added from the catalog"), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied"), (status = 404, description = "Not found")), tag = "virtual-users")]
 pub async fn list_user_mcp_server_tools(
     org: RuntimeAccount,
     State(state): State<ApiState>,
@@ -195,7 +217,7 @@ pub async fn list_user_mcp_server_tools(
     Ok(Json(UserMcpServerToolsResponse { data }))
 }
 
-#[utoipa::path(summary = "Set the person's risk label for an MCP tool", description = "Set or clear the person's risk label for one tool of their custom MCP server.", put, path = "/v1/virtual-users/{identity_id}/mcp-servers/{server_id}/tools/{tool_name}/label", params(("identity_id" = String, Path, description = "`me` or a virtual user id"), ("server_id" = String, Path), ("tool_name" = String, Path)), request_body = SetUserMcpToolLabelRequest, responses((status = 200, description = "Success", body = McpServerTool), (status = 400, description = "Server was added from the catalog"), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied"), (status = 404, description = "Server or tool not found")), tag = "virtual-users")]
+#[utoipa::path(summary = "Set the person's risk label for an MCP tool", description = "Set or clear the person's risk label for one tool of their custom MCP server.", put, path = "/v1/platform/virtual-users/{identity_id}/mcp-servers/{server_id}/tools/{tool_name}/label", params(("identity_id" = String, Path, description = "`me` or a virtual user id"), ("server_id" = String, Path), ("tool_name" = String, Path)), request_body = SetUserMcpToolLabelRequest, responses((status = 200, description = "Success", body = McpServerTool), (status = 400, description = "Server was added from the catalog"), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied"), (status = 404, description = "Server or tool not found")), tag = "virtual-users")]
 pub async fn set_user_mcp_tool_label(
     org: RuntimeAccount,
     State(state): State<ApiState>,

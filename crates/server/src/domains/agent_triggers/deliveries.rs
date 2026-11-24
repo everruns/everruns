@@ -27,7 +27,7 @@ pub struct ListAgentTriggerDeliveries {
     category = "agent_triggers",
     description = "List recent events delivered to an agent trigger: dispatched, filtered, duplicate or failed.",
     method = "GET",
-    path = "/v1/agents/{agent_id}/triggers/{trigger_id}/deliveries",
+    path = "/v1/platform/agents/{agent_id}/triggers/{trigger_id}/deliveries",
     policy = AGENT_VIEW,
     cli = CliRoute::new(&["agents", "triggers", "deliveries"], "list").with_examples(&[CliExample::new("Find out why a webhook or event trigger did not start a session", "everruns agents triggers deliveries list --agent-id agent_01h9 --trigger-id trg_01h9 --limit 20")]),
 )]

@@ -78,7 +78,7 @@ export interface SessionFilters {
   source: string[];
   /**
    * Selected agent public id, or null for every agent. Single-valued because
-   * `GET /v1/sessions` takes one `agent_id`; the rail must not offer a
+   * `GET /v1/platform/sessions` takes one `agent_id`; the rail must not offer a
    * selection the server cannot honour.
    */
   agent: string | null;

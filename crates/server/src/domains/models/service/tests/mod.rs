@@ -78,7 +78,7 @@ fn assert_managed_policy_error(err: anyhow::Error) {
 }
 
 /// Regression: provider creation now discovers a catalog inline, so an
-/// explicit `POST /v1/providers/{id}/models` naming a discovered model used
+/// explicit `POST /v1/platform/providers/{id}/models` naming a discovered model used
 /// to hit the `(provider_id, model_id)` unique index and 409. Six live
 /// workflow tests do exactly that. The caller's settings must win, and the
 /// capabilities discovery learned must survive an omitted field.

@@ -1,5 +1,5 @@
 // Skills registry HTTP routes
-// Routes: /v1/skills/...
+// Routes: /v1/platform/skills/...
 //
 // CRUD for Agent Skills (agentskills.io format).
 // Supports both SKILL.md text upload and ZIP archive upload.
@@ -63,10 +63,10 @@ pub struct ListSkillsQuery {
 // Helpers
 // ============================================
 
-/// GET /v1/skills/config
+/// GET /v1/platform/skills/config
 #[utoipa::path(
     get,
-    path = "/v1/skills/config",
+    path = "/v1/platform/skills/config",
     responses(
         (status = 200, description = "Resource config for skills", body = ResourceConfigResponse),
     ),
@@ -94,12 +94,12 @@ pub async fn skill_config(
 
 pub fn routes(state: ApiState) -> Router {
     Router::new()
-        .route("/v1/skills/config", get(skill_config))
+        .route("/v1/platform/skills/config", get(skill_config))
         .route(
-            "/v1/skills/upload",
+            "/v1/platform/skills/upload",
             post(upload_skill).layer(DefaultBodyLimit::max(MAX_ARCHIVE_UPLOAD)),
         )
-        .route("/v1/skills/validate", post(validate_skill))
+        .route("/v1/platform/skills/validate", post(validate_skill))
         .command::<skills::CreateSkill>()
         .command::<skills::ListSkills>()
         .command::<skills::ListSkillsUsage>()
@@ -115,10 +115,10 @@ pub fn routes(state: ApiState) -> Router {
 // Handlers
 // ============================================
 
-/// POST /v1/skills/upload - Create skill from ZIP archive
+/// POST /v1/platform/skills/upload - Create skill from ZIP archive
 #[utoipa::path(
     post,
-    path = "/v1/skills/upload",
+    path = "/v1/platform/skills/upload",
     responses(
         (status = 201, description = "Skill created from archive", body = WithUrls<Skill>),
         (status = 409, description = "Duplicate skill name", body = ErrorResponse),
@@ -202,10 +202,10 @@ pub async fn upload_skill(
     Ok((StatusCode::CREATED, Json(urls.wrap(skill))))
 }
 
-/// POST /v1/skills/validate - Validate SKILL.md content
+/// POST /v1/platform/skills/validate - Validate SKILL.md content
 #[utoipa::path(
     post,
-    path = "/v1/skills/validate",
+    path = "/v1/platform/skills/validate",
     request_body = ValidateSkillRequest,
     responses(
         (status = 200, description = "Validation result", body = SkillValidationResult),

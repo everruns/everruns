@@ -2,7 +2,7 @@
 
 // Facet rail for the operational Sessions list (EVE-853).
 //
-// Every count comes from `GET /v1/sessions/facets`, aggregated server-side over
+// Every count comes from `GET /v1/platform/sessions/facets`, aggregated server-side over
 // the same predicate as the list. Nothing here is derived from the rows on
 // screen — a page of 20 cannot know how many failures exist in 4,000 runs.
 //

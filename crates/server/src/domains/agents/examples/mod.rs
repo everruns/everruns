@@ -3,8 +3,8 @@
 // Decision: examples live in code (`SEED_AGENTS` plus the guided templates in
 // `crate::agent_templates`), not in the database, and are identified by name.
 // Decision: listing and adopting are commands, so the CLI and MCP reach the
-// same catalogue the UI does. `GET /v1/agent-examples` and
-// `POST /v1/agents/import?from-example={name}` delegate here; there is one
+// same catalogue the UI does. `GET /v1/platform/agent-examples` and
+// `POST /v1/platform/agents/import?from-example={name}` delegate here; there is one
 // filter (dev-only, registered capabilities) and one adoption path.
 // Decision: the deployment grade is read from the environment, as the REST
 // state does (`app_builder` builds it with `DeploymentGrade::from_env`), and
@@ -58,7 +58,7 @@ pub struct AgentExample {
 /// What the UI walks the user through after importing a template.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct AgentExampleSetup {
-    /// The agent needs its own GitHub App (`POST /v1/agents/{id}/github/connect`).
+    /// The agent needs its own GitHub App (`POST /v1/platform/agents/{id}/github/connect`).
     #[schema(example = true)]
     pub connect_github: bool,
     /// Other connection providers the agent's service account needs.
@@ -67,7 +67,7 @@ pub struct AgentExampleSetup {
     /// Text in `trigger` to replace with the picked `owner/repo`.
     #[schema(example = "${repository}")]
     pub repository_placeholder: String,
-    /// Body for `POST /v1/agents/{agent_id}/triggers` once the placeholder is
+    /// Body for `POST /v1/platform/agents/{agent_id}/triggers` once the placeholder is
     /// replaced.
     #[schema(value_type = Object, example = json!({"trigger_type": "schedule", "cron_expression": "0 6 * * 1", "timezone": "UTC", "session_mode": "session_per_invocation", "message": "Scan ${repository} on its default branch."}))]
     pub trigger: serde_json::Value,
@@ -180,7 +180,7 @@ pub struct ListAgentExamples {}
     category = "agents",
     description = "List adoptable agent examples (blueprints such as pr-reviewer): name, description, harness, capabilities, and the guided setup a template needs after adoption (GitHub App, connections, trigger). Adopt one by name with adopt_agent_example.",
     method = "GET",
-    path = "/v1/agent-examples",
+    path = "/v1/platform/agent-examples",
     policy = AGENT_VIEW,
     cli = CliRoute::new(&["agents", "examples"], "list").with_examples(&[CliExample::new("Find a ready-made agent to start from instead of writing one by hand", "everruns agents examples list")]),
 )]
@@ -217,7 +217,7 @@ pub struct AdoptAgentExample {
     category = "agents",
     description = "Create an agent from an agent example by name (see list_agent_examples). The agent is named after the example, with a short suffix when that name is taken, and tagged example:<name>. A template's guided setup (GitHub App, connections, trigger) is not run: do those steps next.",
     method = "POST",
-    path = "/v1/agents/import",
+    path = "/v1/platform/agents/import",
     policy = AGENT_MANAGE,
     positional = "name",
     cli = CliRoute::new(&["agents", "examples"], "adopt").with_args(&[CliArg::new("name").at(1)]).with_examples(&[CliExample::new("Start a pull request reviewer from its template", "everruns agents examples adopt pr-reviewer --reason 'Set up PR reviews for the repo'")]),

@@ -43,7 +43,7 @@ how the agent checked the work and whether it could finish.
 ## Read a report
 
 ```bash
-curl "$EVERRUNS_API/v1/sessions/$SESSION_ID/work" \
+curl "$EVERRUNS_API/v1/platform/sessions/$SESSION_ID/work" \
   -H "Authorization: Bearer $EVERRUNS_API_KEY"
 ```
 

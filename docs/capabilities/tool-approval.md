@@ -92,7 +92,7 @@ their sessions in **Settings → My approvals**. The same from the API:
 
 ```bash
 everruns sessions approval-mode set --session-id $SESSION_ID --mode auto
-curl -X PUT "$EVERRUNS_API/v1/user/preferences/tool_approval" \
+curl -X PUT "$EVERRUNS_API/v1/platform/user/preferences/tool_approval" \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{"value": {"default_mode": "auto", "rules": [{"tool": "send_*", "action": "ask"}]}}'
 ```
@@ -102,7 +102,7 @@ the gate off for an agent whose config turned it on: `off` runs as `auto`.
 
 Organization admins can limit the modes and add rules and trust notes for
 every agent in **Settings → Approvals**, which also lists the reviewer's recent
-verdicts, or with `tool_approval_policy` on `PATCH /v1/orgs/{org}`:
+verdicts, or with `tool_approval_policy` on `PATCH /v1/platform/orgs/{org}`:
 
 ```json
 {
@@ -127,7 +127,7 @@ session UI renders these as approval cards.
 Answer them with:
 
 ```bash
-curl -X POST "$EVERRUNS_API/v1/sessions/$SESSION_ID/tool-approvals" \
+curl -X POST "$EVERRUNS_API/v1/platform/sessions/$SESSION_ID/tool-approvals" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"decisions": [{"tool_call_id": "tool_approval_toolu_01...", "decision": "allow"}]}'

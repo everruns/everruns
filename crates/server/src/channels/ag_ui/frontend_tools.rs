@@ -7,7 +7,7 @@
 // TOOL_CALL_START/ARGS/END and the run finishes as a success naming them in
 // `pendingToolCallIds`; the consumer's next run carries the results as trailing
 // `tool` messages, which land on the same waiting-turn resolution
-// `POST /v1/sessions/{id}/tool-results` uses.
+// `POST /v1/platform/sessions/{id}/tool-results` uses.
 //
 // THREAT[TM-CLIENT-004]: definitions go through the session API's client-side
 // filter, so a consumer cannot declare a tool under the reserved `mcp_` prefix

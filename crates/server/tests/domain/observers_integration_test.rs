@@ -16,7 +16,7 @@ async fn create_and_get_observer_roundtrip() {
 
     let created = server
         .post(
-            "/v1/observers",
+            "/v1/platform/observers",
             json!({
                 "name": "Support quality",
                 "description": "Watch the support agent",
@@ -39,7 +39,7 @@ async fn create_and_get_observer_roundtrip() {
     assert_eq!(created["scorers"][0]["scope"], "turn");
 
     let fetched = server
-        .get(&format!("/v1/observers/{id}"))
+        .get(&format!("/v1/platform/observers/{id}"))
         .await
         .assert_status(StatusCode::OK)
         .json_value();
@@ -52,7 +52,7 @@ async fn list_observers_excludes_archived_by_default() {
     let server = TestServer::in_memory().await;
     let created = server
         .post(
-            "/v1/observers",
+            "/v1/platform/observers",
             json!({
                 "name": "Temp",
                 "scorers": [{ "key": "k", "method": "rule", "rule": { "type": "contains", "text": "x" } }]
@@ -64,26 +64,26 @@ async fn list_observers_excludes_archived_by_default() {
     let id = created["id"].as_str().unwrap().to_string();
 
     let listed = server
-        .get("/v1/observers")
+        .get("/v1/platform/observers")
         .await
         .assert_status(StatusCode::OK)
         .json_value();
     assert_eq!(listed["data"].as_array().unwrap().len(), 1);
 
     server
-        .delete(&format!("/v1/observers/{id}"))
+        .delete(&format!("/v1/platform/observers/{id}"))
         .await
         .assert_status(StatusCode::NO_CONTENT);
 
     let after = server
-        .get("/v1/observers")
+        .get("/v1/platform/observers")
         .await
         .assert_status(StatusCode::OK)
         .json_value();
     assert_eq!(after["data"].as_array().unwrap().len(), 0);
 
     let with_archived = server
-        .get("/v1/observers?include_archived=true")
+        .get("/v1/platform/observers?include_archived=true")
         .await
         .assert_status(StatusCode::OK)
         .json_value();
@@ -96,7 +96,7 @@ async fn update_observer_changes_sampling_and_pause() {
     let server = TestServer::in_memory().await;
     let created = server
         .post(
-            "/v1/observers",
+            "/v1/platform/observers",
             json!({
                 "name": "Adjustable",
                 "scorers": [{ "key": "k", "method": "rule", "rule": { "type": "contains", "text": "x" } }]
@@ -109,7 +109,7 @@ async fn update_observer_changes_sampling_and_pause() {
 
     let updated = server
         .patch(
-            &format!("/v1/observers/{id}"),
+            &format!("/v1/platform/observers/{id}"),
             json!({ "sampling_rate": 0.5, "status": "paused" }),
         )
         .await
@@ -124,7 +124,7 @@ async fn rejects_invalid_sampling_rate() {
     let server = TestServer::in_memory().await;
     server
         .post(
-            "/v1/observers",
+            "/v1/platform/observers",
             json!({
                 "name": "Bad",
                 "sampling_rate": 1.5,
@@ -139,7 +139,10 @@ async fn rejects_invalid_sampling_rate() {
 async fn rejects_empty_scorers() {
     let server = TestServer::in_memory().await;
     server
-        .post("/v1/observers", json!({ "name": "Empty", "scorers": [] }))
+        .post(
+            "/v1/platform/observers",
+            json!({ "name": "Empty", "scorers": [] }),
+        )
         .await
         .assert_status(StatusCode::BAD_REQUEST);
 }
@@ -149,7 +152,7 @@ async fn rejects_duplicate_scorer_keys() {
     let server = TestServer::in_memory().await;
     server
         .post(
-            "/v1/observers",
+            "/v1/platform/observers",
             json!({
                 "name": "Dupe",
                 "scorers": [
@@ -167,7 +170,7 @@ async fn rejects_file_contains_scorer() {
     let server = TestServer::in_memory().await;
     server
         .post(
-            "/v1/observers",
+            "/v1/platform/observers",
             json!({
                 "name": "File",
                 "scorers": [
@@ -184,7 +187,7 @@ async fn creates_llm_judge_scorer() {
     let server = TestServer::in_memory().await;
     let created = server
         .post(
-            "/v1/observers",
+            "/v1/platform/observers",
             json!({
                 "name": "Quality",
                 "scorers": [
@@ -210,7 +213,7 @@ async fn rejects_llm_judge_with_empty_rubric() {
     let server = TestServer::in_memory().await;
     server
         .post(
-            "/v1/observers",
+            "/v1/platform/observers",
             json!({
                 "name": "Bad judge",
                 "scorers": [{ "key": "j", "method": "llm_judge", "rubric": "  " }]
@@ -225,7 +228,7 @@ async fn scores_endpoint_returns_empty_for_new_observer() {
     let server = TestServer::in_memory().await;
     let created = server
         .post(
-            "/v1/observers",
+            "/v1/platform/observers",
             json!({
                 "name": "Fresh",
                 "scorers": [{ "key": "k", "method": "rule", "rule": { "type": "contains", "text": "x" } }]
@@ -237,7 +240,9 @@ async fn scores_endpoint_returns_empty_for_new_observer() {
     let id = created["id"].as_str().unwrap().to_string();
 
     let scores = server
-        .get(&format!("/v1/observers/{id}/scores?limit=5&offset=0"))
+        .get(&format!(
+            "/v1/platform/observers/{id}/scores?limit=5&offset=0"
+        ))
         .await
         .assert_status(StatusCode::OK)
         .json_value();
@@ -248,7 +253,7 @@ async fn scores_endpoint_returns_empty_for_new_observer() {
 async fn get_missing_observer_is_404() {
     let server = TestServer::in_memory().await;
     server
-        .get("/v1/observers/observer_01933b5a000070008000000000000999")
+        .get("/v1/platform/observers/observer_01933b5a000070008000000000000999")
         .await
         .assert_status(StatusCode::NOT_FOUND);
 }

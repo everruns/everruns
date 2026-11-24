@@ -53,7 +53,7 @@ async fn runtime_token_is_self_only_and_revocation_is_live() {
     let server = crate::test_harness::TestServer::in_memory().await;
     let agent: Value = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({"name":"consumer-api", "system_prompt":"Helpful", "harness_id":server.seed_generic_harness_id}),
         )
         .await
@@ -121,6 +121,19 @@ async fn runtime_token_is_self_only_and_revocation_is_live() {
     assert_eq!(me["id"], account.id.to_string());
     assert_eq!(me["usage"], "end_user");
     let path = format!("/v1/virtual-users/{}", account.id);
+    // A runtime credential keeps self-service but never acquires Platform API authority.
+    assert_eq!(
+        send(
+            &router,
+            &token,
+            "GET",
+            &format!("/v1/platform/virtual-users/{}", account.id),
+            Value::Null
+        )
+        .await
+        .0,
+        StatusCode::UNAUTHORIZED
+    );
     assert_eq!(
         send(&router, &token, "PATCH", &path, json!({"name":"Updated"}))
             .await
@@ -140,9 +153,15 @@ async fn runtime_token_is_self_only_and_revocation_is_live() {
         StatusCode::FORBIDDEN
     );
     assert_eq!(
-        send(&router, &token, "GET", "/v1/virtual-users", Value::Null)
-            .await
-            .0,
+        send(
+            &router,
+            &token,
+            "GET",
+            "/v1/platform/virtual-users",
+            Value::Null
+        )
+        .await
+        .0,
         StatusCode::UNAUTHORIZED
     );
     assert_eq!(
@@ -308,6 +327,11 @@ async fn runtime_token_is_self_only_and_revocation_is_live() {
 #[tokio::test]
 async fn management_survives_runtime_archive_and_listing_is_filtered_and_paginated() {
     let server = crate::test_harness::TestServer::in_memory().await;
+    server.get("/v1/agents").await.assert_status(StatusCode::OK);
+    server
+        .get("/v1/virtual-users")
+        .await
+        .assert_status(StatusCode::OK);
     let me: Value = server
         .get("/v1/virtual-users/me")
         .await
@@ -315,38 +339,41 @@ async fn management_survives_runtime_archive_and_listing_is_filtered_and_paginat
         .json();
     let id = me["id"].as_str().unwrap();
     server
-        .delete(&format!("/v1/virtual-users/{id}"))
+        .delete(&format!("/v1/platform/virtual-users/{id}"))
         .await
         .assert_status(StatusCode::NO_CONTENT);
     server
         .patch(
-            &format!("/v1/virtual-users/{id}"),
+            &format!("/v1/platform/virtual-users/{id}"),
             json!({"status":"active"}),
         )
         .await
         .assert_status(StatusCode::OK);
     for name in ["paged-alex", "paged-sam"] {
         server
-            .post("/v1/virtual-users", json!({"name":name,"usage":"end_user"}))
+            .post(
+                "/v1/platform/virtual-users",
+                json!({"name":name,"usage":"end_user"}),
+            )
             .await
             .assert_status(StatusCode::CREATED);
     }
     server
         .post(
-            "/v1/virtual-users",
+            "/v1/platform/virtual-users",
             json!({"name":"paged-service","usage":"service"}),
         )
         .await
         .assert_status(StatusCode::CREATED);
     let page: Value = server
-        .get("/v1/virtual-users?usage=end_user&search=paged&limit=1")
+        .get("/v1/platform/virtual-users?usage=end_user&search=paged&limit=1")
         .await
         .assert_status(StatusCode::OK)
         .json();
     assert_eq!(page["total"], 2);
     assert_eq!(page["data"].as_array().unwrap().len(), 1);
     let second: Value = server
-        .get("/v1/virtual-users?usage=end_user&search=paged&limit=1&offset=1")
+        .get("/v1/platform/virtual-users?usage=end_user&search=paged&limit=1&offset=1")
         .await
         .assert_status(StatusCode::OK)
         .json();

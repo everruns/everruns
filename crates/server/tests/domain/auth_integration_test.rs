@@ -1,7 +1,7 @@
 //! Auth integration tests for refresh token flows
 //!
 //! Tests the refresh token endpoint with both JSON body and HttpOnly cookie sources,
-//! verifying the fix for cookie path (/ vs /v1/auth) and the new cookie-based refresh flow.
+//! verifying the fix for cookie path (/ vs /v1/platform/auth) and the new cookie-based refresh flow.
 //!
 //! Run with: cargo test -p everruns-server --test domain auth_integration_test::
 
@@ -118,7 +118,7 @@ async fn register_user(
     let (status, body, cookies) = send(
         router,
         "POST",
-        "/v1/auth/register",
+        "/v1/platform/auth/register",
         Some(json!({
             "email": email,
             "password": password,
@@ -147,7 +147,7 @@ async fn test_register_rejects_short_password_via_api() {
     let (status, body, _cookies) = send(
         &router,
         "POST",
-        "/v1/auth/register",
+        "/v1/platform/auth/register",
         Some(json!({
             "email": "weak@example.com",
             "password": "short",
@@ -167,7 +167,7 @@ async fn test_register_rejects_short_password_via_api() {
     let (status_ok, _body_ok, _) = send(
         &router,
         "POST",
-        "/v1/auth/register",
+        "/v1/platform/auth/register",
         Some(json!({
             "email": "weak@example.com",
             "password": "longenough123",
@@ -192,7 +192,7 @@ async fn test_register_short_password_does_not_leak_account_existence() {
     let (status_a, body_a, _) = send(
         &router,
         "POST",
-        "/v1/auth/register",
+        "/v1/platform/auth/register",
         Some(json!({
             "email": "exists@example.com",
             "password": "short",
@@ -204,7 +204,7 @@ async fn test_register_short_password_does_not_leak_account_existence() {
     let (status_b, body_b, _) = send(
         &router,
         "POST",
-        "/v1/auth/register",
+        "/v1/platform/auth/register",
         Some(json!({
             "email": "fresh@example.com",
             "password": "short",
@@ -236,7 +236,7 @@ async fn test_refresh_via_json_body() {
     let (status, body, new_cookies) = send(
         &router,
         "POST",
-        "/v1/auth/refresh",
+        "/v1/platform/auth/refresh",
         Some(json!({ "refresh_token": refresh })),
         None,
     )
@@ -275,7 +275,7 @@ async fn test_refresh_body_takes_precedence_over_cookie() {
     let (status, body, _cookies) = send(
         &router,
         "POST",
-        "/v1/auth/refresh",
+        "/v1/platform/auth/refresh",
         Some(json!({ "refresh_token": refresh1 })),
         Some(&cookie_header),
     )
@@ -288,7 +288,7 @@ async fn test_refresh_body_takes_precedence_over_cookie() {
     let (status2, body2, _) = send(
         &router,
         "POST",
-        "/v1/auth/refresh",
+        "/v1/platform/auth/refresh",
         None,
         Some(&cookie_header2),
     )
@@ -310,7 +310,7 @@ async fn test_refresh_sets_cookie_with_root_path() {
     let (status, _body, new_cookies) = send(
         &router,
         "POST",
-        "/v1/auth/refresh",
+        "/v1/platform/auth/refresh",
         Some(json!({ "refresh_token": refresh })),
         None,
     )
@@ -341,7 +341,8 @@ async fn test_refresh_no_token_returns_401() {
     let (router, _db) = auth_router().await;
 
     // No body, no cookie
-    let (status, body, _cookies) = send(&router, "POST", "/v1/auth/refresh", None, None).await;
+    let (status, body, _cookies) =
+        send(&router, "POST", "/v1/platform/auth/refresh", None, None).await;
 
     assert_eq!(status, StatusCode::UNAUTHORIZED);
     assert!(
@@ -359,7 +360,7 @@ async fn test_refresh_invalid_token_returns_401() {
     let (status, body, _cookies) = send(
         &router,
         "POST",
-        "/v1/auth/refresh",
+        "/v1/platform/auth/refresh",
         Some(json!({ "refresh_token": "this-is-not-a-valid-jwt" })),
         None,
     )
@@ -381,7 +382,7 @@ async fn test_refresh_invalid_cookie_returns_401() {
     let (status, body, _cookies) = send(
         &router,
         "POST",
-        "/v1/auth/refresh",
+        "/v1/platform/auth/refresh",
         None,
         Some("refresh_token=garbage-jwt-value"),
     )
@@ -407,7 +408,7 @@ async fn test_refresh_reuse_revoked_token_returns_401() {
     let (status1, _body1, _) = send(
         &router,
         "POST",
-        "/v1/auth/refresh",
+        "/v1/platform/auth/refresh",
         Some(json!({ "refresh_token": refresh })),
         None,
     )
@@ -418,7 +419,7 @@ async fn test_refresh_reuse_revoked_token_returns_401() {
     let (status2, body2, _) = send(
         &router,
         "POST",
-        "/v1/auth/refresh",
+        "/v1/platform/auth/refresh",
         Some(json!({ "refresh_token": refresh })),
         None,
     )
@@ -451,7 +452,7 @@ async fn test_refresh_concurrent_requests_only_one_succeeds() {
             let (status, _body, _cookies) = send(
                 &router,
                 "POST",
-                "/v1/auth/refresh",
+                "/v1/platform/auth/refresh",
                 Some(json!({ "refresh_token": refresh })),
                 None,
             )
@@ -488,7 +489,7 @@ async fn test_refresh_with_access_token_returns_401() {
     let (status, body, _cookies) = send(
         &router,
         "POST",
-        "/v1/auth/refresh",
+        "/v1/platform/auth/refresh",
         Some(json!({ "refresh_token": access })),
         None,
     )
@@ -534,7 +535,7 @@ async fn test_login_oauth_only_account_returns_generic_error() {
     let (status_oauth, body_oauth, _) = send(
         &router,
         "POST",
-        "/v1/auth/login",
+        "/v1/platform/auth/login",
         Some(json!({
             "email": "oauth-only@example.com",
             "password": "anypassword",
@@ -547,7 +548,7 @@ async fn test_login_oauth_only_account_returns_generic_error() {
     let (status_unknown, body_unknown, _) = send(
         &router,
         "POST",
-        "/v1/auth/login",
+        "/v1/platform/auth/login",
         Some(json!({
             "email": "ghost@example.com",
             "password": "anypassword",
@@ -581,7 +582,7 @@ async fn test_login_sets_cookies_with_root_path() {
     let (status, body, cookies) = send(
         &router,
         "POST",
-        "/v1/auth/login",
+        "/v1/platform/auth/login",
         Some(json!({
             "email": "login@example.com",
             "password": "password12345"
@@ -615,7 +616,7 @@ async fn test_full_flow_register_login_refresh_cookie_refresh() {
     let (status, _body, login_cookies) = send(
         &router,
         "POST",
-        "/v1/auth/login",
+        "/v1/platform/auth/login",
         Some(json!({
             "email": "flow@example.com",
             "password": "password12345"
@@ -631,7 +632,7 @@ async fn test_full_flow_register_login_refresh_cookie_refresh() {
     let (status, body, refresh_cookies) = send(
         &router,
         "POST",
-        "/v1/auth/refresh",
+        "/v1/platform/auth/refresh",
         None,
         Some(&format!("refresh_token={refresh_val}")),
     )
@@ -644,7 +645,7 @@ async fn test_full_flow_register_login_refresh_cookie_refresh() {
     let (status2, body2, _) = send(
         &router,
         "POST",
-        "/v1/auth/refresh",
+        "/v1/platform/auth/refresh",
         None,
         Some(&format!("refresh_token={new_refresh_val}")),
     )
@@ -662,7 +663,7 @@ async fn test_full_flow_register_login_refresh_cookie_refresh() {
     let (status3, _, _) = send(
         &router,
         "POST",
-        "/v1/auth/refresh",
+        "/v1/platform/auth/refresh",
         None,
         Some(&format!("refresh_token={refresh_val}")),
     )
@@ -767,7 +768,7 @@ async fn test_register_safety_net_uses_host_composition_not_oss_defaults() {
     let (status, _body, _cookies) = send(
         &router,
         "POST",
-        "/v1/auth/register",
+        "/v1/platform/auth/register",
         Some(json!({
             "email": "new-user@example.com",
             "password": "super-secret-password1",
@@ -820,7 +821,7 @@ async fn test_register_safety_net_is_idempotent_when_seed_already_ran() {
     let (status, _body, _cookies) = send(
         &router,
         "POST",
-        "/v1/auth/register",
+        "/v1/platform/auth/register",
         Some(json!({
             "email": "second-user@example.com",
             "password": "another-secret-password1",
@@ -851,18 +852,22 @@ async fn test_register_safety_net_is_idempotent_when_seed_already_ran() {
 // ============================================
 
 // Helper: ensure default-org membership for the user (the mini auth router
-// harness does not run the full register provisioning), then hit /v1/auth/me
+// harness does not run the full register provisioning), then hit /v1/platform/auth/me
 // (which sets the org cookie when missing) and return the minted org id.
 async fn fetch_org_cookie(router: &Router, db: &Arc<StorageBackend>, access_token: &str) -> String {
     let (status, body, _cookies) = send(
         router,
         "GET",
-        "/v1/auth/me",
+        "/v1/platform/auth/me",
         None,
         Some(&format!("access_token={access_token}")),
     )
     .await;
-    assert_eq!(status, StatusCode::OK, "/v1/auth/me failed: {body}");
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "/v1/platform/auth/me failed: {body}"
+    );
     let user_id = uuid::Uuid::parse_str(body["id"].as_str().unwrap()).unwrap();
     db.add_organization_member(everruns_core::DEFAULT_ORG_ID, user_id, "member")
         .await
@@ -871,14 +876,18 @@ async fn fetch_org_cookie(router: &Router, db: &Arc<StorageBackend>, access_toke
     let (status, body, cookies) = send(
         router,
         "GET",
-        "/v1/auth/me",
+        "/v1/platform/auth/me",
         None,
         Some(&format!("access_token={access_token}")),
     )
     .await;
-    assert_eq!(status, StatusCode::OK, "/v1/auth/me failed: {body}");
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "/v1/platform/auth/me failed: {body}"
+    );
     extract_cookie_value(&cookies, "everruns_org")
-        .unwrap_or_else(|| panic!("/v1/auth/me must set the org cookie, body: {body}"))
+        .unwrap_or_else(|| panic!("/v1/platform/auth/me must set the org cookie, body: {body}"))
 }
 
 // The `everruns_org` cookie must not be re-minted to the user's first org on
@@ -895,7 +904,7 @@ async fn test_refresh_preserves_valid_org_cookie() {
     let (status, _body, cookies) = send(
         &router,
         "POST",
-        "/v1/auth/refresh",
+        "/v1/platform/auth/refresh",
         None,
         Some(&format!(
             "refresh_token={refresh_token}; everruns_org={org_id}"
@@ -923,7 +932,7 @@ async fn test_refresh_replaces_invalid_org_cookie_with_persistent_one() {
     let (status, _body, cookies) = send(
         &router,
         "POST",
-        "/v1/auth/refresh",
+        "/v1/platform/auth/refresh",
         None,
         Some(&format!(
             "refresh_token={refresh_token}; everruns_org=org_00000000000000000000000000009999"

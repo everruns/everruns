@@ -79,7 +79,7 @@ console.log("  session fetch verified");
 
 // 5. Exercise newly generated trigger and participant API surfaces. Raw HTTP
 // keeps older published SDK cohorts compatible with the current API.
-const trigger = await apiPost(`/v1/agents/${agent.id}/triggers`, {
+const trigger = await apiPost(`/v1/platform/agents/${agent.id}/triggers`, {
   cron_expression: "0 0 * * *",
   timezone: "UTC",
   session_mode: "session_per_invocation",
@@ -95,7 +95,7 @@ const guest = await client.agents.create({
   name: `sdk-compat-ts-guest-${suffix}`,
   systemPrompt: "Compatibility guest agent",
 });
-const participant = await apiPost(`/v1/sessions/${session.id}/participants`, {
+const participant = await apiPost(`/v1/platform/sessions/${session.id}/participants`, {
   kind: "agent",
   agent_id: guest.id,
 });

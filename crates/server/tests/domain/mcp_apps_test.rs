@@ -486,13 +486,16 @@ async fn question_is_rendered_and_answers_are_validated() {
 async fn view_tools_cannot_reach_another_org() {
     let server = TestServer::in_memory().await;
     let org2: Value = server
-        .post("/v1/orgs", json!({ "name": unique("Apps Other Org") }))
+        .post(
+            "/v1/platform/orgs",
+            json!({ "name": unique("Apps Other Org") }),
+        )
         .await
         .assert_status(StatusCode::CREATED)
         .json();
     let switch = server
         .post(
-            "/v1/users/me/switch-org",
+            "/v1/platform/users/me/switch-org",
             json!({ "org_id": org2["id"].as_str().unwrap() }),
         )
         .await

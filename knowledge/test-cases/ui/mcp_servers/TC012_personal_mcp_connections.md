@@ -26,7 +26,7 @@ Verify the current user's personal MCP connection list and idempotent revoke beh
 1. Navigate to Settings > MCP servers.
 2. Review the active preset row.
 3. Review the deleted preset row.
-4. Revoke the active preset's grant through the API (`DELETE /v1/user/connections/{provider}`) and reload.
+4. Revoke the active preset's grant through the API (`DELETE /v1/platform/user/connections/{provider}`) and reload.
 5. Repeat the revoke request for the same provider through the API.
 
 ## Expected Result

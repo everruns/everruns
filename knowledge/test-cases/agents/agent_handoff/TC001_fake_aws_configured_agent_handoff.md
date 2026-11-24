@@ -81,7 +81,7 @@ accepted only for child sessions owned by the source session.
 6. Add a Fake AWS user connection through Settings → Connections or the API:
 
    ```bash
-   curl -s -X POST "http://localhost:27100/api/v1/user/connections/fake_aws" \
+   curl -s -X POST "http://localhost:27100/api/v1/platform/user/connections/fake_aws" \
      -H "Content-Type: application/json" \
      -d '{"api_key":"fake_aws_tc001_key"}'
    ```

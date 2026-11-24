@@ -97,7 +97,7 @@ describe("DesktopRecordingCards", () => {
 
     const url = sessionFileDownloadUrl("session_1", "/recordings/desktop a.mp4");
     expect(url).toMatch(
-      /\/v1\/sessions\/session_1\/fs\/_\/download\/recordings\/desktop%20a\.mp4$/,
+      /\/v1\/platform\/sessions\/session_1\/fs\/_\/download\/recordings\/desktop%20a\.mp4$/,
     );
     expect(container.querySelector("video")?.getAttribute("src")).toBe(url);
     expect(screen.getByText("Desktop recording")).toBeInTheDocument();

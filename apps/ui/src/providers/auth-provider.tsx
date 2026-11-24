@@ -44,7 +44,7 @@ function isUnauthenticatedError(error: Error | null): boolean {
 
 interface AuthProviderProps {
   children: ReactNode;
-  /** Override default logout (POST /v1/auth/logout + cache clear). */
+  /** Override default logout (POST /v1/platform/auth/logout + cache clear). */
   logout?: () => Promise<void>;
   /** Override default create-organization action (shows built-in dialog by default). */
   createOrganization?: () => void;

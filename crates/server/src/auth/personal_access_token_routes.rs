@@ -91,17 +91,17 @@ pub struct CreatePersonalAccessTokenRequest {
 pub fn personal_access_token_routes(state: PersonalAccessTokenState) -> Router {
     Router::new()
         .route(
-            "/v1/auth/personal-access-tokens",
+            "/v1/platform/auth/personal-access-tokens",
             get(list_personal_access_tokens).post(create_personal_access_token),
         )
         .route(
-            "/v1/auth/personal-access-tokens/{token_id}",
+            "/v1/platform/auth/personal-access-tokens/{token_id}",
             delete(delete_personal_access_token),
         )
         .with_state(state)
 }
 
-/// GET /v1/auth/personal-access-tokens - List personal access tokens for current user
+/// GET /v1/platform/auth/personal-access-tokens - List personal access tokens for current user
 async fn list_personal_access_tokens(
     State(state): State<PersonalAccessTokenState>,
     user: AuthUser,
@@ -157,7 +157,7 @@ fn normalize_pat_scopes(requested: &[String]) -> Result<Vec<String>, AuthError> 
     }
 }
 
-/// POST /v1/auth/personal-access-tokens - Create a new personal access token
+/// POST /v1/platform/auth/personal-access-tokens - Create a new personal access token
 ///
 /// Personal access tokens are user-scoped (not org-scoped). The token inherits
 /// access to all organizations the user belongs to. Org context is resolved
@@ -284,7 +284,7 @@ async fn create_personal_access_token(
     ))
 }
 
-/// DELETE /v1/auth/personal-access-tokens/:token_id - Delete a personal access token
+/// DELETE /v1/platform/auth/personal-access-tokens/:token_id - Delete a personal access token
 async fn delete_personal_access_token(
     State(state): State<PersonalAccessTokenState>,
     connect_info: Option<Extension<ConnectInfo<SocketAddr>>>,

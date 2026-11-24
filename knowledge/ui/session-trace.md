@@ -28,7 +28,7 @@ storage it needs, the API shape and the delivery plan. The prototype owns look a
 
 ## Problem
 
-Today every session tab reads the raw `events` table through `GET /v1/sessions/{id}/events`
+Today every session tab reads the raw `events` table through `GET /v1/platform/sessions/{id}/events`
 and derives turns and steps in the browser:
 
 - The UI loads the last 200 events, then pages backwards 200 at a time on scroll. A session

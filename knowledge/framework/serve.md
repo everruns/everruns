@@ -56,7 +56,7 @@ runtime.
 - **Each agent has the Agent Execution API.** `/v1/channels/{agent}` is the
   agent base URL from [Agent Execution API](../integrations/agent-execution-api.md),
   with the wire types shared through `everruns::execution_api`. Its routes
-  are the `/v1/sessions` handlers behind a check that the session runs that
+  are the `/v1/platform/sessions` handlers behind a check that the session runs that
   agent, so another agent's URL sees a 404, never a session it does not own.
 - **A thin layer over `everruns::Engine`.** The durable log is the engine's
   (`Session::events_after` / `events_from`); serve authors no events. Tools

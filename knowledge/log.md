@@ -4,6 +4,10 @@
 
 - [Tool execution](execution/tool-execution.md): targeted mid-batch redirection, paired skipped results, unchanged ordinary FIFO and approval behavior, and journal-backed replay boundaries.
 
+- Keep legacy management URLs as compatibility aliases with the same auth and throttles; announce deprecation for December 22, 2026 without automatic removal. See the [API contract](execution/apis.md).
+
+- Platform REST API moves to `/api/v1/platform/`, including console, CLI and SDK clients. Published agent execution and protocol URLs stay stable; operator session calls still route through the edge to their data plane. See the [API contract](execution/apis.md).
+
 ## 2026-11-21
 
 - Replace the lifetime session count cap with an organization-configurable monthly creation allowance. [Resource Limits](execution/apis.md#resource-limits).

@@ -2,7 +2,7 @@
  * The organization every API request is answered in.
  *
  * Org selection used to travel only in the `everruns_org` cookie, which the
- * app sets with a fire-and-forget `POST /v1/users/me/switch-org`. The client
+ * app sets with a fire-and-forget `POST /v1/platform/users/me/switch-org`. The client
  * commits the new org to React state immediately, so every request issued
  * before that POST lands is answered in the *previous* org while the client
  * files the result under the new one — and two queries straddling the switch

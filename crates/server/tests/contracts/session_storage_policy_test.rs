@@ -95,7 +95,7 @@ async fn session_storage_http_routes_honor_the_session_view_policy() {
     .await;
     let session: Session = server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             json!({ "harness_id": server.seed_base_harness_id, "title": "Storage" }),
         )
         .await
@@ -141,8 +141,8 @@ async fn session_storage_http_routes_honor_the_session_view_policy() {
         .await
         .expect("seed internal secret");
 
-    let keys_url = format!("/v1/sessions/{}/storage/keys", session.id);
-    let secrets_url = format!("/v1/sessions/{}/storage/secrets", session.id);
+    let keys_url = format!("/v1/platform/sessions/{}/storage/keys", session.id);
+    let secrets_url = format!("/v1/platform/sessions/{}/storage/secrets", session.id);
 
     let keys: Value = server
         .get(&keys_url)

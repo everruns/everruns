@@ -289,7 +289,7 @@ fn inspector_check(doctor: &SystemDoctor) -> DoctorCheck {
             ))
             .why("Each is a lead, written up by the Inspector, that a session may be abusing the platform.")
             .fix(
-                "Review them with `everruns system detections` (GET /v1/system/detections). \
+                "Review them with `everruns system detections` (GET /v1/platform/system/detections). \
                  Nothing is suspended automatically on this evidence.",
             );
     }

@@ -238,7 +238,7 @@ async fn start_connect(
                 "MCP URL elicitation handed off to the connection flow"
             );
             Redirect::to(&format!(
-                "{}/v1/user/connections/{}/authorize",
+                "{}/v1/platform/user/connections/{}/authorize",
                 state.api_base_url.trim_end_matches('/'),
                 urlencode(&provider)
             ))

@@ -11,7 +11,7 @@ tags:
 # Rooms
 
 > Status: **Partly built.** Steps 1 and 2 of the [plan](#plan) shipped: the room
-> model, the `/v1/rooms` API, read tracking, the change feed, and agents woken by
+> model, the `/v1/platform/rooms` API, read tracking, the change feed, and agents woken by
 > what they are addressed in. Step 3, the console, shipped: the Rooms list,
 > the room recording and Playground rooms. From step 5, shared room files and
 > the MCP room tools shipped. The facilitator, live push and SDKs are next. Owner decisions are under [Decisions](#decisions).
@@ -44,7 +44,7 @@ separate product.
 
 Settled with the owner, 2026-11-02 to 2026-11-10:
 
-1. **Name: Room** (`/v1/rooms`, ids `room_`, `rmem_`, `rmsg_`). "Channel"
+1. **Name: Room** (`/v1/platform/rooms`, ids `room_`, `rmem_`, `rmsg_`). "Channel"
    already means how an agent is exposed; "board" read as a product.
 2. **Indirect communication means `send_message`.** In a room the agent's
    assistant text is private notes; a post is always a deliberate tool call and

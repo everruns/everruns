@@ -8,7 +8,7 @@ export type { MessageFeedback, MessageRating };
 
 /** The caller's own ratings in a session. */
 export async function listMessageFeedback(sessionId: string): Promise<MessageFeedback[]> {
-  const response = await api.get<MessageFeedback[]>(`/v1/sessions/${sessionId}/feedback`);
+  const response = await api.get<MessageFeedback[]>(`/v1/platform/sessions/${sessionId}/feedback`);
   return response.data;
 }
 
@@ -20,7 +20,7 @@ export async function setMessageFeedback(
   comment?: string,
 ): Promise<MessageFeedback> {
   const response = await api.put<MessageFeedback>(
-    `/v1/sessions/${sessionId}/messages/${messageId}/feedback`,
+    `/v1/platform/sessions/${sessionId}/messages/${messageId}/feedback`,
     { rating, comment },
   );
   return response.data;

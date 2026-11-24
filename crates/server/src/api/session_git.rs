@@ -1,12 +1,12 @@
 // Session Git HTTP routes
 //
 // API endpoints for git operations on session filesystems:
-//   POST /v1/sessions/{session_id}/git/commit   - Commit current files
-//   GET  /v1/sessions/{session_id}/git/log       - Commit history
-//   GET  /v1/sessions/{session_id}/git/diff      - Diff between commits
-//   GET  /v1/sessions/{session_id}/git/refs      - List refs/branches
-//   POST /v1/sessions/{session_id}/git/branches  - Create branch
-//   DELETE /v1/sessions/{session_id}/git/branches/{name} - Delete branch
+//   POST /v1/platform/sessions/{session_id}/git/commit   - Commit current files
+//   GET  /v1/platform/sessions/{session_id}/git/log       - Commit history
+//   GET  /v1/platform/sessions/{session_id}/git/diff      - Diff between commits
+//   GET  /v1/platform/sessions/{session_id}/git/refs      - List refs/branches
+//   POST /v1/platform/sessions/{session_id}/git/branches  - Create branch
+//   DELETE /v1/platform/sessions/{session_id}/git/branches/{name} - Delete branch
 //
 // A v2 session (data plane v2) is served here too: its commit reads the
 // session's files from its shard (`session_git::plane_files`).
@@ -114,16 +114,22 @@ impl_auth_state!(AppState);
 /// Create session git routes
 pub fn routes(state: AppState) -> Router {
     Router::new()
-        .route("/v1/sessions/{session_id}/git/commit", post(commit))
-        .route("/v1/sessions/{session_id}/git/log", get(log))
-        .route("/v1/sessions/{session_id}/git/diff", get(diff))
-        .route("/v1/sessions/{session_id}/git/refs", get(list_refs))
         .route(
-            "/v1/sessions/{session_id}/git/branches",
+            "/v1/platform/sessions/{session_id}/git/commit",
+            post(commit),
+        )
+        .route("/v1/platform/sessions/{session_id}/git/log", get(log))
+        .route("/v1/platform/sessions/{session_id}/git/diff", get(diff))
+        .route(
+            "/v1/platform/sessions/{session_id}/git/refs",
+            get(list_refs),
+        )
+        .route(
+            "/v1/platform/sessions/{session_id}/git/branches",
             post(create_branch),
         )
         .route(
-            "/v1/sessions/{session_id}/git/branches/{name}",
+            "/v1/platform/sessions/{session_id}/git/branches/{name}",
             delete(delete_branch),
         )
         .with_state(state)
@@ -158,10 +164,10 @@ fn classify_git_error(e: &anyhow::Error) -> (StatusCode, String) {
     }
 }
 
-/// POST /v1/sessions/{session_id}/git/commit
+/// POST /v1/platform/sessions/{session_id}/git/commit
 #[utoipa::path(
     post,
-    path = "/v1/sessions/{session_id}/git/commit",
+    path = "/v1/platform/sessions/{session_id}/git/commit",
     request_body = CommitRequest,
     responses(
         (status = 201, description = "Commit created", body = CommitResult),
@@ -248,10 +254,10 @@ async fn commit(
     Ok((StatusCode::CREATED, Json(result)))
 }
 
-/// GET /v1/sessions/{session_id}/git/log
+/// GET /v1/platform/sessions/{session_id}/git/log
 #[utoipa::path(
     get,
-    path = "/v1/sessions/{session_id}/git/log",
+    path = "/v1/platform/sessions/{session_id}/git/log",
     params(
         ("session_id" = String, Path, description = "Session ID"),
         ("ref" = Option<String>, Query, description = "Ref to start from (default: HEAD)"),
@@ -298,10 +304,10 @@ async fn log(
     Ok(Json(commits))
 }
 
-/// GET /v1/sessions/{session_id}/git/diff
+/// GET /v1/platform/sessions/{session_id}/git/diff
 #[utoipa::path(
     get,
-    path = "/v1/sessions/{session_id}/git/diff",
+    path = "/v1/platform/sessions/{session_id}/git/diff",
     params(
         ("session_id" = String, Path, description = "Session ID"),
         ("oid" = String, Query, description = "Commit OID to diff"),
@@ -338,10 +344,10 @@ async fn diff(
     Ok(Json(result))
 }
 
-/// GET /v1/sessions/{session_id}/git/refs
+/// GET /v1/platform/sessions/{session_id}/git/refs
 #[utoipa::path(
     get,
-    path = "/v1/sessions/{session_id}/git/refs",
+    path = "/v1/platform/sessions/{session_id}/git/refs",
     params(
         ("session_id" = String, Path, description = "Session ID"),
     ),
@@ -375,10 +381,10 @@ async fn list_refs(
     Ok(Json(refs))
 }
 
-/// POST /v1/sessions/{session_id}/git/branches
+/// POST /v1/platform/sessions/{session_id}/git/branches
 #[utoipa::path(
     post,
-    path = "/v1/sessions/{session_id}/git/branches",
+    path = "/v1/platform/sessions/{session_id}/git/branches",
     request_body = CreateBranchRequest,
     responses(
         (status = 201, description = "Branch created", body = SuccessResponse),
@@ -409,10 +415,10 @@ async fn create_branch(
     Ok((StatusCode::CREATED, Json(SuccessResponse { ok: true })))
 }
 
-/// DELETE /v1/sessions/{session_id}/git/branches/{name}
+/// DELETE /v1/platform/sessions/{session_id}/git/branches/{name}
 #[utoipa::path(
     delete,
-    path = "/v1/sessions/{session_id}/git/branches/{name}",
+    path = "/v1/platform/sessions/{session_id}/git/branches/{name}",
     params(
         ("session_id" = String, Path, description = "Session ID"),
         ("name" = String, Path, description = "Branch name"),

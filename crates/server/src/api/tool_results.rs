@@ -1,6 +1,6 @@
 // Client-side tool results HTTP routes
 //
-// POST /v1/sessions/{session_id}/tool-results
+// POST /v1/platform/sessions/{session_id}/tool-results
 // Accepts tool results from the client and resumes the agent turn.
 //
 // Design: When an LLM requests client-side tools, the turn parks and
@@ -66,7 +66,7 @@ impl_auth_state!(AppState);
 pub fn routes(state: AppState) -> Router {
     Router::new()
         .route(
-            "/v1/sessions/{session_id}/tool-results",
+            "/v1/platform/sessions/{session_id}/tool-results",
             post(submit_tool_results),
         )
         .merge(super::mcp_url_consent::routes())
@@ -76,13 +76,13 @@ pub fn routes(state: AppState) -> Router {
         .with_state(state)
 }
 
-/// POST /v1/sessions/{session_id}/tool-results - Submit client-side tool results
+/// POST /v1/platform/sessions/{session_id}/tool-results - Submit client-side tool results
 ///
 /// Accepts tool results executed by the client and resumes the agent turn.
 /// Session must be in `waiting_for_tool_results` status.
 #[utoipa::path(
     post,
-    path = "/v1/sessions/{session_id}/tool-results",
+    path = "/v1/platform/sessions/{session_id}/tool-results",
     params(
         ("session_id" = String, Path, description = "Session ID (prefixed, e.g., session_...)")
     ),

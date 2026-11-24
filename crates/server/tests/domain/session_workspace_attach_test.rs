@@ -17,7 +17,7 @@ async fn default_session_keeps_its_own_isolated_workspace() {
     // Two plain sessions (no workspace_id) must NOT share files.
     let a: Value = server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             json!({ "harness_id": server.seed_base_harness_id }),
         )
         .await
@@ -25,7 +25,7 @@ async fn default_session_keeps_its_own_isolated_workspace() {
         .json_value();
     let b: Value = server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             json!({ "harness_id": server.seed_base_harness_id }),
         )
         .await
@@ -44,7 +44,7 @@ async fn default_session_keeps_its_own_isolated_workspace() {
 
     server
         .post(
-            &format!("/v1/sessions/{sid_a}/fs/private.txt"),
+            &format!("/v1/platform/sessions/{sid_a}/fs/private.txt"),
             json!({ "content": "only A", "encoding": "text" }),
         )
         .await
@@ -52,7 +52,7 @@ async fn default_session_keeps_its_own_isolated_workspace() {
 
     // Session B must not see A's private file.
     server
-        .get(&format!("/v1/sessions/{sid_b}/fs/private.txt"))
+        .get(&format!("/v1/platform/sessions/{sid_b}/fs/private.txt"))
         .await
         .assert_status(StatusCode::NOT_FOUND);
 }
@@ -62,7 +62,7 @@ async fn create_session_refuses_to_attach_another_sessions_workspace() {
     let server = TestServer::in_memory().await;
     let victim: Value = server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             json!({ "harness_id": server.seed_base_harness_id }),
         )
         .await
@@ -71,7 +71,7 @@ async fn create_session_refuses_to_attach_another_sessions_workspace() {
     let victim_id = victim["id"].as_str().unwrap();
     server
         .post(
-            &format!("/v1/sessions/{victim_id}/fs/secret.txt"),
+            &format!("/v1/platform/sessions/{victim_id}/fs/secret.txt"),
             json!({ "content": "victim data", "encoding": "text" }),
         )
         .await
@@ -91,13 +91,13 @@ async fn create_session_refuses_to_attach_another_sessions_workspace() {
         if workspace_id.is_null() {
             // An explicit null is the same as leaving the field out.
             server
-                .post("/v1/sessions", body)
+                .post("/v1/platform/sessions", body)
                 .await
                 .assert_status(StatusCode::CREATED);
             continue;
         }
         let refused: Value = server
-            .post("/v1/sessions", body)
+            .post("/v1/platform/sessions", body)
             .await
             .assert_status(StatusCode::BAD_REQUEST)
             .json_value();
@@ -112,7 +112,7 @@ async fn create_session_refuses_to_attach_another_sessions_workspace() {
     // The command surface goes through the same creation boundary.
     server
         .post(
-            "/v1/commands/create_session",
+            "/v1/platform/commands/create_session",
             json!({ "params": {
                 "harness_id": server.seed_base_harness_id,
                 "workspace_id": victim["workspace_id"],
@@ -126,12 +126,12 @@ async fn create_session_refuses_to_attach_another_sessions_workspace() {
 async fn standalone_workspaces_cannot_be_created() {
     let server = TestServer::in_memory().await;
     server
-        .post("/v1/workspaces", json!({ "name": "shared" }))
+        .post("/v1/platform/workspaces", json!({ "name": "shared" }))
         .await
         .assert_status(StatusCode::METHOD_NOT_ALLOWED);
     server
         .post(
-            "/v1/commands/create_workspace",
+            "/v1/platform/commands/create_workspace",
             json!({ "params": { "name": "shared" } }),
         )
         .await

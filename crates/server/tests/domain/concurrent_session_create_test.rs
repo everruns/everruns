@@ -15,7 +15,7 @@ async fn parallel_sessions_for_one_new_agent_all_succeed() {
     let server = TestServer::new().await;
     let agent = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": format!("parallel-sessions-{}", uuid::Uuid::now_v7().simple()),
                 "system_prompt": "Test",
@@ -30,8 +30,10 @@ async fn parallel_sessions_for_one_new_agent_all_succeed() {
         "harness_id": server.seed_base_harness_id,
         "agent_id": agent_id,
     });
-    let responses =
-        futures::future::join_all((0..32).map(|_| server.post("/v1/sessions", body.clone()))).await;
+    let responses = futures::future::join_all(
+        (0..32).map(|_| server.post("/v1/platform/sessions", body.clone())),
+    )
+    .await;
 
     let statuses: Vec<_> = responses.iter().map(|r| r.status().as_u16()).collect();
     assert!(

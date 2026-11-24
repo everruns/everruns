@@ -1,5 +1,5 @@
 // "Fork into chat" is the one request the session recording can issue
-// (EVE-854). It must hit POST /v1/sessions/{id}/fork and let the server inherit
+// (EVE-854). It must hit POST /v1/platform/sessions/{id}/fork and let the server inherit
 // everything the caller does not override — agent, model, goal, tags, locale —
 // so the fork carries the parent's context rather than a UI-guessed subset.
 
@@ -22,13 +22,13 @@ describe("forkSession", () => {
   it("posts to the session's fork endpoint", async () => {
     await expect(forkSession("session_1")).resolves.toEqual({ id: "session_fork" });
 
-    expect(mockApi.post).toHaveBeenCalledWith("/v1/sessions/session_1/fork", {});
+    expect(mockApi.post).toHaveBeenCalledWith("/v1/platform/sessions/session_1/fork", {});
   });
 
   it("sends only the overrides it is given", async () => {
     await forkSession("session_1", { title: "Recorded run (chat)" });
 
-    expect(mockApi.post).toHaveBeenCalledWith("/v1/sessions/session_1/fork", {
+    expect(mockApi.post).toHaveBeenCalledWith("/v1/platform/sessions/session_1/fork", {
       title: "Recorded run (chat)",
     });
   });

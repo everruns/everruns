@@ -1,7 +1,7 @@
 // Session SQL Database HTTP routes
 //
 // CRUD for session-scoped databases + schema introspection.
-// Routes under /v1/sessions/{session_id}/databases.
+// Routes under /v1/platform/sessions/{session_id}/databases.
 
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::common::{Command, Ctx};
@@ -65,24 +65,24 @@ impl_auth_state!(AppState);
 pub fn routes(state: AppState) -> Router {
     Router::new()
         .route(
-            "/v1/sessions/{session_id}/databases",
+            "/v1/platform/sessions/{session_id}/databases",
             get(list_databases).post(create_database),
         )
         .route(
-            "/v1/sessions/{session_id}/databases/{name}",
+            "/v1/platform/sessions/{session_id}/databases/{name}",
             get(get_database).delete(delete_database),
         )
         .route(
-            "/v1/sessions/{session_id}/databases/{name}/schema",
+            "/v1/platform/sessions/{session_id}/databases/{name}/schema",
             get(get_schema),
         )
         .with_state(state)
 }
 
-/// GET /v1/sessions/{session_id}/databases
+/// GET /v1/platform/sessions/{session_id}/databases
 #[utoipa::path(
     get,
-    path = "/v1/sessions/{session_id}/databases",
+    path = "/v1/platform/sessions/{session_id}/databases",
     params(("session_id" = String, Path, description = "Session ID")),
     responses(
         (status = 200, description = "List of databases", body = ListResponse<DatabaseInfoResponse>),
@@ -105,10 +105,10 @@ pub async fn list_databases(
     Ok(Json(ListResponse::new(items)))
 }
 
-/// POST /v1/sessions/{session_id}/databases
+/// POST /v1/platform/sessions/{session_id}/databases
 #[utoipa::path(
     post,
-    path = "/v1/sessions/{session_id}/databases",
+    path = "/v1/platform/sessions/{session_id}/databases",
     params(("session_id" = String, Path, description = "Session ID")),
     request_body = CreateDatabaseRequest,
     responses(
@@ -137,10 +137,10 @@ pub async fn create_database(
     Ok((StatusCode::CREATED, Json(info)))
 }
 
-/// GET /v1/sessions/{session_id}/databases/{name}
+/// GET /v1/platform/sessions/{session_id}/databases/{name}
 #[utoipa::path(
     get,
-    path = "/v1/sessions/{session_id}/databases/{name}",
+    path = "/v1/platform/sessions/{session_id}/databases/{name}",
     params(
         ("session_id" = String, Path, description = "Session ID"),
         ("name" = String, Path, description = "Database name"),
@@ -168,10 +168,10 @@ pub async fn get_database(
     ))
 }
 
-/// DELETE /v1/sessions/{session_id}/databases/{name}
+/// DELETE /v1/platform/sessions/{session_id}/databases/{name}
 #[utoipa::path(
     delete,
-    path = "/v1/sessions/{session_id}/databases/{name}",
+    path = "/v1/platform/sessions/{session_id}/databases/{name}",
     params(
         ("session_id" = String, Path, description = "Session ID"),
         ("name" = String, Path, description = "Database name"),
@@ -198,10 +198,10 @@ pub async fn delete_database(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// GET /v1/sessions/{session_id}/databases/{name}/schema
+/// GET /v1/platform/sessions/{session_id}/databases/{name}/schema
 #[utoipa::path(
     get,
-    path = "/v1/sessions/{session_id}/databases/{name}/schema",
+    path = "/v1/platform/sessions/{session_id}/databases/{name}/schema",
     params(
         ("session_id" = String, Path, description = "Session ID"),
         ("name" = String, Path, description = "Database name"),

@@ -153,7 +153,7 @@ infrastructure (no credential storage, git polling, or webhook plumbing).
   An explicit `prune` option archives KB entries that originated from a prior
   import (tracked via `okf:path`/`resource`) and are absent from the new
   bundle, giving full mirror behavior when desired.
-* **Surface (implemented):** `POST /v1/knowledge-bases/{kb_id}/okf_import`
+* **Surface (implemented):** `POST /v1/platform/knowledge-bases/{kb_id}/okf_import`
   accepting JSON with either inline `files` (`[{path, content}]`) or a base64
   `.tar.gz` `bundle_base64`, plus an optional `prune` flag. Synchronous.
 
@@ -171,7 +171,7 @@ guarantees from `knowledge/security/threat-model.md`. A future git-URL input wou
 
 ## Exporter
 
-`GET /v1/knowledge-bases/{kb_id}/okf_export` streams a conformant OKF bundle as
+`GET /v1/platform/knowledge-bases/{kb_id}/okf_export` streams a conformant OKF bundle as
 a tarball (`.tar.gz`). Layout:
 
 * One `.md` per entry under a `kind`-derived subdirectory

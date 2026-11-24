@@ -18,15 +18,35 @@ smoke_data_plane() {
   fi
 }
 
+# Published images may predate the Platform namespace. Probe only public
+# configuration; never retry a credential request or a write at another URL.
+smoke_management_api_url() {
+  local base="${1%/}" prefix status
+  for prefix in platform legacy; do
+    local url="$base/api/v1"
+    [ "$prefix" != platform ] || url="$url/platform"
+    status="$(curl -sS --max-time 10 -o /dev/null -w '%{http_code}' "$url/auth/config")" || return 1
+    if [ "$status" = 200 ]; then
+      printf '%s\n' "$url"
+      return 0
+    fi
+    if [ "$prefix" != platform ] || [ "$status" != 404 ]; then
+      printf 'Authentication configuration refused (%s)\n' "$status" >&2
+      return 1
+    fi
+  done
+}
+
 # Sign in with a password and print a personal access token. $1 base URL,
 # $2 email, $3 password.
 smoke_token() {
-  local base="$1" email="$2" password="$3" access token
-  access="$(curl -fsS -X POST "$base/api/v1/auth/login" -H "Content-Type: application/json" \
+  local base="$1" email="$2" password="$3" access token api
+  api="$(smoke_management_api_url "$base")" || fail "could not select the management API"
+  access="$(curl -fsS -X POST "$api/auth/login" -H "Content-Type: application/json" \
     -d "{\"email\":\"$email\",\"password\":\"$password\"}" | jq -r .access_token)" \
     || fail "sign-in failed"
   [ -n "$access" ] && [ "$access" != null ] || fail "login returned no access_token"
-  token="$(curl -fsS -X POST "$base/api/v1/auth/personal-access-tokens" \
+  token="$(curl -fsS -X POST "$api/auth/personal-access-tokens" \
     -H "Authorization: Bearer $access" -H "Content-Type: application/json" \
     -d '{"name":"smoke"}' | jq -r .token)" || fail "could not create a personal access token"
   case "$token" in evr_pat_*) ;; *) fail "PAT does not start with evr_pat_" ;; esac
@@ -37,46 +57,47 @@ smoke_token() {
 # wait for the turn. $1 base URL, $2 token, $3 a name for the agent. Prints
 # the session id.
 smoke_turn() {
-  local base="$1" token="$2" name="$3"
+  local base="$1" token="$2" name="$3" api
+  api="$(smoke_management_api_url "$base")" || fail "could not select the management API"
   local auth=(-H "Authorization: Bearer $token" -H "Content-Type: application/json")
   # LlmSim's default model name (crates/server/src/setup/seed/models.rs).
   local model_name="llmsim-default"
   local provider_id model agent_id session_id events=""
 
-  provider_id="$(curl -fsS "$base/api/v1/providers" "${auth[@]}" \
+  provider_id="$(curl -fsS "$api/providers" "${auth[@]}" \
     | jq -r '[.data[] | select(.provider_type == "llmsim")][0].id // empty')" \
     || fail "could not list providers"
   if [ -z "$provider_id" ]; then
-    provider_id="$(curl -fsS -X POST "$base/api/v1/providers" "${auth[@]}" \
+    provider_id="$(curl -fsS -X POST "$api/providers" "${auth[@]}" \
       -d '{"name":"LlmSim","provider_type":"llmsim"}' | jq -r .id)" \
       || fail "could not connect the LlmSim provider"
   fi
   case "$provider_id" in provider_*) ;; *) fail "LlmSim provider id is '$provider_id'" ;; esac
-  model="$(curl -fsS "$base/api/v1/models?limit=500" "${auth[@]}" \
+  model="$(curl -fsS "$api/models?limit=500" "${auth[@]}" \
     | jq -r --arg p "$provider_id" --arg m "$model_name" \
       '[.data[] | select(.provider_id == $p and .model_id == $m)][0].id // empty')" \
     || fail "could not list models"
   if [ -z "$model" ]; then
-    model="$(curl -fsS -X POST "$base/api/v1/providers/$provider_id/models" "${auth[@]}" \
+    model="$(curl -fsS -X POST "$api/providers/$provider_id/models" "${auth[@]}" \
       -d "{\"model_id\":\"$model_name\",\"display_name\":\"LlmSim Default\",\"capabilities\":[\"chat\",\"tools\"],\"enabled\":true}" \
       | jq -r .id)" || fail "could not create the LlmSim model"
   fi
   case "$model" in model_*) ;; *) fail "LlmSim model id is '$model'" ;; esac
-  curl -fsS -X PATCH "$base/api/v1/models/$model" "${auth[@]}" -d '{"enabled":true}' >/dev/null \
+  curl -fsS -X PATCH "$api/models/$model" "${auth[@]}" -d '{"enabled":true}' >/dev/null \
     || fail "could not enable the LlmSim model"
-  agent_id="$(curl -fsS -X POST "$base/api/v1/agents" "${auth[@]}" \
+  agent_id="$(curl -fsS -X POST "$api/agents" "${auth[@]}" \
     -d "{\"name\":\"$name\",\"system_prompt\":\"You are helpful.\",\"default_model_id\":\"$model\"}" | jq -r .id)"
   case "$agent_id" in agent_*) ;; *) fail "agent create returned '$agent_id'" ;; esac
 
-  session_id="$(curl -fsS -X POST "$base/api/v1/sessions" "${auth[@]}" \
+  session_id="$(curl -fsS -X POST "$api/sessions" "${auth[@]}" \
     -d "{\"agent_id\": \"$agent_id\"}" | jq -r .id)"
   case "$session_id" in session_*) ;; *) fail "session create returned '$session_id'" ;; esac
-  curl -fsS -X POST "$base/api/v1/sessions/$session_id/messages" "${auth[@]}" \
+  curl -fsS -X POST "$api/sessions/$session_id/messages" "${auth[@]}" \
     -d '{"message": {"role": "user", "content": [{"type": "text", "text": "Hello!"}]}}' >/dev/null \
     || fail "send message failed"
 
   for _ in $(seq 1 60); do
-    events="$(curl -fsS "$base/api/v1/sessions/$session_id/events?limit=100" "${auth[@]}" | jq -r '.data[].type')"
+    events="$(curl -fsS "$api/sessions/$session_id/events?limit=100" "${auth[@]}" | jq -r '.data[].type')"
     grep -qx turn.completed <<<"$events" && break
     grep -qx turn.failed <<<"$events" && fail "turn failed: $(tr '\n' ' ' <<<"$events")"
     sleep 2

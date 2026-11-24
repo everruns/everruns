@@ -20,9 +20,9 @@ Verifies that a newly created organization can be fetched by its ID immediately 
 
 ## Steps
 
-1. Call `POST /v1/orgs` with `{"name": "Fetch Me"}` — expect 201
+1. Call `POST /v1/platform/orgs` with `{"name": "Fetch Me"}` — expect 201
 2. Note the returned `id` field
-3. Call `GET /v1/orgs/<id from step 2>`
+3. Call `GET /v1/platform/orgs/<id from step 2>`
 
 ## Expected Result
 

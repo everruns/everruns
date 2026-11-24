@@ -113,7 +113,7 @@ pub fn session_tasks_demo_script() -> LlmSimConfig {
         SimTurn::Assistant(
             "Session tasks demo complete: a background run was started and \
              tracked as a session task. Inspect it via \
-             GET /v1/sessions/{session_id}/tasks."
+             GET /api/v1/platform/sessions/{session_id}/tasks."
                 .to_string(),
         ),
     ];
@@ -141,7 +141,7 @@ pub fn monitor_demo_script() -> LlmSimConfig {
             }],
         },
         SimTurn::Assistant(
-            "Monitor demo complete: a recurring monitor was scheduled and tracked as a session task. Inspect it via GET /v1/sessions/{session_id}/tasks."
+            "Monitor demo complete: a recurring monitor was scheduled and tracked as a session task. Inspect it via GET /api/v1/platform/sessions/{session_id}/tasks."
                 .to_string(),
         ),
     ];

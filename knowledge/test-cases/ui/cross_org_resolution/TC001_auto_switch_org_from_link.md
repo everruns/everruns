@@ -22,7 +22,7 @@ Covers the cross-org resource resolution behaviour described in
 `knowledge/security/multitenancy.md` (Cross-Org Resource Resolution). The API's
 `GET /v1/<resource>/<id>` continues to return 404 for cross-org access; the
 recovery happens only in the UI via the authenticated
-`GET /v1/resolve-org` endpoint, which only reveals orgs the caller already
+`GET /v1/platform/resolve-org` endpoint, which only reveals orgs the caller already
 belongs to.
 
 ## Preconditions
@@ -62,11 +62,11 @@ belongs to.
 - No "Session not found" error is displayed.
 - Opening DevTools → Network, the sequence of requests shows (order may vary
   slightly):
-  1. `GET /api/v1/sessions/<id>` → **404** (still Org B context).
-  2. `GET /api/v1/resolve-org?id=<session_id>` → **200** with
+  1. `GET /api/v1/platform/sessions/<id>` → **404** (still Org B context).
+  2. `GET /api/v1/platform/resolve-org?id=<session_id>` → **200** with
      `{ "org_id": "<Org A public_id>", "org_name": "<Org A name>" }`.
-  3. `POST /api/v1/users/me/switch-org` with Org A's public id → **200**.
-  4. `GET /api/v1/sessions/<id>` → **200** (now Org A context).
+  3. `POST /api/v1/platform/users/me/switch-org` with Org A's public id → **200**.
+  4. `GET /api/v1/platform/sessions/<id>` → **200** (now Org A context).
 
 ## Negative Variants (should each keep the existing 404 behaviour)
 
@@ -74,15 +74,15 @@ The following variants verify the enumeration guarantee is preserved:
 
 1. **Unknown session ID** — navigate to
    `/sessions/session_00000000000000000000000000000000/trace`. Expected: page
-   shows "Session not found" and `GET /api/v1/resolve-org?id=...` returns
+   shows "Session not found" and `GET /api/v1/platform/resolve-org?id=...` returns
    **404**. No org switch occurs.
 2. **Session owned by a non-member org** — log in as a user who is NOT a
    member of the session's owning org and open its direct link. Expected:
-   page shows "Session not found" and `GET /api/v1/resolve-org?id=...`
+   page shows "Session not found" and `GET /api/v1/platform/resolve-org?id=...`
    returns **404**. No org switch occurs.
 3. **Logged-out user** — sign out, then open the direct link. Expected: the
    user is redirected to login (standard auth flow). No call to
-   `/v1/resolve-org`.
+   `/v1/platform/resolve-org`.
 
 ## Cross-Resource Coverage
 

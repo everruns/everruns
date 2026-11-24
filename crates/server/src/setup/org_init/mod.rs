@@ -1,8 +1,8 @@
 // Organization initialization: built-in harnesses and default plugin marketplace
 //
 // Decision: Built-in harnesses are readonly, system-managed, provisioned per-org
-// Decision: Seed agents are NOT auto-seeded; they live as examples (GET /v1/agent-examples)
-//   and are adopted on demand (POST /v1/agent-examples/{slug}/use). This prevents duplicates.
+// Decision: Seed agents are NOT auto-seeded; they live as examples (GET /v1/platform/agent-examples)
+//   and are adopted on demand (POST /v1/platform/agent-examples/{slug}/use). This prevents duplicates.
 // Decision: Reconciliation ensures all orgs stay up-to-date with built-in harness definitions
 // Decision: Built-in harness identity is the `name` string; UUIDs are assigned by the DB at
 //   provisioning time. No UUIDs are hardcoded anywhere (no per-org split-brain).

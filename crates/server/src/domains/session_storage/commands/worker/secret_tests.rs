@@ -222,7 +222,7 @@ async fn a_person_cannot_run_internal_commands() {
 }
 
 /// Internal commands stay off every public surface: discovery, the scripted
-/// toolset (MCP, Platform, `/v1/commands`), and the command tree. The public
+/// toolset (MCP, Platform, `/v1/platform/commands`), and the command tree. The public
 /// `list_session_secrets` stays where it was.
 #[test]
 fn internal_commands_are_on_no_public_surface() {

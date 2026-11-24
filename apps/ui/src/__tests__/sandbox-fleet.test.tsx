@@ -242,10 +242,10 @@ describe("SandboxDetailDrawer", () => {
     }));
     render(withClient(<SandboxDetailDrawer sandboxId="sandbox_1" onClose={jest.fn()} />));
     expect(await screen.findByText("Last recorded running")).toBeInTheDocument();
-    expect(mockedGet).not.toHaveBeenCalledWith("/v1/sandboxes/sandbox_1/provider");
+    expect(mockedGet).not.toHaveBeenCalledWith("/v1/platform/sandboxes/sandbox_1/provider");
     fireEvent.click(screen.getByRole("button", { name: "Check provider status" }));
     expect(await screen.findByText("stopped")).toBeInTheDocument();
-    expect(mockedGet).toHaveBeenCalledWith("/v1/sandboxes/sandbox_1/provider");
+    expect(mockedGet).toHaveBeenCalledWith("/v1/platform/sandboxes/sandbox_1/provider");
   });
 
   it("hides the provider check for regular organization members", async () => {
@@ -265,7 +265,7 @@ describe("SandboxDetailDrawer", () => {
     expect(mockedPost).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Delete Sandbox and workspace" }));
     await waitFor(() =>
-      expect(mockedPost).toHaveBeenCalledWith("/v1/sessions/session_1/sandbox", {
+      expect(mockedPost).toHaveBeenCalledWith("/v1/platform/sessions/session_1/sandbox", {
         action: "delete",
       }),
     );

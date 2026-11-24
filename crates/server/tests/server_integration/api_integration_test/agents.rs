@@ -18,7 +18,7 @@ async fn test_agent_preview_inherits_harness_tools_prompt_and_features() {
     let server = TestServer::in_memory().await;
     let harness: Value = server
         .post(
-            "/v1/harnesses",
+            "/v1/platform/harnesses",
             json!({
                 "name": "preview-child",
                 "parent_harness_id": server.seed_generic_harness_id,
@@ -34,7 +34,7 @@ async fn test_agent_preview_inherits_harness_tools_prompt_and_features() {
         .json();
     let preview: Value = server
         .post(
-            "/v1/agents/preview",
+            "/v1/platform/agents/preview",
             json!({
                 "harness_id": harness["id"],
                 "system_prompt": "Agent instructions.",
@@ -80,7 +80,7 @@ async fn test_agent_preview_keeps_base_minimal_and_rejects_missing_harness() {
     let server = TestServer::in_memory().await;
     // An omitted preview harness renders only the agent layer, not runtime defaults.
     for (harness_id, history_tools) in [(json!(server.seed_base_harness_id), 1), (Value::Null, 0)] {
-        let preview: Value = server.post("/v1/agents/preview", json!({
+        let preview: Value = server.post("/v1/platform/agents/preview", json!({
             "harness_id": harness_id, "system_prompt": "Agent instructions.", "capabilities": []
         })).await.assert_status(StatusCode::OK).json();
         // Base includes continuity retrieval and approvals, without a workspace.
@@ -116,7 +116,7 @@ async fn test_agent_preview_keeps_base_minimal_and_rejects_missing_harness() {
     }
     server
         .post(
-            "/v1/agents/preview",
+            "/v1/platform/agents/preview",
             json!({
                 "harness_id": HarnessId::new(), "system_prompt": "Agent instructions."
             }),
@@ -130,7 +130,7 @@ async fn test_agent_preview_respects_custom_compaction_opt_in() {
     let server = TestServer::in_memory().await;
     let harness: Value = server
         .post(
-            "/v1/harnesses",
+            "/v1/platform/harnesses",
             json!({"name": "preview-without-compaction", "capabilities": []}),
         )
         .await
@@ -139,7 +139,7 @@ async fn test_agent_preview_respects_custom_compaction_opt_in() {
     for (capabilities, expected) in [(json!([]), false), (json!([{"ref": "compaction"}]), true)] {
         let preview: Value = server
             .post(
-                "/v1/agents/preview",
+                "/v1/platform/agents/preview",
                 json!({
                     "harness_id": harness["id"],
                     "system_prompt": "Agent instructions.",
@@ -164,7 +164,7 @@ async fn test_agent_preview_merges_files_and_dependency_features_without_duplica
     let server = TestServer::in_memory().await;
     let harness: Value = server
         .post(
-            "/v1/harnesses",
+            "/v1/platform/harnesses",
             json!({
                 "name": "preview-files", "system_prompt": "Harness instructions.",
                 "capabilities": [{"ref": "session_file_system"}],
@@ -177,7 +177,7 @@ async fn test_agent_preview_merges_files_and_dependency_features_without_duplica
         .await
         .assert_status(StatusCode::CREATED)
         .json();
-    let preview: Value = server.post("/v1/agents/preview", json!({
+    let preview: Value = server.post("/v1/platform/agents/preview", json!({
         "harness_id": harness["id"], "system_prompt": "Agent instructions.",
         "capabilities": [{"ref": "session_file_system"}, {"ref": "session_sql_database"}],
         "initial_files": [{"path": "notes.txt", "content": "Agent notes", "encoding": "text"}]
@@ -208,7 +208,7 @@ async fn test_agent_preview_merges_files_and_dependency_features_without_duplica
 
     let dependency_preview: Value = server
         .post(
-            "/v1/agents/preview",
+            "/v1/platform/agents/preview",
             json!({
                 "system_prompt": "Agent instructions.", "capabilities": [{"ref": "bashkit_shell"}]
             }),
@@ -230,7 +230,7 @@ async fn test_agent_mcp_credential_is_write_only_and_agent_scoped() {
     let sentinel = "security-test-secret-must-not-be-returned";
     let agent: Agent = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": "credential-owner",
                 "display_name": "Credential Owner",
@@ -245,7 +245,7 @@ async fn test_agent_mcp_credential_is_write_only_and_agent_scoped() {
         .json();
     let other: Agent = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": "credential-non-owner",
                 "display_name": "Credential Non-owner",
@@ -258,7 +258,7 @@ async fn test_agent_mcp_credential_is_write_only_and_agent_scoped() {
 
     let binding: Value = server
         .post(
-            &format!("/v1/agents/{}/credentials", agent.public_id),
+            &format!("/v1/platform/agents/{}/credentials", agent.public_id),
             json!({
                 "mcp_server_name": "visti-test",
                 "tool_name": "visti_send",
@@ -275,7 +275,7 @@ async fn test_agent_mcp_credential_is_write_only_and_agent_scoped() {
 
     let scoped: Value = server
         .get(&format!(
-            "/v1/credential-bindings?scope=agent&owner_id={}&usage=service",
+            "/v1/platform/credential-bindings?scope=agent&owner_id={}&usage=service",
             agent.public_id
         ))
         .await
@@ -285,7 +285,10 @@ async fn test_agent_mcp_credential_is_write_only_and_agent_scoped() {
 
     let rotated: Value = server
         .put(
-            &format!("/v1/agents/{}/credentials/{binding_id}", agent.public_id),
+            &format!(
+                "/v1/platform/agents/{}/credentials/{binding_id}",
+                agent.public_id
+            ),
             json!({ "value": sentinel, "revision": revision }),
         )
         .await
@@ -296,7 +299,10 @@ async fn test_agent_mcp_credential_is_write_only_and_agent_scoped() {
     assert!(rotated.get("value").is_none());
 
     let listed: Value = server
-        .get(&format!("/v1/agents/{}/credentials", agent.public_id))
+        .get(&format!(
+            "/v1/platform/agents/{}/credentials",
+            agent.public_id
+        ))
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -310,7 +316,7 @@ async fn test_agent_mcp_credential_is_write_only_and_agent_scoped() {
         .unwrap();
     let session: Session = server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             json!({"agent_id":agent.public_id,"title":"MCP credential runtime"}),
         )
         .await
@@ -353,7 +359,7 @@ async fn test_agent_mcp_credential_is_write_only_and_agent_scoped() {
 
     server
         .patch(
-            &format!("/v1/agents/{}", agent.public_id),
+            &format!("/v1/platform/agents/{}", agent.public_id),
             json!({
                 "mcpServers": {
                     "visti-test": { "url": "https://example.org/replaced-mcp" }
@@ -364,7 +370,7 @@ async fn test_agent_mcp_credential_is_write_only_and_agent_scoped() {
         .assert_status(StatusCode::OK);
     let endpoint_changed: Value = server
         .post(
-            &format!("/v1/agents/{}/credentials", agent.public_id),
+            &format!("/v1/platform/agents/{}/credentials", agent.public_id),
             json!({
                 "agent_id": agent.public_id,
                 "mcp_server_name": "visti-test",
@@ -381,7 +387,10 @@ async fn test_agent_mcp_credential_is_write_only_and_agent_scoped() {
 
     server
         .put(
-            &format!("/v1/agents/{}/credentials/{binding_id}", other.public_id),
+            &format!(
+                "/v1/platform/agents/{}/credentials/{binding_id}",
+                other.public_id
+            ),
             json!({ "value": "attempted-cross-agent-replacement", "revision": revision }),
         )
         .await
@@ -389,7 +398,7 @@ async fn test_agent_mcp_credential_is_write_only_and_agent_scoped() {
 
     server
         .delete(&format!(
-            "/v1/agents/{}/credentials/{binding_id}",
+            "/v1/platform/agents/{}/credentials/{binding_id}",
             agent.public_id
         ))
         .await
@@ -405,7 +414,7 @@ async fn test_session_records_the_agent_revision_it_started_on() {
 
     let agent: Agent = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": "revisioned-agent",
                 "system_prompt": "You are revision one"
@@ -417,7 +426,7 @@ async fn test_session_records_the_agent_revision_it_started_on() {
 
     let _: Agent = server
         .patch(
-            &format!("/v1/agents/{}", agent.public_id),
+            &format!("/v1/platform/agents/{}", agent.public_id),
             json!({ "system_prompt": "You are revision two" }),
         )
         .await
@@ -425,7 +434,7 @@ async fn test_session_records_the_agent_revision_it_started_on() {
         .json();
 
     let history: Value = server
-        .get(&format!("/v1/history/{}", agent.public_id))
+        .get(&format!("/v1/platform/history/{}", agent.public_id))
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -441,7 +450,7 @@ async fn test_session_records_the_agent_revision_it_started_on() {
 
     let session: Session = server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             json!({
                 "agent_id": agent.public_id,
                 "title": "Revision capture"
@@ -454,7 +463,7 @@ async fn test_session_records_the_agent_revision_it_started_on() {
 
     let shown: Value = server
         .get(&format!(
-            "/v1/history/{}/revisions/{latest}",
+            "/v1/platform/history/{}/revisions/{latest}",
             agent.public_id
         ))
         .await
@@ -476,7 +485,7 @@ async fn test_list_agents_resolves_explicit_inherited_and_missing_harnesses() {
 
     let explicit: Value = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": "explicit-harness-card",
                 "system_prompt": "Test",
@@ -488,7 +497,7 @@ async fn test_list_agents_resolves_explicit_inherited_and_missing_harnesses() {
         .json();
     let inherited: Value = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": "inherited-harness-card",
                 "system_prompt": "Test"
@@ -517,7 +526,7 @@ async fn test_list_agents_resolves_explicit_inherited_and_missing_harnesses() {
     // one the way a restore or a bad manual edit would: with triggers off.
     let missing_agent: Value = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": "missing-harness-card",
                 "system_prompt": "Test",
@@ -545,7 +554,7 @@ async fn test_list_agents_resolves_explicit_inherited_and_missing_harnesses() {
     drop(conn);
 
     let listed: Value = server
-        .get("/v1/agents?limit=200")
+        .get("/v1/platform/agents?limit=200")
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -599,7 +608,7 @@ async fn test_list_agents_resolves_explicit_inherited_and_missing_harnesses() {
         .await
         .unwrap();
     let relisted: Value = server
-        .get("/v1/agents?limit=200")
+        .get("/v1/platform/agents?limit=200")
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -613,7 +622,7 @@ async fn test_list_agents_resolves_explicit_inherited_and_missing_harnesses() {
 
     let session: everruns_server::domains::sessions::record::Session = server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             json!({ "agent_id": inherited["id"], "title": "Inherited harness proof" }),
         )
         .await
@@ -629,7 +638,7 @@ async fn test_get_agent_by_id() {
     // Create an agent
     let agent: Agent = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": "get-test-agent",
                 "display_name": "Get Test Agent",
@@ -642,7 +651,7 @@ async fn test_get_agent_by_id() {
 
     // Get the agent by ID
     let fetched_agent: Agent = server
-        .get(&format!("/v1/agents/{}", agent.public_id))
+        .get(&format!("/v1/platform/agents/{}", agent.public_id))
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -658,7 +667,7 @@ async fn test_update_agent() {
     // Create an agent
     let agent: Agent = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": "original-name",
                 "display_name": "Original Name",
@@ -672,7 +681,7 @@ async fn test_update_agent() {
     // Update the agent
     let updated_agent: Agent = server
         .patch(
-            &format!("/v1/agents/{}", agent.public_id),
+            &format!("/v1/platform/agents/{}", agent.public_id),
             json!({
                 "name": "updated-name",
                 "display_name": "Updated Name",
@@ -697,7 +706,7 @@ async fn test_name_upsert_updates_and_clears_platform_chat_content() {
 
     server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": name,
                 "system_prompt": "Original prompt",
@@ -711,7 +720,7 @@ async fn test_name_upsert_updates_and_clears_platform_chat_content() {
 
     let updated: Value = server
         .put(
-            &format!("/v1/agents/{name}"),
+            &format!("/v1/platform/agents/{name}"),
             json!({
                 "name": name,
                 "system_prompt": "Updated prompt",
@@ -732,7 +741,7 @@ async fn test_name_upsert_updates_and_clears_platform_chat_content() {
 
     let cleared: Value = server
         .put(
-            &format!("/v1/agents/{name}"),
+            &format!("/v1/platform/agents/{name}"),
             json!({
                 "name": name,
                 "system_prompt": "Updated prompt",
@@ -755,7 +764,7 @@ async fn test_create_agent_missing_default_model_returns_not_found() {
 
     server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": "missing-model-agent",
                 "display_name": "Missing Model Agent",
@@ -773,7 +782,7 @@ async fn test_update_agent_missing_default_model_returns_not_found() {
 
     let agent: Agent = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": "update-missing-model-agent",
                 "display_name": "Update Missing Model Agent",
@@ -786,7 +795,7 @@ async fn test_update_agent_missing_default_model_returns_not_found() {
 
     server
         .patch(
-            &format!("/v1/agents/{}", agent.public_id),
+            &format!("/v1/platform/agents/{}", agent.public_id),
             json!({
                 "default_model_id": "model_019563a3000070008000000000000002"
             }),
@@ -802,7 +811,7 @@ async fn test_delete_agent() {
     // Create an agent
     let agent: Agent = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": "delete-test-agent",
                 "display_name": "Delete Test Agent",
@@ -815,13 +824,13 @@ async fn test_delete_agent() {
 
     // Delete the agent (soft-delete: archives the agent)
     server
-        .delete(&format!("/v1/agents/{}", agent.public_id))
+        .delete(&format!("/v1/platform/agents/{}", agent.public_id))
         .await
         .assert_status(StatusCode::NO_CONTENT);
 
     // Verify agent is archived (not hard-deleted)
     let archived_agent: Agent = server
-        .get(&format!("/v1/agents/{}", agent.public_id))
+        .get(&format!("/v1/platform/agents/{}", agent.public_id))
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -831,7 +840,7 @@ async fn test_delete_agent() {
     );
 
     let default_list: Value = server
-        .get("/v1/agents")
+        .get("/v1/platform/agents")
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -843,7 +852,7 @@ async fn test_delete_agent() {
     assert!(!listed, "Archived agent should be hidden from default list");
 
     let archived_list: Value = server
-        .get("/v1/agents?include_archived=true")
+        .get("/v1/platform/agents?include_archived=true")
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -864,7 +873,7 @@ async fn test_destroy_agent_requires_archive_and_hides_detail_api() {
 
     let agent: Agent = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": "destroy-test-agent",
                 "display_name": "Destroy Test Agent",
@@ -876,22 +885,28 @@ async fn test_destroy_agent_requires_archive_and_hides_detail_api() {
         .json();
 
     server
-        .post(&format!("/v1/agents/{}/delete", agent.public_id), json!({}))
+        .post(
+            &format!("/v1/platform/agents/{}/delete", agent.public_id),
+            json!({}),
+        )
         .await
         .assert_status(StatusCode::BAD_REQUEST);
 
     server
-        .delete(&format!("/v1/agents/{}", agent.public_id))
+        .delete(&format!("/v1/platform/agents/{}", agent.public_id))
         .await
         .assert_status(StatusCode::NO_CONTENT);
 
     server
-        .post(&format!("/v1/agents/{}/delete", agent.public_id), json!({}))
+        .post(
+            &format!("/v1/platform/agents/{}/delete", agent.public_id),
+            json!({}),
+        )
         .await
         .assert_status(StatusCode::NO_CONTENT);
 
     server
-        .get(&format!("/v1/agents/{}", agent.public_id))
+        .get(&format!("/v1/platform/agents/{}", agent.public_id))
         .await
         .assert_status(StatusCode::NOT_FOUND);
 }
@@ -902,7 +917,7 @@ async fn test_create_session_rejects_archived_agent() {
 
     let agent: Agent = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": "archived-session-agent",
                 "display_name": "Archived Session Agent",
@@ -914,13 +929,13 @@ async fn test_create_session_rejects_archived_agent() {
         .json();
 
     server
-        .delete(&format!("/v1/agents/{}", agent.public_id))
+        .delete(&format!("/v1/platform/agents/{}", agent.public_id))
         .await
         .assert_status(StatusCode::NO_CONTENT);
 
     server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             json!({
                 "harness_id": server.seed_base_harness_id,
                 "agent_id": agent.public_id,
@@ -941,7 +956,7 @@ async fn test_create_session_nonexistent_agent_returns_404() {
 
     server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             json!({
                 "harness_id": server.seed_base_harness_id,
                 "agent_id": "agent_00000000000000000000000000000000",
@@ -959,7 +974,7 @@ async fn test_list_sessions_unknown_agent_returns_empty() {
     // Create a session so we know unfiltered results would be non-empty
     let agent: Agent = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": "test-agent-unknown",
                 "display_name": "Test Agent",
@@ -972,7 +987,7 @@ async fn test_list_sessions_unknown_agent_returns_empty() {
 
     let _session: Value = server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             json!({
                 "harness_id": server.seed_base_harness_id,
                 "agent_id": agent.public_id,
@@ -984,7 +999,7 @@ async fn test_list_sessions_unknown_agent_returns_empty() {
 
     // Filter by nonexistent agent_id should return empty results, not unfiltered
     let body: Value = server
-        .get("/v1/sessions?agent_id=agent_ffffffffffffffffffffffffffffffff")
+        .get("/v1/platform/sessions?agent_id=agent_ffffffffffffffffffffffffffffffff")
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -1005,7 +1020,7 @@ async fn test_session_inherits_agent_default_model() {
     // Create provider and model
     let provider: Provider = server
         .post(
-            "/v1/providers",
+            "/v1/platform/providers",
             json!({
                 "name": "Inheritance Test Provider",
                 "provider_type": "openai"
@@ -1017,7 +1032,7 @@ async fn test_session_inherits_agent_default_model() {
 
     let model: Model = server
         .post(
-            &format!("/v1/providers/{}/models", provider.id),
+            &format!("/v1/platform/providers/{}/models", provider.id),
             json!({
                 "model_id": "inherit-test-model",
                 "display_name": "Inherit Test Model",
@@ -1031,7 +1046,7 @@ async fn test_session_inherits_agent_default_model() {
     // Create agent with default_model_id
     let agent: Agent = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": "model-inheritance-agent",
                 "display_name": "Model Inheritance Agent",
@@ -1048,7 +1063,7 @@ async fn test_session_inherits_agent_default_model() {
     // Create session without specifying model_id
     let session: Session = server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             json!({
                 "harness_id": server.seed_base_harness_id,
                 "agent_id": agent.public_id,
@@ -1062,20 +1077,27 @@ async fn test_session_inherits_agent_default_model() {
     // The session binds no model of its own; its turns resolve the agent's.
     assert_eq!(session.model_id, None, "agent default must not be copied");
     let resolved: Value = server
-        .get(&format!("/v1/sessions/{}/resolved-model", session.id))
+        .get(&format!(
+            "/v1/platform/sessions/{}/resolved-model",
+            session.id
+        ))
         .await
         .assert_status(StatusCode::OK)
         .json();
     assert_eq!(resolved["model_id"], model.id.to_string());
 
     // Cleanup in correct order: session -> agent -> model -> provider
-    server.delete(&format!("/v1/sessions/{}", session.id)).await;
     server
-        .delete(&format!("/v1/agents/{}", agent.public_id))
+        .delete(&format!("/v1/platform/sessions/{}", session.id))
         .await;
-    server.delete(&format!("/v1/models/{}", model.id)).await;
     server
-        .delete(&format!("/v1/providers/{}", provider.id))
+        .delete(&format!("/v1/platform/agents/{}", agent.public_id))
+        .await;
+    server
+        .delete(&format!("/v1/platform/models/{}", model.id))
+        .await;
+    server
+        .delete(&format!("/v1/platform/providers/{}", provider.id))
         .await;
 }
 
@@ -1090,7 +1112,7 @@ async fn test_copy_agent() {
     // Create an agent with capabilities and tags
     let agent: Agent = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": "original-agent",
                 "display_name": "Original Agent",
@@ -1108,7 +1130,10 @@ async fn test_copy_agent() {
 
     // Copy the agent
     let copied: Agent = server
-        .post(&format!("/v1/agents/{}/copy", agent.public_id), json!({}))
+        .post(
+            &format!("/v1/platform/agents/{}/copy", agent.public_id),
+            json!({}),
+        )
         .await
         .assert_status(StatusCode::CREATED)
         .json();
@@ -1130,7 +1155,7 @@ async fn test_copy_agent_not_found() {
 
     server
         .post(
-            "/v1/agents/agent_00000000000000000000000000000099/copy",
+            "/v1/platform/agents/agent_00000000000000000000000000000099/copy",
             json!({}),
         )
         .await
@@ -1152,7 +1177,7 @@ async fn test_session_features_with_agent_capabilities() {
     // Create agent with session_schedule capability
     let agent: Agent = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": "agent-cap-features-agent",
                 "display_name": "Agent Cap Features Agent",
@@ -1167,7 +1192,7 @@ async fn test_session_features_with_agent_capabilities() {
     // Base harness (no caps) + agent has session_schedule
     let body: Value = server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             json!({
                 "harness_id": server.seed_base_harness_id,
                 "agent_id": agent.public_id,
@@ -1193,7 +1218,7 @@ async fn test_delete_agent_referenced_by_app_returns_conflict() {
 
     let agent: Value = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": "delete-app-agent",
                 "display_name": "Delete App Agent",
@@ -1214,7 +1239,10 @@ async fn test_delete_agent_referenced_by_app_returns_conflict() {
     .await;
 
     server
-        .delete(&format!("/v1/agents/{}", agent["id"].as_str().unwrap()))
+        .delete(&format!(
+            "/v1/platform/agents/{}",
+            agent["id"].as_str().unwrap()
+        ))
         .await
         .assert_status(StatusCode::CONFLICT);
 }
@@ -1225,7 +1253,7 @@ async fn test_delete_virtual_user_referenced_by_app_returns_conflict() {
 
     let agent: Value = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": "delete-identity-app-agent",
                 "display_name": "Delete Identity App Agent",
@@ -1237,7 +1265,10 @@ async fn test_delete_virtual_user_referenced_by_app_returns_conflict() {
         .json();
 
     let identity: Value = server
-        .post("/v1/virtual-users", json!({"name": "Delete App Identity"}))
+        .post(
+            "/v1/platform/virtual-users",
+            json!({"name": "Delete App Identity"}),
+        )
         .await
         .assert_status(StatusCode::CREATED)
         .json();
@@ -1259,7 +1290,7 @@ async fn test_delete_virtual_user_referenced_by_app_returns_conflict() {
 
     server
         .delete(&format!(
-            "/v1/virtual-users/{}",
+            "/v1/platform/virtual-users/{}",
             identity["id"].as_str().unwrap()
         ))
         .await
@@ -1291,7 +1322,7 @@ async fn test_agent_catalog_mcp_attachment_round_trip() {
 
     let created: Value = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": "catalog-mcp-agent",
                 "system_prompt": "Use the attached Linear tools",
@@ -1315,7 +1346,10 @@ async fn test_agent_catalog_mcp_attachment_round_trip() {
     );
 
     let fetched: Value = server
-        .get(&format!("/v1/agents/{}", created["id"].as_str().unwrap()))
+        .get(&format!(
+            "/v1/platform/agents/{}",
+            created["id"].as_str().unwrap()
+        ))
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -1364,7 +1398,7 @@ async fn test_invalid_scoped_mcp_config_is_rejected_with_400_and_a_reason() {
     ] {
         let response = server
             .post(
-                "/v1/agents",
+                "/v1/platform/agents",
                 json!({
                     "name": "scoped-mcp-validation",
                     "system_prompt": "Use the attached tools",
@@ -1387,14 +1421,14 @@ async fn test_agent_channel_summaries_follow_channel_lifecycle() {
     let server = TestServer::in_memory().await;
     let agent: Value = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({"name": "channel-card", "system_prompt": "Test"}),
         )
         .await
         .assert_status(StatusCode::CREATED)
         .json();
     let id = agent["id"].as_str().unwrap();
-    let endpoints_path = format!("/v1/agents/{id}/channels");
+    let endpoints_path = format!("/v1/platform/agents/{id}/channels");
     let endpoint: Value = server.post(&endpoints_path, json!({
         "channel_type": "webhook", "enabled": true,
         "channel_config": {"token": "summary-must-not-leak", "message": "Process {{payload}}"}
@@ -1415,12 +1449,12 @@ async fn test_agent_channel_summaries_follow_channel_lifecycle() {
                 .assert_status(StatusCode::OK);
         }
         let detail: Value = server
-            .get(&format!("/v1/agents/{id}"))
+            .get(&format!("/v1/platform/agents/{id}"))
             .await
             .assert_status(StatusCode::OK)
             .json();
         let listed: Value = server
-            .get("/v1/agents?search=channel-card")
+            .get("/v1/platform/agents?search=channel-card")
             .await
             .assert_status(StatusCode::OK)
             .json();
@@ -1443,7 +1477,7 @@ async fn test_agent_channel_summaries_follow_channel_lifecycle() {
         .await
         .assert_status(StatusCode::OK);
     let disabled: Value = server
-        .get(&format!("/v1/agents/{id}"))
+        .get(&format!("/v1/platform/agents/{id}"))
         .await
         .assert_status(StatusCode::OK)
         .json();

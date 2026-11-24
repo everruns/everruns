@@ -139,7 +139,7 @@ impl ListEvents {
     description = "List events for a session.",
     method = "GET",
     cli = CliRoute::new(&["sessions", "events"], "list").with_args(&[CliArg::new("session_id").at(1)]).with_examples(&[CliExample::new("Find what failed in a session's tool calls", "everruns sessions events list session_01h9 --types tool.failed"), CliExample::new("Search a session's events for a phrase, newest first", "everruns sessions events list session_01h9 --q timeout --order-desc true")]),
-    path = "/v1/sessions/{session_id}/events",
+    path = "/v1/platform/sessions/{session_id}/events",
     positional = "session_id"
 )]
 impl Command for ListEvents {
@@ -346,7 +346,7 @@ pub struct EventsSummaryCmd {
     description = "One-shot debug summary for a session: counts by type, first/last timestamps, turn count, error count.",
     method = "GET",
     cli = CliRoute::new(&["sessions", "events", "summary"], "events").with_args(&[CliArg::new("session_id").at(1)]).with_examples(&[CliExample::new("Get a quick picture of a session (event counts, turns, errors) before reading events", "everruns sessions events summary events session_01h9")]),
-    path = "/v1/sessions/{session_id}/events/summary",
+    path = "/v1/platform/sessions/{session_id}/events/summary",
     positional = "session_id"
 )]
 impl Command for EventsSummaryCmd {
@@ -407,7 +407,7 @@ pub struct StreamSse {
     description = "Stream events via SSE. Not supported in bash mode.",
     method = "GET",
     cli = CliRoute::new(&["sessions", "sse"], "stream").with_args(&[CliArg::new("session_id").at(1)]).with_examples(&[CliExample::new("Watch a session's events live as they happen", "everruns sessions sse stream session_01h9")]),
-    path = "/v1/sessions/{session_id}/sse",
+    path = "/v1/platform/sessions/{session_id}/sse",
     positional = "session_id"
 )]
 impl Command for StreamSse {

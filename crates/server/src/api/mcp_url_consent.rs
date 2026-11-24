@@ -78,7 +78,7 @@ pub struct ElicitationConsentResponse {
 /// router because it is the same pause-and-resume surface.
 pub fn routes() -> axum::Router<AppState> {
     axum::Router::new().route(
-        "/v1/sessions/{session_id}/mcp-elicitation-consent",
+        "/v1/platform/sessions/{session_id}/mcp-elicitation-consent",
         post(submit_elicitation_consent),
     )
 }
@@ -92,13 +92,13 @@ struct PendingElicitation {
     url: String,
 }
 
-/// POST /v1/sessions/{session_id}/mcp-elicitation-consent
+/// POST /v1/platform/sessions/{session_id}/mcp-elicitation-consent
 ///
 /// Records a user's decision about a URL an MCP server asked them to open, and
 /// resumes the paused turn.
 #[utoipa::path(
     post,
-    path = "/v1/sessions/{session_id}/mcp-elicitation-consent",
+    path = "/v1/platform/sessions/{session_id}/mcp-elicitation-consent",
     params(
         ("session_id" = String, Path, description = "Session ID (prefixed, e.g., session_...)")
     ),

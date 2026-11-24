@@ -1,7 +1,7 @@
 // "Connect GitHub" for agent identities: per-agent GitHub Apps.
 //
 // Flow (all clicks, no copied credentials):
-// 1. `POST /v1/virtual-users/{id}/connections/github/app` (authenticated)
+// 1. `POST /v1/platform/virtual-users/{id}/connections/github/app` (authenticated)
 //    returns either a manifest form for the browser to post to GitHub (first
 //    connect) or the App's install URL (the App already exists).
 // 2. GitHub creates the App and redirects the browser to
@@ -12,8 +12,8 @@
 //    install. We verify the installation with the App's own JWT and store it
 //    as the identity's `github` connection.
 //
-// The agent page drives the same flow through `/v1/agents/{agent_id}/github`
-// (status, disconnect) and `/v1/agents/{agent_id}/github/connect`, which first
+// The agent page drives the same flow through `/v1/platform/agents/{agent_id}/github`
+// (status, disconnect) and `/v1/platform/agents/{agent_id}/github/connect`, which first
 // gives the agent its identity when it has none, so connecting needs no
 // identity setup. Those are commands (`crate::domains::agents::github`), served
 // here by `agent_routes` and to the CLI and MCP by the command catalog; the
@@ -81,11 +81,11 @@ impl_auth_state!(AppState);
 pub fn routes(state: AppState) -> Router {
     Router::new()
         .route(
-            "/v1/virtual-users/{identity_id}/connections/github/app",
+            "/v1/platform/virtual-users/{identity_id}/connections/github/app",
             post(begin_connect).delete(disconnect),
         )
         .route(
-            "/v1/virtual-users/{identity_id}/connections/github/repositories",
+            "/v1/platform/virtual-users/{identity_id}/connections/github/repositories",
             get(list_repositories),
         )
         .route("/v1/github/app-manifest/callback", get(manifest_callback))
@@ -176,7 +176,7 @@ async fn resolve_identity(
     Ok((identity_id, identity.name))
 }
 
-/// POST /v1/virtual-users/{identity_id}/connections/github/app
+/// POST /v1/platform/virtual-users/{identity_id}/connections/github/app
 async fn begin_connect(
     org: ResolvedOrg,
     State(state): State<AppState>,
@@ -199,7 +199,7 @@ async fn begin_connect(
     Ok(Json(response))
 }
 
-/// DELETE /v1/virtual-users/{identity_id}/connections/github/app
+/// DELETE /v1/platform/virtual-users/{identity_id}/connections/github/app
 ///
 /// See [`agent_github::disconnect_identity`]: uninstalls, or forgets an App
 /// that was never installed.
@@ -220,7 +220,7 @@ async fn disconnect(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// GET /v1/virtual-users/{identity_id}/connections/github/repositories
+/// GET /v1/platform/virtual-users/{identity_id}/connections/github/repositories
 ///
 /// Repositories the agent's installation can reach, for repo pickers.
 async fn list_repositories(
@@ -582,7 +582,7 @@ mod tests {
             ctx.clone(),
             auth,
         ));
-        let uri = format!("/v1/agents/{id}/source");
+        let uri = format!("/v1/platform/agents/{id}/source");
         let (status, options) = request(
             &app,
             "POST",

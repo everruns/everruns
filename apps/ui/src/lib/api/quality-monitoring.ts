@@ -41,13 +41,17 @@ declare module "./legacy-api-types" {
 
 export async function getQualityMonitoring(org: string): Promise<QualityMonitoringReport> {
   return (
-    await api.get<QualityMonitoringReport>(`/v1/orgs/${encodeURIComponent(org)}/quality-monitoring`)
+    await api.get<QualityMonitoringReport>(
+      `/v1/platform/orgs/${encodeURIComponent(org)}/quality-monitoring`,
+    )
   ).data;
 }
 
 export async function getQualityMonitoringScores(org: string): Promise<TraceScore[]> {
   return (
-    await api.get<TraceScore[]>(`/v1/orgs/${encodeURIComponent(org)}/quality-monitoring/scores`)
+    await api.get<TraceScore[]>(
+      `/v1/platform/orgs/${encodeURIComponent(org)}/quality-monitoring/scores`,
+    )
   ).data;
 }
 
@@ -58,7 +62,7 @@ export async function reviewQualityMonitoringScore(
 ): Promise<TraceScore> {
   return (
     await api.put<TraceScore>(
-      `/v1/orgs/${encodeURIComponent(org)}/quality-monitoring/scores/${encodeURIComponent(score)}/review`,
+      `/v1/platform/orgs/${encodeURIComponent(org)}/quality-monitoring/scores/${encodeURIComponent(score)}/review`,
       { agrees },
     )
   ).data;

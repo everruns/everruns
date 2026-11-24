@@ -6,7 +6,7 @@ import { usePageSettingsDraft } from "@/components/chat-mode/use-page-settings-d
 import { useOrg } from "@/providers/org-provider";
 
 // Web search → Defaults: edits the organization's `web_search_defaults`
-// (PATCH /v1/orgs/{org}). Every change saves the whole object at once, the
+// (PATCH /v1/platform/orgs/{org}). Every change saves the whole object at once, the
 // way the server stores it, from a local draft so quick edits build on each
 // other. The Automatic list reorders with up/down buttons (keyboard and
 // screen-reader friendly); free search is pinned last and cannot move. The

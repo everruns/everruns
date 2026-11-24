@@ -19,7 +19,10 @@ async fn wrap_personal_access_token_routes_applies_custom_layer() {
     use tower::ServiceExt;
     use tower_http::set_header::SetResponseHeaderLayer;
 
-    let base = Router::new().route("/v1/auth/personal-access-tokens", get(|| async { "ok" }));
+    let base = Router::new().route(
+        "/v1/platform/auth/personal-access-tokens",
+        get(|| async { "ok" }),
+    );
     let wrap: PersonalAccessTokenRoutesWrapFn = Box::new(|r: Router| {
         r.layer(SetResponseHeaderLayer::if_not_present(
             HeaderName::from_static("x-eve-401-marker"),
@@ -32,7 +35,7 @@ async fn wrap_personal_access_token_routes_applies_custom_layer() {
     let response = router
         .oneshot(
             Request::builder()
-                .uri("/v1/auth/personal-access-tokens")
+                .uri("/v1/platform/auth/personal-access-tokens")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -53,13 +56,16 @@ async fn wrap_personal_access_token_routes_passthrough_when_none() {
     use axum::routing::get;
     use tower::ServiceExt;
 
-    let base = Router::new().route("/v1/auth/personal-access-tokens", get(|| async { "ok" }));
+    let base = Router::new().route(
+        "/v1/platform/auth/personal-access-tokens",
+        get(|| async { "ok" }),
+    );
     let router = apply_personal_access_token_routes_wrap(None, base);
 
     let response = router
         .oneshot(
             Request::builder()
-                .uri("/v1/auth/personal-access-tokens")
+                .uri("/v1/platform/auth/personal-access-tokens")
                 .body(Body::empty())
                 .unwrap(),
         )

@@ -29,7 +29,7 @@ pub struct ResolveOrgQuery {
     pub id: String,
 }
 
-/// GET /v1/resolve-org — resolve the owning org for a resource id.
+/// GET /v1/platform/resolve-org — resolve the owning org for a resource id.
 ///
 /// Returns the owning organization only when it is one the authenticated
 /// caller already belongs to. For every other case (unknown id, unknown
@@ -38,7 +38,7 @@ pub struct ResolveOrgQuery {
 /// endpoint to probe for the existence of resources outside their own orgs.
 #[utoipa::path(
     get,
-    path = "/v1/resolve-org",
+    path = "/v1/platform/resolve-org",
     params(
         ("id" = String, Query, description = "Prefixed public ID of the resource")
     ),
@@ -73,6 +73,6 @@ pub async fn resolve_org(
 
 pub fn routes(state: ApiState) -> Router {
     Router::new()
-        .route("/v1/resolve-org", get(resolve_org))
+        .route("/v1/platform/resolve-org", get(resolve_org))
         .with_state(state)
 }

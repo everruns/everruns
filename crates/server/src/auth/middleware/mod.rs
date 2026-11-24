@@ -556,13 +556,13 @@ pub struct OrgContext {
 }
 
 /// Extract org from URI path directly (doesn't consume Path extractor)
-/// The path pattern is: /v1/orgs/{org}/...
+/// The path pattern is: /v1/platform/orgs/{org}/...
 fn extract_org_from_uri(uri: &axum::http::Uri) -> Option<String> {
     let path = uri.path();
     let parts: Vec<&str> = path.split('/').collect();
-    // Expected: ["", "v1", "orgs", "{org}", ...]
-    if parts.len() >= 4 && parts[1] == "v1" && parts[2] == "orgs" {
-        Some(parts[3].to_string())
+    // Expected: ["", "v1", "platform", "orgs", "{org}", ...]
+    if parts.len() >= 5 && parts[1..4] == ["v1", "platform", "orgs"] {
+        Some(parts[4].to_string())
     } else {
         None
     }
@@ -675,7 +675,7 @@ pub const ORG_COOKIE_MAX_AGE: time::Duration = time::Duration::days(30);
 ///   user membership.
 /// - None auth: org from the `everruns_org` cookie.
 ///
-/// The cookie is set via POST /v1/users/me/switch-org endpoint.
+/// The cookie is set via POST /v1/platform/users/me/switch-org endpoint.
 /// Cookies work automatically with SSE (EventSource) unlike headers.
 ///
 /// Usage:

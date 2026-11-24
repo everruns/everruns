@@ -29,7 +29,7 @@ End-to-end load testing framework for the Everruns API. Measures throughput, lat
 
 ### Turn Latency (primary metric)
 
-Latency is measured as **full turn duration**: from the moment the POST `/v1/sessions/{id}/messages` request is sent to when the `session.idled` SSE event is received. This captures the complete round-trip including workflow scheduling, LLM call, response streaming, and all server-side processing. Reported as P50, P95, P99, and average.
+Latency is measured as **full turn duration**: from the moment the POST `/v1/platform/sessions/{id}/messages` request is sent to when the `session.idled` SSE event is received. This captures the complete round-trip including workflow scheduling, LLM call, response streaming, and all server-side processing. Reported as P50, P95, P99, and average.
 
 All benchmark runs must report turn latency. It is the primary indicator of user-perceived performance.
 
@@ -112,16 +112,16 @@ Single benchmark binary at `crates/server/benches/load_test.rs`. Uses `everruns-
 
 ### Turn Completion via SSE
 
-Each session opens a single SSE connection (`GET /v1/sessions/{id}/sse`) after creation. Turn completion is detected by waiting for the `session.idled` event on this stream. No polling, one persistent connection per session replaces the previous approach of polling `GET /sessions/{id}` and `GET /sessions/{id}/messages` every 50ms.
+Each session opens a single SSE connection (`GET /v1/platform/sessions/{id}/sse`) after creation. Turn completion is detected by waiting for the `session.idled` event on this stream. No polling, one persistent connection per session replaces the previous approach of polling `GET /sessions/{id}` and `GET /sessions/{id}/messages` every 50ms.
 
 ### Flow
 
-1. Fetch server info from `/health` and `/v1/durable/health`
+1. Fetch server info from `/health` and `/v1/platform/durable/health`
 2. Create a load test agent with llmsim as default model
 3. Spawn N concurrent sessions (controlled by semaphore)
 4. Each session:
    a. Creates session via API
-   b. Opens SSE stream (`GET /v1/sessions/{id}/sse`) and eagerly connects (polls once to establish HTTP connection before any messages are sent, prevents missing fast `session.idled` events)
+   b. Opens SSE stream (`GET /v1/platform/sessions/{id}/sse`) and eagerly connects (polls once to establish HTTP connection before any messages are sent, prevents missing fast `session.idled` events)
    c. Sends M messages sequentially
    d. After each message: waits for `session.idled` SSE event (turn complete)
    e. Measures latency from POST /messages to `session.idled` received
@@ -176,7 +176,7 @@ is the load test's counterpart that needs no running stack: it starts the
 production server (`ServerAppBuilder`) and a standalone worker
 (`WorkerAppBuilder`, over gRPC as in a deployment) in one process against
 PostgreSQL, which it migrates, then drives turns over HTTP with an llmsim
-model that answers at once. One turn is `POST /v1/sessions/{id}/messages`, the
+model that answers at once. One turn is `POST /v1/platform/sessions/{id}/messages`, the
 worker claiming its steps over gRPC, and `turn.completed`. It reports per turn,
 as p50/p95/p99, the client's wall time to receiving `turn.completed` on the
 session's SSE stream (`e2e`; one stream per session, as the UI holds, because

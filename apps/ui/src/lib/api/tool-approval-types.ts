@@ -49,7 +49,7 @@ declare module "./legacy-api-types" {
 
 export async function getSessionApprovalMode(sessionId: string): Promise<SessionApprovalMode> {
   const response = await api.get<SessionApprovalMode>(
-    `/v1/sessions/${encodeURIComponent(sessionId)}/approval-mode`,
+    `/v1/platform/sessions/${encodeURIComponent(sessionId)}/approval-mode`,
   );
   return response.data;
 }
@@ -60,7 +60,7 @@ export async function setSessionApprovalMode(
   mode: ApprovalModeName | null,
 ): Promise<SessionApprovalMode> {
   const response = await api.put<SessionApprovalMode>(
-    `/v1/sessions/${encodeURIComponent(sessionId)}/approval-mode`,
+    `/v1/platform/sessions/${encodeURIComponent(sessionId)}/approval-mode`,
     { mode },
   );
   return response.data;

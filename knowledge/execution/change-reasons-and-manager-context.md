@@ -41,7 +41,7 @@ and `apps/ui/src/components/entity-actions/`.
 ### Reasons travel as invocation metadata
 
 A reason describes the call, not the entity, so it travels beside the params
-like the idempotency key: the `reason` field of the `/v1/commands/{name}`
+like the idempotency key: the `reason` field of the `/v1/platform/commands/{name}`
 envelope, the percent-encoded `Everruns-Change-Reason` header on REST, a global
 `--reason` in the CLI, MCP `execute` and agent shells, and a `reason` field on
 the worker's `ExecuteCommand`. The manager context revision the caller read
@@ -100,7 +100,7 @@ silently lost history is the failure this exists to prevent. Failed, forbidden
 or rejected commands record nothing.
 
 For transactional commands, the default for recorded changes, the context check,
-`execute`, the snapshot read, the history row and, over `/v1/commands`, the
+`execute`, the snapshot read, the history row and, over `/v1/platform/commands`, the
 stored idempotency response commit in one PostgreSQL transaction or not at all;
 a failed history write fails the command. The transaction sits in a task-local
 slot behind `TxPool`, so every repository joins it without signature changes,

@@ -32,7 +32,7 @@ Verify that `everruns files sync` performs bidirectional sync: initial reconcili
 
 2. Create a remote file:
    ```bash
-   curl -s -X POST "http://localhost:9300/api/v1/sessions/$SESSION_ID/fs/remote.txt" \
+   curl -s -X POST "http://localhost:9300/api/v1/platform/sessions/$SESSION_ID/fs/remote.txt" \
      -H "Content-Type: application/json" \
      -d '{"content": "from remote", "encoding": "text"}'
    ```
@@ -58,19 +58,19 @@ Verify that `everruns files sync` performs bidirectional sync: initial reconcili
 
 6. Verify initial sync pushed local file:
    ```bash
-   curl -s "http://localhost:9300/api/v1/sessions/$SESSION_ID/fs/local.txt" | jq '.content'
+   curl -s "http://localhost:9300/api/v1/platform/sessions/$SESSION_ID/fs/local.txt" | jq '.content'
    ```
 
 7. Create new local file and wait for sync:
    ```bash
    echo "new file" > "$TMPDIR/new_local.txt"
    sleep 5
-   curl -s "http://localhost:9300/api/v1/sessions/$SESSION_ID/fs/new_local.txt" | jq '.content'
+   curl -s "http://localhost:9300/api/v1/platform/sessions/$SESSION_ID/fs/new_local.txt" | jq '.content'
    ```
 
 8. Create new remote file and wait for sync:
    ```bash
-   curl -s -X POST "http://localhost:9300/api/v1/sessions/$SESSION_ID/fs/new_remote.txt" \
+   curl -s -X POST "http://localhost:9300/api/v1/platform/sessions/$SESSION_ID/fs/new_remote.txt" \
      -H "Content-Type: application/json" \
      -d '{"content": "new from remote", "encoding": "text"}'
    sleep 5

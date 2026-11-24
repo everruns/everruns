@@ -20,7 +20,7 @@ Verify that a session can override the agent's default model and that the overri
 - Set `BASE_URL` to the selected proxy origin (for example, `http://localhost:27100`); requests below append `/api`
 - For authenticated deployments, configure `curl` with the required authorization and organization headers
 - LLM API keys configured
-- At least two models available (check `GET /v1/models`)
+- At least two models available (check `GET /v1/platform/models`)
 
 ## Test Data
 
@@ -35,13 +35,13 @@ Verify that a session can override the agent's default model and that the overri
 
 1. List available models:
    ```bash
-   curl -s "${BASE_URL}/api/v1/models"
+   curl -s "${BASE_URL}/api/v1/platform/models"
    ```
    Pick two model IDs.
 
 2. Create agent with default model:
    ```bash
-   curl -s -X POST "${BASE_URL}/api/v1/agents" \
+   curl -s -X POST "${BASE_URL}/api/v1/platform/agents" \
      -H "Content-Type: application/json" \
      -d '{
        "name": "model-test-agent",
@@ -53,7 +53,7 @@ Verify that a session can override the agent's default model and that the overri
 
 3. Create session with model override:
    ```bash
-   curl -s -X POST "${BASE_URL}/api/v1/sessions" \
+   curl -s -X POST "${BASE_URL}/api/v1/platform/sessions" \
      -H "Content-Type: application/json" \
      -d '{
        "agent_id": "{agent_id}",
@@ -64,7 +64,7 @@ Verify that a session can override the agent's default model and that the overri
 
 4. Send message:
    ```bash
-   curl -s -X POST "${BASE_URL}/api/v1/sessions/{session_id}/messages" \
+   curl -s -X POST "${BASE_URL}/api/v1/platform/sessions/{session_id}/messages" \
      -H "Content-Type: application/json" \
      -d '{
        "message": {
@@ -76,12 +76,12 @@ Verify that a session can override the agent's default model and that the overri
 
 5. Wait for completion, then check events:
    ```bash
-   curl -s "${BASE_URL}/api/v1/sessions/{session_id}/events"
+   curl -s "${BASE_URL}/api/v1/platform/sessions/{session_id}/events"
    ```
 
 6. Fetch the session and confirm its selected model:
    ```bash
-   curl -s "${BASE_URL}/api/v1/sessions/{session_id}"
+   curl -s "${BASE_URL}/api/v1/platform/sessions/{session_id}"
    ```
 
 ## Expected Result

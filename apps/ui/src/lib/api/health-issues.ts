@@ -4,19 +4,19 @@ import type { HealthIssue, HealthIssueList } from "./types";
 export async function listHealthIssues(channelId?: string, offset = 0, limit = 20) {
   const params = new URLSearchParams({ offset: String(offset), limit: String(limit) });
   if (channelId) params.set("channel_id", channelId);
-  return (await api.get<HealthIssueList>(`/v1/health-issues?${params}`)).data;
+  return (await api.get<HealthIssueList>(`/v1/platform/health-issues?${params}`)).data;
 }
 export async function getHealthIssue(id: string) {
-  return (await api.get<HealthIssue>(`/v1/health-issues/${id}`)).data;
+  return (await api.get<HealthIssue>(`/v1/platform/health-issues/${id}`)).data;
 }
 export async function checkHealthIssue(id: string) {
-  return (await api.post<HealthIssue>(`/v1/health-issues/${id}/check`)).data;
+  return (await api.post<HealthIssue>(`/v1/platform/health-issues/${id}/check`)).data;
 }
 export async function snoozeHealthIssue(id: string) {
-  return (await api.post<HealthIssue>(`/v1/health-issues/${id}/snooze`)).data;
+  return (await api.post<HealthIssue>(`/v1/platform/health-issues/${id}/snooze`)).data;
 }
 export async function dismissHealthIssue(id: string, note: string) {
-  return (await api.post<HealthIssue>(`/v1/health-issues/${id}/dismiss`, { note })).data;
+  return (await api.post<HealthIssue>(`/v1/platform/health-issues/${id}/dismiss`, { note })).data;
 }
 export interface HealthIssueFixOutcome {
   status: "done" | "consent";
@@ -27,7 +27,8 @@ export interface HealthIssueFixOutcome {
 // Runs one of the fixers the server declared on the issue. The server builds
 // any consent URL; `safeConsentUrl` checks it again before the browser leaves.
 export async function runHealthIssueFixer(id: string, kind: string) {
-  return (await api.post<HealthIssueFixOutcome>(`/v1/health-issues/${id}/fix`, { kind })).data;
+  return (await api.post<HealthIssueFixOutcome>(`/v1/platform/health-issues/${id}/fix`, { kind }))
+    .data;
 }
 
 /**

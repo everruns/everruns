@@ -82,16 +82,16 @@ impl_auth_state!(AppState);
 pub fn routes(state: AppState) -> Router {
     Router::new()
         .route(
-            "/v1/orgs/{org}/invites",
+            "/v1/platform/orgs/{org}/invites",
             get(list_invites).post(create_invite),
         )
         .route(
-            "/v1/orgs/{org}/invites/{invite_id}",
+            "/v1/platform/orgs/{org}/invites/{invite_id}",
             axum::routing::delete(revoke_invite),
         )
-        .route("/v1/me/invitations", get(list_my_invitations))
+        .route("/v1/platform/me/invitations", get(list_my_invitations))
         .route(
-            "/v1/me/invitations/{public_id}/accept",
+            "/v1/platform/me/invitations/{public_id}/accept",
             post(accept_my_invitation),
         )
         .route("/v1/invites/{token}/accept", post(accept_invite))
@@ -628,7 +628,7 @@ pub async fn accept_invitation_by_public_id(
 // HTTP handlers
 // ============================================================================
 
-/// POST /v1/orgs/{org}/invites — create an invite (Admin+).
+/// POST /v1/platform/orgs/{org}/invites — create an invite (Admin+).
 pub async fn create_invite(
     State(state): State<AppState>,
     OrgAdmin(org): OrgAdmin,
@@ -672,7 +672,7 @@ pub async fn create_invite(
     Ok((StatusCode::CREATED, Json(response)))
 }
 
-/// GET /v1/orgs/{org}/invites — list pending invites (Admin+).
+/// GET /v1/platform/orgs/{org}/invites — list pending invites (Admin+).
 pub async fn list_invites(
     State(state): State<AppState>,
     OrgAdmin(org): OrgAdmin,
@@ -688,7 +688,7 @@ pub async fn list_invites(
 
 #[utoipa::path(
     get,
-    path = "/v1/me/invitations",
+    path = "/v1/platform/me/invitations",
     description = "List actionable organization invitations addressed to the authenticated user's verified email.",
     responses(
         (status = 200, description = "Actionable invitations for the authenticated user", body = ListResponse<MyInvitationResponse>),
@@ -719,7 +719,7 @@ pub async fn list_my_invitations(
     Ok(Json(ListResponse::new(items)))
 }
 
-/// DELETE /v1/orgs/{org}/invites/{invite_id} — revoke a pending invite (Admin+).
+/// DELETE /v1/platform/orgs/{org}/invites/{invite_id} — revoke a pending invite (Admin+).
 pub async fn revoke_invite(
     State(state): State<AppState>,
     OrgAdmin(org): OrgAdmin,
@@ -788,7 +788,7 @@ pub async fn accept_invite(
 
 #[utoipa::path(
     post,
-    path = "/v1/me/invitations/{public_id}/accept",
+    path = "/v1/platform/me/invitations/{public_id}/accept",
     description = "Accept an actionable organization invitation addressed to the authenticated user's verified email.",
     params(
         ("public_id" = String, Path, description = "Public invitation ID")

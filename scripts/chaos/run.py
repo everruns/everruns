@@ -136,7 +136,7 @@ def setup_fixtures(api: Api, args) -> tuple[dict, dict]:
     server restarts a chaos run injects. llmsim derives behavior from the name: `-realistic` anywhere in it
     turns on the agent-shaped workload with default (0.9 s) timing.
     """
-    models = api.get("/v1/models", query={"limit": 500})
+    models = api.get("/v1/platform/models", query={"limit": 500})
     items = models.get("data", models) if isinstance(models, dict) else models
     by_name = {}
     provider_id = None
@@ -147,11 +147,11 @@ def setup_fixtures(api: Api, args) -> tuple[dict, dict]:
             provider_id = provider_id or m.get("provider_id")
     if not provider_id:
         # Startup no longer pre-creates built-in providers, so connect llmsim here.
-        providers = api.get("/v1/providers")
+        providers = api.get("/v1/platform/providers")
         plist = providers.get("data", providers) if isinstance(providers, dict) else providers
         existing = next((p for p in plist if p.get("provider_type") == "llmsim"), None)
         provider_id = (existing or api.post(
-            "/v1/providers", {"name": "LlmSim", "provider_type": "llmsim"}
+            "/v1/platform/providers", {"name": "LlmSim", "provider_type": "llmsim"}
         ))["id"]
     want = {"instant": "llmsim-chaos", "realistic": "llmsim-chaos-realistic"}
     model_ids = {}
@@ -159,7 +159,7 @@ def setup_fixtures(api: Api, args) -> tuple[dict, dict]:
         m = by_name.get(name)
         if m is None:
             m = api.post(
-                f"/v1/providers/{provider_id}/models",
+                f"/v1/platform/providers/{provider_id}/models",
                 {
                     "model_id": name,
                     "display_name": name,
@@ -168,7 +168,7 @@ def setup_fixtures(api: Api, args) -> tuple[dict, dict]:
                 },
             )
         elif not m.get("enabled", True):
-            api.request("PATCH", f"/v1/models/{m['id']}", body={"enabled": True})
+            api.request("PATCH", f"/v1/platform/models/{m['id']}", body={"enabled": True})
         model_ids[key] = m["id"]
 
     tag = time.strftime("%H%M%S") + "-" + os.urandom(2).hex()
@@ -180,7 +180,7 @@ def setup_fixtures(api: Api, args) -> tuple[dict, dict]:
     }
     for key, caps in specs.items():
         r = api.post(
-            "/v1/agents",
+            "/v1/platform/agents",
             {
                 "name": f"chaos-{key}-{tag}",
                 "system_prompt": "You are a load-test agent.",
@@ -312,7 +312,7 @@ def main():
             nxt = []
             for r in pending:
                 try:
-                    s = api.get(f"/v1/sessions/{r.session_id}")
+                    s = api.get(f"/v1/platform/sessions/{r.session_id}")
                 except Exception:  # noqa: BLE001
                     nxt.append(r)
                     continue
@@ -340,7 +340,7 @@ def main():
             evs = api.events(r.session_id)
             all_events[r.session_id] = evs
             try:
-                sessions[r.session_id] = api.get(f"/v1/sessions/{r.session_id}")
+                sessions[r.session_id] = api.get(f"/v1/platform/sessions/{r.session_id}")
             except Exception:  # noqa: BLE001
                 pass
             check_session(r, evs, sessions.get(r.session_id), rep, timings)

@@ -99,8 +99,8 @@ uses in this conversation is refused.
 
 In Chat, an **MCP** button in the conversation header lists these servers, with
 their host and whether you have signed in, and removes one with a click. The
-same list is `GET /v1/sessions/{session_id}/mcp-servers`, and
-`DELETE /v1/sessions/{session_id}/mcp-servers/{name}` removes one.
+same list is `GET /v1/platform/sessions/{session_id}/mcp-servers`, and
+`DELETE /v1/platform/sessions/{session_id}/mcp-servers/{name}` removes one.
 `connect_mcp_server` never sees a credential: the person signs in in their own
 browser, as with any Connect card.
 
@@ -133,7 +133,7 @@ or headers; the person adds those in Settings.
   [Loading tools on demand](/features/mcp/#loading-tools-on-demand)). Turning
   off **Load tools on demand** on a server in **Settings > My MCP servers**
   (`deferred: false` when adding or updating it under
-  `/v1/virtual-users/{id}/mcp-servers`)
+  `/v1/platform/virtual-users/{id}/mcp-servers`)
   lists its tools at the start of every turn instead. Servers added for one
   conversation only always load on demand.
 

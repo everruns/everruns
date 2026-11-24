@@ -104,7 +104,7 @@ def event_delivery_backend(port: int, timeout: float = 5.0) -> str | None:
     durable health endpoint (admin only; the harness runs AUTH_MODE=none)."""
     conn = http.client.HTTPConnection("127.0.0.1", port, timeout=timeout)
     try:
-        conn.request("GET", "/api/v1/durable/health", headers={"Accept": "application/json"})
+        conn.request("GET", "/api/v1/platform/durable/health", headers={"Accept": "application/json"})
         resp = conn.getresponse()
         raw = resp.read().decode("utf-8", "replace")
         if resp.status != 200:

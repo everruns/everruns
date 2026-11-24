@@ -71,7 +71,7 @@ pub fn routes(state: AppState) -> Router {
     Router::new()
         .command::<CreateBudget>()
         .command::<ListBudgets>()
-        .route("/v1/budgets/config", get(budget_config))
+        .route("/v1/platform/budgets/config", get(budget_config))
         .command::<GetBudget>()
         .command::<UpdateBudgetCmd>()
         .command::<DeleteBudget>()

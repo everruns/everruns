@@ -32,10 +32,10 @@ Verify that `everruns files pull` downloads session workspace files to a local d
 
 2. Create remote files:
    ```bash
-   curl -s -X POST "http://localhost:9300/api/v1/sessions/$SESSION_ID/fs/config.yaml" \
+   curl -s -X POST "http://localhost:9300/api/v1/platform/sessions/$SESSION_ID/fs/config.yaml" \
      -H "Content-Type: application/json" \
      -d '{"content": "key: value", "encoding": "text"}'
-   curl -s -X POST "http://localhost:9300/api/v1/sessions/$SESSION_ID/fs/src/app.rs" \
+   curl -s -X POST "http://localhost:9300/api/v1/platform/sessions/$SESSION_ID/fs/src/app.rs" \
      -H "Content-Type: application/json" \
      -d '{"content": "fn app() {}", "encoding": "text"}'
    ```
@@ -71,7 +71,7 @@ Verify that `everruns files pull` downloads session workspace files to a local d
 
 8. Pull with --delete after removing remote file:
    ```bash
-   curl -s -X DELETE "http://localhost:9300/api/v1/sessions/$SESSION_ID/fs/config.yaml"
+   curl -s -X DELETE "http://localhost:9300/api/v1/platform/sessions/$SESSION_ID/fs/config.yaml"
    EVERRUNS_API_URL=http://localhost:9300/api EVERRUNS_API_KEY=dev \
      everruns files pull --session $SESSION_ID --delete "$TMPDIR"
    ```

@@ -1,6 +1,6 @@
 // CLI whoami command: who the server says the credential belongs to.
 //
-// Decision: ask `GET /v1/auth/me` rather than read the credential file, so the
+// Decision: ask `GET /v1/platform/auth/me` rather than read the credential file, so the
 // answer covers `--api-key` and `EVERRUNS_API_KEY` too and reflects what the
 // server enforces. `status` stays the offline view of the stored profile.
 // Decision: the access line comes from `token_scope`, which the server sets
@@ -15,7 +15,7 @@ use super::api::ApiClient;
 use crate::output::OutputFormat;
 
 pub async fn run(client: &ApiClient<'_>, output: OutputFormat) -> Result<()> {
-    let me = client.get("/v1/auth/me").await?;
+    let me = client.get("/v1/platform/auth/me").await?;
     if output.is_text() {
         for line in text(&me) {
             println!("{line}");
@@ -98,7 +98,7 @@ mod tests {
         let client = ApiClient::new(&url, "evr_pat_read", None);
         run(&client, OutputFormat::Json).await.unwrap();
         let request = captured.await.unwrap();
-        assert!(request.headers[0].starts_with("GET /v1/auth/me "));
+        assert!(request.headers[0].starts_with("GET /v1/platform/auth/me "));
         assert_eq!(
             request.header("authorization").as_deref(),
             Some("Bearer evr_pat_read")

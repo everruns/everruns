@@ -48,8 +48,8 @@ Verify that `everruns files push --delete` removes remote files that are no long
 
 6. Verify remote state:
    ```bash
-   curl -s "http://localhost:9300/api/v1/sessions/$SESSION_ID/fs/keep.txt" | jq '.content'
-   curl -s "http://localhost:9300/api/v1/sessions/$SESSION_ID/fs/remove.txt"
+   curl -s "http://localhost:9300/api/v1/platform/sessions/$SESSION_ID/fs/keep.txt" | jq '.content'
+   curl -s "http://localhost:9300/api/v1/platform/sessions/$SESSION_ID/fs/remove.txt"
    ```
 
 ## Expected Result

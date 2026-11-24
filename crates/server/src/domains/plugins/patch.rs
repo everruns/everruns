@@ -67,7 +67,7 @@ pub struct PatchInstalledPlugin {
     category = "plugins",
     description = "Update an installed plugin's status or MCP acting identities.",
     method = "PATCH",
-    path = "/v1/plugins/{id}",
+    path = "/v1/platform/plugins/{id}",
     policy = PLUGIN_MANAGE,
     positional = "id",
     cli = CliRoute::new(&["plugins"], "patch").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Disable a plugin, or choose which identity its MCP servers act as", "everruns plugins patch plugin_01h9 --status disabled --reason 'Pause during the incident'",)]),

@@ -160,22 +160,25 @@ fn own_resource_id(map: &serde_json::Map<String, Value>) -> Option<ResourceId> {
 fn route_for_id(id: &str, map: &serde_json::Map<String, Value>) -> Option<LinkRoute> {
     let Some((prefix, _)) = id.split_once('_') else {
         return looks_like_capability(map).then(|| LinkRoute {
-            api_path: Some(format!("v1/capabilities/{id}")),
+            api_path: Some(format!("v1/platform/capabilities/{id}")),
             ui_path: format!("capabilities/{id}"),
         });
     };
     let route = match prefix {
-        "agent" => ("v1/agents", format!("agents/{id}")),
-        "harness" => ("v1/harnesses", format!("harnesses/{id}")),
-        "session" => ("v1/sessions", format!("sessions/{id}/chat")),
-        "app" => ("v1/apps", format!("apps/{id}")),
-        "identity" => ("v1/virtual-users", format!("virtual-users/{id}")),
-        "mcp" => ("v1/mcp-servers", "settings/mcp-catalog".to_string()),
-        "skill" => ("v1/skills", "skills".to_string()),
-        "provider" => ("v1/providers", format!("models/providers/{id}")),
-        "model" => ("v1/models", "models".to_string()),
-        "eval" => ("v1/evals", format!("evals/{id}")),
-        "bdgt" => ("v1/budgets", "budgets".to_string()),
+        "agent" => ("v1/platform/agents", format!("agents/{id}")),
+        "harness" => ("v1/platform/harnesses", format!("harnesses/{id}")),
+        "session" => ("v1/platform/sessions", format!("sessions/{id}/chat")),
+        "app" => ("v1/platform/apps", format!("apps/{id}")),
+        "identity" => ("v1/platform/virtual-users", format!("virtual-users/{id}")),
+        "mcp" => (
+            "v1/platform/mcp-servers",
+            "settings/mcp-catalog".to_string(),
+        ),
+        "skill" => ("v1/platform/skills", "skills".to_string()),
+        "provider" => ("v1/platform/providers", format!("models/providers/{id}")),
+        "model" => ("v1/platform/models", "models".to_string()),
+        "eval" => ("v1/platform/evals", format!("evals/{id}")),
+        "bdgt" => ("v1/platform/budgets", "budgets".to_string()),
         // Channels and triggers live under their agent, so their page needs
         // the owner's id; an object without it gets no link rather than a
         // wrong one.
@@ -187,20 +190,20 @@ fn route_for_id(id: &str, map: &serde_json::Map<String, Value>) -> Option<LinkRo
                 "triggers"
             };
             return Some(LinkRoute {
-                api_path: Some(format!("v1/agents/{agent_id}/{kind}/{id}")),
+                api_path: Some(format!("v1/platform/agents/{agent_id}/{kind}/{id}")),
                 ui_path: format!("agents/{agent_id}/{kind}/{id}"),
             });
         }
         "sched" => {
             let session_id = map.get("session_id").and_then(Value::as_str)?;
             return Some(LinkRoute {
-                api_path: Some(format!("v1/sessions/{session_id}/schedules/{id}")),
+                api_path: Some(format!("v1/platform/sessions/{session_id}/schedules/{id}")),
                 ui_path: format!("sessions/{session_id}/schedules"),
             });
         }
         _ if looks_like_capability(map) => {
             return Some(LinkRoute {
-                api_path: Some(format!("v1/capabilities/{id}")),
+                api_path: Some(format!("v1/platform/capabilities/{id}")),
                 ui_path: format!("capabilities/{id}"),
             });
         }
@@ -246,7 +249,7 @@ mod tests {
             );
             assert_eq!(
                 value["self_url"],
-                format!("https://api.example/api/v1/agents/{agent}/{kind}/{id}")
+                format!("https://api.example/api/v1/platform/agents/{agent}/{kind}/{id}")
             );
         }
         // Without its agent a channel gets no link, not the agent's page.
@@ -277,7 +280,7 @@ mod tests {
         assert!(builder.decorate_value_links(&mut value));
         assert_eq!(
             value["self_url"],
-            "https://api.example/api/v1/mcp-servers/mcp_01h9"
+            "https://api.example/api/v1/platform/mcp-servers/mcp_01h9"
         );
         assert_eq!(
             value["view_url"],

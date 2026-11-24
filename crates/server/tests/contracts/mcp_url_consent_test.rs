@@ -65,7 +65,7 @@ async fn waiting_session(server: &TestServer) -> SessionId {
 async fn waiting_session_for_agent(server: &TestServer, platform: bool) -> SessionId {
     let agent: Agent = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": "consent-test-agent",
                 "display_name": "Consent Test",
@@ -78,7 +78,7 @@ async fn waiting_session_for_agent(server: &TestServer, platform: bool) -> Sessi
         .json();
     let session: Session = server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             if platform {
                 json!({"agent_name":"platform-chat"})
             } else {
@@ -153,7 +153,7 @@ async fn post_consent(
 ) -> test_harness::TestResponse {
     server
         .post(
-            &format!("/v1/sessions/{session_id}/mcp-elicitation-consent"),
+            &format!("/v1/platform/sessions/{session_id}/mcp-elicitation-consent"),
             body,
         )
         .await
@@ -414,7 +414,7 @@ async fn a_session_that_is_not_paused_rejects_a_decision() {
     let server = test_server().await;
     let agent: Agent = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": "consent-active-agent",
                 "display_name": "Consent Active",
@@ -426,7 +426,10 @@ async fn a_session_that_is_not_paused_rejects_a_decision() {
         .assert_status(StatusCode::CREATED)
         .json();
     let session: Session = server
-        .post("/v1/sessions", json!({ "agent_id": agent.public_id }))
+        .post(
+            "/v1/platform/sessions",
+            json!({ "agent_id": agent.public_id }),
+        )
         .await
         .assert_status(StatusCode::CREATED)
         .json();

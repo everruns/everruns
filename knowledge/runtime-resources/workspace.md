@@ -99,14 +99,14 @@ equality invariant). File access is keyed by the session's `workspace_id`: the
 agent's `file_system` / `virtual_bash` tools (a [`WorkspaceScopedFileSystem`]
 decorator pins tool I/O to the workspace), system-prompt file reads,
 initial-file seeding and capability mounts, and the legacy
-`/v1/sessions/{session_id}/fs/*` alias. For a session's own workspace these all
+`/v1/platform/sessions/{session_id}/fs/*` alias. For a session's own workspace these all
 reduce to the session id. Keying by `workspace_id` still matters for the legacy
 shared workspaces below.
 
 ### Attach retired
 
 `CreateSession` used to accept a `workspace_id` to attach a session to an
-existing workspace, and `POST /v1/workspaces` created standalone ones for that
+existing workspace, and `POST /v1/platform/workspaces` created standalone ones for that
 purpose. Both are removed. The only gate was the org-wide `WORKSPACE_MANAGE`
 permission, so a new session on any agent could be pointed at another session's
 workspace (whose id is derivable from the session id) and read or write its
@@ -164,21 +164,21 @@ preserved verbatim.
 
 REST endpoints:
 
-* `GET    /v1/workspaces`
-* `GET    /v1/workspaces/{workspace_id}`
-* `PATCH  /v1/workspaces/{workspace_id}`
-* `DELETE /v1/workspaces/{workspace_id}`, archive / delete per lifecycle
-* `GET    /v1/workspaces/{workspace_id}/fs/...`
-* `POST   /v1/workspaces/{workspace_id}/fs/...`
-* `PUT    /v1/workspaces/{workspace_id}/fs/...`
-* `DELETE /v1/workspaces/{workspace_id}/fs/...`
-* `POST   /v1/workspaces/{workspace_id}/fs/_/{move,copy,stat,grep}`
-* `GET    /v1/workspaces/{workspace_id}/fs/_/download/...`, raw bytes
+* `GET    /v1/platform/workspaces`
+* `GET    /v1/platform/workspaces/{workspace_id}`
+* `PATCH  /v1/platform/workspaces/{workspace_id}`
+* `DELETE /v1/platform/workspaces/{workspace_id}`, archive / delete per lifecycle
+* `GET    /v1/platform/workspaces/{workspace_id}/fs/...`
+* `POST   /v1/platform/workspaces/{workspace_id}/fs/...`
+* `PUT    /v1/platform/workspaces/{workspace_id}/fs/...`
+* `DELETE /v1/platform/workspaces/{workspace_id}/fs/...`
+* `POST   /v1/platform/workspaces/{workspace_id}/fs/_/{move,copy,stat,grep}`
+* `GET    /v1/platform/workspaces/{workspace_id}/fs/_/download/...`, raw bytes
 
 A `GET` on a file path also returns raw bytes when the request carries
 `Accept: application/octet-stream`; otherwise it returns the JSON envelope.
 The whole `/fs/*` surface (the path routes plus the `/fs/_/*` action routes)
-is mirrored on the legacy `/v1/sessions/{session_id}/fs/*` aliases for
+is mirrored on the legacy `/v1/platform/sessions/{session_id}/fs/*` aliases for
 backwards compatibility.
 
 ### Session-scoped aliases
@@ -187,7 +187,7 @@ For backward compatibility, the legacy session-scoped filesystem routes are
 preserved as **thin aliases** that resolve the session's `workspace_id` and
 delegate to the workspace routes:
 
-* `/v1/sessions/{session_id}/fs/...` → `/v1/workspaces/{session.workspace_id}/fs/...`
+* `/v1/platform/sessions/{session_id}/fs/...` → `/v1/platform/workspaces/{session.workspace_id}/fs/...`
 
 Behavior, request body, and response shape are identical. Clients that hold
 session IDs do not need to change.
@@ -276,7 +276,7 @@ internally.
 ### Behavior
 
 1. **Auto-create parents:** Creating `/a/b/c.txt` automatically creates `/a` and `/a/b` directories.
-2. **Delete cascade vs archive:** `DELETE /v1/workspaces/{id}` is a soft-delete that flips the workspace to `archived` and **keeps** its files (archived workspaces are read-only, the workspace fs HTTP layer rejects POST/PUT/DELETE on non-`active` workspaces). The `workspace_files.workspace_id` FK has `ON DELETE CASCADE`, so a hard row removal in `workspaces` (today only reachable through an out-of-band SQL deletion or a future hard-delete API) does cascade and removes all files.
+2. **Delete cascade vs archive:** `DELETE /v1/platform/workspaces/{id}` is a soft-delete that flips the workspace to `archived` and **keeps** its files (archived workspaces are read-only, the workspace fs HTTP layer rejects POST/PUT/DELETE on non-`active` workspaces). The `workspace_files.workspace_id` FK has `ON DELETE CASCADE`, so a hard row removal in `workspaces` (today only reachable through an out-of-band SQL deletion or a future hard-delete API) does cascade and removes all files.
 3. **Encoding detection:** Files with null bytes in first 8KB are base64 encoded.
 4. **Readonly protection:** Cannot modify or delete readonly files; recursive delete of a directory fails if it contains any readonly files.
 5. **Hash-based freshness:** `read_file` and `write_file` return a `content_hash` (`sha256:...`). `edit_file` requires that hash. A stale edit safely rebases only when every exact replacement remains unique and non-overlapping in the current content; conflicts and write races fail without modifying the file.
@@ -307,7 +307,7 @@ workspace-scoping is follow-up work.
 
 ### API Endpoints
 
-All under `/v1/sessions/{session_id}/git/`. Unchanged.
+All under `/v1/platform/sessions/{session_id}/git/`. Unchanged.
 
 ## Open Questions
 

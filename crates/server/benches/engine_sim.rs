@@ -790,14 +790,14 @@ async fn post(client: &reqwest::Client, url: String, body: Value) -> Value {
 async fn create_agent(client: &reqwest::Client, base: &str) -> String {
     let provider = post(
         client,
-        format!("{base}/v1/providers"),
+        format!("{base}/v1/platform/providers"),
         json!({"name": format!("Engine simulator {}", Uuid::now_v7()), "provider_type": "llmsim"}),
     )
     .await;
     let provider_id = provider["id"].as_str().expect("provider id");
     let model = post(
         client,
-        format!("{base}/v1/providers/{provider_id}/models"),
+        format!("{base}/v1/platform/providers/{provider_id}/models"),
         json!({
             "model_id": format!("llmsim-sim-{}", Uuid::now_v7().simple()),
             "display_name": "Engine simulator",
@@ -807,7 +807,7 @@ async fn create_agent(client: &reqwest::Client, base: &str) -> String {
     .await;
     let agent = post(
         client,
-        format!("{base}/v1/agents"),
+        format!("{base}/v1/platform/agents"),
         json!({
             "name": format!("engine-sim-{}", Uuid::now_v7().simple()),
             "system_prompt": "Respond concisely.",
@@ -832,7 +832,7 @@ struct Session {
 async fn create_session(client: &reqwest::Client, base: &str, agent: &str) -> Session {
     let session = post(
         client,
-        format!("{base}/v1/sessions"),
+        format!("{base}/v1/platform/sessions"),
         json!({"harness_name": "generic", "agent_id": agent, "title": "Engine simulator"}),
     )
     .await;
@@ -840,7 +840,7 @@ async fn create_session(client: &reqwest::Client, base: &str, agent: &str) -> Se
     let uuid = SessionId::from_str(&id).expect("a session id").uuid();
     post(
         client,
-        format!("{base}/v1/sessions/{id}/fs/load-test/research.md"),
+        format!("{base}/v1/platform/sessions/{id}/fs/load-test/research.md"),
         json!({
             "content": format!("# Research notes\n\n{}", RESEARCH_NOTES_LINE.repeat(40)),
             "encoding": "text"
@@ -853,7 +853,7 @@ async fn create_session(client: &reqwest::Client, base: &str, agent: &str) -> Se
 async fn send(client: &reqwest::Client, base: &str, session: &Session, text: &str) {
     post(
         client,
-        format!("{base}/v1/sessions/{}/messages", session.id),
+        format!("{base}/v1/platform/sessions/{}/messages", session.id),
         json!({"message": {"content": [{"type": "text", "text": text}]}}),
     )
     .await;

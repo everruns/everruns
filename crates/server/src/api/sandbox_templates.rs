@@ -171,36 +171,36 @@ pub fn routes(state: AppState) -> Router {
         .command::<crate::domains::sandboxes::diagnose::GetSandboxProviderState>()
         .command::<crate::domains::sandboxes::diagnose::DiagnoseSandbox>()
         .route(
-            "/v1/sandbox-templates",
+            "/v1/platform/sandbox-templates",
             get(list_sandbox_templates).post(create_sandbox_template),
         )
         .route(
-            "/v1/sandbox-templates/{sandbox_template_id}",
+            "/v1/platform/sandbox-templates/{sandbox_template_id}",
             get(get_sandbox_template)
                 .put(revise_sandbox_template)
                 .delete(archive_sandbox_template),
         )
         .route(
-            "/v1/sessions/{session_id}/sandbox",
+            "/v1/platform/sessions/{session_id}/sandbox",
             get(get_session_sandbox),
         )
-        .route("/v1/sandbox-targets", get(list_sandbox_targets))
+        .route("/v1/platform/sandbox-targets", get(list_sandbox_targets))
         // Compatibility aliases for clients released before the resource rename.
         .route(
-            "/v1/environments",
+            "/v1/platform/environments",
             get(list_sandbox_templates).post(create_sandbox_template),
         )
         .route(
-            "/v1/environments/{sandbox_template_id}",
+            "/v1/platform/environments/{sandbox_template_id}",
             get(get_sandbox_template)
                 .put(revise_sandbox_template)
                 .delete(archive_sandbox_template),
         )
         .route(
-            "/v1/sessions/{session_id}/environment",
+            "/v1/platform/sessions/{session_id}/environment",
             get(get_session_sandbox),
         )
-        .route("/v1/environment-targets", get(list_sandbox_targets))
+        .route("/v1/platform/environment-targets", get(list_sandbox_targets))
         .with_state(state)
 }
 
@@ -214,7 +214,7 @@ fn authorize(
         .map_err(|error| ErrorResponse::new(error.to_string()).into_response(StatusCode::FORBIDDEN))
 }
 
-#[utoipa::path(description = "List active reusable Sandbox Templates available to the organization.", get, path = "/v1/sandbox-templates", responses((status = 200, body = Vec<crate::domains::sandbox_templates::record::SandboxTemplate>)), tag = "sandbox-templates")]
+#[utoipa::path(description = "List active reusable Sandbox Templates available to the organization.", get, path = "/v1/platform/sandbox-templates", responses((status = 200, body = Vec<crate::domains::sandbox_templates::record::SandboxTemplate>)), tag = "sandbox-templates")]
 pub async fn list_sandbox_templates(
     org: ResolvedOrg,
     State(state): State<AppState>,
@@ -229,7 +229,7 @@ pub async fn list_sandbox_templates(
     ))
 }
 
-#[utoipa::path(description = "Create a reusable Sandbox Template and its first immutable revision.", post, path = "/v1/sandbox-templates", request_body = CreateSandboxTemplateRequest, responses((status = 200, body = crate::domains::sandbox_templates::record::SandboxTemplate)), tag = "sandbox-templates")]
+#[utoipa::path(description = "Create a reusable Sandbox Template and its first immutable revision.", post, path = "/v1/platform/sandbox-templates", request_body = CreateSandboxTemplateRequest, responses((status = 200, body = crate::domains::sandbox_templates::record::SandboxTemplate)), tag = "sandbox-templates")]
 pub async fn create_sandbox_template(
     org: ResolvedOrg,
     State(state): State<AppState>,
@@ -293,7 +293,7 @@ pub async fn create_sandbox_template(
     Ok(Json(template))
 }
 
-#[utoipa::path(description = "Get one reusable Sandbox Template and its current immutable revision.", get, path = "/v1/sandbox-templates/{sandbox_template_id}", params(("sandbox_template_id" = String, Path)), responses((status = 200, body = crate::domains::sandbox_templates::record::SandboxTemplate)), tag = "sandbox-templates")]
+#[utoipa::path(description = "Get one reusable Sandbox Template and its current immutable revision.", get, path = "/v1/platform/sandbox-templates/{sandbox_template_id}", params(("sandbox_template_id" = String, Path)), responses((status = 200, body = crate::domains::sandbox_templates::record::SandboxTemplate)), tag = "sandbox-templates")]
 pub async fn get_sandbox_template(
     org: ResolvedOrg,
     State(state): State<AppState>,
@@ -310,7 +310,7 @@ pub async fn get_sandbox_template(
     ))
 }
 
-#[utoipa::path(description = "Create the next immutable revision of a reusable Sandbox Template.", put, path = "/v1/sandbox-templates/{sandbox_template_id}", params(("sandbox_template_id" = String, Path)), request_body = ReviseSandboxTemplateRequest, responses((status = 200, body = crate::domains::sandbox_templates::record::SandboxTemplate)), tag = "sandbox-templates")]
+#[utoipa::path(description = "Create the next immutable revision of a reusable Sandbox Template.", put, path = "/v1/platform/sandbox-templates/{sandbox_template_id}", params(("sandbox_template_id" = String, Path)), request_body = ReviseSandboxTemplateRequest, responses((status = 200, body = crate::domains::sandbox_templates::record::SandboxTemplate)), tag = "sandbox-templates")]
 pub async fn revise_sandbox_template(
     org: ResolvedOrg,
     State(state): State<AppState>,
@@ -391,7 +391,7 @@ pub async fn revise_sandbox_template(
     Ok(Json(updated))
 }
 
-#[utoipa::path(description = "Archive a user-managed Sandbox Template without changing pinned Sessions.", delete, path = "/v1/sandbox-templates/{sandbox_template_id}", params(("sandbox_template_id" = String, Path)), responses((status = 200, body = serde_json::Value)), tag = "sandbox-templates")]
+#[utoipa::path(description = "Archive a user-managed Sandbox Template without changing pinned Sessions.", delete, path = "/v1/platform/sandbox-templates/{sandbox_template_id}", params(("sandbox_template_id" = String, Path)), responses((status = 200, body = serde_json::Value)), tag = "sandbox-templates")]
 pub async fn archive_sandbox_template(
     org: ResolvedOrg,
     State(state): State<AppState>,
@@ -413,7 +413,7 @@ pub async fn archive_sandbox_template(
 #[utoipa::path(
     description = "Get the primary Sandbox a Session runs in: template, target, containment, and capabilities.",
     get,
-    path = "/v1/sessions/{session_id}/sandbox",
+    path = "/v1/platform/sessions/{session_id}/sandbox",
     params(
         ("session_id" = String, Path, description = "Session ID")
     ),
@@ -457,7 +457,7 @@ pub async fn get_session_sandbox(
 #[utoipa::path(
     description = "List the Sandbox targets this deployment can offer, with the capabilities each one actually has.",
     get,
-    path = "/v1/sandbox-targets",
+    path = "/v1/platform/sandbox-targets",
     responses(
         (status = 200, description = "Available Sandbox targets", body = SandboxTargetsResponse),
     ),

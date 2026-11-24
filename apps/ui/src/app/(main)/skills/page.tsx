@@ -26,16 +26,16 @@ export default async function SkillsPage() {
     // Same key `useOrgFeatureFlags` reads, so the client reuses this instead of
     // refetching the flags it was just handed.
     const flags = await seedQueryData(queryClient, ["org-feature-flags", currentOrgId], () =>
-      serverGet<FeatureFlags>(requestContext, `/v1/orgs/${currentOrgId}/feature-flags`),
+      serverGet<FeatureFlags>(requestContext, `/v1/platform/orgs/${currentOrgId}/feature-flags`),
     );
 
     if (flags?.skills) {
       await Promise.all([
         seedQueryData(queryClient, [...queryKeys.skills.list(false), currentOrgId], () =>
-          serverGetList<Skill>(requestContext, "/v1/skills"),
+          serverGetList<Skill>(requestContext, "/v1/platform/skills"),
         ),
         seedQueryData(queryClient, [...queryKeys.policies.config("skills"), currentOrgId], () =>
-          serverGet<ResourceConfigResponse>(requestContext, "/v1/skills/config"),
+          serverGet<ResourceConfigResponse>(requestContext, "/v1/platform/skills/config"),
         ),
       ]);
     }

@@ -84,10 +84,10 @@ class Smoke:
         return result.stdout.strip().splitlines()[0] if result.stdout.strip() else ""
 
     def events(self):
-        return self.request("GET", f"/v1/sessions/{self.session}/events?limit=1000")["data"]
+        return self.request("GET", f"/v1/platform/sessions/{self.session}/events?limit=1000")["data"]
 
     def send(self, text):
-        response = self.request("POST", f"/v1/sessions/{self.session}/messages", {
+        response = self.request("POST", f"/v1/platform/sessions/{self.session}/messages", {
             "message": {"role": "user", "content": [{"type": "text", "text": text}]}})
         return response["id"]
 
@@ -96,7 +96,7 @@ class Smoke:
         # optional API credential never appears in process arguments.
         config = "".join("header = " + json.dumps(key + ": " + value) + "\n" for key, value in self.headers.items())
         self.sse = subprocess.Popen(["curl", "--config", "-", "--silent", "--show-error", "--no-buffer",
-            "--max-time", "300", self.url(f"/v1/sessions/{self.session}/sse?after_sequence=0")],
+            "--max-time", "300", self.url(f"/v1/platform/sessions/{self.session}/sse?after_sequence=0")],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
         self.sse.stdin.write(config)
         self.sse.stdin.close()
@@ -229,10 +229,10 @@ class Smoke:
         for event in events:
             if event["type"] == "llm.generation":
                 require(not event["data"]["metadata"].get("provider_id"), "Custom usage claims a CP provider")
-        require(self.request("GET", f"/v1/sessions/{self.session}")["status"] == "idle", "Session status did not become idle")
-        messages = self.request("GET", f"/v1/sessions/{self.session}/messages")["data"]
+        require(self.request("GET", f"/v1/platform/sessions/{self.session}")["status"] == "idle", "Session status did not become idle")
+        messages = self.request("GET", f"/v1/platform/sessions/{self.session}/messages")["data"]
         require(any(m["role"] == "agent" for m in messages), "Ordinary messages API has no assistant answer")
-        work = self.request("GET", f"/v1/sessions/{self.session}/work")
+        work = self.request("GET", f"/v1/platform/sessions/{self.session}/work")
         (self.root / "work-report.json").write_text(json.dumps(work, indent=2))
         require(work.get("report"), "Work/trace report is empty")
         self.check("real model calls private sales tool; answer, usage, trace, messages and idle status reach the CP")
@@ -244,7 +244,7 @@ class Smoke:
         active = int(self.sql("SELECT count(*) FROM durable_workers WHERE last_heartbeat_at > NOW() - INTERVAL '30 seconds' AND accepting_tasks"))
         require(active > 0, "Smoke requires a live built-in worker to prove routing isolation")
         self.check("control plane and built-in worker are healthy")
-        self.agent = self.request("POST", "/v1/agents", {"name": "custom-smoke-" + uuid.uuid4().hex[:10],
+        self.agent = self.request("POST", "/v1/platform/agents", {"name": "custom-smoke-" + uuid.uuid4().hex[:10],
             "system_prompt": "The custom worker owns this agent's implementation."})["id"]
         self.deployment = self.sql("""INSERT INTO custom_workers (org_id, agent_id, name, token_hash)
             SELECT org_id, id, 'smoke-data-agent', decode(:'digest', 'hex') FROM agents WHERE public_id = :'agent'
@@ -253,7 +253,7 @@ class Smoke:
         with sqlite3.connect(self.database) as db:
             db.executescript("CREATE TABLE sales(region TEXT NOT NULL, amount_cents INTEGER NOT NULL); INSERT INTO sales VALUES ('north',18037),('north',9241),('south',7000);")
         os.chmod(self.database, 0o644)
-        self.session = self.request("POST", "/v1/sessions", {"agent_id": self.agent, "source": "playground", "title": "Custom data worker smoke"})["id"]
+        self.session = self.request("POST", "/v1/platform/sessions", {"agent_id": self.agent, "source": "playground", "title": "Custom data worker smoke"})["id"]
         (self.root / "session.json").write_text(json.dumps({"agent_id": self.agent, "session_id": self.session, "deployment_id": self.deployment}, indent=2))
         self.watch()
         question = "Use sales_summary for north. Report orders and revenue_cents as integers in JSON. Do not guess."

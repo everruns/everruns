@@ -336,7 +336,7 @@ async fn a_person_cannot_run_internal_commands() {
 }
 
 /// Internal commands stay off every public surface: discovery, the scripted
-/// toolset (MCP, Platform, `/v1/commands`), and the command tree.
+/// toolset (MCP, Platform, `/v1/platform/commands`), and the command tree.
 #[test]
 fn internal_commands_are_on_no_public_surface() {
     let flags = all_feature_flags_for_test();

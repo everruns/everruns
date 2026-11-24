@@ -394,7 +394,7 @@ pub struct CreateAgentTrigger {
     category = "agent_triggers",
     description = "Create a schedule or webhook trigger for an agent.",
     method = "POST",
-    path = "/v1/agents/{agent_id}/triggers",
+    path = "/v1/platform/agents/{agent_id}/triggers",
     policy = AGENT_MANAGE,
     cli = CliRoute::new(&["agents", "triggers"], "create").with_examples(&[CliExample::new("Run an agent every weekday morning on a cron schedule", "everruns agents triggers create --agent-id agent_01h9 --trigger-type schedule --cron-expression '0 9 * * 1-5' --message 'Summarize overnight alerts' --reason 'Daily alert digest'")]),
 )]
@@ -569,7 +569,7 @@ pub struct ListAgentTriggers {
     category = "agent_triggers",
     description = "List an agent's triggers. include_archived=true also returns archived.",
     method = "GET",
-    path = "/v1/agents/{agent_id}/triggers",
+    path = "/v1/platform/agents/{agent_id}/triggers",
     policy = AGENT_VIEW,
     cli = CliRoute::new(&["agents", "triggers"], "list").with_args(&[CliArg::new("agent_id").at(1)]).with_examples(&[CliExample::new("See what triggers an agent already has before adding one", "everruns agents triggers list agent_01h9")]),
     positional = "agent_id",
@@ -615,7 +615,7 @@ pub struct GetAgentTrigger {
     category = "agent_triggers",
     description = "Get a single agent trigger by id.",
     method = "GET",
-    path = "/v1/agents/{agent_id}/triggers/{trigger_id}",
+    path = "/v1/platform/agents/{agent_id}/triggers/{trigger_id}",
     policy = AGENT_VIEW,
     cli = CliRoute::new(&["agents", "triggers"], "get").with_examples(&[CliExample::new("Check a trigger's type, schedule and enabled state", "everruns agents triggers get --agent-id agent_01h9 --trigger-id trg_01h9")]),
 )]
@@ -654,7 +654,7 @@ pub struct UpdateAgentTriggerCmd {
     category = "agent_triggers",
     description = "Update an agent trigger. Only provided fields change.",
     method = "PATCH",
-    path = "/v1/agents/{agent_id}/triggers/{trigger_id}",
+    path = "/v1/platform/agents/{agent_id}/triggers/{trigger_id}",
     policy = AGENT_MANAGE,
     cli = CliRoute::new(&["agents", "triggers"], "update").with_examples(&[CliExample::new("Pause a trigger without deleting it", "everruns agents triggers update --agent-id agent_01h9 --trigger-id trg_01h9 --enabled false --reason 'Pause during the migration'")]),
 )]
@@ -855,7 +855,7 @@ pub struct DeleteAgentTrigger {
     category = "agent_triggers",
     description = "Archive an agent trigger and remove its durable schedule.",
     method = "DELETE",
-    path = "/v1/agents/{agent_id}/triggers/{trigger_id}",
+    path = "/v1/platform/agents/{agent_id}/triggers/{trigger_id}",
     policy = AGENT_MANAGE,
     cli = CliRoute::new(&["agents", "triggers"], "delete").with_examples(&[CliExample::new("Stop a trigger from firing and archive it", "everruns agents triggers delete --agent-id agent_01h9 --trigger-id trg_01h9 --reason 'Digest no longer needed'")]),
 )]
@@ -916,7 +916,7 @@ pub struct TriggerAgentTriggerNow {
     category = "agent_triggers",
     description = "Manually fire an agent trigger once. Pass an event to run it through the trigger's filter, message and session routing as a real one would; webhook, GitHub and MCP event triggers need one.",
     method = "POST",
-    path = "/v1/agents/{agent_id}/triggers/{trigger_id}/trigger",
+    path = "/v1/platform/agents/{agent_id}/triggers/{trigger_id}/trigger",
     policy = AGENT_MANAGE,
     cli = CliRoute::new(&["agents", "triggers"], "trigger").with_examples(&[CliExample::new("Fire a trigger once now to test it without waiting for its schedule", "everruns agents triggers trigger --agent-id agent_01h9 --trigger-id trg_01h9 --reason 'Test the digest message'"), CliExample::new("Run a GitHub trigger on an existing pull request, in that pull request's own session", "everruns agents triggers trigger --agent-id agent_01h9 --trigger-id trg_01h9 --event '{\"repository\":\"acme/api\",\"pull_request\":12}' --reason 'Review this pull request'")]),
 )]

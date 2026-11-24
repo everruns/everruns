@@ -1,7 +1,7 @@
 // Provider-domain services every command context attaches.
 //
 // Decision: one bundle, built once in `app_builder` and shared by the
-// `/v1/providers` routes, the MCP endpoint, the gRPC worker and the in-process
+// `/v1/platform/providers` routes, the MCP endpoint, the gRPC worker and the in-process
 // worker. Shared rather than rebuilt per surface so the provider resolver whose
 // cache provider/model writes invalidate is the one the runtime reads
 // (EVE-1233, EVE-1234).

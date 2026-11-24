@@ -1,6 +1,6 @@
 // Memory virtual filesystem HTTP routes.
 //
-// Mounted on /v1/memories/{memory_id}/fs and mirrors the request shape used
+// Mounted on /v1/platform/memories/{memory_id}/fs and mirrors the request shape used
 // by the session filesystem so reusable client code is straightforward to
 // share.
 
@@ -31,17 +31,23 @@ fn service(state: &ApiState) -> MemoryFileService {
 pub fn routes(state: ApiState) -> Router {
     Router::new()
         .route(
-            "/v1/memories/{memory_id}/fs",
+            "/v1/platform/memories/{memory_id}/fs",
             get(list_root).post(create_at_root),
         )
-        .route("/v1/memories/{memory_id}/fs/_/stat", post(stat_action))
-        .route("/v1/memories/{memory_id}/fs/_/grep", post(grep_action))
         .route(
-            "/v1/memories/{memory_id}/fs/_/download/{*path}",
+            "/v1/platform/memories/{memory_id}/fs/_/stat",
+            post(stat_action),
+        )
+        .route(
+            "/v1/platform/memories/{memory_id}/fs/_/grep",
+            post(grep_action),
+        )
+        .route(
+            "/v1/platform/memories/{memory_id}/fs/_/download/{*path}",
             get(download_action),
         )
         .route(
-            "/v1/memories/{memory_id}/fs/{*path}",
+            "/v1/platform/memories/{memory_id}/fs/{*path}",
             get(get_file)
                 .post(create_file)
                 .put(update_file)
@@ -238,7 +244,7 @@ fn err_to_response(e: MemoryFsError) -> (StatusCode, Json<ErrorResponse>) {
 #[utoipa::path(
     description = "List immediate children of the Memory root.",
     get,
-    path = "/v1/memories/{memory_id}/fs",
+    path = "/v1/platform/memories/{memory_id}/fs",
     params(("memory_id" = String, Path, description = "Memory ID")),
     responses(
         (status = 200, description = "Directory listing", body = ListResponse<MemoryFileInfo>),
@@ -270,7 +276,7 @@ pub async fn list_root(
     operation_id = "get_memory_file",
     description = "Read a file or list a directory inside a Memory.",
     get,
-    path = "/v1/memories/{memory_id}/fs/{path}",
+    path = "/v1/platform/memories/{memory_id}/fs/{path}",
     params(
         ("memory_id" = String, Path, description = "Memory ID"),
         ("path" = String, Path, description = "File or directory path"),
@@ -325,7 +331,7 @@ pub async fn get_file(
     Ok(Json(read_to_dto(read)).into_response())
 }
 
-// `POST /v1/memories/{id}/fs` is intentionally unsupported and not
+// `POST /v1/platform/memories/{id}/fs` is intentionally unsupported and not
 // documented in OpenAPI — clients must include a path. The handler exists
 // so the router method returns 400 rather than 405.
 pub async fn create_at_root(
@@ -338,7 +344,7 @@ pub async fn create_at_root(
     Err((
         StatusCode::BAD_REQUEST,
         Json(ErrorResponse::new(
-            "path required; POST to /v1/memories/{id}/fs/{path}",
+            "path required; POST to /v1/platform/memories/{id}/fs/{path}",
         )),
     ))
 }
@@ -346,7 +352,7 @@ pub async fn create_at_root(
 #[utoipa::path(
     description = "Create a file or directory inside a Memory.",
     post,
-    path = "/v1/memories/{memory_id}/fs/{path}",
+    path = "/v1/platform/memories/{memory_id}/fs/{path}",
     params(
         ("memory_id" = String, Path, description = "Memory ID"),
         ("path" = String, Path, description = "Target path"),
@@ -405,7 +411,7 @@ pub async fn create_file(
 #[utoipa::path(
     description = "Update a file's content. Directories cannot be updated.",
     put,
-    path = "/v1/memories/{memory_id}/fs/{path}",
+    path = "/v1/platform/memories/{memory_id}/fs/{path}",
     params(
         ("memory_id" = String, Path, description = "Memory ID"),
         ("path" = String, Path, description = "Target path"),
@@ -451,7 +457,7 @@ pub async fn update_file(
     operation_id = "delete_memory_file",
     description = "Delete a file or directory. Pass `recursive=true` to delete non-empty directories.",
     delete,
-    path = "/v1/memories/{memory_id}/fs/{path}",
+    path = "/v1/platform/memories/{memory_id}/fs/{path}",
     params(
         ("memory_id" = String, Path, description = "Memory ID"),
         ("path" = String, Path, description = "Target path"),
@@ -485,7 +491,7 @@ pub async fn delete_file(
 #[utoipa::path(
     description = "Stat a file or directory inside a Memory.",
     post,
-    path = "/v1/memories/{memory_id}/fs/_/stat",
+    path = "/v1/platform/memories/{memory_id}/fs/_/stat",
     params(("memory_id" = String, Path, description = "Memory ID")),
     request_body = StatRequest,
     responses(
@@ -513,7 +519,7 @@ pub async fn stat_action(
 #[utoipa::path(
     description = "Search Memory files by regex.",
     post,
-    path = "/v1/memories/{memory_id}/fs/_/grep",
+    path = "/v1/platform/memories/{memory_id}/fs/_/grep",
     params(("memory_id" = String, Path, description = "Memory ID")),
     request_body = GrepRequest,
     responses(
@@ -552,7 +558,7 @@ pub async fn grep_action(
 #[utoipa::path(
     description = "Download raw bytes of a Memory file.",
     get,
-    path = "/v1/memories/{memory_id}/fs/_/download/{path}",
+    path = "/v1/platform/memories/{memory_id}/fs/_/download/{path}",
     params(
         ("memory_id" = String, Path, description = "Memory ID"),
         ("path" = String, Path, description = "File path"),

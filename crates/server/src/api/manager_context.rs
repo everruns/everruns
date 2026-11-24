@@ -1,13 +1,13 @@
 // Manager context over REST.
 //
-//   GET    /v1/context/{entity_ref}          read an entity's manager context
-//   PUT    /v1/context/{entity_ref}          replace it
-//   POST   /v1/context/{entity_ref}/append   add a paragraph
-//   DELETE /v1/context/{entity_ref}          empty it
+//   GET    /v1/platform/context/{entity_ref}          read an entity's manager context
+//   PUT    /v1/platform/context/{entity_ref}          replace it
+//   POST   /v1/platform/context/{entity_ref}/append   add a paragraph
+//   DELETE /v1/platform/context/{entity_ref}          empty it
 //
 // Thin routes over the `*_manager_context` commands
 // (`domains::change_history::context`), dispatched through the same pipeline
-// as `/v1/commands`. The surface is pinned to `api` so the reason header the
+// as `/v1/platform/commands`. The surface is pinned to `api` so the reason header the
 // HTTP layer captured is recorded as a REST change. Mounted by
 // `command_dispatch::routes`.
 
@@ -74,10 +74,10 @@ async fn dispatch(
     Ok(Json(context))
 }
 
-/// GET /v1/context/{entity_ref} - Read an entity's manager context
+/// GET /v1/platform/context/{entity_ref} - Read an entity's manager context
 #[utoipa::path(
     get,
-    path = "/v1/context/{entity_ref}",
+    path = "/v1/platform/context/{entity_ref}",
     params(
         ("entity_ref" = String, Path, description = "The entity's public id, e.g. agent_01933b5a..."),
         ContextKindQuery,
@@ -100,10 +100,10 @@ pub async fn get_manager_context(
     dispatch(&org, &state, "get_manager_context", params).await
 }
 
-/// PUT /v1/context/{entity_ref} - Replace an entity's manager context
+/// PUT /v1/platform/context/{entity_ref} - Replace an entity's manager context
 #[utoipa::path(
     put,
-    path = "/v1/context/{entity_ref}",
+    path = "/v1/platform/context/{entity_ref}",
     params(
         ("entity_ref" = String, Path, description = "The entity's public id"),
         ContextKindQuery,
@@ -134,10 +134,10 @@ pub async fn set_manager_context(
     dispatch(&org, &state, "set_manager_context", params).await
 }
 
-/// POST /v1/context/{entity_ref}/append - Add a paragraph to an entity's manager context
+/// POST /v1/platform/context/{entity_ref}/append - Add a paragraph to an entity's manager context
 #[utoipa::path(
     post,
-    path = "/v1/context/{entity_ref}/append",
+    path = "/v1/platform/context/{entity_ref}/append",
     params(
         ("entity_ref" = String, Path, description = "The entity's public id"),
         ContextKindQuery,
@@ -166,10 +166,10 @@ pub async fn append_manager_context(
     dispatch(&org, &state, "append_manager_context", params).await
 }
 
-/// DELETE /v1/context/{entity_ref} - Empty an entity's manager context
+/// DELETE /v1/platform/context/{entity_ref} - Empty an entity's manager context
 #[utoipa::path(
     delete,
-    path = "/v1/context/{entity_ref}",
+    path = "/v1/platform/context/{entity_ref}",
     params(
         ("entity_ref" = String, Path, description = "The entity's public id"),
         ContextKindQuery,

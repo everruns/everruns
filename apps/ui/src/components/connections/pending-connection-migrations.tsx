@@ -17,10 +17,11 @@ export function PendingConnectionMigrations() {
   const pending = useQuery({
     queryKey: ["pending-connection-migrations"],
     queryFn: async () =>
-      (await api.get<{ data: PendingConnection[] }>("/v1/user/connection-migrations")).data.data,
+      (await api.get<{ data: PendingConnection[] }>("/v1/platform/user/connection-migrations")).data
+        .data,
   });
   const move = useMutation({
-    mutationFn: async (id: string) => api.post(`/v1/user/connection-migrations/${id}`),
+    mutationFn: async (id: string) => api.post(`/v1/platform/user/connection-migrations/${id}`),
     onSuccess: () => {
       client.invalidateQueries({ queryKey: ["pending-connection-migrations"] });
       client.invalidateQueries({ queryKey: ["identity-connections"] });

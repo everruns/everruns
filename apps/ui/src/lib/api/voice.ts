@@ -48,7 +48,7 @@ export async function startSessionVoice(
   request: VoiceCallRequest,
 ): Promise<VoiceCallResponse> {
   const response = await api.post<VoiceCallResponse>(
-    `/v1/sessions/${sessionId}/voice/calls`,
+    `/v1/platform/sessions/${sessionId}/voice/calls`,
     request,
   );
   return response.data;
@@ -59,7 +59,7 @@ export async function endSessionVoice(
   voiceConnectionId: string,
   reason?: string,
 ): Promise<void> {
-  await api.post(`/v1/sessions/${sessionId}/voice/${voiceConnectionId}/end`, {
+  await api.post(`/v1/platform/sessions/${sessionId}/voice/${voiceConnectionId}/end`, {
     reason,
   });
 }
@@ -71,7 +71,7 @@ export async function startChannelVoice(
   request: ChannelVoiceCallRequest,
 ): Promise<VoiceSessionResponse> {
   const response = await api.post<VoiceSessionResponse>(
-    `/v1/agents/${agentId}/channels/${channelId}/voice/calls`,
+    `/v1/platform/agents/${agentId}/channels/${channelId}/voice/calls`,
     request,
   );
   return response.data;

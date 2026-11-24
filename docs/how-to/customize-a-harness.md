@@ -11,7 +11,7 @@ For the design rationale, see [Why three configuration layers](/getting-started/
 ## Create a harness via API
 
 ```bash
-curl -X POST http://localhost:9300/api/v1/harnesses \
+curl -X POST http://localhost:9300/api/v1/platform/harnesses \
   -H "Content-Type: application/json" \
   -d '{
     "name": "research-assistant",
@@ -31,7 +31,7 @@ Names follow `[a-z0-9]+(-[a-z0-9]+)*` (up to 64 characters, no consecutive hyphe
 `system_prompt` is optional. Omit it when a harness exists only to bundle capabilities or MCP servers on top of a parent, the effective prompt is then composed from the parent harness, agent, session, and capabilities. For example, a capability-only harness that inherits its prompt from `worker`:
 
 ```bash
-curl -X POST http://localhost:9300/api/v1/harnesses \
+curl -X POST http://localhost:9300/api/v1/platform/harnesses \
   -H "Content-Type: application/json" \
   -d '{
     "name": "research-tools",
@@ -47,7 +47,7 @@ curl -X POST http://localhost:9300/api/v1/harnesses \
 ## Preview before creating
 
 ```bash
-curl -X POST http://localhost:9300/api/v1/harnesses/preview \
+curl -X POST http://localhost:9300/api/v1/platform/harnesses/preview \
   -H "Content-Type: application/json" \
   -d '{
     "system_prompt": "You are a helpful assistant.",
@@ -64,7 +64,7 @@ Preview returns the merged system prompt and the tool list. Useful when capabili
 
 ```bash
 # By name
-curl -X POST http://localhost:9300/api/v1/sessions \
+curl -X POST http://localhost:9300/api/v1/platform/sessions \
   -H "Content-Type: application/json" \
   -d '{
     "harness_name": "research-assistant",

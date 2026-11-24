@@ -33,7 +33,7 @@ async fn create_app_with_a2a_mode(
 ) -> (Value, String) {
     let agent: Value = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": format!("{name}-agent"),
                 "display_name": format!("{name} agent"),
@@ -70,7 +70,7 @@ async fn publish_app(server: &TestServer, app_id: &str) {
 
 async fn list_user_message_texts(server: &TestServer, session_id: &str) -> Vec<String> {
     let body: Value = server
-        .get(&format!("/v1/sessions/{session_id}/messages"))
+        .get(&format!("/v1/platform/sessions/{session_id}/messages"))
         .await
         .assert_status(StatusCode::OK)
         .json();

@@ -11,7 +11,7 @@ pub struct ListKnowledge {
     pub after: Option<String>,
     pub limit: Option<u32>,
 }
-#[command(name="list_knowledge",category="knowledge",description="List versioned knowledge collections.",method="GET",path="/v1/knowledge",policy=VIEW,cli=CliRoute::new(&["knowledge"],"list").with_examples(&[CliExample::new("Find available Knowledge collections","everruns knowledge list --limit 10")]))]
+#[command(name="list_knowledge",category="knowledge",description="List versioned knowledge collections.",method="GET",path="/v1/platform/knowledge",policy=VIEW,cli=CliRoute::new(&["knowledge"],"list").with_examples(&[CliExample::new("Find available Knowledge collections","everruns knowledge list --limit 10")]))]
 impl Command for ListKnowledge {
     type Output = Value;
     async fn execute(self, ctx: &Ctx) -> Result<Value, CommandError> {
@@ -50,7 +50,7 @@ pub struct CreateKnowledge {
     #[serde(flatten)]
     pub input: CollectionInput,
 }
-#[command(name="create_knowledge",category="knowledge",description="Create a knowledge collection; indexing is optional.",method="POST",path="/v1/knowledge",policy=MANAGE,cli=CliRoute::new(&["knowledge"],"create").with_examples(&[CliExample::new("Create a collection without indexing","everruns knowledge create --name 'Support handbook' --indexing off")]))]
+#[command(name="create_knowledge",category="knowledge",description="Create a knowledge collection; indexing is optional.",method="POST",path="/v1/platform/knowledge",policy=MANAGE,cli=CliRoute::new(&["knowledge"],"create").with_examples(&[CliExample::new("Create a collection without indexing","everruns knowledge create --name 'Support handbook' --indexing off")]))]
 impl Command for CreateKnowledge {
     type Output = Value;
     async fn execute(self, ctx: &Ctx) -> Result<Value, CommandError> {
@@ -68,7 +68,7 @@ impl Command for CreateKnowledge {
 pub struct GetKnowledge {
     pub collection_id: String,
 }
-#[command(name="get_knowledge",category="knowledge",description="Inspect a knowledge collection, sources and processing status.",method="GET",path="/v1/knowledge/{collection_id}",policy=VIEW,cli=CliRoute::new(&["knowledge"],"get").with_examples(&[CliExample::new("Inspect source and indexing freshness","everruns knowledge get --collection-id kn_01950000000070008000000000000001")]))]
+#[command(name="get_knowledge",category="knowledge",description="Inspect a knowledge collection, sources and processing status.",method="GET",path="/v1/platform/knowledge/{collection_id}",policy=VIEW,cli=CliRoute::new(&["knowledge"],"get").with_examples(&[CliExample::new("Inspect source and indexing freshness","everruns knowledge get --collection-id kn_01950000000070008000000000000001")]))]
 impl Command for GetKnowledge {
     type Output = Value;
     async fn execute(self, ctx: &Ctx) -> Result<Value, CommandError> {
@@ -95,7 +95,7 @@ pub struct UpdateKnowledge {
     #[serde(flatten)]
     pub input: CollectionInput,
 }
-#[command(name="update_knowledge",category="knowledge",description="Configure knowledge indexing and exclusion rules.",method="PATCH",path="/v1/knowledge/{collection_id}",policy=MANAGE,cli=CliRoute::new(&["knowledge"],"update").with_examples(&[CliExample::new("Enable keyword indexing on retained files","everruns knowledge update --collection-id kn_01950000000070008000000000000001 --name 'Support handbook' --indexing lexical")]))]
+#[command(name="update_knowledge",category="knowledge",description="Configure knowledge indexing and exclusion rules.",method="PATCH",path="/v1/platform/knowledge/{collection_id}",policy=MANAGE,cli=CliRoute::new(&["knowledge"],"update").with_examples(&[CliExample::new("Enable keyword indexing on retained files","everruns knowledge update --collection-id kn_01950000000070008000000000000001 --name 'Support handbook' --indexing lexical")]))]
 impl Command for UpdateKnowledge {
     type Output = Value;
     async fn execute(self, ctx: &Ctx) -> Result<Value, CommandError> {
@@ -108,7 +108,7 @@ impl Command for UpdateKnowledge {
 pub struct ArchiveKnowledge {
     pub collection_id: String,
 }
-#[command(name="archive_knowledge",category="knowledge",description="Archive a knowledge collection.",method="DELETE",path="/v1/knowledge/{collection_id}",policy=MANAGE,cli=CliRoute::new(&["knowledge"],"delete").with_examples(&[CliExample::new("Remove a collection from active use","everruns knowledge delete --collection-id kn_01950000000070008000000000000001")]))]
+#[command(name="archive_knowledge",category="knowledge",description="Archive a knowledge collection.",method="DELETE",path="/v1/platform/knowledge/{collection_id}",policy=MANAGE,cli=CliRoute::new(&["knowledge"],"delete").with_examples(&[CliExample::new("Remove a collection from active use","everruns knowledge delete --collection-id kn_01950000000070008000000000000001")]))]
 impl Command for ArchiveKnowledge {
     type Output = Value;
     async fn execute(self, ctx: &Ctx) -> Result<Value, CommandError> {
@@ -130,7 +130,7 @@ pub struct WriteKnowledgeFile {
     #[serde(flatten)]
     pub input: FileInput,
 }
-#[command(name="write_knowledge_file",category="knowledge",description="Add or update an original file in managed knowledge.",method="PUT",path="/v1/knowledge/{collection_id}/files",policy=MANAGE,cli=CliRoute::new(&["knowledge","files"],"write").with_examples(&[CliExample::new("Write a managed note preserving its path","everruns knowledge files write --collection-id kn_01950000000070008000000000000001 --path /policies/refunds.md --content 'Refunds are available for thirty days.'")]))]
+#[command(name="write_knowledge_file",category="knowledge",description="Add or update an original file in managed knowledge.",method="PUT",path="/v1/platform/knowledge/{collection_id}/files",policy=MANAGE,cli=CliRoute::new(&["knowledge","files"],"write").with_examples(&[CliExample::new("Write a managed note preserving its path","everruns knowledge files write --collection-id kn_01950000000070008000000000000001 --path /policies/refunds.md --content 'Refunds are available for thirty days.'")]))]
 impl Command for WriteKnowledgeFile {
     type Output = Value;
     async fn execute(mut self, ctx: &Ctx) -> Result<Value, CommandError> {
@@ -198,7 +198,7 @@ pub struct ListKnowledgeFiles {
     #[serde(flatten)]
     pub query: PageQuery,
 }
-#[command(name="list_knowledge_files",category="knowledge",description="List knowledge files with bounded cursor pagination.",method="GET",path="/v1/knowledge/{collection_id}/files",policy=VIEW,cli=CliRoute::new(&["knowledge","files"],"list").with_examples(&[CliExample::new("Page through a collection folder","everruns knowledge files list --collection-id kn_01950000000070008000000000000001 --path /policies/ --limit 20")]))]
+#[command(name="list_knowledge_files",category="knowledge",description="List knowledge files with bounded cursor pagination.",method="GET",path="/v1/platform/knowledge/{collection_id}/files",policy=VIEW,cli=CliRoute::new(&["knowledge","files"],"list").with_examples(&[CliExample::new("Page through a collection folder","everruns knowledge files list --collection-id kn_01950000000070008000000000000001 --path /policies/ --limit 20")]))]
 impl Command for ListKnowledgeFiles {
     type Output = Value;
     async fn execute(self, ctx: &Ctx) -> Result<Value, CommandError> {
@@ -212,7 +212,7 @@ pub struct DeleteKnowledgeFile {
     pub collection_id: String,
     pub path: String,
 }
-#[command(name="delete_knowledge_file",category="knowledge",description="Delete a managed knowledge file and stop serving its search results.",method="DELETE",path="/v1/knowledge/{collection_id}/files",policy=MANAGE,cli=CliRoute::new(&["knowledge","files"],"delete").with_examples(&[CliExample::new("Delete a managed file","everruns knowledge files delete --collection-id kn_01950000000070008000000000000001 --path /policies/obsolete.md")]))]
+#[command(name="delete_knowledge_file",category="knowledge",description="Delete a managed knowledge file and stop serving its search results.",method="DELETE",path="/v1/platform/knowledge/{collection_id}/files",policy=MANAGE,cli=CliRoute::new(&["knowledge","files"],"delete").with_examples(&[CliExample::new("Delete a managed file","everruns knowledge files delete --collection-id kn_01950000000070008000000000000001 --path /policies/obsolete.md")]))]
 impl Command for DeleteKnowledgeFile {
     type Output = Value;
     async fn execute(self, ctx: &Ctx) -> Result<Value, CommandError> {
@@ -238,7 +238,7 @@ pub struct AddKnowledgeSource {
     #[serde(flatten)]
     pub input: SourceInput,
 }
-#[command(name="add_knowledge_source",category="knowledge",description="Connect an existing GitHub identity or public Git source to knowledge.",method="POST",path="/v1/knowledge/{collection_id}/sources",policy=MANAGE,cli=CliRoute::new(&["knowledge","sources"],"add").with_examples(&[CliExample::new("Attach an existing GitHub connection to a source root","everruns knowledge sources add --collection-id kn_01950000000070008000000000000001 --kind github --root-path /product --config '{\"repository\":\"everruns/everruns\",\"root_folder\":\"docs\"}'")]))]
+#[command(name="add_knowledge_source",category="knowledge",description="Connect an existing GitHub identity or public Git source to knowledge.",method="POST",path="/v1/platform/knowledge/{collection_id}/sources",policy=MANAGE,cli=CliRoute::new(&["knowledge","sources"],"add").with_examples(&[CliExample::new("Attach an existing GitHub connection to a source root","everruns knowledge sources add --collection-id kn_01950000000070008000000000000001 --kind github --root-path /product --config '{\"repository\":\"everruns/everruns\",\"root_folder\":\"docs\"}'")]))]
 impl Command for AddKnowledgeSource {
     type Output = Value;
     async fn execute(self, ctx: &Ctx) -> Result<Value, CommandError> {
@@ -251,7 +251,7 @@ impl Command for AddKnowledgeSource {
 pub struct SyncKnowledge {
     pub collection_id: String,
 }
-#[command(name="sync_knowledge",category="knowledge",description="Queue source refresh and retry failed indexing jobs.",method="POST",path="/v1/knowledge/{collection_id}/sync",policy=MANAGE,cli=CliRoute::new(&["knowledge"],"sync").with_examples(&[CliExample::new("Refresh connected sources incrementally","everruns knowledge sync --collection-id kn_01950000000070008000000000000001")]))]
+#[command(name="sync_knowledge",category="knowledge",description="Queue source refresh and retry failed indexing jobs.",method="POST",path="/v1/platform/knowledge/{collection_id}/sync",policy=MANAGE,cli=CliRoute::new(&["knowledge"],"sync").with_examples(&[CliExample::new("Refresh connected sources incrementally","everruns knowledge sync --collection-id kn_01950000000070008000000000000001")]))]
 impl Command for SyncKnowledge {
     type Output = Value;
     async fn execute(self, ctx: &Ctx) -> Result<Value, CommandError> {
@@ -275,7 +275,7 @@ pub struct SearchKnowledgeCollections {
     #[serde(flatten)]
     pub query: everruns_contracts::knowledge::KnowledgeQuery,
 }
-#[command(name="search_knowledge_collections",category="knowledge",description="Search selected knowledge collections with immutable citations.",method="POST",path="/v1/knowledge/search",policy=VIEW,read_only=true,cli=CliRoute::new(&["knowledge"],"search").with_examples(&[CliExample::new("Retrieve cited policy passages","everruns knowledge search --collections kn_01950000000070008000000000000001 --query 'refund policy' --limit 5")]))]
+#[command(name="search_knowledge_collections",category="knowledge",description="Search selected knowledge collections with immutable citations.",method="POST",path="/v1/platform/knowledge/search",policy=VIEW,read_only=true,cli=CliRoute::new(&["knowledge"],"search").with_examples(&[CliExample::new("Retrieve cited policy passages","everruns knowledge search --collections kn_01950000000070008000000000000001 --query 'refund policy' --limit 5")]))]
 impl Command for SearchKnowledgeCollections {
     type Output = Value;
     async fn execute(self, ctx: &Ctx) -> Result<Value, CommandError> {
@@ -291,7 +291,7 @@ pub struct CreateKnowledgeIndexer {
     #[serde(flatten)]
     pub input: IndexerInput,
 }
-#[command(name="create_knowledge_indexer",category="knowledge",description="Configure an organization Turbopuffer account using an existing write-only credential binding.",method="POST",path="/v1/knowledge-indexers",policy=MANAGE,cli=CliRoute::new(&["knowledge","indexers"],"create").with_examples(&[CliExample::new("Use an organization service credential for Turbopuffer","everruns knowledge indexers create --name 'Search account' --endpoint https://gcp-us-central1.turbopuffer.com --credential-binding-id 01950000-0000-7000-8000-000000000002")]))]
+#[command(name="create_knowledge_indexer",category="knowledge",description="Configure an organization Turbopuffer account using an existing write-only credential binding.",method="POST",path="/v1/platform/knowledge-indexers",policy=MANAGE,cli=CliRoute::new(&["knowledge","indexers"],"create").with_examples(&[CliExample::new("Use an organization service credential for Turbopuffer","everruns knowledge indexers create --name 'Search account' --endpoint https://gcp-us-central1.turbopuffer.com --credential-binding-id 01950000-0000-7000-8000-000000000002")]))]
 impl Command for CreateKnowledgeIndexer {
     type Output = Value;
     async fn execute(self, ctx: &Ctx) -> Result<Value, CommandError> {
@@ -398,7 +398,7 @@ pub struct UpdateKnowledgeFileMetadata {
     #[serde(flatten)]
     pub input: FileMetadataInput,
 }
-#[command(name="update_knowledge_file_metadata",category="knowledge",description="Update annotations or file read/index policy without extracting content again.",method="PATCH",path="/v1/knowledge/{collection_id}/files",policy=MANAGE,cli=CliRoute::new(&["knowledge","files"],"update").with_examples(&[CliExample::new("Exclude a file from indexing while retaining it","everruns knowledge files update --collection-id kn_01950000000070008000000000000001 --path /policies/draft.md --indexable false")]))]
+#[command(name="update_knowledge_file_metadata",category="knowledge",description="Update annotations or file read/index policy without extracting content again.",method="PATCH",path="/v1/platform/knowledge/{collection_id}/files",policy=MANAGE,cli=CliRoute::new(&["knowledge","files"],"update").with_examples(&[CliExample::new("Exclude a file from indexing while retaining it","everruns knowledge files update --collection-id kn_01950000000070008000000000000001 --path /policies/draft.md --indexable false")]))]
 impl Command for UpdateKnowledgeFileMetadata {
     type Output = Value;
     async fn execute(self, ctx: &Ctx) -> Result<Value, CommandError> {
@@ -435,7 +435,7 @@ impl Command for UpdateKnowledgeFileMetadata {
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct ListKnowledgeIndexers {}
-#[command(name="list_knowledge_indexers",category="knowledge",description="List organization search-provider accounts without credential values.",method="GET",path="/v1/knowledge-indexers",policy=VIEW,cli=CliRoute::new(&["knowledge","indexers"],"list").with_examples(&[CliExample::new("List organization search accounts without exposing credentials","everruns knowledge indexers list")]))]
+#[command(name="list_knowledge_indexers",category="knowledge",description="List organization search-provider accounts without credential values.",method="GET",path="/v1/platform/knowledge-indexers",policy=VIEW,cli=CliRoute::new(&["knowledge","indexers"],"list").with_examples(&[CliExample::new("List organization search accounts without exposing credentials","everruns knowledge indexers list")]))]
 impl Command for ListKnowledgeIndexers {
     type Output = Value;
     async fn execute(self, ctx: &Ctx) -> Result<Value, CommandError> {
@@ -450,7 +450,7 @@ pub struct ValidateKnowledgeOkf {
     #[serde(flatten)]
     pub query: PageQuery,
 }
-#[command(name="validate_knowledge_okf",category="knowledge",description="Validate a page of OKF v0.2 metadata and reserved navigation files without converting originals.",method="GET",path="/v1/knowledge/{collection_id}/okf",policy=VIEW,cli=CliRoute::new(&["knowledge","okf"],"validate").with_examples(&[CliExample::new("Validate a page of OKF metadata","everruns knowledge okf validate --collection-id kn_01950000000070008000000000000001 --limit 100")]))]
+#[command(name="validate_knowledge_okf",category="knowledge",description="Validate a page of OKF v0.2 metadata and reserved navigation files without converting originals.",method="GET",path="/v1/platform/knowledge/{collection_id}/okf",policy=VIEW,cli=CliRoute::new(&["knowledge","okf"],"validate").with_examples(&[CliExample::new("Validate a page of OKF metadata","everruns knowledge okf validate --collection-id kn_01950000000070008000000000000001 --limit 100")]))]
 impl Command for ValidateKnowledgeOkf {
     type Output = Value;
     async fn execute(self, ctx: &Ctx) -> Result<Value, CommandError> {

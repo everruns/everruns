@@ -67,7 +67,7 @@ impl Modify for SdkMetadata {
         // aliased routes see them too.
         api::command_http::add_command_paths(openapi);
         channel_aliases::add_route_aliases(openapi);
-        for path in ["/v1/apps", "/v1/apps/{app_id}"] {
+        for path in ["/v1/platform/apps", "/v1/platform/apps/{app_id}"] {
             if let Some(operation) = openapi
                 .paths
                 .paths
@@ -79,8 +79,8 @@ impl Modify for SdkMetadata {
         }
         // Pause agent replaced "suspend exposures"; the old routes stay as aliases.
         for path in [
-            "/v1/agents/{agent_id}/exposures/suspend",
-            "/v1/agents/{agent_id}/exposures/resume",
+            "/v1/platform/agents/{agent_id}/exposures/suspend",
+            "/v1/platform/agents/{agent_id}/exposures/resume",
         ] {
             if let Some(operation) = openapi
                 .paths
@@ -350,10 +350,10 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         api::capabilities::dry_run_guardrails,
         api::capabilities::list_guardrail_examples,
         api::users::list_users,
-        // Session filesystem routes (under /v1/sessions/{session_id}/fs)
+        // Session filesystem routes (under /v1/platform/sessions/{session_id}/fs)
         // are intentionally omitted from the OpenAPI doc. They remain wired
         // for backward compatibility but are deprecated; the documented
-        // surface is /v1/workspaces/{workspace_id}/fs. See knowledge/runtime-resources/workspace.md.
+        // surface is /v1/platform/workspaces/{workspace_id}/fs. See knowledge/runtime-resources/workspace.md.
         // Session Git
         api::session_git::commit,
         api::session_git::log,
@@ -501,11 +501,11 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         api::org_feature_flags::update_org_feature_flags,
         // Workspace (durable, named working area).
         //
-        // NOTE: The legacy `/v1/sessions/{session_id}/fs/*` routes
+        // NOTE: The legacy `/v1/platform/sessions/{session_id}/fs/*` routes
         // (api::session_files::*) are intentionally NOT listed here. They
         // remain mounted for backwards compatibility but are delisted from
         // the published OpenAPI surface — clients should use
-        // `/v1/workspaces/{workspace_id}/fs/*` (or the per-session alias
+        // `/v1/platform/workspaces/{workspace_id}/fs/*` (or the per-session alias
         // when one is needed for ergonomics).
         api::workspaces::list_workspaces,
         api::workspaces::get_workspace,

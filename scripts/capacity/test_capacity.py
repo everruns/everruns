@@ -331,7 +331,7 @@ class CapacityTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             a.send({"message": {}}, "same-key"),
             (
-                "https://localhost/api/v1/commands/create_message",
+                "https://localhost/api/v1/platform/commands/create_message",
                 {
                     "params": {
                         "session_id": "session",

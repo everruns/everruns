@@ -151,54 +151,66 @@ pub fn routes(state: AppState) -> Router {
         .command::<crate::domains::agents::view_publication::GetSessionAgentView>()
         .command::<crate::domains::agents::view_publication::SetSessionAgentViewPreference>()
         // Config endpoint (must be before /{session_id} to avoid conflict)
-        .route("/v1/sessions/config", get(session_config))
-        .route("/v1/sessions/platform-chat", post(ensure_platform_chat))
+        .route("/v1/platform/sessions/config", get(session_config))
+        .route(
+            "/v1/platform/sessions/platform-chat",
+            post(ensure_platform_chat),
+        )
         // Global chat session (must be before /{session_id} to avoid conflict)
         // Session facets (must be before /{session_id} to avoid conflict)
-        .route("/v1/sessions/facets", get(get_session_facets))
+        .route("/v1/platform/sessions/facets", get(get_session_facets))
         // Session stats (must be before /{session_id} to avoid conflict)
-        .route("/v1/sessions/stats", get(get_session_stats))
+        .route("/v1/platform/sessions/stats", get(get_session_stats))
         // Session CRUD
-        .route("/v1/sessions", post(create_session).get(list_sessions))
         .route(
-            "/v1/sessions/{session_id}/participants",
+            "/v1/platform/sessions",
+            post(create_session).get(list_sessions),
+        )
+        .route(
+            "/v1/platform/sessions/{session_id}/participants",
             get(list_session_participants).post(add_session_participant),
         )
         .route(
-            "/v1/sessions/{session_id}/participants/{participant_id}",
+            "/v1/platform/sessions/{session_id}/participants/{participant_id}",
             axum::routing::delete(leave_session_participant),
         )
         .route(
-            "/v1/sessions/{session_id}",
+            "/v1/platform/sessions/{session_id}",
             get(get_session)
                 .patch(update_session)
                 .delete(delete_session),
         )
         .route(
-            "/v1/sessions/{session_id}/context-report",
+            "/v1/platform/sessions/{session_id}/context-report",
             get(get_session_context_report),
         )
         .route(
-            "/v1/sessions/{session_id}/resolved-model",
+            "/v1/platform/sessions/{session_id}/resolved-model",
             get(get_session_resolved_model),
         )
         // Pin/unpin
         .route(
-            "/v1/sessions/{session_id}/pin",
+            "/v1/platform/sessions/{session_id}/pin",
             axum::routing::put(pin_session).delete(unpin_session),
         )
         .route(
-            "/v1/sessions/{session_id}/archive",
+            "/v1/platform/sessions/{session_id}/archive",
             axum::routing::put(archive_session).delete(unarchive_session),
         )
         // Cancel turn endpoint
-        .route("/v1/sessions/{session_id}/cancel", post(cancel_turn))
+        .route(
+            "/v1/platform/sessions/{session_id}/cancel",
+            post(cancel_turn),
+        )
         // Fork a session into an independent copy
-        .route("/v1/sessions/{session_id}/fork", post(fork_session))
+        .route(
+            "/v1/platform/sessions/{session_id}/fork",
+            post(fork_session),
+        )
         .with_state(state)
 }
 
-/// GET /v1/sessions/config
+/// GET /v1/platform/sessions/config
 pub async fn session_config(
     State(auth): State<AuthState>,
     org: ResolvedOrg,
@@ -212,10 +224,10 @@ pub async fn session_config(
     Json(ResourceConfigResponse { policies })
 }
 
-/// POST /v1/sessions - Create a new session
+/// POST /v1/platform/sessions - Create a new session
 #[utoipa::path(
     post,
-    path = "/v1/sessions",
+    path = "/v1/platform/sessions",
     request_body(
         content = CreateSessionRequest,
         example = json!({
@@ -230,7 +242,7 @@ pub async fn session_config(
             description = "Session created successfully",
             body = WithUrls<Session>,
             example = json!({
-                "self_url": "https://app.everruns.com/api/v1/sessions/session_01933b5a00007000800000000000001",
+                "self_url": "https://app.everruns.com/api/v1/platform/sessions/session_01933b5a00007000800000000000001",
                 "view_url": "https://app.everruns.com/sessions/session_01933b5a00007000800000000000001/chat",
                 "ui_link":  "https://app.everruns.com/sessions/session_01933b5a00007000800000000000001/chat",
                 "id": "session_01933b5a00007000800000000000001",
@@ -287,10 +299,10 @@ fn strip_internal_only_fields(req: &mut CreateSessionRequest) {
     req.seed = SessionSeedMode::Fresh;
 }
 
-/// POST /v1/sessions/{session_id}/fork - Fork a session into an independent copy
+/// POST /v1/platform/sessions/{session_id}/fork - Fork a session into an independent copy
 #[utoipa::path(
     post,
-    path = "/v1/sessions/{session_id}/fork",
+    path = "/v1/platform/sessions/{session_id}/fork",
     params(("session_id" = String, Path, description = "Session to fork")),
     request_body(
         content = ForkSessionRequest,
@@ -335,11 +347,11 @@ pub async fn fork_session(
     Ok((StatusCode::CREATED, Json(urls.wrap(session))))
 }
 
-/// GET /v1/sessions - List sessions in organization
+/// GET /v1/platform/sessions - List sessions in organization
 #[utoipa::path(
     operation_id = "list_platform_sessions",
     get,
-    path = "/v1/sessions",
+    path = "/v1/platform/sessions",
     params(ListSessionsQuery),
     responses(
         (status = 200, description = "Paginated list of sessions", body = PaginatedResponse<WithUrls<Session>>),
@@ -379,10 +391,10 @@ pub async fn list_sessions(
     ))
 }
 
-/// GET /v1/sessions/facets - Facet counts and masthead metrics
+/// GET /v1/platform/sessions/facets - Facet counts and masthead metrics
 #[utoipa::path(
     get,
-    path = "/v1/sessions/facets",
+    path = "/v1/platform/sessions/facets",
     params(SessionFacetsQuery),
     responses(
         (status = 200, description = "Facet counts over the applied filters", body = SessionFacetsResponse),
@@ -418,10 +430,10 @@ pub async fn get_session_facets(
     ))
 }
 
-/// GET /v1/sessions/stats - Get session counts by status
+/// GET /v1/platform/sessions/stats - Get session counts by status
 #[utoipa::path(
     get,
-    path = "/v1/sessions/stats",
+    path = "/v1/platform/sessions/stats",
     responses(
         (status = 200, description = "Session statistics", body = SessionStatsResponse),
         (status = 500, description = "Internal server error")
@@ -435,10 +447,10 @@ pub async fn get_session_stats(
     Ok(Json(GetSessionStats.run(&state.ctx(&org)).await?))
 }
 
-/// GET /v1/sessions/{session_id} - Get session
+/// GET /v1/platform/sessions/{session_id} - Get session
 #[utoipa::path(
     get,
-    path = "/v1/sessions/{session_id}",
+    path = "/v1/platform/sessions/{session_id}",
     params(
         ("session_id" = String, Path, description = "Session ID (prefixed, e.g., session_...)")
     ),
@@ -468,10 +480,10 @@ pub struct SessionResolvedModelResponse {
     pub model_id: Option<ModelId>,
 }
 
-/// GET /v1/sessions/{session_id}/resolved-model - Resolve the session's active model
+/// GET /v1/platform/sessions/{session_id}/resolved-model - Resolve the session's active model
 #[utoipa::path(
     get,
-    path = "/v1/sessions/{session_id}/resolved-model",
+    path = "/v1/platform/sessions/{session_id}/resolved-model",
     params(
         ("session_id" = String, Path, description = "Session ID (prefixed, e.g., session_...)")
     ),
@@ -498,10 +510,10 @@ pub async fn get_session_resolved_model(
     Ok(Json(SessionResolvedModelResponse { model_id }))
 }
 
-/// GET /v1/sessions/{session_id}/participants - List session participants
+/// GET /v1/platform/sessions/{session_id}/participants - List session participants
 #[utoipa::path(
     get,
-    path = "/v1/sessions/{session_id}/participants",
+    path = "/v1/platform/sessions/{session_id}/participants",
     params(
         ("session_id" = String, Path, description = "Session ID (prefixed, e.g., session_...)")
     ),
@@ -525,10 +537,10 @@ pub async fn list_session_participants(
     ))
 }
 
-/// POST /v1/sessions/{session_id}/participants - Add a session participant
+/// POST /v1/platform/sessions/{session_id}/participants - Add a session participant
 #[utoipa::path(
     post,
-    path = "/v1/sessions/{session_id}/participants",
+    path = "/v1/platform/sessions/{session_id}/participants",
     params(
         ("session_id" = String, Path, description = "Session ID (prefixed, e.g., session_...)")
     ),
@@ -555,10 +567,10 @@ pub async fn add_session_participant(
     Ok((StatusCode::CREATED, Json(participant)))
 }
 
-/// DELETE /v1/sessions/{session_id}/participants/{participant_id} - Leave a participant
+/// DELETE /v1/platform/sessions/{session_id}/participants/{participant_id} - Leave a participant
 #[utoipa::path(
     delete,
-    path = "/v1/sessions/{session_id}/participants/{participant_id}",
+    path = "/v1/platform/sessions/{session_id}/participants/{participant_id}",
     params(
         ("session_id" = String, Path, description = "Session ID (prefixed, e.g., session_...)"),
         ("participant_id" = String, Path, description = "Participant ID (prefixed, e.g., part_...)")
@@ -587,10 +599,10 @@ pub async fn leave_session_participant(
     ))
 }
 
-/// GET /v1/sessions/{session_id}/context-report - Latest context breakdown
+/// GET /v1/platform/sessions/{session_id}/context-report - Latest context breakdown
 #[utoipa::path(
     get,
-    path = "/v1/sessions/{session_id}/context-report",
+    path = "/v1/platform/sessions/{session_id}/context-report",
     params(
         ("session_id" = String, Path, description = "Session ID (prefixed, e.g., session_...)")
     ),
@@ -614,10 +626,10 @@ pub async fn get_session_context_report(
     ))
 }
 
-/// PATCH /v1/sessions/{session_id} - Update session
+/// PATCH /v1/platform/sessions/{session_id} - Update session
 #[utoipa::path(
     patch,
-    path = "/v1/sessions/{session_id}",
+    path = "/v1/platform/sessions/{session_id}",
     params(
         ("session_id" = String, Path, description = "Session ID (prefixed, e.g., session_...)")
     ),
@@ -644,10 +656,10 @@ pub async fn update_session(
     Ok(Json(urls.wrap(session)))
 }
 
-/// DELETE /v1/sessions/{session_id} - Delete session
+/// DELETE /v1/platform/sessions/{session_id} - Delete session
 #[utoipa::path(
     delete,
-    path = "/v1/sessions/{session_id}",
+    path = "/v1/platform/sessions/{session_id}",
     params(
         ("session_id" = String, Path, description = "Session ID (prefixed, e.g., session_...)")
     ),
@@ -672,10 +684,10 @@ pub async fn delete_session(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// PUT /v1/sessions/{session_id}/pin - Pin session for current user
+/// PUT /v1/platform/sessions/{session_id}/pin - Pin session for current user
 #[utoipa::path(
     put,
-    path = "/v1/sessions/{session_id}/pin",
+    path = "/v1/platform/sessions/{session_id}/pin",
     params(
         ("session_id" = String, Path, description = "Session ID (prefixed, e.g., session_...)")
     ),
@@ -704,10 +716,10 @@ pub async fn pin_session(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// DELETE /v1/sessions/{session_id}/pin - Unpin session for current user
+/// DELETE /v1/platform/sessions/{session_id}/pin - Unpin session for current user
 #[utoipa::path(
     delete,
-    path = "/v1/sessions/{session_id}/pin",
+    path = "/v1/platform/sessions/{session_id}/pin",
     params(
         ("session_id" = String, Path, description = "Session ID (prefixed, e.g., session_...)")
     ),
@@ -736,10 +748,10 @@ pub async fn unpin_session(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// PUT /v1/sessions/{session_id}/archive - Archive session
+/// PUT /v1/platform/sessions/{session_id}/archive - Archive session
 #[utoipa::path(
     put,
-    path = "/v1/sessions/{session_id}/archive",
+    path = "/v1/platform/sessions/{session_id}/archive",
     params(
         ("session_id" = String, Path, description = "Session ID (prefixed, e.g., session_...)")
     ),
@@ -761,10 +773,10 @@ pub async fn archive_session(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// DELETE /v1/sessions/{session_id}/archive - Restore an archived session
+/// DELETE /v1/platform/sessions/{session_id}/archive - Restore an archived session
 #[utoipa::path(
     delete,
-    path = "/v1/sessions/{session_id}/archive",
+    path = "/v1/platform/sessions/{session_id}/archive",
     params(
         ("session_id" = String, Path, description = "Session ID (prefixed, e.g., session_...)")
     ),
@@ -788,7 +800,7 @@ pub async fn unarchive_session(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// POST /v1/sessions/{session_id}/cancel - Cancel current turn
+/// POST /v1/platform/sessions/{session_id}/cancel - Cancel current turn
 ///
 /// Cancels the currently running turn in the session. If no turn is running,
 /// this is a no-op and returns success (idempotent). When a turn is active:
@@ -798,7 +810,7 @@ pub async fn unarchive_session(
 /// Cancellation cannot undo external effects that already happened.
 #[utoipa::path(
     post,
-    path = "/v1/sessions/{session_id}/cancel",
+    path = "/v1/platform/sessions/{session_id}/cancel",
     params(
         ("session_id" = String, Path, description = "Session ID (prefixed, e.g., session_...)")
     ),
@@ -845,7 +857,7 @@ mod tests;
 /// Open the current user's platform conversation
 ///
 /// Open the current user's permanent platform conversation, creating it only when absent.
-#[utoipa::path(post, path = "/v1/sessions/platform-chat", responses((status = 200, description = "Permanent platform conversation", body = WithUrls<Session>)), tag = "sessions")]
+#[utoipa::path(post, path = "/v1/platform/sessions/platform-chat", responses((status = 200, description = "Permanent platform conversation", body = WithUrls<Session>)), tag = "sessions")]
 pub async fn ensure_platform_chat(
     org: ResolvedOrg,
     State(state): State<AppState>,

@@ -13,7 +13,7 @@ async fn end_user_key(server: &TestServer, channel: &ApiChannel) -> Value {
     let key: Value = server
         .post(
             &format!(
-                "/v1/agents/{}/channels/{}/keys",
+                "/v1/platform/agents/{}/channels/{}/keys",
                 channel.agent_id, channel.channel_id
             ),
             json!({ "name": "Support backend", "permissions": ["end_user"] }),
@@ -150,7 +150,7 @@ async fn sessions_belong_to_the_end_user_not_the_key() {
     // The session is owned by the end user, so `actsAs: user` uses their
     // connections rather than the key holder's.
     let full: Value = server
-        .get(&format!("/v1/sessions/{session_id}"))
+        .get(&format!("/v1/platform/sessions/{session_id}"))
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -166,7 +166,7 @@ async fn sessions_belong_to_the_end_user_not_the_key() {
     .json();
     let channel_session: Value = server
         .get(&format!(
-            "/v1/sessions/{}",
+            "/v1/platform/sessions/{}",
             channel_owner["id"].as_str().unwrap()
         ))
         .await
@@ -263,7 +263,7 @@ async fn auth_methods_accept_only_identity_providers() {
     let server = TestServer::in_memory().await;
     let agent: Value = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({ "name": "api-agent-methods", "system_prompt": "Test" }),
         )
         .await
@@ -275,7 +275,7 @@ async fn auth_methods_accept_only_identity_providers() {
         async move {
             server
                 .post(
-                    &format!("/v1/agents/{agent_id}/channels"),
+                    &format!("/v1/platform/agents/{agent_id}/channels"),
                     json!({ "channel_type": "api", "channel_config": config }),
                 )
                 .await
@@ -312,7 +312,7 @@ async fn auth_methods_accept_only_identity_providers() {
     let channel_id = channel["id"].as_str().unwrap();
     let updated: Value = server
         .patch(
-            &format!("/v1/agents/{agent_id}/channels/{channel_id}"),
+            &format!("/v1/platform/agents/{agent_id}/channels/{channel_id}"),
             json!({ "channel_config": introspection(None) }),
         )
         .await

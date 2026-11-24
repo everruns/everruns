@@ -1,13 +1,13 @@
 // Workspace virtual filesystem HTTP routes.
 //
-// Mounted on /v1/workspaces/{workspace_id}/fs/*. The migration that renamed
+// Mounted on /v1/platform/workspaces/{workspace_id}/fs/*. The migration that renamed
 // `session_files` to `workspace_files` (054) and the equality invariant
 // `workspace.id == session.id` for default 1:1 sessions mean
 // WorkspaceFileService is already keyed by workspace UUID — these handlers just
 // resolve the public `wsp_<32-hex>` ID to that UUID and delegate.
 //
 // This is the canonical filesystem surface. The legacy
-// /v1/sessions/{session_id}/fs/* routes remain mounted but are delisted from
+// /v1/platform/sessions/{session_id}/fs/* routes remain mounted but are delisted from
 // the published OpenAPI spec (see crates/server/src/openapi/mod.rs).
 
 use crate::api::session_files::{
@@ -77,24 +77,36 @@ impl_auth_state!(AppState);
 
 pub fn routes(state: AppState) -> Router {
     Router::new()
-        .route("/v1/workspaces/{workspace_id}/fs/_/move", post(move_file))
-        .route("/v1/workspaces/{workspace_id}/fs/_/copy", post(copy_file))
-        .route("/v1/workspaces/{workspace_id}/fs/_/grep", post(grep_files))
-        .route("/v1/workspaces/{workspace_id}/fs/_/stat", post(stat_file))
         .route(
-            "/v1/workspaces/{workspace_id}/fs/_/download/{*path}",
+            "/v1/platform/workspaces/{workspace_id}/fs/_/move",
+            post(move_file),
+        )
+        .route(
+            "/v1/platform/workspaces/{workspace_id}/fs/_/copy",
+            post(copy_file),
+        )
+        .route(
+            "/v1/platform/workspaces/{workspace_id}/fs/_/grep",
+            post(grep_files),
+        )
+        .route(
+            "/v1/platform/workspaces/{workspace_id}/fs/_/stat",
+            post(stat_file),
+        )
+        .route(
+            "/v1/platform/workspaces/{workspace_id}/fs/_/download/{*path}",
             get(download_path),
         )
         .route(
-            "/v1/workspaces/{workspace_id}/fs/_/preview/{*path}",
+            "/v1/platform/workspaces/{workspace_id}/fs/_/preview/{*path}",
             get(preview_path),
         )
         .route(
-            "/v1/workspaces/{workspace_id}/fs",
+            "/v1/platform/workspaces/{workspace_id}/fs",
             get(get_root).post(create_root).delete(delete_root),
         )
         .route(
-            "/v1/workspaces/{workspace_id}/fs/{*path}",
+            "/v1/platform/workspaces/{workspace_id}/fs/{*path}",
             get(get_path)
                 .post(create_path)
                 .put(update_path)
@@ -104,7 +116,7 @@ pub fn routes(state: AppState) -> Router {
         // Raw uploads stream to storage; the per-file and session quotas bound
         // them instead of a request body limit.
         .route(
-            "/v1/workspaces/{workspace_id}/fs/_/upload/{*path}",
+            "/v1/platform/workspaces/{workspace_id}/fs/_/upload/{*path}",
             put(upload_path).layer(DefaultBodyLimit::disable()),
         )
         .with_state(state)
@@ -286,10 +298,10 @@ fn service_error<E: std::fmt::Display>(e: E) -> (StatusCode, String) {
     }
 }
 
-/// GET /v1/workspaces/{workspace_id}/fs - Workspace root listing
+/// GET /v1/platform/workspaces/{workspace_id}/fs - Workspace root listing
 #[utoipa::path(
     get,
-    path = "/v1/workspaces/{workspace_id}/fs",
+    path = "/v1/platform/workspaces/{workspace_id}/fs",
     params(
         ("workspace_id" = String, Path, description = "Workspace ID (wsp_<32-hex>)"),
         ("recursive" = Option<bool>, Query, description = "List recursively"),
@@ -323,10 +335,10 @@ pub async fn get_root(
     Ok(Json(ListResponse::new(access.redact(files))))
 }
 
-/// GET /v1/workspaces/{workspace_id}/fs/{path} - Read file or list directory
+/// GET /v1/platform/workspaces/{workspace_id}/fs/{path} - Read file or list directory
 #[utoipa::path(
     get,
-    path = "/v1/workspaces/{workspace_id}/fs/{path}",
+    path = "/v1/platform/workspaces/{workspace_id}/fs/{path}",
     params(
         ("workspace_id" = String, Path, description = "Workspace ID (wsp_<32-hex>)"),
         ("path" = String, Path, description = "File or directory path. Wildcard route: nested paths are literal `/`-separated segments, not a single URL-encoded value."),
@@ -389,10 +401,10 @@ pub async fn create_root(_org: ResolvedOrg) -> (StatusCode, String) {
     )
 }
 
-/// POST /v1/workspaces/{workspace_id}/fs/{path} - Create file or directory
+/// POST /v1/platform/workspaces/{workspace_id}/fs/{path} - Create file or directory
 #[utoipa::path(
     post,
-    path = "/v1/workspaces/{workspace_id}/fs/{path}",
+    path = "/v1/platform/workspaces/{workspace_id}/fs/{path}",
     params(
         ("workspace_id" = String, Path, description = "Workspace ID (wsp_<32-hex>)"),
         ("path" = String, Path, description = "File or directory path"),
@@ -465,10 +477,10 @@ pub async fn create_path(
     Ok((StatusCode::CREATED, Json(file)))
 }
 
-/// PUT /v1/workspaces/{workspace_id}/fs/{path} - Update file content
+/// PUT /v1/platform/workspaces/{workspace_id}/fs/{path} - Update file content
 #[utoipa::path(
     put,
-    path = "/v1/workspaces/{workspace_id}/fs/{path}",
+    path = "/v1/platform/workspaces/{workspace_id}/fs/{path}",
     params(
         ("workspace_id" = String, Path, description = "Workspace ID (wsp_<32-hex>)"),
         ("path" = String, Path, description = "File path"),
@@ -527,10 +539,10 @@ pub async fn delete_root(_org: ResolvedOrg) -> (StatusCode, String) {
     )
 }
 
-/// DELETE /v1/workspaces/{workspace_id}/fs/{path} - Delete file or directory
+/// DELETE /v1/platform/workspaces/{workspace_id}/fs/{path} - Delete file or directory
 #[utoipa::path(
     delete,
-    path = "/v1/workspaces/{workspace_id}/fs/{path}",
+    path = "/v1/platform/workspaces/{workspace_id}/fs/{path}",
     params(
         ("workspace_id" = String, Path, description = "Workspace ID (wsp_<32-hex>)"),
         ("path" = String, Path, description = "File or directory path"),
@@ -567,10 +579,10 @@ pub async fn delete_path(
     Ok(Json(DeleteResponse { deleted }))
 }
 
-/// POST /v1/workspaces/{workspace_id}/fs/_/stat - File metadata
+/// POST /v1/platform/workspaces/{workspace_id}/fs/_/stat - File metadata
 #[utoipa::path(
     post,
-    path = "/v1/workspaces/{workspace_id}/fs/_/stat",
+    path = "/v1/platform/workspaces/{workspace_id}/fs/_/stat",
     params(
         ("workspace_id" = String, Path, description = "Workspace ID (wsp_<32-hex>)"),
     ),
@@ -601,10 +613,10 @@ pub async fn stat_file(
     Ok(Json(stat))
 }
 
-/// POST /v1/workspaces/{workspace_id}/fs/_/grep - Search files
+/// POST /v1/platform/workspaces/{workspace_id}/fs/_/grep - Search files
 #[utoipa::path(
     post,
-    path = "/v1/workspaces/{workspace_id}/fs/_/grep",
+    path = "/v1/platform/workspaces/{workspace_id}/fs/_/grep",
     params(
         ("workspace_id" = String, Path, description = "Workspace ID (wsp_<32-hex>)"),
     ),
@@ -648,10 +660,10 @@ fn workspace_grep_input(req: GrepRequest) -> GrepInput {
     }
 }
 
-/// POST /v1/workspaces/{workspace_id}/fs/_/move - Move/rename a file or directory
+/// POST /v1/platform/workspaces/{workspace_id}/fs/_/move - Move/rename a file or directory
 #[utoipa::path(
     post,
-    path = "/v1/workspaces/{workspace_id}/fs/_/move",
+    path = "/v1/platform/workspaces/{workspace_id}/fs/_/move",
     params(
         ("workspace_id" = String, Path, description = "Workspace ID (wsp_<32-hex>)"),
     ),
@@ -690,10 +702,10 @@ pub async fn move_file(
     Ok(Json(file))
 }
 
-/// POST /v1/workspaces/{workspace_id}/fs/_/copy - Copy a file
+/// POST /v1/platform/workspaces/{workspace_id}/fs/_/copy - Copy a file
 #[utoipa::path(
     post,
-    path = "/v1/workspaces/{workspace_id}/fs/_/copy",
+    path = "/v1/platform/workspaces/{workspace_id}/fs/_/copy",
     params(
         ("workspace_id" = String, Path, description = "Workspace ID (wsp_<32-hex>)"),
     ),
@@ -732,10 +744,10 @@ pub async fn copy_file(
     Ok((StatusCode::CREATED, Json(file)))
 }
 
-/// GET /v1/workspaces/{workspace_id}/fs/_/download/{path} - Download raw file bytes
+/// GET /v1/platform/workspaces/{workspace_id}/fs/_/download/{path} - Download raw file bytes
 #[utoipa::path(
     get,
-    path = "/v1/workspaces/{workspace_id}/fs/_/download/{path}",
+    path = "/v1/platform/workspaces/{workspace_id}/fs/_/download/{path}",
     params(
         ("workspace_id" = String, Path, description = "Workspace ID (wsp_<32-hex>)"),
         ("path" = String, Path, description = "File path. Wildcard route: nested paths are literal `/`-separated segments, not a single URL-encoded value."),
@@ -780,14 +792,14 @@ pub async fn download_path(
     stream_file_response(&state.file_service, access.key, &path, &headers, true).await
 }
 
-/// PUT /v1/workspaces/{workspace_id}/fs/_/upload/{path} - Upload raw file bytes
+/// PUT /v1/platform/workspaces/{workspace_id}/fs/_/upload/{path} - Upload raw file bytes
 ///
 /// Creates or replaces the file with the request body, streamed to storage,
 /// so files larger than the JSON API carries (recordings, media) can be
 /// uploaded. Parent directories are created as needed.
 #[utoipa::path(
     put,
-    path = "/v1/workspaces/{workspace_id}/fs/_/upload/{path}",
+    path = "/v1/platform/workspaces/{workspace_id}/fs/_/upload/{path}",
     params(
         ("workspace_id" = String, Path, description = "Workspace ID (wsp_<32-hex>)"),
         ("path" = String, Path, description = "File path. Wildcard route: nested paths are literal `/`-separated segments, not a single URL-encoded value."),
@@ -860,7 +872,7 @@ fn upload_error(error: anyhow::Error) -> (StatusCode, String) {
     }
 }
 
-/// GET /v1/workspaces/{workspace_id}/fs/_/preview/{path} - Sandboxed HTML render
+/// GET /v1/platform/workspaces/{workspace_id}/fs/_/preview/{path} - Sandboxed HTML render
 ///
 /// Serves an HTML file as a `text/html` document carrying a strict `sandbox`
 /// CSP (TM-WEB-010) so the file viewer can render it — with JavaScript — inside
@@ -869,7 +881,7 @@ fn upload_error(error: anyhow::Error) -> (StatusCode, String) {
 /// returns 415 (use the download endpoint instead).
 #[utoipa::path(
     get,
-    path = "/v1/workspaces/{workspace_id}/fs/_/preview/{path}",
+    path = "/v1/platform/workspaces/{workspace_id}/fs/_/preview/{path}",
     params(
         ("workspace_id" = String, Path, description = "Workspace ID (wsp_<32-hex>)"),
         ("path" = String, Path, description = "HTML file path. Wildcard route: nested paths are literal `/`-separated segments, not a single URL-encoded value."),

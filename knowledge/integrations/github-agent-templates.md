@@ -25,8 +25,8 @@ capability, and the Daytona sandbox.
 ## Decisions
 
 - **Templates are agent examples with a setup.** They are adopted through the
-  same `POST /v1/agents/import?from-example=` path and listed by the same
-  `/v1/agent-examples` endpoint; the only addition is an optional `setup` the UI
+  same `POST /v1/platform/agents/import?from-example=` path and listed by the same
+  `/v1/platform/agent-examples` endpoint; the only addition is an optional `setup` the UI
   walks through after import (connect GitHub, pick a repository, choose
   settings, create the trigger). There is no parallel catalogue. They live in
   `crates/server/src/agent_templates.rs` because `seed.rs` is at its size limit.

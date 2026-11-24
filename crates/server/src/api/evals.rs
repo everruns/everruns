@@ -102,7 +102,10 @@ pub fn routes(state: AppState) -> Router {
         .command::<DeleteEval>()
         // ATIF trajectory import → eval cases (knowledge/evaluation/atif-adoption.md).
         // Hand-written: the raw body is NDJSON or JSON, not a params object.
-        .route("/v1/evals/{eval_id}/atif_import", post(import_atif))
+        .route(
+            "/v1/platform/evals/{eval_id}/atif_import",
+            post(import_atif),
+        )
         // Cases
         .command::<CreateEvalCase>()
         .command::<ListEvalCases>()
@@ -138,12 +141,12 @@ pub fn routes(state: AppState) -> Router {
         .command::<crate::domains::health_issues::UndoFindingAction>()
         // Hand-written: NDJSON body rather than JSON.
         .route(
-            "/v1/evals/{eval_id}/runs/{run_id}/artifacts",
+            "/v1/platform/evals/{eval_id}/runs/{run_id}/artifacts",
             get(export_run_artifacts),
         )
         // Hand-written: answers 202 Accepted, which no generic mode emits.
         .route(
-            "/v1/evals/{eval_id}/runs/{run_id}/dataset",
+            "/v1/platform/evals/{eval_id}/runs/{run_id}/dataset",
             post(export_run_dataset),
         )
         .command::<GetEvalRunDataset>()
@@ -183,7 +186,7 @@ async fn public_eval_run(
 /// raw body, so both content types work without a wrapper schema.
 #[utoipa::path(
     post,
-    path = "/v1/evals/{eval_id}/atif_import",
+    path = "/v1/platform/evals/{eval_id}/atif_import",
     summary = "Import ATIF trajectories as eval cases.",
     params(("eval_id" = String, Path, description = "Eval ID")),
     request_body(content = String, description = "ATIF trajectories as NDJSON or JSON", content_type = "application/x-ndjson"),
@@ -209,7 +212,7 @@ pub async fn import_atif(
 /// Export eval run artifacts as NDJSON, one line per case result.
 #[utoipa::path(
     get,
-    path = "/v1/evals/{eval_id}/runs/{run_id}/artifacts",
+    path = "/v1/platform/evals/{eval_id}/runs/{run_id}/artifacts",
     summary = "Export eval run artifacts as NDJSON.",
     params(
         ("eval_id" = String, Path, description = "Eval ID"),
@@ -247,7 +250,7 @@ pub async fn export_run_artifacts(
 /// `GET .../dataset/{dataset_id}`.
 #[utoipa::path(
     post,
-    path = "/v1/evals/{eval_id}/runs/{run_id}/dataset",
+    path = "/v1/platform/evals/{eval_id}/runs/{run_id}/dataset",
     summary = "Start an async dataset export for an eval run.",
     params(
         ("eval_id" = String, Path, description = "Eval ID"),

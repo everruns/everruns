@@ -38,7 +38,7 @@ pub struct CreateAgentScript {
     description = "Create a saved shell script an agent owns.",
     method = "POST",
     cli = CliRoute::new(&["agents", "scripts"], "create").with_examples(&[CliExample::new("Save a reusable shell script on an agent", "everruns agents scripts create --agent-id agent_01h9 --name run-tests --description 'Run the unit tests' --body 'cargo test --workspace' --reason 'Give the agent a one-step test runner'")]),
-    path = "/v1/agents/{agent_id}/scripts",
+    path = "/v1/platform/agents/{agent_id}/scripts",
     policy = AGENT_MANAGE,
 )]
 impl Command for CreateAgentScript {
@@ -108,7 +108,7 @@ pub struct ListAgentScripts {
     description = "List an agent's saved scripts with their bodies. include_archived=true also returns archived.",
     method = "GET",
     cli = CliRoute::new(&["agents", "scripts"], "list").with_args(&[CliArg::new("agent_id").at(1)]).with_examples(&[CliExample::new("See which scripts an agent already has before adding another", "everruns agents scripts list agent_01h9")]),
-    path = "/v1/agents/{agent_id}/scripts",
+    path = "/v1/platform/agents/{agent_id}/scripts",
     policy = AGENT_VIEW,
     positional = "agent_id",
 )]
@@ -148,7 +148,7 @@ pub struct GetAgentScript {
     description = "Get a single saved script by id.",
     method = "GET",
     cli = CliRoute::new(&["agents", "scripts"], "get").with_examples(&[CliExample::new("Read a script's body before editing or running it", "everruns agents scripts get --agent-id agent_01h9 --script-id scr_01h9")]),
-    path = "/v1/agents/{agent_id}/scripts/{script_id}",
+    path = "/v1/platform/agents/{agent_id}/scripts/{script_id}",
     policy = AGENT_VIEW,
 )]
 impl Command for GetAgentScript {
@@ -183,7 +183,7 @@ pub struct UpdateAgentScriptCmd {
     description = "Update a saved script's description, input schema or body. The name is immutable.",
     method = "PATCH",
     cli = CliRoute::new(&["agents", "scripts"], "update").with_examples(&[CliExample::new("Change a script's body, keeping its name", "everruns agents scripts update --agent-id agent_01h9 --script-id scr_01h9 --body 'cargo test --workspace --locked' --reason 'Pin tests to the lockfile'")]),
-    path = "/v1/agents/{agent_id}/scripts/{script_id}",
+    path = "/v1/platform/agents/{agent_id}/scripts/{script_id}",
     policy = AGENT_MANAGE,
 )]
 impl Command for UpdateAgentScriptCmd {
@@ -240,7 +240,7 @@ pub struct DeleteAgentScript {
     description = "Archive a saved script and free its name.",
     method = "DELETE",
     cli = CliRoute::new(&["agents", "scripts"], "delete").with_examples(&[CliExample::new("Archive a script the agent no longer needs and free its name", "everruns agents scripts delete --agent-id agent_01h9 --script-id scr_01h9 --reason 'Replaced by run-tests'")]),
-    path = "/v1/agents/{agent_id}/scripts/{script_id}",
+    path = "/v1/platform/agents/{agent_id}/scripts/{script_id}",
     policy = AGENT_MANAGE,
 )]
 impl Command for DeleteAgentScript {

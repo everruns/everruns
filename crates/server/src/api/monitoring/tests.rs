@@ -83,15 +83,15 @@ async fn configured_session_read_denial_applies_to_all_org_endpoints() {
     state.auth.permission_resolver = Arc::new(DenyReads);
     let app = routes(state);
     for uri in [
-        "/v1/monitoring",
-        "/v1/monitoring/actors",
-        "/v1/monitoring/actors/session_00000000000000000000000000000001",
-        "/v1/monitoring/timeline",
-        "/v1/monitoring/timeline/window?from=2026-11-01T00:00:00Z&to=2026-11-01T01:00:00Z",
+        "/v1/platform/monitoring",
+        "/v1/platform/monitoring/actors",
+        "/v1/platform/monitoring/actors/session_00000000000000000000000000000001",
+        "/v1/platform/monitoring/timeline",
+        "/v1/platform/monitoring/timeline/window?from=2026-11-01T00:00:00Z&to=2026-11-01T01:00:00Z",
     ] {
         assert_eq!(get(app.clone(), uri).await.0, StatusCode::FORBIDDEN);
     }
-    let (_, config) = get(app, "/v1/monitoring/config").await;
+    let (_, config) = get(app, "/v1/platform/monitoring/config").await;
     assert_eq!(config["policies"]["monitoring.view"], false);
 }
 async fn get(app: Router, uri: &str) -> (StatusCode, serde_json::Value) {
@@ -118,13 +118,13 @@ async fn tenant_admin_cannot_access_any_fleet_route() {
     let db = Arc::new(StorageBackend::test_database());
     let app = routes(state(db, false).await);
     for uri in [
-        "/v1/durable/monitoring",
-        "/v1/durable/monitoring/actors",
-        "/v1/durable/monitoring/actors/session_00000000000000000000000000000001",
-        "/v1/durable/monitoring/timeline",
-        "/v1/durable/monitoring/timeline/window?from=2026-11-01T00:00:00Z&to=2026-11-01T01:00:00Z",
-        "/v1/durable/monitoring/shards",
-        "/v1/durable/monitoring/shards/shard-01/detail",
+        "/v1/platform/durable/monitoring",
+        "/v1/platform/durable/monitoring/actors",
+        "/v1/platform/durable/monitoring/actors/session_00000000000000000000000000000001",
+        "/v1/platform/durable/monitoring/timeline",
+        "/v1/platform/durable/monitoring/timeline/window?from=2026-11-01T00:00:00Z&to=2026-11-01T01:00:00Z",
+        "/v1/platform/durable/monitoring/shards",
+        "/v1/platform/durable/monitoring/shards/shard-01/detail",
     ] {
         assert_eq!(get(app.clone(), uri).await.0, StatusCode::FORBIDDEN);
     }
@@ -134,14 +134,17 @@ async fn tenant_admin_cannot_access_any_fleet_route() {
 async fn org_monitoring_ignores_a_previous_opt_out() {
     let db = Arc::new(StorageBackend::test_database());
     let app = routes(state(db.clone(), false).await);
-    assert_eq!(get(app.clone(), "/v1/monitoring").await.0, StatusCode::OK);
+    assert_eq!(
+        get(app.clone(), "/v1/platform/monitoring").await.0,
+        StatusCode::OK
+    );
     db.replace_org_feature_flags(2, &HashMap::from([("monitoring".into(), false)]))
         .await
         .unwrap();
     for uri in [
-        "/v1/monitoring",
-        "/v1/monitoring/actors",
-        "/v1/monitoring/timeline",
+        "/v1/platform/monitoring",
+        "/v1/platform/monitoring/actors",
+        "/v1/platform/monitoring/timeline",
     ] {
         assert_eq!(get(app.clone(), uri).await.0, StatusCode::OK);
     }
@@ -164,7 +167,7 @@ async fn org_scope_hides_foreign_actors_and_global_worker_capacity() {
         .await
         .unwrap();
     let app = routes(state(db.clone(), false).await);
-    let (status, body) = get(app.clone(), "/v1/monitoring?org_id=3").await;
+    let (status, body) = get(app.clone(), "/v1/platform/monitoring?org_id=3").await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["actors"], 1);
     assert_eq!(body["lease_events"]["acquired"], 1);
@@ -172,10 +175,16 @@ async fn org_scope_hides_foreign_actors_and_global_worker_capacity() {
     assert!(body["workers"][0]["capacity"].is_null());
     assert!(body["workers"][0]["last_heartbeat_at"].is_null());
     assert_eq!(
-        get(app, &format!("/v1/monitoring/actors/{b}")).await.0,
+        get(app, &format!("/v1/platform/monitoring/actors/{b}"))
+            .await
+            .0,
         StatusCode::NOT_FOUND
     );
-    let (_, fleet) = get(routes(state(db, true).await), "/v1/durable/monitoring").await;
+    let (_, fleet) = get(
+        routes(state(db, true).await),
+        "/v1/platform/durable/monitoring",
+    )
+    .await;
     assert_eq!(fleet["actors"], 2);
 }
 
@@ -190,7 +199,7 @@ async fn timeline_returns_zero_filled_buckets_scoped_to_the_org() {
         .await
         .unwrap();
     let app = routes(state(db.clone(), false).await);
-    let (status, body) = get(app.clone(), "/v1/monitoring/timeline?range=1h").await;
+    let (status, body) = get(app.clone(), "/v1/platform/monitoring/timeline?range=1h").await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["bucket_seconds"], 60);
     let buckets = body["buckets"].as_array().unwrap();
@@ -202,17 +211,17 @@ async fn timeline_returns_zero_filled_buckets_scoped_to_the_org() {
 
     let (_, fleet) = get(
         routes(state(db, true).await),
-        "/v1/durable/monitoring/timeline?range=1h",
+        "/v1/platform/durable/monitoring/timeline?range=1h",
     )
     .await;
     assert_eq!(fleet["summary"]["peak_active"], 2);
 
     for bad in [
-        "/v1/monitoring/timeline?range=2y",
-        "/v1/monitoring/timeline?bucket=7",
-        "/v1/monitoring/timeline?from=2026-01-01T00:00:00Z&to=2026-03-01T00:00:00Z",
-        "/v1/monitoring/timeline?range=30d&bucket=60",
-        "/v1/monitoring/timeline/window?from=2026-11-01T00:00:00Z&to=2026-10-01T00:00:00Z",
+        "/v1/platform/monitoring/timeline?range=2y",
+        "/v1/platform/monitoring/timeline?bucket=7",
+        "/v1/platform/monitoring/timeline?from=2026-01-01T00:00:00Z&to=2026-03-01T00:00:00Z",
+        "/v1/platform/monitoring/timeline?range=30d&bucket=60",
+        "/v1/platform/monitoring/timeline/window?from=2026-11-01T00:00:00Z&to=2026-10-01T00:00:00Z",
     ] {
         assert_eq!(
             get(app.clone(), bad).await.0,

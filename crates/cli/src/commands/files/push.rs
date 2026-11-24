@@ -20,7 +20,7 @@ pub async fn run(
     dry_run: bool,
 ) -> Result<()> {
     let local_dir = PathBuf::from(&local_dir).canonicalize()?;
-    let client = RemoteClient::new_with_org(api_url, api_key, &session_id, org_id);
+    let client = RemoteClient::connect(api_url, api_key, &session_id, org_id).await?;
     let sd = state_dir(&local_dir);
     let mut state = SyncState::load(&sd, &session_id)?;
 

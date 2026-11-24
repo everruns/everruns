@@ -3,7 +3,7 @@
 //! The bench loads a synthetic collection of one million files into a private
 //! embedded PostgreSQL database, then reads catalog pages at the start, middle
 //! and end of it through `KnowledgeService::files_page`, the query behind
-//! `GET /v1/knowledge/collections/{id}/files`.
+//! `GET /v1/platform/knowledge/collections/{id}/files`.
 //!
 //! Decisions:
 //! - A bench target (`harness = false`, not run by `cargo test`): loading a

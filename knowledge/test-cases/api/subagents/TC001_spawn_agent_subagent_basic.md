@@ -32,7 +32,7 @@ Verify that an agent with the `subagents` capability can spawn a subagent via th
 
 1. Create agent with subagents capability:
    ```bash
-   curl -s -X POST "http://localhost:9300/api/v1/agents" \
+   curl -s -X POST "http://localhost:9300/api/v1/platform/agents" \
      -H "Content-Type: application/json" \
      -d '{
        "name": "Subagent Orchestrator",
@@ -44,7 +44,7 @@ Verify that an agent with the `subagents` capability can spawn a subagent via th
 
 2. Create session:
    ```bash
-   curl -s -X POST "http://localhost:9300/api/v1/sessions" \
+   curl -s -X POST "http://localhost:9300/api/v1/platform/sessions" \
      -H "Content-Type: application/json" \
      -d '{"agent_id": "{agent_id}"}'
    ```
@@ -52,7 +52,7 @@ Verify that an agent with the `subagents` capability can spawn a subagent via th
 
 3. Send message requesting subagent spawn:
    ```bash
-   curl -s -X POST "http://localhost:9300/api/v1/sessions/{session_id}/messages" \
+   curl -s -X POST "http://localhost:9300/api/v1/platform/sessions/{session_id}/messages" \
      -H "Content-Type: application/json" \
      -d '{
        "message": {
@@ -67,10 +67,10 @@ Verify that an agent with the `subagents` capability can spawn a subagent via th
 5. Retrieve events and session list for assertions:
    ```bash
    # Events
-   curl -s "http://localhost:9300/api/v1/sessions/{session_id}/events"
+   curl -s "http://localhost:9300/api/v1/platform/sessions/{session_id}/events"
 
    # All sessions (to find child)
-   curl -s "http://localhost:9300/api/v1/sessions"
+   curl -s "http://localhost:9300/api/v1/platform/sessions"
    ```
 
 ## Expected Result

@@ -149,7 +149,7 @@ function mockResponse({
 function atifSegment(cursor?: string): string {
   const doc: Record<string, unknown> = { atif_version: "1.7", messages: [] };
   if (cursor) {
-    doc.continued_trajectory_ref = `/v1/sessions/${SESSION_ID}/export?format=atif&segmented=true&cursor=${cursor}`;
+    doc.continued_trajectory_ref = `/v1/platform/sessions/${SESSION_ID}/export?format=atif&segmented=true&cursor=${cursor}`;
   }
   return JSON.stringify(doc);
 }
@@ -200,7 +200,7 @@ describe("downloadSessionExport", () => {
     await downloadSessionExport(SESSION_ID, "jsonl", "en", notify);
 
     expect(fetchMock).toHaveBeenCalledWith(
-      `/api/v1/sessions/${SESSION_ID}/export`,
+      `/api/v1/platform/sessions/${SESSION_ID}/export`,
       expect.objectContaining({ credentials: "include" }),
     );
     expect(downloads).toEqual([`${SESSION_ID}.jsonl`]);
@@ -229,7 +229,7 @@ describe("downloadSessionExport", () => {
     await downloadSessionExport(SESSION_ID, "atif", "en", notify);
 
     expect(fetchMock).toHaveBeenCalledWith(
-      `/api/v1/sessions/${SESSION_ID}/export?format=atif`,
+      `/api/v1/platform/sessions/${SESSION_ID}/export?format=atif`,
       expect.objectContaining({ credentials: "include" }),
     );
     expect(downloads).toEqual([`${SESSION_ID}.atif.json`]);
@@ -314,17 +314,17 @@ describe("downloadSessionExport", () => {
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
-      `/api/v1/sessions/${SESSION_ID}/export?format=atif&segmented=true`,
+      `/api/v1/platform/sessions/${SESSION_ID}/export?format=atif&segmented=true`,
       expect.objectContaining({ credentials: "include" }),
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       3,
-      `/api/v1/sessions/${SESSION_ID}/export?format=atif&segmented=true&cursor=c1`,
+      `/api/v1/platform/sessions/${SESSION_ID}/export?format=atif&segmented=true&cursor=c1`,
       expect.objectContaining({ credentials: "include" }),
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       4,
-      `/api/v1/sessions/${SESSION_ID}/export?format=atif&segmented=true&cursor=c2`,
+      `/api/v1/platform/sessions/${SESSION_ID}/export?format=atif&segmented=true&cursor=c2`,
       expect.objectContaining({ credentials: "include" }),
     );
     expect(downloads).toEqual([

@@ -53,7 +53,7 @@ pub fn contracts() -> &'static [ContractCommand] {
 }
 
 /// The contract one caller can use: commands the surfaces expose and whose
-/// feature is enabled for them. `GET /v1/commands` serves this, so a client
+/// feature is enabled for them. `GET /v1/platform/commands` serves this, so a client
 /// learns the grammar from the server it is talking to.
 pub fn contracts_for(
     feature_flags: &crate::records::FeatureFlags,

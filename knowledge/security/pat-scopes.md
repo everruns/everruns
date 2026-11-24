@@ -11,7 +11,7 @@ tags:
 # Personal Access Token Scopes
 
 > Status: **Implemented; all rollout steps landed: 1 (classification), 2
-> (enforcement on REST and `/v1/commands`), 3 (enforcement on `/mcp` and the
+> (enforcement on REST and `/v1/platform/commands`), 3 (enforcement on `/mcp` and the
 > execution API), 4 (creation), 5 (CLI) and 6 (`Caller.read_only` in
 > `Command::run`).** A user can mint a `read` token
 > (`normalize_pat_scopes` in
@@ -22,7 +22,7 @@ tags:
 > ([`auth/pat_scope`](../../crates/server/src/auth/pat_scope/mod.rs)), sees and
 > calls only the read-only tools on `/mcp`
 > ([`mcp_endpoint/scope.rs`](../../crates/server/src/api/mcp_endpoint/scope.rs)),
-> and is not an org member on an API channel. `GET /v1/auth/me` reports
+> and is not an org member on an API channel. `GET /v1/platform/auth/me` reports
 > `token_scope`, and the creation audit event records `scopes`. The CLI shows
 > the scope in `everruns whoami` and explains a refusal in one line
 > ([`commands/api.rs`](../../crates/cli/src/commands/api.rs)). Behind all of
@@ -115,10 +115,10 @@ by being given "write". It marks routes no scoped token should ever reach
 
 The method is the wrong signal in both directions. POST endpoints that only
 read exist (`validate_agent_package`, `diff_agent_package`, search and preview
-helpers, and `POST /v1/commands/{name}` for every read command). GET endpoints
+helpers, and `POST /v1/platform/commands/{name}` for every read command). GET endpoints
 with side effects exist too: `GET /v1/auth/cli/callback` binds a CLI login to
-the caller, `GET /v1/providers/{id}/oauth/authorize` starts an OAuth grant,
-`GET /v1/slack/install` starts an install, and
+the caller, `GET /v1/platform/providers/{id}/oauth/authorize` starts an OAuth grant,
+`GET /v1/platform/slack/install` starts an install, and
 `GET /mcp/elicitations/connect` starts a connection. So the class is declared,
 and the method is only a review hint.
 
@@ -140,12 +140,12 @@ Two sources, one answer per `(method, route template)`:
    list in the same file, so making a POST readable takes a deliberate second
    edit that a reviewer sees.
 
-`POST /v1/commands/{name}` is classified `PerCommand`: the route layer lets it
+`POST /v1/platform/commands/{name}` is classified `PerCommand`: the route layer lets it
 through and
 [`execute_command`](../../crates/server/src/api/command_dispatch.rs) applies
 source 1 to the named command. An unknown name stays 404. A known command
 outside the token's scope is 403, so the 403 does not reveal anything the
-command contract (`GET /v1/commands`) does not already list.
+command contract (`GET /v1/platform/commands`) does not already list.
 
 ### Fail closed
 
@@ -201,12 +201,12 @@ a prerequisite.
 
 Classified `Never`, whatever the method:
 
-- Token management: all of `/v1/auth/personal-access-tokens*`, including list.
+- Token management: all of `/v1/platform/auth/personal-access-tokens*`, including list.
   A PAT already cannot mint a PAT
   (`create_personal_access_token` rejects `AuthMethod::PersonalAccessToken`);
   that rule stays for `*` tokens too.
-- The auth surface, `/v1/auth/*` (login, register, refresh, recovery, OAuth,
-  CLI login start, callback and exchange), except `GET /v1/auth/me`, which is
+- The auth surface, `/v1/platform/auth/*` (login, register, refresh, recovery, OAuth,
+  CLI login start, callback and exchange), except `GET /v1/platform/auth/me`, which is
   `Read` so `everruns whoami` works.
 - Membership and org lifecycle: invitations (create, revoke, accept), member
   role changes and removal, org create and delete, `switch-org`, account
@@ -215,7 +215,7 @@ Classified `Never`, whatever the method:
   share creation, provider and user-connection OAuth authorize and callback,
   GitHub App setup, Slack install, connected MCP client revocation, and session
   and agent secret writes.
-- The full personal data export, `GET /v1/users/me/export`. It is a read, but
+- The full personal data export, `GET /v1/platform/users/me/export`. It is a read, but
   it hands over everything the user owns across every org in one response, so
   a leaked `read` token would turn into a bulk exfiltration path. Single
   resources stay readable; the bundle does not.
@@ -233,13 +233,13 @@ PATs.
 | Surface or credential | Behavior |
 |---|---|
 | REST `/v1` | Decisions 2 and 3. |
-| `/v1/commands` (CLI) | `GET` lists the commands the token can run (the `query` toolset for `read`), each still marked `read_only`. `POST /v1/commands/{name}` checks per command. |
+| `/v1/platform/commands` (CLI) | `GET` lists the commands the token can run (the `query` toolset for `read`), each still marked `read_only`. `POST /v1/platform/commands/{name}` checks per command. |
 | `/mcp` with a PAT | `extract_mcp_auth_user` carries the scope. For `read`, `tools/list` returns only tools annotated read-only (`me`, `list_organizations`, `discover`, `query`, `session_get_status`, card and app views, and the room tools that only read), and `tools/call` refuses `execute`, `agent_run`, `session_send_message`, `session_set_secret`, `connect`, mutating app actions and room tools that change something (including `room_read_unread`, which marks messages read). The tool classification is an explicit list in `tool_registry.rs`, kept equal to its `readOnlyHint` annotations by a test, so a hint is never the only control. |
 | MCP OAuth tokens | Unchanged: resource-bound, full user authority on `/mcp` only (TM-MCP-006). If consent-time scopes come later, they reuse the same tool classification. |
 | JWT and cookie sessions | Unchanged. No scope. |
 | Share tokens (`evr_share_`) | Unchanged. Not a principal: anonymous read of one eval run. A `read` PAT cannot create one (`Never`). |
 | Agent keys (`evr_ak_`) | Owned by the [Agent Execution API](../integrations/agent-execution-api.md); this design does not touch them. Boundary: a `read` PAT cannot create, rotate or revoke one, and it is not accepted as an "org members" caller on an API channel, because running an agent is a write. Only a `*` PAT qualifies in `agent_api_auth.rs::org_member`. |
-| CLI (`everruns`) | `everruns login` keeps minting `*` through `/v1/auth/cli/exchange`. `login --token` accepts a `read` token. `whoami` shows the scope, from a new `token_scope` field on `GET /v1/auth/me` (null for non-PAT). The CLI maps `insufficient_scope` to one line naming the scope the token lacks. A `login --read-only` flag that passes `scopes` to the exchange is optional. |
+| CLI (`everruns`) | `everruns login` keeps minting `*` through `/v1/platform/auth/cli/exchange`. `login --token` accepts a `read` token. `whoami` shows the scope, from a new `token_scope` field on `GET /v1/platform/auth/me` (null for non-PAT). The CLI maps `insufficient_scope` to one line naming the scope the token lacks. A `login --read-only` flag that passes `scopes` to the exchange is optional. |
 
 ## Decision 6: error shape and logging
 
@@ -285,7 +285,7 @@ not by this design:
 - **TM-AUTH-005** (PAT exposure): the mitigation adds "issue `read` tokens for
   read-only automation".
 - **TM-MCP-002**: the same read-only predicate now also gates `read` PATs on
-  REST and `/v1/commands`, so its inventory test protects both.
+  REST and `/v1/platform/commands`, so its inventory test protects both.
 - **TM-MCP-006**: notes that a PAT on `/mcp` honors its scope.
 - **TM-TENANT-004** is unchanged: scopes narrow actions, not orgs.
 
@@ -315,10 +315,10 @@ Each test fails if the property it names breaks:
    JWT, a cookie and a `*` PAT on an unclassified route pass as today.
 5. **Predicate parity**: the classification for command-backed routes equals
    membership in the MCP `ToolsetMode::ReadOnly` toolset.
-6. **Surfaces**: `/v1/commands` lists and runs only read commands for `read`.
+6. **Surfaces**: `/v1/platform/commands` lists and runs only read commands for `read`.
    MCP `tools/list` and `tools/call` filter as Decision 5 says, and the tool
    list equals its annotations. The execution API rejects a `read` PAT as an
-   org member. `GET /v1/auth/me` reports `token_scope`.
+   org member. `GET /v1/platform/auth/me` reports `token_scope`.
 7. **End to end**: the CLI with a `read` token lists agents and fails
    `agents create` with the scope message.
 
@@ -333,14 +333,14 @@ token while any surface still ignores it.
    `AuthUser`, the `RouteAccess` layer, the shared read-only predicate, the
    route table, and tests 1, 2 and 5. Nothing changes on the wire. SaaS's
    `AuthUser` struct literals need the new field when SaaS adopts this.
-2. **Enforce on REST and `/v1/commands`.** Extractor check, error shape,
+2. **Enforce on REST and `/v1/platform/commands`.** Extractor check, error shape,
    logging and metric, per-command check, the embedder classification hook,
    tests 3 and 4, and the migration that deletes legacy non-`*` rows (see
    [Legacy narrow tokens](#legacy-narrow-tokens)).
 3. **Enforce on MCP and the execution API.** Tool classification and filtering,
    the `org_member` boundary, and test 6.
 4. **Open creation.** `normalize_pat_scopes` accepts `["read"]`. Add a scope
-   picker to the token UI, `token_scope` on `/v1/auth/me`, `scopes` in the
+   picker to the token UI, `token_scope` on `/v1/platform/auth/me`, `scopes` in the
    creation audit event, public docs in `docs/`, and the
    [Authentication](authentication.md) update. TM-AUTH-037 and TM-AUTH-038
    land here.
@@ -365,12 +365,12 @@ Settled while building step 1, where the decisions above left a detail open:
   hand-written route.
 - **`Never` overrides a command.** Decision 4 wins over source 1: a `Never`
   row may name a command-backed route, and the command's class is `Never`
-  wherever it is invoked, including through `POST /v1/commands/{name}`. No
+  wherever it is invoked, including through `POST /v1/platform/commands/{name}`. No
   other table row may name a command-backed route.
 - **Routes outside the OpenAPI document.** The auth surface, Slack install,
   provider and user-connection OAuth, invitations and member management,
   file-system routes and a few config endpoints are served but not
-  documented. `/v1/auth/*` is `Never` by prefix (`GET /v1/auth/me` is the one
+  documented. `/v1/platform/auth/*` is `Never` by prefix (`GET /v1/platform/auth/me` is the one
   `Read` row). The others that must be readable or explicitly `Never` have
   rows in a second, undocumented list; the coverage test checks each still
   names a route literal in the server source and is not in the document. Any
@@ -445,7 +445,7 @@ Settled while building step 4:
   collapsed to `["*"]`. What is stored is always what was asked for.
 - **`token_scope` names the credential, not the user.** It is `*` or `read`
   for a PAT and `null` for a cookie or JWT. A token whose stored scopes parse
-  to no scope never reaches `/v1/auth/me`, so it has no wire value.
+  to no scope never reaches `/v1/platform/auth/me`, so it has no wire value.
 - **The UI picker defaults to Full access** and describes Read-only as "read
   access to all your organizations", listing what it cannot do; the token
   list shows each token's scope. The page's warning now covers both scopes.
@@ -466,7 +466,7 @@ Settled while building step 5:
   [`pat_scope_integration_test.rs`](../../crates/cli/tests/pat_scope_integration_test.rs)
   drives the built binary against a stub that answers with the server's
   problem document.
-- **No `login --read-only`.** It would need `/v1/auth/cli/exchange` to accept
+- **No `login --read-only`.** It would need `/v1/platform/auth/cli/exchange` to accept
   `scopes`; a read token is created in the UI or API and pasted with
   `login --token`.
 

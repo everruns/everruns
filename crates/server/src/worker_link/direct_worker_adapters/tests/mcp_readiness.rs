@@ -101,7 +101,7 @@ async fn platform_readiness_worker_to_api_smoke() {
         .expect("pending discovery must not block worker preparation")
         .unwrap();
         // This command is exactly the projection invoked by GET
-        // /v1/sessions/{session_id}/mcp-servers, using the same persisted records.
+        // /v1/platform/sessions/{session_id}/mcp-servers, using the same persisted records.
         let pending = ListChatMcpServers {
             session_id: session.to_string(),
         }

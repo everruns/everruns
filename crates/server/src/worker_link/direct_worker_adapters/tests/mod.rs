@@ -642,7 +642,7 @@ async fn session_creation_authority_uses_owner_permission_and_returns_root() {
 
 mod session_wait;
 
-/// EVE-1234: platform-tool commands run with the `/v1/providers` service
+/// EVE-1234: platform-tool commands run with the `/v1/platform/providers` service
 /// instances. Without them `sync_provider_models` answered 503 "Model sync is
 /// not available on this endpoint" and provider create/update skipped model
 /// discovery and the default-model bootstrap.

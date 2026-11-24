@@ -256,13 +256,13 @@ once), or from the command line as described in
 export EVERRUNS_TOKEN=evr_pat_...
 
 # Create a session (agent_id in request body)
-curl -X POST http://localhost:9300/api/v1/sessions \
+curl -X POST http://localhost:9300/api/v1/platform/sessions \
   -H "Authorization: Bearer $EVERRUNS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"agent_id": "{agent_id}"}'
 
 # Send a message
-curl -X POST http://localhost:9300/api/v1/sessions/{session_id}/messages \
+curl -X POST http://localhost:9300/api/v1/platform/sessions/{session_id}/messages \
   -H "Authorization: Bearer $EVERRUNS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"message": {"role": "user", "content": [{"type": "text", "text": "Hello!"}]}}'

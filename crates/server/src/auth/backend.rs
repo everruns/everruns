@@ -73,6 +73,6 @@ pub trait AuthBackend: Send + Sync + 'static {
         None
     }
 
-    /// Return the auth configuration for the `/v1/auth/config` endpoint.
+    /// Return the auth configuration for the `/v1/platform/auth/config` endpoint.
     fn auth_config_response(&self) -> AuthConfigResponse;
 }

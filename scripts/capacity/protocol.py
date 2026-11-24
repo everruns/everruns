@@ -32,7 +32,7 @@ class Actor:
 
     @property
     def root(self):
-        return self.base.rstrip("/") + ("/v1" if self.path == "console" else "")
+        return self.base.rstrip("/") + ("/v1/platform" if self.path == "console" else "")
 
     def url(self, suffix):
         return self.root + "/" + suffix.lstrip("/")
@@ -154,7 +154,7 @@ async def preflight(client, target, actors):
             model = (
                 (
                     await client.get(
-                        f"{target.control}/v1/models/{actor.model}", headers=headers
+                        f"{target.control}/v1/platform/models/{actor.model}", headers=headers
                     )
                 )
                 .raise_for_status()
@@ -163,7 +163,7 @@ async def preflight(client, target, actors):
             provider = (
                 (
                     await client.get(
-                        f"{target.control}/v1/providers/{model['provider_id']}",
+                        f"{target.control}/v1/platform/providers/{model['provider_id']}",
                         headers=headers,
                     )
                 )
@@ -175,7 +175,7 @@ async def preflight(client, target, actors):
             agent = (
                 (
                     await client.get(
-                        f"{target.control}/v1/agents/{actor.agent}", headers=headers
+                        f"{target.control}/v1/platform/agents/{actor.agent}", headers=headers
                     )
                 )
                 .raise_for_status()
@@ -197,7 +197,7 @@ async def preflight(client, target, actors):
             if channel not in channels:
                 (
                     await client.get(
-                        f"{target.control}/v1/agents/{actor.agent}/channels/{actor.channel}",
+                        f"{target.control}/v1/platform/agents/{actor.agent}/channels/{actor.channel}",
                         headers=headers,
                     )
                 ).raise_for_status()

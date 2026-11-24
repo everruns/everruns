@@ -169,7 +169,7 @@ pub(crate) fn pact_config(key: &PersonalAgentKey) -> Value {
 pub(crate) async fn create_channel(server: &TestServer, pact: Option<Value>) -> String {
     let agent: Value = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": format!("pact-{}", uuid::Uuid::new_v4().simple()),
                 "display_name": "PACT agent",
@@ -193,7 +193,7 @@ pub(crate) async fn create_channel(server: &TestServer, pact: Option<Value>) -> 
     }
     let channel: Value = server
         .post(
-            &format!("/v1/agents/{agent_id}/channels"),
+            &format!("/v1/platform/agents/{agent_id}/channels"),
             json!({ "channel_type": "a2a", "channel_config": config }),
         )
         .await
@@ -202,7 +202,7 @@ pub(crate) async fn create_channel(server: &TestServer, pact: Option<Value>) -> 
     let id = channel["id"].as_str().unwrap().to_string();
     server
         .post(
-            &format!("/v1/agents/{agent_id}/channels/{id}/publish"),
+            &format!("/v1/platform/agents/{agent_id}/channels/{id}/publish"),
             json!({}),
         )
         .await
@@ -642,7 +642,7 @@ async fn pact_config_is_validated() {
     let (server, _) = server().await;
     let agent: Value = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": format!("pact-{}", uuid::Uuid::new_v4().simple()),
                 "display_name": "PACT agent",
@@ -661,7 +661,7 @@ async fn pact_config_is_validated() {
     ] {
         server
             .post(
-                &format!("/v1/agents/{agent_id}/channels"),
+                &format!("/v1/platform/agents/{agent_id}/channels"),
                 json!({
                     "channel_type": "a2a",
                     "channel_config": {

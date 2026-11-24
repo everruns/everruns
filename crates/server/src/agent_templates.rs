@@ -2,7 +2,7 @@
 //!
 // Decisions:
 // - A template is an ordinary agent example (`SeedAgent`, adopted through
-//   `POST /v1/agents/import?from-example={name}`) plus `TemplateSetup`, which
+//   `POST /v1/platform/agents/import?from-example={name}`) plus `TemplateSetup`, which
 //   tells the UI what to walk the user through after adoption: connect the
 //   agent's own GitHub App, pick a repository, choose settings, create the
 //   trigger. There is no second catalogue or import path.

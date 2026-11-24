@@ -102,7 +102,7 @@ scope stay unthreaded. Other provider drivers ignore this Anthropic option.
 
 ## Models
 
-Anthropic's `/v1/models` endpoint returns capability metadata, which Everruns
+Anthropic's `/v1/platform/models` endpoint returns capability metadata, which Everruns
 merges with its built-in model profiles. Hardcoded profiles take precedence for
 cost data; discovered data fills gaps for newer models.
 

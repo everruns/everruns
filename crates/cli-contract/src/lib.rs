@@ -21,7 +21,7 @@
 //!     verb: "list".into(),
 //!     description: "List agents in the organization.".into(),
 //!     method: "GET".into(),
-//!     http_path: "/v1/agents".into(),
+//!     http_path: "/v1/platform/agents".into(),
 //!     args: vec![ContractArg {
 //!         field: "limit".into(),
 //!         long: "limit".into(),
@@ -563,7 +563,7 @@ mod round_trip {
             "update_widget",
             "Update a widget.",
             "PATCH",
-            "/v1/widgets/{id}",
+            "/v1/platform/widgets/{id}",
             &ROUTE,
             &json!({
                 "type": "object",

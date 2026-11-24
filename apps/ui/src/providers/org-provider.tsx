@@ -4,7 +4,7 @@
 // Decision: Current org stored in localStorage for persistence across sessions
 // Decision: Default org ID used as fallback
 // Decision: Org selection via server-side cookie (everruns_org) for SSE compatibility
-// Decision: /v1/auth/me sets org cookie if missing, so we always have org context
+// Decision: /v1/platform/auth/me sets org cookie if missing, so we always have org context
 // Decision: On org switch, redirect entity detail pages to their list page to avoid 404s
 // Decision: Every org commit publishes the org to the API layer (X-Org-Id) synchronously,
 //   because the cookie sync is a separate request that lands later — requests issued in

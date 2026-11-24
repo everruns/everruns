@@ -101,7 +101,7 @@ Key fields:
 | POST | `/v1/apps/{app_id}/slack/events` | Slack signing secret | Permanent app-scoped alias |
 | GET | `/v1/apps/{app_id}/slack/manifest` | None | Permanent app-scoped alias |
 
-All other App CRUD endpoints remain under standard API key auth at `/v1/apps`.
+All other App CRUD endpoints remain under standard API key auth at `/v1/platform/apps`.
 
 ## UI
 

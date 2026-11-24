@@ -170,7 +170,7 @@ async fn agent_card(
         .collect();
     // HTTP+JSON shares the interface URL (`http_json.rs`), A2A 1.0 only. The
     // legacy App route never carried it.
-    if !endpoint_path.contains("/v1/apps/") {
+    if !endpoint_path.contains("/v1/platform/apps/") {
         interfaces.push(json!({
             "url": endpoint,
             "protocolBinding": A2A_PROTOCOL_BINDING_HTTP_JSON,

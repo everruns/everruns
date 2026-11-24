@@ -43,7 +43,7 @@ pub struct GetSessionRun {
 /// The agent behind a session of the run.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct RunAgent {
-    /// The agent's id, as `/v1/agents/{agent_id}` takes it.
+    /// The agent's id, as `/v1/platform/agents/{agent_id}` takes it.
     #[schema(example = "agent_01h9xk2m")]
     pub id: String,
     /// The agent's display name.
@@ -140,7 +140,7 @@ pub struct SessionRun {
     description = "Show the run a session belongs to: the first session and every agent session started under it, with status, turns and spend.",
     summary = "Show a session's whole run",
     method = "GET",
-    path = "/v1/sessions/{session_id}/run",
+    path = "/v1/platform/sessions/{session_id}/run",
     policy = SESSION_VIEW,
     cli = CliRoute::new(&["sessions", "run"], "get").with_args(&[CliArg::new("session_id").at(1)]).with_examples(&[CliExample::new("See every agent in a session's run", "everruns sessions run get session_01h9")]),
     positional = "session_id",

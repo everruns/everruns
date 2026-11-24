@@ -3,7 +3,7 @@
  * - `generate_image` / `edit_image` return a GIF twice: the stored artifact
  *   (the animation) and a PNG of its first frame for the chat model. People
  *   should see the animation, so a GIF with an artifact plays at full size
- *   from `/v1/images/{id}` and its first-frame thumbnail is hidden.
+ *   from `/v1/platform/images/{id}` and its first-frame thumbnail is hidden.
  * - Pause swaps the animation for that first-frame PNG: browsers cannot pause
  *   an `<img>` GIF, and the still is already in the result.
  * - Only artifact ids from the tool's own JSON reach a URL, and only through

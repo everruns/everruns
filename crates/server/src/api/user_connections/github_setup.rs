@@ -10,7 +10,7 @@
 
 use super::*;
 
-/// GET /v1/user/connections/github/authorize — sign the caller in to GitHub
+/// GET /v1/platform/user/connections/github/authorize — sign the caller in to GitHub
 pub async fn github_authorize(
     State(state): State<AppState>,
     auth: ConnectionUser,

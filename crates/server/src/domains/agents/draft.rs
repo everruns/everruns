@@ -139,7 +139,7 @@ pub struct AgentDraftResult {
                    Returns the draft only; nothing is created.",
     summary = "Revise an agent draft with the agent builder",
     method = "POST",
-    path = "/v1/agents/draft",
+    path = "/v1/platform/agents/draft",
     policy = AGENT_MANAGE,
     // Makes paid utility-LLM calls; not a free read.
     read_only = false,

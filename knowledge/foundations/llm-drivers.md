@@ -695,7 +695,7 @@ without mutating or weakening unrelated schemas.
 Meta Model API serves Muse models at `https://api.meta.ai/v1`. The dedicated
 driver uses the shared Responses protocol, preserves server-managed continuation
 through `previous_response_id`, and discovers models from the host-gated
-`/v1/models` endpoint. Profile gating enables Meta's native message phases and
+`/v1/platform/models` endpoint. Profile gating enables Meta's native message phases and
 hosted tool search only on the direct `meta` surface; gateway aliases fall back
 to client-side transcript replay and tool search.
 
@@ -715,7 +715,7 @@ gateway relaying the native shape hits them too:
 
 Reasoning on Mistral Large 4 is a toggle: the API accepts only `none` and `high` and answers 400
 for anything else, so its profile offers exactly those two (`none`, the API default, is never
-sent). `/v1/models` lists every alias as its own entry repeating the canonical `name`;
+sent). `/v1/platform/models` lists every alias as its own entry repeating the canonical `name`;
 discovery keeps the `id == name` entry, chat models only, minus scheduled retirements.
 
 Mistral Responses is an explicit connection-level selection owned by the Mistral driver, using the
@@ -767,7 +767,7 @@ never probed (the OpenRouter/Meta/Fireworks posture). They differ in what a cata
 
 Cloudflare's listing cannot be complete. Which third-party models an account reaches depends on
 what it can bill, and no endpoint enumerates that, so those ids are still added by hand. Probed to
-be sure rather than assumed: `ai/v1/models` answers `405 GET not supported`, and the
+be sure rather than assumed: `ai/v1/platform/models` answers `405 GET not supported`, and the
 `ai-gateway/gateways` and `ai-gateway/providers` endpoints answer `403` code `10000`
 (authentication error) to a Workers AI-scoped token — they exist, but behind the AI Gateway
 permission the inference token deliberately does not carry, and they enumerate configured
@@ -939,7 +939,7 @@ OpenRouter's session feature reads.
 
 The `openrouter_workspace` capability contributes two host-facing tools for reading workspace constraints and detecting incompatibilities before routing decisions are made:
 
-- **`inspect_openrouter_workspace`**: calls OpenRouter's `/api/v1/auth/key` endpoint and returns structured `OpenRouterKeyInfo` (label, usage, limit, tier, rate-limit). The raw API key is never included in the response.
+- **`inspect_openrouter_workspace`**: calls OpenRouter's `/api/v1/platform/auth/key` endpoint and returns structured `OpenRouterKeyInfo` (label, usage, limit, tier, rate-limit). The raw API key is never included in the response.
 - **`check_openrouter_policy_compatibility`**: fetches workspace info and compares it against caller-supplied routing parameters (`min_remaining_budget_usd`, `requires_paid_features`), returning a `PolicyCompatibilityReport` with a list of `WorkspacePolicyDrift` entries.
 
 Drift kinds:

@@ -36,27 +36,29 @@ export function resourceWrite(
 ): PageResource | undefined {
   if (!["PATCH", "PUT"].includes(method.toUpperCase())) return;
   const path = endpoint.split("?")[0];
-  if (path === "/v1/tracing/defaults" && org)
+  if (path === "/v1/platform/tracing/defaults" && org)
     return { kind: "tracing_policy", id: org, label: "Tracing" };
-  const tracing = path.match(/^\/v1\/agents\/([^/]+)\/tracing$/);
+  const tracing = path.match(/^\/v1\/platform\/agents\/([^/]+)\/tracing$/);
   if (tracing) return { kind: "tracing_policy", id: tracing[1], label: "Tracing" };
-  const destination = path.match(/^\/v1\/tracing\/destinations\/([^/]+)$/);
+  const destination = path.match(/^\/v1\/platform\/tracing\/destinations\/([^/]+)$/);
   if (destination)
     return { kind: "tracing_destination", id: destination[1], label: "Tracing destination" };
-  const account = path.match(/^\/v1\/orgs\/[^/]+\/organization-connections\/([^/]+)$/);
+  const account = path.match(/^\/v1\/platform\/orgs\/[^/]+\/organization-connections\/([^/]+)$/);
   if (account)
     return { kind: "organization_account", id: account[1], label: "Organization account" };
-  const network = path.match(/^\/v1\/orgs\/(org_[a-f0-9]+)\/egress-allowlist$/);
+  const network = path.match(/^\/v1\/platform\/orgs\/(org_[a-f0-9]+)\/egress-allowlist$/);
   if (network) return { kind: "organization_network", id: network[1], label: "Outbound allowlist" };
-  if (path === "/v1/models/decision-default" && org)
+  if (path === "/v1/platform/models/decision-default" && org)
     return { kind: "organization_decision", id: org, label: "Decision model" };
   for (const [prefix, kind, label] of definitions) {
-    const root = `/v1/${prefix}/`;
+    const root = `/v1/platform/${prefix}/`;
     if (!path.startsWith(root)) continue;
     const id = path.slice(root.length);
     if (/^(?:[a-z][a-z_]*_)?[a-f0-9-]{8,}$/i.test(id)) return { kind, id, label };
   }
-  const entry = path.match(/^\/v1\/(knowledge-bases|evals)\/[^/]+\/(entries|cases)\/([^/]+)$/);
+  const entry = path.match(
+    /^\/v1\/platform\/(knowledge-bases|evals)\/[^/]+\/(entries|cases)\/([^/]+)$/,
+  );
   if (
     entry &&
     ((entry[1] === "knowledge-bases" && entry[2] === "entries") ||
@@ -67,7 +69,9 @@ export function resourceWrite(
       id: entry[3],
       label: entry[2] === "entries" ? "Knowledge entry" : "Eval case",
     };
-  const nested = path.match(/^\/v1\/agents\/[^/]+\/(channels|triggers|scripts)\/([^/]+)$/);
+  const nested = path.match(
+    /^\/v1\/platform\/agents\/[^/]+\/(channels|triggers|scripts)\/([^/]+)$/,
+  );
   if (nested)
     return {
       kind: { channels: "agent_channel", triggers: "agent_trigger", scripts: "agent_script" }[

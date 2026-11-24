@@ -19,7 +19,7 @@ async fn test_create_session_nonexistent_harness_returns_404() {
 
     server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             json!({
                 "harness_id": "harness_00000000000000000000000000000000",
                 "title": "Should fail"
@@ -34,7 +34,7 @@ async fn test_check_harness_name_available() {
     let server = TestServer::new().await;
 
     let data: Value = server
-        .get("/v1/harnesses/check-name?name=fresh-new-name")
+        .get("/v1/platform/harnesses/check-name?name=fresh-new-name")
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -48,7 +48,7 @@ async fn test_check_harness_name_taken() {
 
     // "generic" is a built-in harness name
     let data: Value = server
-        .get("/v1/harnesses/check-name?name=generic")
+        .get("/v1/platform/harnesses/check-name?name=generic")
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -63,7 +63,7 @@ async fn test_check_harness_name_taken_with_exclude_id() {
     // Create a harness
     let harness: Harness = server
         .post(
-            "/v1/harnesses",
+            "/v1/platform/harnesses",
             json!({
                 "name": "check-name-test",
                 "display_name": "Check Name Test",
@@ -76,7 +76,7 @@ async fn test_check_harness_name_taken_with_exclude_id() {
 
     // Without exclude_id — should be taken
     let data: Value = server
-        .get("/v1/harnesses/check-name?name=check-name-test")
+        .get("/v1/platform/harnesses/check-name?name=check-name-test")
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -85,7 +85,7 @@ async fn test_check_harness_name_taken_with_exclude_id() {
     // With exclude_id (self) — should be available
     let data: Value = server
         .get(&format!(
-            "/v1/harnesses/check-name?name=check-name-test&exclude_id={}",
+            "/v1/platform/harnesses/check-name?name=check-name-test&exclude_id={}",
             harness.id
         ))
         .await
@@ -100,7 +100,7 @@ async fn test_check_harness_name_invalid_format() {
 
     // Uppercase is invalid for harness names
     let data: Value = server
-        .get("/v1/harnesses/check-name?name=INVALID")
+        .get("/v1/platform/harnesses/check-name?name=INVALID")
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -119,7 +119,7 @@ async fn test_copy_harness() {
     // Create a harness with capabilities and tags
     let harness: Harness = server
         .post(
-            "/v1/harnesses",
+            "/v1/platform/harnesses",
             json!({
                 "name": "original-harness",
                 "display_name": "Original Harness",
@@ -137,7 +137,10 @@ async fn test_copy_harness() {
 
     // Copy the harness
     let copied: Harness = server
-        .post(&format!("/v1/harnesses/{}/copy", harness.id), json!({}))
+        .post(
+            &format!("/v1/platform/harnesses/{}/copy", harness.id),
+            json!({}),
+        )
         .await
         .assert_status(StatusCode::CREATED)
         .json();
@@ -166,7 +169,7 @@ async fn test_create_harness_missing_default_model_returns_not_found() {
 
     server
         .post(
-            "/v1/harnesses",
+            "/v1/platform/harnesses",
             json!({
                 "name": "missing-model-harness",
                 "display_name": "Missing Model Harness",
@@ -184,7 +187,7 @@ async fn test_update_harness_missing_default_model_returns_not_found() {
 
     let harness: Harness = server
         .post(
-            "/v1/harnesses",
+            "/v1/platform/harnesses",
             json!({
                 "name": "update-missing-model-harness",
                 "display_name": "Update Missing Model Harness",
@@ -197,7 +200,7 @@ async fn test_update_harness_missing_default_model_returns_not_found() {
 
     server
         .patch(
-            &format!("/v1/harnesses/{}", harness.id),
+            &format!("/v1/platform/harnesses/{}", harness.id),
             json!({
                 "default_model_id": "model_019563a3000070008000000000000004"
             }),
@@ -212,7 +215,7 @@ async fn test_update_nonexistent_harness_returns_not_found() {
 
     server
         .patch(
-            "/v1/harnesses/harness_ffffffffffffffffffffffffffffffff",
+            "/v1/platform/harnesses/harness_ffffffffffffffffffffffffffffffff",
             json!({ "name": "updated" }),
         )
         .await
@@ -225,7 +228,7 @@ async fn test_destroy_nonexistent_harness_returns_not_found() {
 
     server
         .post(
-            "/v1/harnesses/harness_ffffffffffffffffffffffffffffffff/delete",
+            "/v1/platform/harnesses/harness_ffffffffffffffffffffffffffffffff/delete",
             json!({}),
         )
         .await
@@ -238,7 +241,7 @@ async fn test_copy_harness_not_found() {
 
     server
         .post(
-            "/v1/harnesses/harness_00000000000000000000000000000099/copy",
+            "/v1/platform/harnesses/harness_00000000000000000000000000000099/copy",
             json!({}),
         )
         .await
@@ -255,7 +258,7 @@ async fn test_session_features_generic_harness() {
 
     let agent: Agent = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({"name": "generic-features-agent", "display_name": "Generic Features Agent", "system_prompt": "Test"}),
         )
         .await
@@ -265,7 +268,7 @@ async fn test_session_features_generic_harness() {
     // Generic harness has session_file_system, bashkit_shell, session_storage, etc.
     let session: Session = server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             json!({
                 "harness_id": server.seed_generic_harness_id,
                 "agent_id": agent.public_id,
@@ -309,7 +312,7 @@ async fn test_delete_harness_referenced_by_app_returns_conflict() {
 
     let agent: Value = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": "delete-harness-app-agent",
                 "display_name": "Delete Harness App Agent",
@@ -322,7 +325,7 @@ async fn test_delete_harness_referenced_by_app_returns_conflict() {
 
     let harness: Harness = server
         .post(
-            "/v1/harnesses",
+            "/v1/platform/harnesses",
             json!({
                 "name": "delete-app-harness",
                 "display_name": "Delete App Harness",
@@ -343,7 +346,7 @@ async fn test_delete_harness_referenced_by_app_returns_conflict() {
     .await;
 
     server
-        .delete(&format!("/v1/harnesses/{}", harness.id))
+        .delete(&format!("/v1/platform/harnesses/{}", harness.id))
         .await
         .assert_status(StatusCode::CONFLICT);
 }
@@ -354,7 +357,7 @@ async fn test_delete_harness_with_child_returns_conflict() {
 
     let parent: Harness = server
         .post(
-            "/v1/harnesses",
+            "/v1/platform/harnesses",
             json!({
                 "name": "parent-delete-blocker",
                 "display_name": "Parent Delete Blocker",
@@ -367,7 +370,7 @@ async fn test_delete_harness_with_child_returns_conflict() {
 
     server
         .post(
-            "/v1/harnesses",
+            "/v1/platform/harnesses",
             json!({
                 "name": "child-delete-blocker",
                 "display_name": "Child Delete Blocker",
@@ -379,7 +382,7 @@ async fn test_delete_harness_with_child_returns_conflict() {
         .assert_status(StatusCode::CREATED);
 
     server
-        .delete(&format!("/v1/harnesses/{}", parent.id))
+        .delete(&format!("/v1/platform/harnesses/{}", parent.id))
         .await
         .assert_status(StatusCode::CONFLICT);
 }
@@ -390,7 +393,7 @@ async fn test_delete_org_default_harness_returns_conflict() {
 
     let harness: Harness = server
         .post(
-            "/v1/harnesses",
+            "/v1/platform/harnesses",
             json!({
                 "name": "org-default-delete-blocker",
                 "display_name": "Org Default Delete Blocker",
@@ -416,7 +419,7 @@ async fn test_delete_org_default_harness_returns_conflict() {
         .unwrap();
 
     server
-        .delete(&format!("/v1/harnesses/{}", harness.id))
+        .delete(&format!("/v1/platform/harnesses/{}", harness.id))
         .await
         .assert_status(StatusCode::CONFLICT);
 }

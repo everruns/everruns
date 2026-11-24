@@ -37,8 +37,8 @@ Verify that binary files (containing null bytes) are correctly handled with base
 
 4. Verify remote encoding:
    ```bash
-   curl -s "http://localhost:9300/api/v1/sessions/$SESSION_ID/fs/binary.bin" | jq '.encoding'
-   curl -s "http://localhost:9300/api/v1/sessions/$SESSION_ID/fs/text.txt" | jq '.encoding'
+   curl -s "http://localhost:9300/api/v1/platform/sessions/$SESSION_ID/fs/binary.bin" | jq '.encoding'
+   curl -s "http://localhost:9300/api/v1/platform/sessions/$SESSION_ID/fs/text.txt" | jq '.encoding'
    ```
 
 5. Pull to fresh directory:

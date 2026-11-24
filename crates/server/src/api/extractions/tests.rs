@@ -145,7 +145,7 @@ async fn route_requires_authentication() {
         .oneshot(
             axum::http::Request::builder()
                 .method("POST")
-                .uri("/v1/extractions")
+                .uri("/v1/platform/extractions")
                 .header("content-type", "application/json")
                 .body(axum::body::Body::from(
                     serde_json::to_vec(&request()).unwrap(),

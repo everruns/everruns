@@ -68,13 +68,13 @@ Participant ids use the `part_` prefix (see `knowledge/foundations/id-schema.md`
 Participants are managed under a session
 (`crates/server/src/api/sessions/mod.rs`):
 
-- `GET /v1/sessions/{session_id}/participants`, full participant history
+- `GET /v1/platform/sessions/{session_id}/participants`, full participant history
   (active and left), ordered by `joined_at`. Policy `SESSION_VIEW`.
-- `POST /v1/sessions/{session_id}/participants`, add a **member**. Body carries
+- `POST /v1/platform/sessions/{session_id}/participants`, add a **member**. Body carries
   `kind` and, for agents, `agent_id`; `role` defaults to `member` and an
   explicit `host` is rejected (the host is owned by session creation). Policy
   `SESSION_MANAGE`.
-- `DELETE /v1/sessions/{session_id}/participants/{participant_id}`, leave: sets
+- `DELETE /v1/platform/sessions/{session_id}/participants/{participant_id}`, leave: sets
   `left_at`. An active host cannot leave through this endpoint (`409`). Policy
   `SESSION_MANAGE`.
 
@@ -86,7 +86,7 @@ join/leave timeline derive it from `joined_at` / `left_at`.
 By default a user turn is answered by the session **host**. A turn may instead
 be **addressed** to a specific participant by setting
 `addressed_participant_id` on the create-message request
-(`POST /v1/sessions/{session_id}/messages`). Resolution
+(`POST /v1/platform/sessions/{session_id}/messages`). Resolution
 (`resolve_responder_agent_id` in
 `crates/server/src/domains/messages/commands.rs`):
 

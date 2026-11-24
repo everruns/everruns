@@ -86,7 +86,7 @@ pub struct ListAgentKeys {
     category = "agent_channels",
     description = "List the agent keys of an agent's API channel. Secrets are never returned.",
     method = "GET",
-    path = "/v1/agents/{agent_id}/channels/{channel_id}/keys",
+    path = "/v1/platform/agents/{agent_id}/channels/{channel_id}/keys",
     policy = AGENT_VIEW,
     cli = CliRoute::new(&["agents", "channels", "keys"], "list").with_examples(&[CliExample::new("See which applications hold a key before rotating or revoking one", "everruns agents channels keys list --agent-id agent_01h9 --channel-id appchan_01h9",)]),
 )]
@@ -126,7 +126,7 @@ pub struct CreateAgentKey {
     category = "agent_channels",
     description = "Create an agent key for an agent's API channel. The secret is returned once.",
     method = "POST",
-    path = "/v1/agents/{agent_id}/channels/{channel_id}/keys",
+    path = "/v1/platform/agents/{agent_id}/channels/{channel_id}/keys",
     policy = AGENT_MANAGE,
     cli = CliRoute::new(&["agents", "channels", "keys"], "create").with_examples(&[CliExample::new("Give a backend service its own key to call the agent", "everruns agents channels keys create --agent-id agent_01h9 --channel-id appchan_01h9 --name \"Support backend\" --reason \"New support integration\"",)]),
 )]
@@ -203,7 +203,7 @@ pub struct RotateAgentKey {
     category = "agent_channels",
     description = "Replace an agent key's secret, keeping its id. The new secret is returned once; the old one works for the overlap.",
     method = "POST",
-    path = "/v1/agents/{agent_id}/channels/{channel_id}/keys/{key_id}/rotate",
+    path = "/v1/platform/agents/{agent_id}/channels/{channel_id}/keys/{key_id}/rotate",
     policy = AGENT_MANAGE,
     cli = CliRoute::new(&["agents", "channels", "keys"], "rotate").with_examples(&[CliExample::new("Replace a key secret on schedule, keeping the old one valid for a day", "everruns agents channels keys rotate --agent-id agent_01h9 --channel-id appchan_01h9 --key-id agentkey_01h9 --overlap-hours 24 --reason \"Quarterly rotation\"",)]),
 )]
@@ -250,7 +250,7 @@ pub struct RevokeAgentKey {
     category = "agent_channels",
     description = "Revoke an agent key. It never works again, including a secret still in its rotation overlap.",
     method = "POST",
-    path = "/v1/agents/{agent_id}/channels/{channel_id}/keys/{key_id}/revoke",
+    path = "/v1/platform/agents/{agent_id}/channels/{channel_id}/keys/{key_id}/revoke",
     policy = AGENT_MANAGE,
     cli = CliRoute::new(&["agents", "channels", "keys"], "revoke").with_examples(&[CliExample::new("Cut off a key that leaked, immediately", "everruns agents channels keys revoke --agent-id agent_01h9 --channel-id appchan_01h9 --key-id agentkey_01h9 --reason \"Key exposed in a log\"",)]),
 )]

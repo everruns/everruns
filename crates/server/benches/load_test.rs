@@ -40,7 +40,7 @@ use tokio::sync::Semaphore;
 
 /// Built-in harness selected by name. Harnesses are created per-org by
 /// `org_init` with runtime UUIDv7 ids (no deterministic seed id anymore), so the
-/// load test resolves the id at runtime via `GET /v1/harnesses` instead of
+/// load test resolves the id at runtime via `GET /v1/platform/harnesses` instead of
 /// hardcoding it. `platform-chat` is the default conversational harness.
 const DEFAULT_HARNESS_NAME: &str = "platform-chat";
 
@@ -290,7 +290,7 @@ struct ServerInfo {
     auth_mode: String,
     /// Target label (from TARGET env var or auto-inferred)
     target: String,
-    /// Total registered workers (from GET /v1/durable/health)
+    /// Total registered workers (from GET /v1/platform/durable/health)
     workers: usize,
     /// Currently active workers
     active_workers: usize,
@@ -324,8 +324,8 @@ impl ServerInfo {
             Err(_) => ("unknown".to_string(), "unknown".to_string()),
         };
 
-        // GET /v1/durable/health -> worker topology
-        let durable_url = format!("{}/v1/durable/health", base_url);
+        // GET /v1/platform/durable/health -> worker topology
+        let durable_url = format!("{}/v1/platform/durable/health", base_url);
         let (workers, active_workers, total_capacity) = match http.get(&durable_url).send().await {
             Ok(resp) => {
                 if let Ok(body) = resp.json::<serde_json::Value>().await {
@@ -661,7 +661,10 @@ impl LoadTestRunner {
     /// but agent/session creation rejects disabled models with a 404. Enabling
     /// is idempotent, so this is safe to run before every load test.
     async fn ensure_model_enabled(&self) -> anyhow::Result<()> {
-        let url = format!("{}/v1/models/{}", self.config.api_url, self.config.model_id);
+        let url = format!(
+            "{}/v1/platform/models/{}",
+            self.config.api_url, self.config.model_id
+        );
         self.http
             .patch(&url)
             .json(&serde_json::json!({ "enabled": true }))
@@ -674,7 +677,7 @@ impl LoadTestRunner {
     /// Resolve the harness id to use, selecting the built-in `platform-chat`
     /// harness by name (falling back to the first harness if absent).
     async fn resolve_harness_id(&self) -> anyhow::Result<String> {
-        let url = format!("{}/v1/harnesses", self.config.api_url);
+        let url = format!("{}/v1/platform/harnesses", self.config.api_url);
         let body: serde_json::Value = self
             .http
             .get(&url)
@@ -715,7 +718,7 @@ impl LoadTestRunner {
         harness_id: &str,
         session_num: usize,
     ) -> anyhow::Result<String> {
-        let url = format!("{}/v1/sessions", self.config.api_url);
+        let url = format!("{}/v1/platform/sessions", self.config.api_url);
 
         let req = CreateSessionRequest {
             harness_id: harness_id.to_string(),
@@ -764,7 +767,7 @@ impl LoadTestRunner {
         self.metrics.messages_sent.fetch_add(1, Ordering::Relaxed);
 
         let url = format!(
-            "{}/v1/sessions/{}/messages",
+            "{}/v1/platform/sessions/{}/messages",
             self.config.api_url, session_id
         );
         let body = serde_json::json!({

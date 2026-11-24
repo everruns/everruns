@@ -8,7 +8,7 @@ impl TestServer {
             // Exercise pagination even when the built-in catalog changes size.
             let page = self
                 .get(&format!(
-                    "/v1/capabilities?offset={}&limit=25",
+                    "/v1/platform/capabilities?offset={}&limit=25",
                     capabilities.len()
                 ))
                 .await

@@ -29,7 +29,7 @@ async fn test_streaming_events_emitted() {
     // Step 1: Create LlmSim provider and model
     println!("\nStep 1: Creating LlmSim provider and model...");
     let provider_response = client
-        .post(format!("{}/v1/providers", API_BASE_URL))
+        .post(format!("{}/v1/platform/providers", API_BASE_URL))
         .json(&json!({
             "name": "Streaming Test Provider",
             "provider_type": "llmsim"
@@ -54,7 +54,7 @@ async fn test_streaming_events_emitted() {
 
     let model_response = client
         .post(format!(
-            "{}/v1/providers/{}/models",
+            "{}/v1/platform/providers/{}/models",
             API_BASE_URL, provider.id
         ))
         .json(&json!({
@@ -77,7 +77,7 @@ async fn test_streaming_events_emitted() {
     // Step 2: Create agent
     println!("\nStep 2: Creating agent...");
     let agent_response = client
-        .post(format!("{}/v1/agents", API_BASE_URL))
+        .post(format!("{}/v1/platform/agents", API_BASE_URL))
         .json(&json!({
             "name": "streaming-test-agent",
             "display_name": "Streaming Test Agent",
@@ -95,7 +95,7 @@ async fn test_streaming_events_emitted() {
     // Step 3: Create session
     println!("\nStep 3: Creating session...");
     let session_response = client
-        .post(format!("{}/v1/sessions", API_BASE_URL))
+        .post(format!("{}/v1/platform/sessions", API_BASE_URL))
         .json(&json!({"harness_name": SEED_HARNESS_NAME, "agent_id": agent.public_id, "title": "Streaming Test Session"}))
         .send()
         .await
@@ -112,7 +112,7 @@ async fn test_streaming_events_emitted() {
     println!("\nStep 4: Sending message...");
     let message_response = client
         .post(format!(
-            "{}/v1/sessions/{}/messages",
+            "{}/v1/platform/sessions/{}/messages",
             API_BASE_URL, session.id
         ))
         .json(&json!({
@@ -136,7 +136,7 @@ async fn test_streaming_events_emitted() {
 
         let messages_response = client
             .get(format!(
-                "{}/v1/sessions/{}/messages",
+                "{}/v1/platform/sessions/{}/messages",
                 API_BASE_URL, session.id
             ))
             .send()
@@ -176,7 +176,7 @@ async fn test_streaming_events_emitted() {
     println!("\nStep 6: Verifying streaming events...");
     let events_response = client
         .get(format!(
-            "{}/v1/sessions/{}/events",
+            "{}/v1/platform/sessions/{}/events",
             API_BASE_URL, session.id
         ))
         .send()
@@ -325,20 +325,20 @@ async fn test_streaming_events_emitted() {
     // first or the model delete is refused (EVE-955).
     cleanup_delete(
         &client,
-        format!("{}/v1/sessions/{}", API_BASE_URL, session.id),
+        format!("{}/v1/platform/sessions/{}", API_BASE_URL, session.id),
         "session",
     )
     .await;
     cleanup_agent(&client, &agent.public_id).await;
     cleanup_delete(
         &client,
-        format!("{}/v1/models/{}", API_BASE_URL, model.id),
+        format!("{}/v1/platform/models/{}", API_BASE_URL, model.id),
         "model",
     )
     .await;
     cleanup_delete(
         &client,
-        format!("{}/v1/providers/{}", API_BASE_URL, provider.id),
+        format!("{}/v1/platform/providers/{}", API_BASE_URL, provider.id),
         "provider",
     )
     .await;
@@ -361,7 +361,7 @@ async fn test_cancel_turn_endpoint() {
     // Step 1: Create LlmSim provider
     println!("\nStep 1: Creating LlmSim provider...");
     let provider_response = client
-        .post(format!("{}/v1/providers", API_BASE_URL))
+        .post(format!("{}/v1/platform/providers", API_BASE_URL))
         .json(&json!({
             "name": "LlmSim Cancel Test",
             "provider_type": "llmsim"
@@ -388,7 +388,7 @@ async fn test_cancel_turn_endpoint() {
     println!("\nStep 2: Creating model...");
     let model_response = client
         .post(format!(
-            "{}/v1/providers/{}/models",
+            "{}/v1/platform/providers/{}/models",
             API_BASE_URL, provider.id
         ))
         .json(&json!({
@@ -411,7 +411,7 @@ async fn test_cancel_turn_endpoint() {
     // Step 3: Create agent with LlmSim model
     println!("\nStep 3: Creating agent...");
     let agent_response = client
-        .post(format!("{}/v1/agents", API_BASE_URL))
+        .post(format!("{}/v1/platform/agents", API_BASE_URL))
         .json(&json!({
             "name": "cancel-test-agent",
             "display_name": "Cancel Test Agent",
@@ -429,7 +429,7 @@ async fn test_cancel_turn_endpoint() {
     // Step 4: Create session
     println!("\nStep 4: Creating session...");
     let session_response = client
-        .post(format!("{}/v1/sessions", API_BASE_URL))
+        .post(format!("{}/v1/platform/sessions", API_BASE_URL))
         .json(&json!({
             "harness_name": SEED_HARNESS_NAME,
             "agent_id": agent.public_id,
@@ -450,7 +450,7 @@ async fn test_cancel_turn_endpoint() {
     println!("\nStep 5: Testing cancel on idle session...");
     let cancel_response = client
         .post(format!(
-            "{}/v1/sessions/{}/cancel",
+            "{}/v1/platform/sessions/{}/cancel",
             API_BASE_URL, session.id
         ))
         .send()
@@ -480,7 +480,7 @@ async fn test_cancel_turn_endpoint() {
     // first or the model delete is refused (EVE-955).
     cleanup_delete(
         &client,
-        format!("{}/v1/sessions/{}", API_BASE_URL, session.id),
+        format!("{}/v1/platform/sessions/{}", API_BASE_URL, session.id),
         "session",
     )
     .await;
@@ -488,7 +488,7 @@ async fn test_cancel_turn_endpoint() {
 
     cleanup_delete(
         &client,
-        format!("{}/v1/providers/{}", API_BASE_URL, provider.id),
+        format!("{}/v1/platform/providers/{}", API_BASE_URL, provider.id),
         "provider",
     )
     .await;
@@ -505,7 +505,7 @@ async fn test_events_api_contract() {
 
     // Step 1: Create agent and session
     let agent: Agent = client
-        .post(format!("{}/v1/agents", API_BASE_URL))
+        .post(format!("{}/v1/platform/agents", API_BASE_URL))
         .json(&json!({
             "name": "events-contract-test-agent",
             "display_name": "Events Contract Test Agent",
@@ -519,7 +519,7 @@ async fn test_events_api_contract() {
         .expect("Failed to parse agent");
 
     let session: Session = client
-        .post(format!("{}/v1/sessions", API_BASE_URL))
+        .post(format!("{}/v1/platform/sessions", API_BASE_URL))
         .json(&json!({"harness_name": SEED_HARNESS_NAME, "agent_id": agent.public_id, "title": "Events Contract Test"}))
         .send()
         .await
@@ -534,7 +534,7 @@ async fn test_events_api_contract() {
     println!("\nVerifying events list API contract...");
     let events_response = client
         .get(format!(
-            "{}/v1/sessions/{}/events",
+            "{}/v1/platform/sessions/{}/events",
             API_BASE_URL, session.id
         ))
         .send()
@@ -599,7 +599,7 @@ async fn test_events_api_contract() {
     // Cleanup
     cleanup_delete(
         &client,
-        format!("{}/v1/sessions/{}", API_BASE_URL, session.id),
+        format!("{}/v1/platform/sessions/{}", API_BASE_URL, session.id),
         "session",
     )
     .await;
@@ -619,7 +619,7 @@ async fn test_events_sse_contract() {
 
     // Step 1: Create agent and session
     let agent: Agent = client
-        .post(format!("{}/v1/agents", API_BASE_URL))
+        .post(format!("{}/v1/platform/agents", API_BASE_URL))
         .json(&json!({
             "name": "sse-contract-test-agent",
             "display_name": "SSE Contract Test Agent",
@@ -633,7 +633,7 @@ async fn test_events_sse_contract() {
         .expect("Failed to parse agent");
 
     let session: Session = client
-        .post(format!("{}/v1/sessions", API_BASE_URL))
+        .post(format!("{}/v1/platform/sessions", API_BASE_URL))
         .json(&json!({"harness_name": SEED_HARNESS_NAME, "agent_id": agent.public_id, "title": "SSE Contract Test"}))
         .send()
         .await
@@ -646,7 +646,7 @@ async fn test_events_sse_contract() {
 
     // Step 2: Connect to SSE stream and verify headers and initial data
     println!("\nConnecting to SSE stream...");
-    let sse_url = format!("{}/v1/sessions/{}/sse", API_BASE_URL, session.id);
+    let sse_url = format!("{}/v1/platform/sessions/{}/sse", API_BASE_URL, session.id);
 
     let sse_response = client
         .get(&sse_url)
@@ -690,7 +690,7 @@ async fn test_events_sse_contract() {
     // Cleanup
     cleanup_delete(
         &client,
-        format!("{}/v1/sessions/{}", API_BASE_URL, session.id),
+        format!("{}/v1/platform/sessions/{}", API_BASE_URL, session.id),
         "session",
     )
     .await;
@@ -765,7 +765,7 @@ mod durable_sse_tests {
         url
     }
 
-    /// Test global durable SSE stream contract (/v1/durable/sse)
+    /// Test global durable SSE stream contract (/v1/platform/durable/sse)
     ///
     /// Verifies:
     /// - SSE connection establishes successfully (200 OK)
@@ -779,7 +779,7 @@ mod durable_sse_tests {
 
         let client = reqwest::Client::new();
         let response = client
-            .get(format!("{}/v1/durable/sse", base_url))
+            .get(format!("{}/v1/platform/durable/sse", base_url))
             .header("Accept", "text/event-stream")
             .send()
             .await
@@ -873,7 +873,7 @@ mod durable_sse_tests {
 
         let client = reqwest::Client::new();
         let response = client
-            .get(format!("{}/v1/durable/sse", base_url))
+            .get(format!("{}/v1/platform/durable/sse", base_url))
             .header("Accept", "text/event-stream")
             .send()
             .await
@@ -936,7 +936,7 @@ mod durable_sse_tests {
         let app = create_test_app_no_store();
 
         let request = Request::builder()
-            .uri("/v1/durable/sse")
+            .uri("/v1/platform/durable/sse")
             .header("Accept", "text/event-stream")
             .body(Body::empty())
             .unwrap();
@@ -958,7 +958,7 @@ mod durable_sse_tests {
         let app = create_test_app();
 
         let request = Request::builder()
-            .uri("/v1/durable/workflows/01234567-89ab-cdef-0123-456789abcdef/sse")
+            .uri("/v1/platform/durable/workflows/01234567-89ab-cdef-0123-456789abcdef/sse")
             .header("Accept", "text/event-stream")
             .body(Body::empty())
             .unwrap();
@@ -980,7 +980,7 @@ mod durable_sse_tests {
         let app = create_test_app();
 
         let request = Request::builder()
-            .uri("/v1/durable/health")
+            .uri("/v1/platform/durable/health")
             .body(Body::empty())
             .unwrap();
 
@@ -1007,7 +1007,7 @@ mod durable_sse_tests {
         let app = create_test_app();
 
         let request = Request::builder()
-            .uri("/v1/durable/workers")
+            .uri("/v1/platform/durable/workers")
             .body(Body::empty())
             .unwrap();
 
@@ -1033,7 +1033,7 @@ mod durable_sse_tests {
         let app = create_test_app();
 
         let request = Request::builder()
-            .uri("/v1/durable/workflows")
+            .uri("/v1/platform/durable/workflows")
             .body(Body::empty())
             .unwrap();
 
@@ -1059,7 +1059,7 @@ mod durable_sse_tests {
         let app = create_test_app();
 
         let request = Request::builder()
-            .uri("/v1/durable/circuit-breakers")
+            .uri("/v1/platform/durable/circuit-breakers")
             .body(Body::empty())
             .unwrap();
 

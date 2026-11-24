@@ -38,12 +38,12 @@ export { listEvents } from "./events";
 
 /** Create a new organization session bound to an agent or directly to a harness. */
 export async function createSession(request: CreateSessionRequest): Promise<Session> {
-  const response = await api.post<Session>("/v1/sessions", request);
+  const response = await api.post<Session>("/v1/platform/sessions", request);
   return response.data;
 }
 
 /**
- * Filters `GET /v1/sessions` and `GET /v1/sessions/facets` share. Both
+ * Filters `GET /v1/platform/sessions` and `GET /v1/platform/sessions/facets` share. Both
  * endpoints resolve them into the same predicate server-side, which is what
  * lets the facet counts annotate the very rows the list returns.
  */
@@ -102,7 +102,7 @@ export async function listSessions(
     searchParams.set("limit", String(params.limit));
   }
   const query = searchParams.toString();
-  const url = `/v1/sessions${query ? `?${query}` : ""}`;
+  const url = `/v1/platform/sessions${query ? `?${query}` : ""}`;
   const response = await api.get<PaginatedResponse<Session>>(url);
   return response.data;
 }
@@ -117,19 +117,19 @@ export async function getSessionFacets(
 ): Promise<SessionFacetsResponse> {
   const query = sessionFilterParams(filters).toString();
   const response = await api.get<SessionFacetsResponse>(
-    `/v1/sessions/facets${query ? `?${query}` : ""}`,
+    `/v1/platform/sessions/facets${query ? `?${query}` : ""}`,
   );
   return response.data;
 }
 
 /** Get session counts grouped by status */
 export async function getSessionStats(): Promise<SessionStats> {
-  const response = await api.get<SessionStats>("/v1/sessions/stats");
+  const response = await api.get<SessionStats>("/v1/platform/sessions/stats");
   return response.data;
 }
 
 export async function getSession(sessionId: string): Promise<Session> {
-  const response = await api.get<Session>(`/v1/sessions/${sessionId}`);
+  const response = await api.get<Session>(`/v1/platform/sessions/${sessionId}`);
   return response.data;
 }
 
@@ -137,25 +137,27 @@ export async function getSessionResolvedModel(
   sessionId: string,
 ): Promise<SessionResolvedModelResponse> {
   const response = await api.get<SessionResolvedModelResponse>(
-    `/v1/sessions/${sessionId}/resolved-model`,
+    `/v1/platform/sessions/${sessionId}/resolved-model`,
   );
   return response.data;
 }
 
 export async function getSessionContextReport(sessionId: string): Promise<SessionContextReport> {
-  const response = await api.get<SessionContextReport>(`/v1/sessions/${sessionId}/context-report`);
+  const response = await api.get<SessionContextReport>(
+    `/v1/platform/sessions/${sessionId}/context-report`,
+  );
   return response.data;
 }
 
 /** What the session spent, by cost category, over time, by origin, tool and sandbox. */
 export async function getSessionCost(sessionId: string): Promise<SessionCost> {
-  const response = await api.get<SessionCost>(`/v1/sessions/${sessionId}/cost`);
+  const response = await api.get<SessionCost>(`/v1/platform/sessions/${sessionId}/cost`);
   return response.data;
 }
 
 /** The run the session belongs to: every agent session in it, with turns and spend. */
 export async function getSessionRun(sessionId: string): Promise<SessionRun> {
-  const response = await api.get<SessionRun>(`/v1/sessions/${sessionId}/run`);
+  const response = await api.get<SessionRun>(`/v1/platform/sessions/${sessionId}/run`);
   return response.data;
 }
 
@@ -165,7 +167,9 @@ export async function getSessionWork(
   turnId?: string,
 ): Promise<SessionWorkResult> {
   const query = turnId ? `?turn_id=${encodeURIComponent(turnId)}` : "";
-  const response = await api.get<SessionWorkResult>(`/v1/sessions/${sessionId}/work${query}`);
+  const response = await api.get<SessionWorkResult>(
+    `/v1/platform/sessions/${sessionId}/work${query}`,
+  );
   return response.data;
 }
 
@@ -173,12 +177,12 @@ export async function updateSession(
   sessionId: string,
   request: UpdateSessionRequest,
 ): Promise<Session> {
-  const response = await api.patch<Session>(`/v1/sessions/${sessionId}`, request);
+  const response = await api.patch<Session>(`/v1/platform/sessions/${sessionId}`, request);
   return response.data;
 }
 
 export async function deleteSession(sessionId: string): Promise<void> {
-  await api.delete(`/v1/sessions/${sessionId}`);
+  await api.delete(`/v1/platform/sessions/${sessionId}`);
 }
 
 /**
@@ -194,7 +198,7 @@ export async function forkSession(
   sessionId: string,
   request: ForkSessionRequest = {},
 ): Promise<Session> {
-  const response = await api.post<Session>(`/v1/sessions/${sessionId}/fork`, request);
+  const response = await api.post<Session>(`/v1/platform/sessions/${sessionId}/fork`, request);
   return response.data;
 }
 
@@ -210,7 +214,7 @@ export async function forkSession(
  * @throws Error if no turn is currently running (409 Conflict)
  */
 export async function cancelTurn(sessionId: string): Promise<void> {
-  await api.post(`/v1/sessions/${sessionId}/cancel`);
+  await api.post(`/v1/platform/sessions/${sessionId}/cancel`);
 }
 
 // ============================================
@@ -219,12 +223,12 @@ export async function cancelTurn(sessionId: string): Promise<void> {
 
 /** Pin a session for the current user */
 export async function pinSession(sessionId: string): Promise<void> {
-  await api.put(`/v1/sessions/${sessionId}/pin`);
+  await api.put(`/v1/platform/sessions/${sessionId}/pin`);
 }
 
 /** Unpin a session for the current user */
 export async function unpinSession(sessionId: string): Promise<void> {
-  await api.delete(`/v1/sessions/${sessionId}/pin`);
+  await api.delete(`/v1/platform/sessions/${sessionId}/pin`);
 }
 
 // ============================================
@@ -233,12 +237,12 @@ export async function unpinSession(sessionId: string): Promise<void> {
 
 /** Archive a session so it drops out of default list results. */
 export async function archiveSession(sessionId: string): Promise<void> {
-  await api.put(`/v1/sessions/${sessionId}/archive`);
+  await api.put(`/v1/platform/sessions/${sessionId}/archive`);
 }
 
 /** Restore an archived session to default list results. */
 export async function unarchiveSession(sessionId: string): Promise<void> {
-  await api.delete(`/v1/sessions/${sessionId}/archive`);
+  await api.delete(`/v1/platform/sessions/${sessionId}/archive`);
 }
 
 // ============================================
@@ -269,7 +273,7 @@ export async function exportSession(
   format: SessionExportFormat = "jsonl",
 ): Promise<SessionExportResult> {
   const query = format === "atif" ? "?format=atif" : "";
-  const response = await fetch(`/api/v1/sessions/${sessionId}/export${query}`, {
+  const response = await fetch(`/api/v1/platform/sessions/${sessionId}/export${query}`, {
     credentials: "include",
     headers: withOrgHeader(),
   });
@@ -355,7 +359,7 @@ function cursorFromHeader(value: string | null): string | null {
 function nextSegmentUrl(sessionId: string, cursor: string | null): string {
   const params = new URLSearchParams({ format: "atif", segmented: "true" });
   if (cursor) params.set("cursor", cursor);
-  return `/api/v1/sessions/${sessionId}/export?${params.toString()}`;
+  return `/api/v1/platform/sessions/${sessionId}/export?${params.toString()}`;
 }
 
 /**
@@ -456,7 +460,7 @@ export async function submitToolResults(
     const response = await api.post<{
       status: string;
       tool_results_count: number;
-    }>(`/v1/sessions/${sessionId}/tool-results`, { tool_results: toolResults });
+    }>(`/v1/platform/sessions/${sessionId}/tool-results`, { tool_results: toolResults });
     return response.data;
   });
 }
@@ -483,7 +487,7 @@ export async function setSessionSecret(
   name: string,
   value: string,
 ): Promise<void> {
-  await api.put(`/v1/sessions/${sessionId}/storage/secrets`, {
+  await api.put(`/v1/platform/sessions/${sessionId}/storage/secrets`, {
     secrets: { [name]: value },
   });
 }
@@ -499,7 +503,7 @@ export async function submitQuestionAnswers(
 ): Promise<QuestionAnswersResponse> {
   return withSessionActivity(sessionId, async () => {
     const response = await api.post<QuestionAnswersResponse>(
-      `/v1/sessions/${sessionId}/question-answers`,
+      `/v1/platform/sessions/${sessionId}/question-answers`,
       request,
     );
     return response.data;
@@ -524,7 +528,7 @@ export async function submitElicitationConsent(
 ): Promise<{ host: string; status: string }> {
   return withSessionActivity(sessionId, async () => {
     const response = await api.post<{ host: string; status: string }>(
-      `/v1/sessions/${sessionId}/mcp-elicitation-consent`,
+      `/v1/platform/sessions/${sessionId}/mcp-elicitation-consent`,
       { tool_call_id: toolCallId, action },
     );
     return response.data;
@@ -556,7 +560,7 @@ export async function submitToolApprovals(
 ): Promise<SubmitToolApprovalsResponse> {
   return withSessionActivity(sessionId, async () => {
     const response = await api.post<SubmitToolApprovalsResponse>(
-      `/v1/sessions/${sessionId}/tool-approvals`,
+      `/v1/platform/sessions/${sessionId}/tool-approvals`,
       { decisions },
     );
     return response.data;
@@ -575,6 +579,8 @@ import type { RunRequestsResponse, SessionRun } from "./schema-types";
  * asking agent's session; its card answers there.
  */
 export async function getRunRequests(sessionId: string): Promise<RunRequestsResponse> {
-  const response = await api.get<RunRequestsResponse>(`/v1/sessions/${sessionId}/run-requests`);
+  const response = await api.get<RunRequestsResponse>(
+    `/v1/platform/sessions/${sessionId}/run-requests`,
+  );
   return response.data;
 }

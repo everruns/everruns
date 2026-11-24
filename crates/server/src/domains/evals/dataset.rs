@@ -53,7 +53,7 @@ pub struct RedactionOptions {
     pub redact_content: bool,
 }
 
-/// Request body for `POST /v1/evals/{eval_id}/runs/{run_id}/dataset`.
+/// Request body for `POST /v1/platform/evals/{eval_id}/runs/{run_id}/dataset`.
 #[derive(Debug, Clone, Default, Deserialize, Serialize, ToSchema)]
 pub struct ExportEvalRunDatasetRequest {
     /// Output schema (defaults to `trajectory`).

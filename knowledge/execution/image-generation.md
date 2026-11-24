@@ -33,7 +33,7 @@ First match wins:
    org model through `get_image_model(Some(id))`, with no fallback: a wrong choice must
    fail loudly, not draw with something else. A plain model name goes through the
    provider-type path below.
-2. The organization default image model (`image_model_defaults`, `/v1/models/images-default`),
+2. The organization default image model (`image_model_defaults`, `/v1/platform/models/images-default`),
    via `get_image_model(None)`. Setting it requires an enabled model whose service is `images`.
 3. `PLATFORM_DEFAULT_IMAGE_MODEL` (`gpt-image-2.6-flare`).
 4. With `fallback: auto`, Muse Image on Meta or OpenRouter when no provider serves the

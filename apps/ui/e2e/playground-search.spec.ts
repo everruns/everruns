@@ -23,7 +23,7 @@ test("searches Talk as and counterparts with keyboard, paging, and stable select
   await page.route("**/api/v1/**", async (route) => {
     const request = route.request();
     const url = new URL(request.url());
-    const path = url.pathname.replace("/api/v1", "");
+    const path = url.pathname.replace("/api/v1/platform", "");
     let json: unknown = { data: [], total: 0, has_more: false };
     if (path === "/auth/config")
       json = {

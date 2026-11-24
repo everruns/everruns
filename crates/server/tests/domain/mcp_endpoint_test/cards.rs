@@ -29,7 +29,7 @@ async fn test_mcp_agent_get_card_counts_sessions_by_internal_id() {
     // Create an agent via REST (auto-generated public_id != internal_id).
     let agent: Value = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": format!("card-count-agent-{}", unique_suffix()),
                 "display_name": "Card Count Agent",
@@ -75,7 +75,7 @@ async fn test_mcp_agent_get_card_counts_sessions_by_internal_id() {
     // internal_id and stores the internal id in `sessions.agent_id`).
     let _session: Value = server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             json!({
                 "harness_id": server.seed_base_harness_id,
                 "agent_id": agent_public_id,

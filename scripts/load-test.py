@@ -109,7 +109,7 @@ async def history(client, api, session_id):
     out, cursor = [], 0
     while True:
         page = (await client.get(
-            f"{api}/v1/sessions/{session_id}/events", params={"after_sequence": cursor, "limit": 1000}
+            f"{api}/v1/platform/sessions/{session_id}/events", params={"after_sequence": cursor, "limit": 1000}
         )).raise_for_status().json()
         items = page.get("data", page) if isinstance(page, dict) else page
         out.extend(items)
@@ -190,8 +190,8 @@ def summary(rows):
 
 
 async def validate_simulated_model(client, api, model_id):
-    model = (await client.get(f"{api}/v1/models/{model_id}")).raise_for_status().json()
-    provider = (await client.get(f"{api}/v1/providers/{model['provider_id']}")).raise_for_status().json()
+    model = (await client.get(f"{api}/v1/platform/models/{model_id}")).raise_for_status().json()
+    provider = (await client.get(f"{api}/v1/platform/providers/{model['provider_id']}")).raise_for_status().json()
     if provider["provider_type"] != "llmsim" or not model["enabled"]:
         raise ValueError("Load testing requires an enabled llmsim model")
 
@@ -214,7 +214,7 @@ class Session:
             params = {"since_id": self.last_id} if self.last_id else {}
             try:
                 async with self.client.stream(
-                    "GET", f"{self.api}/v1/sessions/{self.id}/sse", params=params, timeout=None
+                    "GET", f"{self.api}/v1/platform/sessions/{self.id}/sse", params=params, timeout=None
                 ) as resp:
                     resp.raise_for_status()
                     self.connected.set()
@@ -234,7 +234,7 @@ class Session:
 
     async def post(self, text):
         body = {"message": {"role": "user", "content": [{"type": "text", "text": text}]}}
-        (await self.client.post(f"{self.api}/v1/sessions/{self.id}/messages", json=body)).raise_for_status()
+        (await self.client.post(f"{self.api}/v1/platform/sessions/{self.id}/messages", json=body)).raise_for_status()
 
     async def turn(self, text, timeout):
         while not self.events.empty():
@@ -287,7 +287,7 @@ async def run(args):
         await validate_simulated_model(client, args.api, args.model)
         if args.switch_model:
             await validate_simulated_model(client, args.api, args.switch_model)
-        harnesses = (await client.get(f"{args.api}/v1/harnesses")).raise_for_status().json()["data"]
+        harnesses = (await client.get(f"{args.api}/v1/platform/harnesses")).raise_for_status().json()["data"]
         harness = next((h["id"] for h in harnesses if h.get("name") == args.harness), harnesses[0]["id"])
         agent_body = {
             "name": f"load-test-{time.time_ns()}",
@@ -296,7 +296,7 @@ async def run(args):
         }
         if args.capabilities:
             agent_body["capabilities"] = [{"ref": c.strip()} for c in args.capabilities.split(",") if c.strip()]
-        agent = (await client.post(f"{args.api}/v1/agents", json=agent_body)).raise_for_status().json()["id"]
+        agent = (await client.post(f"{args.api}/v1/platform/agents", json=agent_body)).raise_for_status().json()["id"]
 
         # httpcore assigns queued requests by scanning the pool. A single pool
         # with thousands of SSE connections stalls the generator's event loop
@@ -355,7 +355,7 @@ async def run(args):
             try:
                 await asyncio.sleep(starts[i])
                 created = await client.post(
-                    f"{args.api}/v1/sessions",
+                    f"{args.api}/v1/platform/sessions",
                     json={"harness_id": harness, "agent_id": agent, "model_id": args.model, "title": f"load test {i}"},
                 )
                 session_id = created.raise_for_status().json()["id"]
@@ -364,7 +364,7 @@ async def run(args):
                     # local tools avoid random tools with invalid or external inputs.
                     kb = lognormal(rng, *args.file_kb) if args.file_kb else None
                     (await client.post(
-                        f"{args.api}/v1/sessions/{session_id}/fs/load-test/research.md",
+                        f"{args.api}/v1/platform/sessions/{session_id}/fs/load-test/research.md",
                         json={"content": research_notes(kb), "encoding": "text"},
                     )).raise_for_status()
                 session, tabs = await open_streams(client, session_id)
@@ -385,7 +385,7 @@ async def run(args):
                     if args.switch_model and m and m % args.switch_every == 0:
                         model = args.switch_model if (m // args.switch_every) % 2 else args.model
                         (await client.patch(
-                            f"{args.api}/v1/sessions/{session.id}", json={"model_id": model}
+                            f"{args.api}/v1/platform/sessions/{session.id}", json={"model_id": model}
                         )).raise_for_status()
                         counts["switches"] += 1
                     name = rng.choices(names, weights)[0]

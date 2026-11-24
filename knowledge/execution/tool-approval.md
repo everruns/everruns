@@ -77,7 +77,7 @@ parks the same way a client-side tool or an MCP elicitation parks it.
 4. The planner parks the turn. Unlike every other pause, this one does not
    depend on a client hint: the gated call already failed closed, and an API
    caller can answer without drawing anything.
-5. A person answers through `POST /v1/sessions/{id}/tool-approvals`. The
+5. A person answers through `POST /v1/platform/sessions/{id}/tool-approvals`. The
    decision is recorded in session storage, the synthetic calls are completed
    (closing the cards), the decision goes in as a user turn (the synthetic call
    is engine-authored, so nothing in the transcript claims its result), and the
@@ -231,7 +231,7 @@ strictest matching rule wins (`never > ask > allow`), in every mode, before
 the reviewer runs. Personal rules may only `ask` or `never`.
 
 **Who picks the mode.** In order: a person's switch for the session
-(`PUT /v1/sessions/{id}/approval-mode`), the owner's personal default (user
+(`PUT /v1/platform/sessions/{id}/approval-mode`), the owner's personal default (user
 preference `tool_approval`), then the agent's config. A person cannot switch
 the gate fully off when the agent's mode is not `off`: `off` then runs as
 `auto`. Last, the organization's `allowed_modes` raise a disallowed mode to

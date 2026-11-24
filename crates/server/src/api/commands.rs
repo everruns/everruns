@@ -59,11 +59,11 @@ pub struct CommandsResponse {
 pub fn routes(state: AppState) -> Router {
     Router::new()
         .route(
-            "/v1/sessions/{session_id}/commands",
+            "/v1/platform/sessions/{session_id}/commands",
             get(list_session_commands),
         )
         .route(
-            "/v1/sessions/{session_id}/commands/execute",
+            "/v1/platform/sessions/{session_id}/commands/execute",
             post(execute_session_command),
         )
         .with_state(state.clone())
@@ -71,7 +71,7 @@ pub fn routes(state: AppState) -> Router {
         .merge(super::mcp_apps::routes(state))
 }
 
-/// GET /v1/sessions/{session_id}/commands
+/// GET /v1/platform/sessions/{session_id}/commands
 ///
 /// List all available commands for a session. Returns system commands from
 /// capabilities and invocable skills from the session's org.
@@ -103,7 +103,7 @@ async fn list_session_commands(
     Ok(Json(CommandsResponse { commands }))
 }
 
-/// POST /v1/sessions/{session_id}/commands/execute
+/// POST /v1/platform/sessions/{session_id}/commands/execute
 ///
 /// Execute a system command against the current session without persisting a
 /// chat message. Skill commands are not handled here.

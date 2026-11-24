@@ -144,24 +144,33 @@ async fn add_harnesses_counts(
 /// Create harness routes
 pub fn routes(state: AppState) -> Router {
     Router::new()
-        .route("/v1/harnesses", post(create_harness).get(list_harnesses))
-        .route("/v1/harnesses/check-name", get(check_harness_name))
-        .route("/v1/harnesses/config", get(harness_config))
-        .route("/v1/harnesses/preview", post(preview_harness))
-        .route("/v1/harnesses/import", post(import_harness))
         .route(
-            "/v1/harnesses/{harness_id}",
+            "/v1/platform/harnesses",
+            post(create_harness).get(list_harnesses),
+        )
+        .route("/v1/platform/harnesses/check-name", get(check_harness_name))
+        .route("/v1/platform/harnesses/config", get(harness_config))
+        .route("/v1/platform/harnesses/preview", post(preview_harness))
+        .route("/v1/platform/harnesses/import", post(import_harness))
+        .route(
+            "/v1/platform/harnesses/{harness_id}",
             get(get_harness)
                 .patch(update_harness)
                 .delete(delete_harness),
         )
-        .route("/v1/harnesses/{harness_id}/stats", get(get_harness_stats))
+        .route(
+            "/v1/platform/harnesses/{harness_id}/stats",
+            get(get_harness_stats),
+        )
         .command::<crate::domains::harnesses::DestroyHarness>()
-        .route("/v1/harnesses/{harness_id}/copy", post(copy_harness))
+        .route(
+            "/v1/platform/harnesses/{harness_id}/copy",
+            post(copy_harness),
+        )
         .with_state(state)
 }
 
-/// Query parameters for `POST /v1/harnesses/import`.
+/// Query parameters for `POST /v1/platform/harnesses/import`.
 #[derive(Debug, Clone, Deserialize, IntoParams, ToSchema)]
 pub struct ImportHarnessQuery {
     /// Import from a built-in harness example by name (e.g. `data-analyst`).
@@ -170,20 +179,20 @@ pub struct ImportHarnessQuery {
     pub from_example: String,
 }
 
-/// POST /v1/harnesses/import - Adopt a harness example as a regular org-owned harness.
+/// POST /v1/platform/harnesses/import - Adopt a harness example as a regular org-owned harness.
 ///
 /// Creates a normal harness (`is_built_in = false`) from a code-defined
 /// example. The new harness inherits from the example's parent harness
 /// (for example `sandbox-worker` for Coding), resolved by name in the org;
 /// no UUIDs are hardcoded. Capabilities and other config flow through
-/// the same validation paths as `POST /v1/harnesses`.
+/// the same validation paths as `POST /v1/platform/harnesses`.
 ///
 /// Returns 201 on creation. If the example name collides with an existing
 /// harness in the org, a random alphanumeric suffix is appended (parity with
 /// agent example import). Delegates to the `adopt_harness_example` command.
 #[utoipa::path(
     post,
-    path = "/v1/harnesses/import",
+    path = "/v1/platform/harnesses/import",
     params(ImportHarnessQuery),
     responses(
         (status = 201, description = "Harness adopted from example", body = WithUrls<Harness>),
@@ -209,13 +218,13 @@ pub async fn import_harness(
     Ok((StatusCode::CREATED, Json(urls.wrap(harness))))
 }
 
-/// GET /v1/harnesses/config
+/// GET /v1/platform/harnesses/config
 ///
 /// Returns which harness policies the caller satisfies.
 /// UI uses this to show/hide controls (e.g. delete button).
 #[utoipa::path(
     get,
-    path = "/v1/harnesses/config",
+    path = "/v1/platform/harnesses/config",
     responses(
         (status = 200, description = "Resource config for harnesses", body = ResourceConfigResponse),
     ),
@@ -234,13 +243,13 @@ pub async fn harness_config(
     Json(ResourceConfigResponse { policies })
 }
 
-/// GET /v1/harnesses/check-name
+/// GET /v1/platform/harnesses/check-name
 ///
 /// Returns whether a harness name is available for use. Optionally excludes
 /// a specific harness ID (for edit forms where the harness's own name is valid).
 #[utoipa::path(
     get,
-    path = "/v1/harnesses/check-name",
+    path = "/v1/platform/harnesses/check-name",
     params(CheckNameQuery),
     responses(
         (status = 200, description = "Name availability result", body = CheckNameResponse),
@@ -265,10 +274,10 @@ pub async fn check_harness_name(
     }))
 }
 
-/// POST /v1/harnesses
+/// POST /v1/platform/harnesses
 #[utoipa::path(
     post,
-    path = "/v1/harnesses",
+    path = "/v1/platform/harnesses",
     request_body = CreateHarnessRequest,
     responses(
         (status = 201, description = "Harness created", body = WithUrls<Harness>),
@@ -289,10 +298,10 @@ pub async fn create_harness(
         .await
 }
 
-/// GET /v1/harnesses
+/// GET /v1/platform/harnesses
 #[utoipa::path(
     get,
-    path = "/v1/harnesses",
+    path = "/v1/platform/harnesses",
     responses(
         (status = 200, description = "List of harnesses", body = ListResponse<WithUrls<ResourceWithCounts<Harness>>>),
         (status = 403, description = "Forbidden"),
@@ -318,14 +327,14 @@ pub async fn list_harnesses(
     Ok(Json(ListResponse::new(harnesses).with_urls(&urls)))
 }
 
-/// GET /v1/harnesses/{harness_id}
+/// GET /v1/platform/harnesses/{harness_id}
 ///
 /// Accepts either a harness ID (e.g. `harness_01933b5a...`) or a
 /// name (e.g. `generic`). The virtual name `default` resolves to the org's
 /// configured default harness. Names are resolved within the caller's org.
 #[utoipa::path(
     get,
-    path = "/v1/harnesses/{harness_id}",
+    path = "/v1/platform/harnesses/{harness_id}",
     params(
         ("harness_id" = String, Path, description = "Harness ID (prefixed) or name")
     ),
@@ -352,10 +361,10 @@ pub async fn get_harness(
     Ok(Json(urls.wrap(harness)))
 }
 
-/// GET /v1/harnesses/{harness_id}/stats - Get aggregate usage stats for a harness
+/// GET /v1/platform/harnesses/{harness_id}/stats - Get aggregate usage stats for a harness
 #[utoipa::path(
     get,
-    path = "/v1/harnesses/{harness_id}/stats",
+    path = "/v1/platform/harnesses/{harness_id}/stats",
     params(
         ("harness_id" = String, Path, description = "Harness ID (prefixed) or name")
     ),
@@ -393,10 +402,10 @@ pub async fn get_harness_stats(
     Ok(Json(stats.into()))
 }
 
-/// PATCH /v1/harnesses/{harness_id}
+/// PATCH /v1/platform/harnesses/{harness_id}
 #[utoipa::path(
     patch,
-    path = "/v1/harnesses/{harness_id}",
+    path = "/v1/platform/harnesses/{harness_id}",
     params(
         ("harness_id" = String, Path, description = "Harness ID (prefixed)")
     ),
@@ -425,10 +434,10 @@ pub async fn update_harness(
         .await
 }
 
-/// DELETE /v1/harnesses/{harness_id}
+/// DELETE /v1/platform/harnesses/{harness_id}
 #[utoipa::path(
     delete,
-    path = "/v1/harnesses/{harness_id}",
+    path = "/v1/platform/harnesses/{harness_id}",
     params(
         ("harness_id" = String, Path, description = "Harness ID (prefixed)")
     ),
@@ -452,13 +461,13 @@ pub async fn delete_harness(
         .await
 }
 
-/// POST /v1/harnesses/{harness_id}/copy - Copy a harness
+/// POST /v1/platform/harnesses/{harness_id}/copy - Copy a harness
 ///
 /// Creates a new harness with the same configuration as the source harness.
 /// The new harness's name will be "{original name} (copy)".
 #[utoipa::path(
     post,
-    path = "/v1/harnesses/{harness_id}/copy",
+    path = "/v1/platform/harnesses/{harness_id}/copy",
     params(
         ("harness_id" = String, Path, description = "Source harness ID to copy")
     ),
@@ -482,10 +491,10 @@ pub async fn copy_harness(
         .await
 }
 
-/// POST /v1/harnesses/preview
+/// POST /v1/platform/harnesses/preview
 #[utoipa::path(
     post,
-    path = "/v1/harnesses/preview",
+    path = "/v1/platform/harnesses/preview",
     request_body = PreviewHarnessRequest,
     responses(
         (status = 200, description = "Harness preview generated", body = HarnessPreviewResponse),

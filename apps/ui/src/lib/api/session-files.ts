@@ -1,8 +1,8 @@
 // Session Files (Virtual Filesystem) API functions
-// Org is sent via everruns_org cookie (set by OrgProvider via /v1/users/me/switch-org)
+// Org is sent via everruns_org cookie (set by OrgProvider via /v1/platform/users/me/switch-org)
 //
 // All file operations target the canonical Workspace filesystem surface
-// (/v1/workspaces/{workspace_id}/fs/*). Callers pass the session's attached
+// (/v1/platform/workspaces/{workspace_id}/fs/*). Callers pass the session's attached
 // `workspace_id` (from the session response) rather than deriving it from the
 // session id — the derivation only holds under the default 1:1 invariant and
 // breaks for a session attached to a shared Workspace.
@@ -28,7 +28,7 @@ import type {
 // fragment delimiters. E.g. a file named "foo?x=1" becomes "foo%3Fx%3D1" in the
 // URL and reaches the server as a literal path.
 function fsPath(workspaceId: string, path?: string): string {
-  const base = `/v1/workspaces/${workspaceId}/fs`;
+  const base = `/v1/platform/workspaces/${workspaceId}/fs`;
   if (!path || path === "/") return base;
   const normalizedPath = path.startsWith("/") ? path.slice(1) : path;
   const encodedPath = normalizedPath.split("/").map(encodeURIComponent).join("/");
@@ -36,7 +36,7 @@ function fsPath(workspaceId: string, path?: string): string {
 }
 
 function actionPath(workspaceId: string, action: string): string {
-  return `/v1/workspaces/${workspaceId}/fs/_/${action}`;
+  return `/v1/platform/workspaces/${workspaceId}/fs/_/${action}`;
 }
 
 /**
@@ -52,13 +52,13 @@ function actionPath(workspaceId: string, action: string): string {
 export function fileDownloadUrl(workspaceId: string, path: string): string {
   const normalizedPath = path.startsWith("/") ? path.slice(1) : path;
   const encodedPath = normalizedPath.split("/").map(encodeURIComponent).join("/");
-  return `${getApiBaseUrl()}/v1/workspaces/${workspaceId}/fs/_/download/${encodedPath}`;
+  return `${getApiBaseUrl()}/v1/platform/workspaces/${workspaceId}/fs/_/download/${encodedPath}`;
 }
 
 export function htmlPreviewUrl(workspaceId: string, path: string): string {
   const normalizedPath = path.startsWith("/") ? path.slice(1) : path;
   const encodedPath = normalizedPath.split("/").map(encodeURIComponent).join("/");
-  return `${getApiBaseUrl()}/v1/workspaces/${workspaceId}/fs/_/preview/${encodedPath}`;
+  return `${getApiBaseUrl()}/v1/platform/workspaces/${workspaceId}/fs/_/preview/${encodedPath}`;
 }
 
 // ============================================

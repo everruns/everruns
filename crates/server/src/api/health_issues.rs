@@ -16,18 +16,21 @@ use uuid::Uuid;
 
 pub fn routes(state: ApiState) -> Router {
     Router::new()
-        .route("/v1/health-issues", get(list_health_issues))
-        .route("/v1/health-issues/{issue_id}", get(get_health_issue))
+        .route("/v1/platform/health-issues", get(list_health_issues))
         .route(
-            "/v1/health-issues/{issue_id}/check",
+            "/v1/platform/health-issues/{issue_id}",
+            get(get_health_issue),
+        )
+        .route(
+            "/v1/platform/health-issues/{issue_id}/check",
             post(check_health_issue),
         )
         .route(
-            "/v1/health-issues/{issue_id}/snooze",
+            "/v1/platform/health-issues/{issue_id}/snooze",
             post(snooze_health_issue),
         )
         .route(
-            "/v1/health-issues/{issue_id}/dismiss",
+            "/v1/platform/health-issues/{issue_id}/dismiss",
             post(dismiss_health_issue),
         )
         .command::<RunIssueFixer>()
@@ -43,7 +46,7 @@ pub struct HealthIssueQuery {
     pub limit: Option<i64>,
 }
 
-#[utoipa::path(get,path="/v1/health-issues",params(HealthIssueQuery),responses((status=200,body=HealthIssueList),(status=403,body=ErrorResponse)),tag="health-issues")]
+#[utoipa::path(get,path="/v1/platform/health-issues",params(HealthIssueQuery),responses((status=200,body=HealthIssueList),(status=403,body=ErrorResponse)),tag="health-issues")]
 /// List pending health issues in the organization
 ///
 /// List pending operational health issues visible to the caller in the current organization.
@@ -62,7 +65,7 @@ pub async fn list_health_issues(
         .await?,
     ))
 }
-#[utoipa::path(get,path="/v1/health-issues/{issue_id}",params(("issue_id"=Uuid,Path)),responses((status=200,body=HealthIssue),(status=404,body=ErrorResponse)),tag="health-issues")]
+#[utoipa::path(get,path="/v1/platform/health-issues/{issue_id}",params(("issue_id"=Uuid,Path)),responses((status=200,body=HealthIssue),(status=404,body=ErrorResponse)),tag="health-issues")]
 /// Get a health issue with evidence and recovery steps
 ///
 /// Get current issue evidence and recovery guidance in the current organization.
@@ -75,7 +78,7 @@ pub async fn get_health_issue(
         GetHealthIssue { issue_id }.run(&state.ctx(&org)).await?,
     ))
 }
-#[utoipa::path(post,path="/v1/health-issues/{issue_id}/check",params(("issue_id"=Uuid,Path)),responses((status=200,body=HealthIssue),(status=429,body=ErrorResponse)),tag="health-issues")]
+#[utoipa::path(post,path="/v1/platform/health-issues/{issue_id}/check",params(("issue_id"=Uuid,Path)),responses((status=200,body=HealthIssue),(status=429,body=ErrorResponse)),tag="health-issues")]
 /// Re-check a health issue
 ///
 /// Verify current installation permissions without changing provider data; requires agent management access and enforces a check cooldown.
@@ -88,7 +91,7 @@ pub async fn check_health_issue(
         CheckHealthIssue { issue_id }.run(&state.ctx(&org)).await?,
     ))
 }
-#[utoipa::path(post,path="/v1/health-issues/{issue_id}/snooze",params(("issue_id"=Uuid,Path)),responses((status=200,body=HealthIssue)),tag="health-issues")]
+#[utoipa::path(post,path="/v1/platform/health-issues/{issue_id}/snooze",params(("issue_id"=Uuid,Path)),responses((status=200,body=HealthIssue)),tag="health-issues")]
 /// Snooze reminders for a health issue for one day
 ///
 /// Snooze the authenticated user's reminders for one day while keeping the shared issue pending.
@@ -101,7 +104,7 @@ pub async fn snooze_health_issue(
         SnoozeHealthIssue { issue_id }.run(&state.ctx(&org)).await?,
     ))
 }
-#[utoipa::path(post,path="/v1/health-issues/{issue_id}/dismiss",params(("issue_id"=Uuid,Path)),request_body=DismissHealthIssueRequest,responses((status=200,body=HealthIssue),(status=404,body=ErrorResponse),(status=409,body=ErrorResponse)),tag="health-issues")]
+#[utoipa::path(post,path="/v1/platform/health-issues/{issue_id}/dismiss",params(("issue_id"=Uuid,Path)),request_body=DismissHealthIssueRequest,responses((status=200,body=HealthIssue),(status=404,body=ErrorResponse),(status=409,body=ErrorResponse)),tag="health-issues")]
 /// Dismiss a detector finding with a reason
 ///
 /// Close a finding that needs nothing. The reason is kept to calibrate detectors, and a dismissed session finding stays closed when the same session is flagged again.

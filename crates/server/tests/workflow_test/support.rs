@@ -46,9 +46,9 @@ pub(crate) async fn cleanup_delete(client: &reqwest::Client, url: String, what: 
 
 /// Remove an agent for real.
 ///
-/// `DELETE /v1/agents/{id}` only *archives* it: the row survives and keeps its
+/// `DELETE /v1/platform/agents/{id}` only *archives* it: the row survives and keeps its
 /// `default_model_id`, so a later model delete is refused on
-/// `agents_default_model_id_fkey`. `POST /v1/agents/{id}/delete` is what
+/// `agents_default_model_id_fkey`. `POST /v1/platform/agents/{id}/delete` is what
 /// actually removes the row, and it requires the archive first.
 pub(crate) async fn cleanup_agent(
     client: &reqwest::Client,
@@ -56,12 +56,15 @@ pub(crate) async fn cleanup_agent(
 ) {
     cleanup_delete(
         client,
-        format!("{}/v1/agents/{}", API_BASE_URL, agent_public_id),
+        format!("{}/v1/platform/agents/{}", API_BASE_URL, agent_public_id),
         "agent",
     )
     .await;
 
-    let url = format!("{}/v1/agents/{}/delete", API_BASE_URL, agent_public_id);
+    let url = format!(
+        "{}/v1/platform/agents/{}/delete",
+        API_BASE_URL, agent_public_id
+    );
     let response =
         client.post(&url).send().await.unwrap_or_else(|e| {
             panic!("cleanup: POST {url} (destroy agent) could not be sent: {e}")
@@ -81,7 +84,7 @@ pub(crate) async fn cleanup_agent(
 /// real provider.
 ///
 /// Pinned to explicit ids rather than `-latest` aliases so a failure names the
-/// model it actually asked for. Use ids exactly as `GET /v1/models` lists them:
+/// model it actually asked for. Use ids exactly as `GET /v1/platform/models` lists them:
 /// Claude 4.6+ models are served only under their undated id (a dated form such
 /// as `claude-sonnet-4-6-20260217` is a 404 `not_found_error`), while older
 /// families keep their dated ids. Anthropic retires models, and a retired or
@@ -151,7 +154,7 @@ pub(crate) fn provider_account_block_matches_only_billing_codes() {
     assert_eq!(provider_account_block(&json!({})), None);
 }
 
-/// Finds the first provider account block in a `GET /v1/sessions/{id}/messages`
+/// Finds the first provider account block in a `GET /v1/platform/sessions/{id}/messages`
 /// response body.
 ///
 /// Split from the request so the extraction can be tested against a real
@@ -226,7 +229,7 @@ pub(crate) async fn session_provider_account_block(
 ) -> Option<String> {
     let response = client
         .get(format!(
-            "{}/v1/sessions/{}/messages",
+            "{}/v1/platform/sessions/{}/messages",
             API_BASE_URL, session_id
         ))
         .send()

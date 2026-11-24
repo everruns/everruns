@@ -31,7 +31,7 @@ EVERRUNS=https://your-everruns-host/api
 KEY="evra2a_$(openssl rand -hex 32)"
 HASH=$(printf %s "$KEY" | sha256sum | cut -d' ' -f1)
 
-curl -sS -X POST "$EVERRUNS/v1/agents/$AGENT_ID/channels" \
+curl -sS -X POST "$EVERRUNS/v1/platform/agents/$AGENT_ID/channels" \
   -H "Authorization: Bearer $EVERRUNS_API_KEY" \
   -H 'Content-Type: application/json' \
   -d "{
@@ -50,7 +50,7 @@ curl -sS -X POST "$EVERRUNS/v1/agents/$AGENT_ID/channels" \
 The response carries the channel `id`. Publish it so it accepts traffic:
 
 ```bash
-curl -sS -X POST "$EVERRUNS/v1/agents/$AGENT_ID/channels/$CHANNEL_ID/publish" \
+curl -sS -X POST "$EVERRUNS/v1/platform/agents/$AGENT_ID/channels/$CHANNEL_ID/publish" \
   -H "Authorization: Bearer $EVERRUNS_API_KEY"
 ```
 

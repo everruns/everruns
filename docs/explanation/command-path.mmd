@@ -1,7 +1,7 @@
 %% Source of truth for command-path.svg
 graph LR
     subgraph Callers
-        UI["UI · SDKs<br/>REST over /v1"]
+        UI["UI · SDKs<br/>Platform REST"]
         Person["Person<br/>in a terminal"]
         MCPC["MCP client<br/>ChatGPT, Claude, ..."]
         subgraph Worker["worker process"]
@@ -19,7 +19,7 @@ graph LR
     Transport["command transport<br/>gRPC · ExecuteCommand"]
 
     Dispatcher["Dispatcher<br/>builds the typed command"]
-    Commands["POST /v1/commands<br/>by name · Idempotency-Key"]
+    Commands["Platform commands<br/>POST /v1/platform/commands"]
     Toolset["Scripted toolset<br/>MAPPER · bashkit · flat names · query refuses mutations"]
     GrpcHandlers["Worker gRPC handlers<br/>session and org re-checked<br/>Run: same toolset gate<br/>ExecuteCommand: internal"]
 

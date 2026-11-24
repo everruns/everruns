@@ -88,7 +88,7 @@ struct OpenRouterKeyResponse {
     key: String,
 }
 
-/// GET /v1/providers/{id}/oauth/authorize — begin the driver's OAuth connect flow.
+/// GET /v1/platform/providers/{id}/oauth/authorize — begin the driver's OAuth connect flow.
 ///
 /// Looks up the provider's driver, and if it declares an OAuth flow, redirects
 /// the admin's browser to the provider's authorization endpoint with PKCE.

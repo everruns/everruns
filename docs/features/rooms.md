@@ -26,7 +26,7 @@ discussion your product starts for each ticket.
 
 ```bash
 # A room with your end user and two agents.
-curl -X POST "$EVERRUNS_URL/v1/rooms" \
+curl -X POST "$EVERRUNS_URL/v1/platform/rooms" \
   -H "Authorization: Bearer $EVERRUNS_API_KEY" -H "Content-Type: application/json" \
   -d '{
     "name": "Ticket 4821",
@@ -40,7 +40,7 @@ curl -X POST "$EVERRUNS_URL/v1/rooms" \
   }'
 
 # Post as the guest. Mentioning @triage wakes the Triage agent.
-curl -X POST "$EVERRUNS_URL/v1/rooms/room_01h9.../messages" \
+curl -X POST "$EVERRUNS_URL/v1/platform/rooms/room_01h9.../messages" \
   -H "Authorization: Bearer $EVERRUNS_API_KEY" -H "Content-Type: application/json" \
   -d '{"as_member": "rmem_01h9...", "text": "@triage I was charged twice for March"}'
 ```
@@ -109,12 +109,12 @@ Set `loop_limits` on the room to change the numbers, within fixed bounds.
 
 ## Reading and following
 
-- `POST /v1/rooms/{room_id}/unread` returns what a member has not read yet (new
+- `POST /v1/platform/rooms/{room_id}/unread` returns what a member has not read yet (new
   top-level messages, and new replies in threads they are in) with each
   thread's first message, and marks it read.
-- `GET /v1/rooms/{room_id}/messages/{message_id}/readers` says who has read a
+- `GET /v1/platform/rooms/{room_id}/messages/{message_id}/readers` says who has read a
   message and who has not.
-- `GET /v1/rooms/events?after=…` is the change feed of every room in the
+- `GET /v1/platform/rooms/events?after=…` is the change feed of every room in the
   organization: posts, edits, reactions, members joining and leaving, agents
   woken or stopped by a limit. Poll it with the `next_after` it returns.
 - With a `link_template`, every message carries a `url` into your product.

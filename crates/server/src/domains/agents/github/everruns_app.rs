@@ -107,7 +107,7 @@ pub struct UseAgentEverrunsApp {
     summary = "Make an agent act as the shared Everruns GitHub App",
     description = "Make an agent act on GitHub as the shared Everruns App, through one installation an org admin linked in Settings > Organization. Only for an agent without a GitHub App of its own; disconnect that first.",
     method = "POST",
-    path = "/v1/agents/{agent_id}/github/everruns-app",
+    path = "/v1/platform/agents/{agent_id}/github/everruns-app",
     policy = AGENT_GITHUB_IDENTITY_MANAGE,
     cli = CliRoute::new(&["agents", "github"], "use-everruns-app").with_examples(&[CliExample::new("Let an agent act as the Everruns app through the org's acme installation", "everruns agents github use-everruns-app --agent-id agent_01h9 --connection-id 0190f5a2-7c1e-7a3b-9d2e-4f5a6b7c8d9e --reason 'Use the shared app for the reviewer'")]),
     http = plain,

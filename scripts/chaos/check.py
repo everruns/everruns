@@ -1,8 +1,8 @@
 """End-of-run assertions and metrics.
 
 Every assertion reads the session's persisted events through
-`GET /v1/sessions/{id}/events` (paged with `after_sequence`), never the SSE
-copy the driver used, and the session status through `GET /v1/sessions/{id}`.
+`GET /v1/platform/sessions/{id}/events` (paged with `after_sequence`), never the SSE
+copy the driver used, and the session status through `GET /v1/platform/sessions/{id}`.
 The one check the API cannot answer, "did a session ever run on two workers at
 once", reads the worker logs (see `worker_overlap`).
 """

@@ -38,14 +38,14 @@ test("keeps screenshot-heavy Events readable with bounded browser layout", async
   await page.route("**/api/v1/**", async (route) => {
     const path = new URL(route.request().url()).pathname;
     let json: unknown = { data: [], has_more: false, total: 0 };
-    if (path === "/api/v1/auth/config")
+    if (path === "/api/v1/platform/auth/config")
       json = {
         mode: "none",
         password_auth_enabled: false,
         oauth_providers: [],
         signup_enabled: false,
       };
-    else if (path === "/api/v1/auth/me")
+    else if (path === "/api/v1/platform/auth/me")
       json = {
         id: "fixture-user",
         email: "fixture@example.test",
@@ -56,7 +56,7 @@ test("keeps screenshot-heavy Events readable with bounded browser layout", async
       };
     else if (path.endsWith("/feature-flags")) json = {};
     else if (path.endsWith("/switch-org")) json = { success: true, org_id: ORG };
-    else if (path === `/api/v1/sessions/${SESSION}`)
+    else if (path === `/api/v1/platform/sessions/${SESSION}`)
       json = {
         id: SESSION,
         organization_id: ORG,
@@ -70,10 +70,10 @@ test("keeps screenshot-heavy Events readable with bounded browser layout", async
         created_at: "2026-10-26T00:00:00Z",
         updated_at: "2026-10-26T00:00:00Z",
       };
-    else if (path === `/api/v1/sessions/${SESSION}/resolved-model`) json = { model_id: null };
-    else if (path === `/api/v1/sessions/${SESSION}/events`)
+    else if (path === `/api/v1/platform/sessions/${SESSION}/resolved-model`) json = { model_id: null };
+    else if (path === `/api/v1/platform/sessions/${SESSION}/events`)
       json = { data: events, has_more: false, total: events.length };
-    else if (path === `/api/v1/orgs/${ORG}`)
+    else if (path === `/api/v1/platform/orgs/${ORG}`)
       json = { id: ORG, name: "Fixture", default_model_id: null };
     await route.fulfill({ json });
   });

@@ -3,7 +3,7 @@
 //!
 //! The `tool_approval` gate defers a risky call it has no decision for, the
 //! turn parks on a synthetic `approve_tool_call` call, and a person answers it
-//! through `POST /v1/sessions/{id}/tool-approvals`. These tests drive the real
+//! through `POST /v1/platform/sessions/{id}/tool-approvals`. These tests drive the real
 //! gate (`DurableToolApprover`) against the server's own session storage, so a
 //! "fresh gate" here is exactly what a newly started worker builds: nothing in
 //! memory, everything read from the database.
@@ -111,7 +111,7 @@ async fn fixture() -> Fixture {
 async fn parked_session(server: &TestServer) -> SessionId {
     let agent: Agent = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": format!("approval-test-agent-{}", Uuid::now_v7().simple()),
                 "display_name": "Approval Test",
@@ -124,7 +124,10 @@ async fn parked_session(server: &TestServer) -> SessionId {
         .assert_status(StatusCode::CREATED)
         .json();
     let session: Session = server
-        .post("/v1/sessions", json!({ "agent_id": agent.public_id }))
+        .post(
+            "/v1/platform/sessions",
+            json!({ "agent_id": agent.public_id }),
+        )
         .await
         .assert_status(StatusCode::CREATED)
         .json();
@@ -226,7 +229,7 @@ async fn post_decisions(
 ) -> test_harness::TestResponse {
     server
         .post(
-            &format!("/v1/sessions/{session_id}/tool-approvals"),
+            &format!("/v1/platform/sessions/{session_id}/tool-approvals"),
             json!({ "decisions": decisions }),
         )
         .await
@@ -732,7 +735,7 @@ async fn a_deadline_task_for_a_replaced_park_does_nothing() {
 async fn parked_child(server: &TestServer, first: SessionId) -> (SessionId, Vec<String>) {
     let agent: Agent = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": format!("implement-{}", Uuid::now_v7().simple()),
                 "display_name": "Implement",
@@ -786,7 +789,7 @@ async fn another_agents_approval_is_answered_on_the_first_session() {
     let (child, ids) = parked_child(&server, first).await;
 
     let listed = server
-        .get(&format!("/v1/sessions/{first}/run-requests"))
+        .get(&format!("/v1/platform/sessions/{first}/run-requests"))
         .await
         .assert_status(StatusCode::OK)
         .json_value();
@@ -799,7 +802,7 @@ async fn another_agents_approval_is_answered_on_the_first_session() {
 
     // Only the first session asks; the child's own list stays empty.
     let own = server
-        .get(&format!("/v1/sessions/{child}/run-requests"))
+        .get(&format!("/v1/platform/sessions/{child}/run-requests"))
         .await
         .assert_status(StatusCode::OK)
         .json_value();

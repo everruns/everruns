@@ -97,7 +97,7 @@ it("cancels pending work on teardown and ignores late replies", async () => {
       type: "everruns:request",
       id: 5,
       tool: "app_write",
-      arguments: { path: "/v1/agents/one", method: "PATCH", body: { description: "new" } },
+      arguments: { path: "/v1/platform/agents/one", method: "PATCH", body: { description: "new" } },
     },
   });
   const request = app.parent.postMessage.mock.calls.at(-1)![0];
@@ -130,7 +130,7 @@ it("keeps a timed-out write single-shot and lets later reads recover", async () 
       type: "everruns:request",
       id: 8,
       tool: "app_write",
-      arguments: { path: "/v1/agents/one", method: "PATCH" },
+      arguments: { path: "/v1/platform/agents/one", method: "PATCH" },
     },
   });
   await jest.advanceTimersByTimeAsync(30_000);
@@ -146,7 +146,7 @@ it("keeps a timed-out write single-shot and lets later reads recover", async () 
       type: "everruns:request",
       id: 9,
       tool: "app_read",
-      arguments: { path: "/v1/agents/one" },
+      arguments: { path: "/v1/platform/agents/one" },
     },
   });
   await app.reply({ structuredContent: { status: 200 } });
@@ -175,7 +175,12 @@ it("does not deliver the previous organization's pending data to the new workspa
   const read = app.receive({
     source: app.frame.contentWindow,
     origin: "https://app.example.test",
-    data: { type: "everruns:request", id: 4, tool: "app_read", arguments: { path: "/v1/agents" } },
+    data: {
+      type: "everruns:request",
+      id: 4,
+      tool: "app_read",
+      arguments: { path: "/v1/platform/agents" },
+    },
   });
   const request = app.parent.postMessage.mock.calls.at(-1)![0];
   await app.host("ui/notifications/tool-result", {

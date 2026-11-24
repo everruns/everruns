@@ -33,7 +33,7 @@ pub struct GetSessionWork {
     pub turn_id: Option<String>,
 }
 
-/// Response of `GET /v1/sessions/{session_id}/work`.
+/// Response of `GET /v1/platform/sessions/{session_id}/work`.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct SessionWorkResult {
     /// The report, or `null` when the session has not run a turn.
@@ -46,7 +46,7 @@ pub struct SessionWorkResult {
     description = "Show what a session's turn is doing or got done.",
     method = "GET",
     cli = CliRoute::new(&["sessions", "work"], "get").with_args(&[CliArg::new("session_id").at(1)]).with_examples(&[CliExample::new("See what a session's agent is doing or what it got done", "everruns sessions work get session_01h9")]),
-    path = "/v1/sessions/{session_id}/work",
+    path = "/v1/platform/sessions/{session_id}/work",
     positional = "session_id",
     http = plain,
     responses((status = 404, description = "Session or turn not found")),
@@ -74,7 +74,7 @@ impl Command for GetSessionWork {
 
 /// Work report of `turn_id`, or of the session's latest turn. `None` when the
 /// session has not run a turn or the named turn has no events. Shared by
-/// `GET /v1/sessions/{id}/work` and the Agent Execution API's session read.
+/// `GET /v1/platform/sessions/{id}/work` and the Agent Execution API's session read.
 pub async fn turn_work_report(
     events: &EventService,
     session_id: SessionId,

@@ -21,7 +21,7 @@ pub struct TracingDestinationMetadata {
     /// Non-secret destination settings, including capture consent and pause state.
     pub config: DestinationConfig,
 }
-#[command(name="get_tracing_destination_metadata",http=plain,params(("id"=Uuid,Path,description="Tracing resource ID")),category="tracing",description="Read safe destination metadata. Never returns receiver authentication.",method="GET",path="/v1/tracing/destination-metadata/{id}",policy=TRACING_MANAGE,cli=CliRoute::new(&["tracing","destinations"],"get").with_examples(&[CliExample::new("Inspect a destination without credentials","everruns tracing destinations get --id 00000000-0000-0000-0000-000000000001")]))]
+#[command(name="get_tracing_destination_metadata",http=plain,params(("id"=Uuid,Path,description="Tracing resource ID")),category="tracing",description="Read safe destination metadata. Never returns receiver authentication.",method="GET",path="/v1/platform/tracing/destination-metadata/{id}",policy=TRACING_MANAGE,cli=CliRoute::new(&["tracing","destinations"],"get").with_examples(&[CliExample::new("Inspect a destination without credentials","everruns tracing destinations get --id 00000000-0000-0000-0000-000000000001")]))]
 impl Command for GetTracingDestinationMetadata {
     type Output = TracingDestinationMetadata;
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
@@ -51,7 +51,7 @@ pub struct UpdateTracingDestinationMetadata {
     #[schema(example = true)]
     pub enabled: Option<bool>,
 }
-#[command(name="update_tracing_destination_metadata",http=plain,summary="Update tracing destination metadata",params(("id"=Uuid,Path,description="Tracing resource ID")),category="tracing",description="Update safe destination metadata while preserving its receiver and current authentication.",method="PATCH",path="/v1/tracing/destination-metadata/{id}",policy=TRACING_MANAGE,cli=CliRoute::new(&["tracing","destinations"],"update").with_examples(&[CliExample::new("Pause external exports","everruns tracing destinations update --id 00000000-0000-0000-0000-000000000001 --enabled false --reason 'Pause exports'")]))]
+#[command(name="update_tracing_destination_metadata",http=plain,summary="Update tracing destination metadata",params(("id"=Uuid,Path,description="Tracing resource ID")),category="tracing",description="Update safe destination metadata while preserving its receiver and current authentication.",method="PATCH",path="/v1/platform/tracing/destination-metadata/{id}",policy=TRACING_MANAGE,cli=CliRoute::new(&["tracing","destinations"],"update").with_examples(&[CliExample::new("Pause external exports","everruns tracing destinations update --id 00000000-0000-0000-0000-000000000001 --enabled false --reason 'Pause exports'")]))]
 impl Command for UpdateTracingDestinationMetadata {
     type Output = TracingDestinationMetadata;
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {

@@ -1,13 +1,13 @@
 import { expect, test, type Page, type Locator } from "@playwright/test";
 
 async function useClassicLayout(page: Page) {
-  await page.route("**/api/v1/user/preferences/ui.layout", (route) =>
+  await page.route("**/api/v1/platform/user/preferences/ui.layout", (route) =>
     route.fulfill({ json: { key: "ui.layout", value: "classic" } }),
   );
 }
 
 async function useChatFirstLayout(page: Page) {
-  await page.route("**/api/v1/user/preferences/ui.layout", (route) =>
+  await page.route("**/api/v1/platform/user/preferences/ui.layout", (route) =>
     route.fulfill({ json: { key: "ui.layout", value: "chat_first" } }),
   );
 }
@@ -21,14 +21,14 @@ async function mockAgentDetailApi(page: Page, displayName = "Jokes Agent") {
     const pathname = new URL(route.request().url()).pathname;
     let json: unknown;
 
-    if (pathname === "/api/v1/auth/config") {
+    if (pathname === "/api/v1/platform/auth/config") {
       json = {
         mode: "none",
         password_auth_enabled: false,
         oauth_providers: [],
         signup_enabled: false,
       };
-    } else if (pathname === "/api/v1/auth/me") {
+    } else if (pathname === "/api/v1/platform/auth/me") {
       json = {
         id: "user-1",
         email: "dev@example.com",
@@ -47,7 +47,7 @@ async function mockAgentDetailApi(page: Page, displayName = "Jokes Agent") {
       };
     } else if (pathname.endsWith("/switch-org")) {
       json = { success: true, org_id: DEFAULT_ORG_ID };
-    } else if (pathname === "/api/v1/plugins") {
+    } else if (pathname === "/api/v1/platform/plugins") {
       json = {
         data: [
           {
@@ -68,7 +68,7 @@ async function mockAgentDetailApi(page: Page, displayName = "Jokes Agent") {
         total: 1,
         has_more: false,
       };
-    } else if (pathname === `/api/v1/agents/${AGENT_ID}`) {
+    } else if (pathname === `/api/v1/platform/agents/${AGENT_ID}`) {
       json = {
         id: AGENT_ID,
         name: "jokes-agent",
@@ -88,28 +88,28 @@ async function mockAgentDetailApi(page: Page, displayName = "Jokes Agent") {
         archived_at: null,
         deleted_at: null,
       };
-    } else if (pathname === `/api/v1/agents/${AGENT_ID}/source`) {
+    } else if (pathname === `/api/v1/platform/agents/${AGENT_ID}/source`) {
       json = null;
     } else if (
-      pathname === `/api/v1/agents/${AGENT_ID}/channels` ||
-      pathname === `/api/v1/agents/${AGENT_ID}/triggers` ||
-      pathname === `/api/v1/agents/${AGENT_ID}/mcp-attachments`
+      pathname === `/api/v1/platform/agents/${AGENT_ID}/channels` ||
+      pathname === `/api/v1/platform/agents/${AGENT_ID}/triggers` ||
+      pathname === `/api/v1/platform/agents/${AGENT_ID}/mcp-attachments`
     ) {
       json = [];
-    } else if (pathname === `/api/v1/agents/${AGENT_ID}/stats`) {
+    } else if (pathname === `/api/v1/platform/agents/${AGENT_ID}/stats`) {
       json = {
         sessions: 12,
         messages: 24,
         input_tokens: 1200,
         output_tokens: 600,
       };
-    } else if (pathname === "/api/v1/agents/config" || pathname === "/api/v1/harnesses/config") {
+    } else if (pathname === "/api/v1/platform/agents/config" || pathname === "/api/v1/platform/harnesses/config") {
       json = { policies: { "agent.manage": true, "harness.manage": true } };
-    } else if (pathname === `/api/v1/history/${AGENT_ID}`) {
+    } else if (pathname === `/api/v1/platform/history/${AGENT_ID}`) {
       json = [];
-    } else if (pathname === `/api/v1/context/${AGENT_ID}`) {
+    } else if (pathname === `/api/v1/platform/context/${AGENT_ID}`) {
       json = { entity_kind: "agent", entity_ref: AGENT_ID, content: "", revision: 0 };
-    } else if (pathname === `/api/v1/harnesses/${HARNESS_ID}`) {
+    } else if (pathname === `/api/v1/platform/harnesses/${HARNESS_ID}`) {
       json = {
         id: HARNESS_ID,
         name: "responsive-harness",
@@ -130,17 +130,17 @@ async function mockAgentDetailApi(page: Page, displayName = "Jokes Agent") {
         archived_at: null,
         deleted_at: null,
       };
-    } else if (pathname === `/api/v1/harnesses/${HARNESS_ID}/stats`) {
+    } else if (pathname === `/api/v1/platform/harnesses/${HARNESS_ID}/stats`) {
       json = { sessions: 4, messages: 8, input_tokens: 400, output_tokens: 200 };
-    } else if (pathname === "/api/v1/sessions") {
+    } else if (pathname === "/api/v1/platform/sessions") {
       json = { data: [], has_more: false, total: 0, offset: 0, limit: 10 };
     } else if (
-      pathname === "/api/v1/capabilities" ||
-      pathname === "/api/v1/models" ||
-      pathname === "/api/v1/harnesses"
+      pathname === "/api/v1/platform/capabilities" ||
+      pathname === "/api/v1/platform/models" ||
+      pathname === "/api/v1/platform/harnesses"
     ) {
       json = { data: [], has_more: false, total: 0 };
-    } else if (/^\/api\/v1\/orgs\/[^/]+$/.test(pathname)) {
+    } else if (/^\/api\/v1\/platform\/orgs\/[^/]+$/.test(pathname)) {
       json = {
         id: DEFAULT_ORG_ID,
         name: "Default",
@@ -173,7 +173,7 @@ for (const scenario of [
       { name: "access_token", value: "e2e-only", domain: new URL(baseURL!).hostname, path: "/" },
     ]);
     await mockAgentDetailApi(page, "Jokes Agent");
-    await page.route(`**/api/v1/agents/${AGENT_ID}/github`, (route) =>
+    await page.route(`**/api/v1/platform/agents/${AGENT_ID}/github`, (route) =>
       route.fulfill({
         json: {
           connected: false,
@@ -184,7 +184,7 @@ for (const scenario of [
         },
       }),
     );
-    await page.route("**/api/v1/budgets?**", (route) => route.fulfill({ json: [] }));
+    await page.route("**/api/v1/platform/budgets?**", (route) => route.fulfill({ json: [] }));
     const triggerId = "trg_00000000000000000000000000000001";
     const trigger = {
       id: triggerId,
@@ -201,7 +201,7 @@ for (const scenario of [
       updated_at: "2026-10-28T00:00:00Z",
     };
     let saved: Record<string, unknown> | undefined;
-    await page.route(`**/api/v1/agents/${AGENT_ID}/triggers**`, async (route) => {
+    await page.route(`**/api/v1/platform/agents/${AGENT_ID}/triggers**`, async (route) => {
       const path = new URL(route.request().url()).pathname;
       if (route.request().method() === "PATCH") {
         saved = route.request().postDataJSON();
@@ -211,7 +211,7 @@ for (const scenario of [
       else if (path.endsWith(`/triggers/${triggerId}`)) await route.fulfill({ json: trigger });
       else await route.fulfill({ json: [] });
     });
-    await page.route(`**/api/v1/history/${triggerId}**`, (route) => route.fulfill({ json: [] }));
+    await page.route(`**/api/v1/platform/history/${triggerId}**`, (route) => route.fulfill({ json: [] }));
     // The page alone is the Classic layout; Chat first keeps Chat beside it.
     await (scenario.open ? useChatFirstLayout(page) : useClassicLayout(page));
     await page.setViewportSize({ width: scenario.width, height: scenario.height });

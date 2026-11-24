@@ -13,7 +13,7 @@ pub type AppState = super::agent_triggers::AppState;
 pub fn routes(state: AppState) -> Router {
     Router::new()
         .route(
-            "/v1/agents/{agent_id}/external-worker",
+            "/v1/platform/agents/{agent_id}/external-worker",
             get(get_external_agent)
                 .post(register_external_agent)
                 .delete(disable_external_agent),
@@ -22,7 +22,7 @@ pub fn routes(state: AppState) -> Router {
 }
 
 /// Read an Agent's external execution status.
-#[utoipa::path(get, path = "/v1/agents/{agent_id}/external-worker", params(("agent_id" = String, Path)), responses((status = 200, body = ExternalAgentStatus)), tag = "agents")]
+#[utoipa::path(get, path = "/v1/platform/agents/{agent_id}/external-worker", params(("agent_id" = String, Path)), responses((status = 200, body = ExternalAgentStatus)), tag = "agents")]
 pub async fn get_external_agent(
     org: ResolvedOrg,
     State(state): State<AppState>,
@@ -37,7 +37,7 @@ pub async fn get_external_agent(
 ///
 /// Requires dangerous-settings permission and installation enablement. Stop
 /// active turns first. The preinstalled secret is encrypted and never returned.
-#[utoipa::path(post, path = "/v1/agents/{agent_id}/external-worker", params(("agent_id" = String, Path)), request_body = RegisterExternalAgent, responses((status = 200, body = ExternalAgent)), tag = "agents")]
+#[utoipa::path(post, path = "/v1/platform/agents/{agent_id}/external-worker", params(("agent_id" = String, Path)), request_body = RegisterExternalAgent, responses((status = 200, body = ExternalAgent)), tag = "agents")]
 pub async fn register_external_agent(
     org: ResolvedOrg,
     State(state): State<AppState>,
@@ -51,7 +51,7 @@ pub async fn register_external_agent(
 /// Disable external worker execution.
 ///
 /// Revocation never falls back to the built-in runtime.
-#[utoipa::path(delete, path = "/v1/agents/{agent_id}/external-worker", params(("agent_id" = String, Path)), responses((status = 200)), tag = "agents")]
+#[utoipa::path(delete, path = "/v1/platform/agents/{agent_id}/external-worker", params(("agent_id" = String, Path)), responses((status = 200)), tag = "agents")]
 pub async fn disable_external_agent(
     org: ResolvedOrg,
     State(state): State<AppState>,

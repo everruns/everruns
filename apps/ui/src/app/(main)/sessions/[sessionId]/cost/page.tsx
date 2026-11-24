@@ -11,7 +11,7 @@
 // the header does not show (harness, agent revision, identity, fork origin) is a
 // one-line footer.
 //
-// Every number is read from GET /v1/sessions/{id}/cost and the context report;
+// Every number is read from GET /v1/platform/sessions/{id}/cost and the context report;
 // nothing on this page can change the session.
 
 import Link from "next/link";

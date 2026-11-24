@@ -30,45 +30,45 @@ Verify that agent creation fails with appropriate errors for missing, invalid, o
 
 1. Create agent without name:
    ```bash
-   curl -s -o /dev/null -w "%{http_code}" -X POST "http://localhost:9300/api/v1/agents" \
+   curl -s -o /dev/null -w "%{http_code}" -X POST "http://localhost:9300/api/v1/platform/agents" \
      -H "Content-Type: application/json" \
      -d '{"system_prompt": "No name."}'
    ```
 
 2. Create agent without system_prompt:
    ```bash
-   curl -s -o /dev/null -w "%{http_code}" -X POST "http://localhost:9300/api/v1/agents" \
+   curl -s -o /dev/null -w "%{http_code}" -X POST "http://localhost:9300/api/v1/platform/agents" \
      -H "Content-Type: application/json" \
      -d '{"name": "no-prompt-agent"}'
    ```
 
 3. Create agent with empty body:
    ```bash
-   curl -s -o /dev/null -w "%{http_code}" -X POST "http://localhost:9300/api/v1/agents" \
+   curl -s -o /dev/null -w "%{http_code}" -X POST "http://localhost:9300/api/v1/platform/agents" \
      -H "Content-Type: application/json" \
      -d '{}'
    ```
 
 4. Create agent with invalid name format (uppercase, spaces):
    ```bash
-   curl -s -o /dev/null -w "%{http_code}" -X POST "http://localhost:9300/api/v1/agents" \
+   curl -s -o /dev/null -w "%{http_code}" -X POST "http://localhost:9300/api/v1/platform/agents" \
      -H "Content-Type: application/json" \
      -d '{"name": "My Agent!", "system_prompt": "Bad name."}'
    ```
 
 5. Create agent with consecutive hyphens:
    ```bash
-   curl -s -o /dev/null -w "%{http_code}" -X POST "http://localhost:9300/api/v1/agents" \
+   curl -s -o /dev/null -w "%{http_code}" -X POST "http://localhost:9300/api/v1/platform/agents" \
      -H "Content-Type: application/json" \
      -d '{"name": "bad--name", "system_prompt": "Bad."}'
    ```
 
 6. Create agent, then create another with the same name (duplicate):
    ```bash
-   curl -s -X POST "http://localhost:9300/api/v1/agents" \
+   curl -s -X POST "http://localhost:9300/api/v1/platform/agents" \
      -H "Content-Type: application/json" \
      -d '{"name": "unique-agent", "system_prompt": "First."}'
-   curl -s -o /dev/null -w "%{http_code}" -X POST "http://localhost:9300/api/v1/agents" \
+   curl -s -o /dev/null -w "%{http_code}" -X POST "http://localhost:9300/api/v1/platform/agents" \
      -H "Content-Type: application/json" \
      -d '{"name": "unique-agent", "system_prompt": "Duplicate."}'
    ```

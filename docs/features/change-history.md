@@ -15,7 +15,7 @@ A reason is a short note in your own words that travels with the call and is sto
 | Surface | How to pass a reason |
 |---|---|
 | CLI | `--reason "..."` on any command |
-| Commands API | `"reason": "..."` in the `/v1/commands/{name}` envelope |
+| Commands API | `"reason": "..."` in the `/v1/platform/commands/{name}` envelope |
 | REST | `everruns-change-reason` header, percent-encoded |
 | Agent shell and MCP | `--reason "..."` on the command |
 
@@ -32,7 +32,7 @@ everruns history list agent_01h9 --limit 10      # one entity, newest first
 everruns history org --via-agent agent_01h9      # what one agent changed across the org
 ```
 
-Each entry carries the action (`created`, `updated`, `deleted`, ...), the command that ran, the fields the caller asked to change, the actor, the surface (`api`, `commands`, `mcp`, `platform`, `worker`), and the reason. The REST equivalents are `GET /v1/history/{entity_ref}` and `GET /v1/history`.
+Each entry carries the action (`created`, `updated`, `deleted`, ...), the command that ran, the fields the caller asked to change, the actor, the surface (`api`, `commands`, `mcp`, `platform`, `worker`), and the reason. The REST equivalents are `GET /v1/platform/history/{entity_ref}` and `GET /v1/platform/history`.
 
 Anyone who can see an entity can read its history. The organization-wide view needs audit-log access. Kinds whose ids carry no prefix (`schedule`, `check_rule`) need `--kind`.
 
@@ -50,7 +50,7 @@ A restore is a new change, not a rewind. It runs the entity's own update command
 
 Secrets are never part of a snapshot. A snapshot records only whether each secret is set and a fingerprint that changes when the secret changes, so a diff can say a key was rotated without showing it. A restore keeps every secret's current value and warns when it differs from the restored revision. Re-enter the old value yourself if you need it.
 
-The REST equivalents are `GET /v1/history/{entity_ref}/revisions/{revision}`, `GET /v1/history/{entity_ref}/diff?from=N` and `POST /v1/history/{entity_ref}/restore`. Each entity keeps snapshots for its newest 500 revisions. Older entries keep their reason but lose the snapshot.
+The REST equivalents are `GET /v1/platform/history/{entity_ref}/revisions/{revision}`, `GET /v1/platform/history/{entity_ref}/diff?from=N` and `POST /v1/platform/history/{entity_ref}/restore`. Each entity keeps snapshots for its newest 500 revisions. Older entries keep their reason but lose the snapshot.
 
 ### Agent revisions replace agent versions
 

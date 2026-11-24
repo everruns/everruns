@@ -36,7 +36,7 @@ Framework-only (for example host shell), and a capability whose page lists only
 Platform or Cloud adds features the Framework never had.
 
 To create the agent, write it as a file and import it with
-`POST /v1/agents/import`, the CLI, or an SDK. See
+`POST /v1/platform/agents/import`, the CLI, or an SDK. See
 [Define agents as files](/how-to/define-agents-as-files/).
 
 ```rust
@@ -94,7 +94,7 @@ shows the client-side tool loop over the API.
 - **Sessions and history.** There is no session import. A Framework session's
   event log, whether in memory, `SqliteHosting` or a legacy `LocalConfig` data
   directory, stays with the Framework app. Platform sessions start fresh; a Platform session can
-  be exported (`GET /v1/sessions/{id}/export`) but not the reverse.
+  be exported (`GET /v1/platform/sessions/{id}/export`) but not the reverse.
 - **Workspace files.** A local workspace directory is not copied. Put files the
   agent needs at start in `initial_files`.
 - **Application wiring.** Event listeners, `Engine` configuration, and your own

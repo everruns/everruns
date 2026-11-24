@@ -29,8 +29,8 @@ class SmokeContracts(unittest.TestCase):
         class Handler(BaseHTTPRequestHandler):
             def do_GET(self):
                 paths.append(self.path)
-                body = json.dumps({"ok": self.path in {"/health", "/api/v1/agents"}}).encode()
-                self.send_response(200 if self.path in {"/health", "/api/v1/agents"} else 404)
+                body = json.dumps({"ok": self.path in {"/health", "/api/v1/platform/agents"}}).encode()
+                self.send_response(200 if self.path in {"/health", "/api/v1/platform/agents"} else 404)
                 self.end_headers()
                 self.wfile.write(body)
             def log_message(self, *_args):
@@ -43,8 +43,8 @@ class SmokeContracts(unittest.TestCase):
                 for suffix in ["", "/api", "/api/"]:
                     smoke = smoke_module.Smoke(args(root, api=f"http://127.0.0.1:{server.server_port}" + suffix))
                     self.assertTrue(smoke.request("GET", "/health")["ok"])
-                    self.assertTrue(smoke.request("GET", "/v1/agents")["ok"])
-            self.assertEqual(paths, ["/health", "/api/v1/agents"] * 3)
+                    self.assertTrue(smoke.request("GET", "/v1/platform/agents")["ok"])
+            self.assertEqual(paths, ["/health", "/api/v1/platform/agents"] * 3)
         finally:
             server.shutdown()
             server.server_close()

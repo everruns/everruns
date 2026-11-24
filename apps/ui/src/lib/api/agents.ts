@@ -1,5 +1,5 @@
 // Agent API functions (M2)
-// Org is sent via everruns_org cookie (set by OrgProvider via /v1/users/me/switch-org)
+// Org is sent via everruns_org cookie (set by OrgProvider via /v1/platform/users/me/switch-org)
 
 import { api, getApiBaseUrl, throwApiError } from "./client";
 import type { AgentAvatar } from "./agent-types";
@@ -27,7 +27,7 @@ import type {
 } from "./types";
 
 export const agentsCrudApi = createCrudApi<Agent, CreateAgentRequest, UpdateAgentRequest>(
-  "/v1/agents",
+  "/v1/platform/agents",
 );
 
 export const createAgent = agentsCrudApi.create;
@@ -43,13 +43,15 @@ export async function searchAgents(
   limit: number,
 ): Promise<PaginatedResponse<Agent>> {
   const params = new URLSearchParams({ search: query, limit: String(limit) });
-  const response = await api.get<PaginatedResponse<Agent>>(`/v1/agents?${params.toString()}`);
+  const response = await api.get<PaginatedResponse<Agent>>(
+    `/v1/platform/agents?${params.toString()}`,
+  );
   return response.data;
 }
 
 export async function exportAgent(agentId: string): Promise<string> {
   // Raw fetch needed: returns text/markdown, not JSON
-  const response = await fetch(`/api/v1/agents/${agentId}/export`, {
+  const response = await fetch(`/api/v1/platform/agents/${agentId}/export`, {
     credentials: "include",
     headers: withOrgHeader(),
   });
@@ -86,7 +88,7 @@ function packageRequest(input: AgentImport): { body: BodyInit; headers: HeadersI
 export async function importAgent(input: AgentImport): Promise<Agent> {
   const target = typeof input === "string" ? undefined : input.target;
   const response = await fetch(
-    `/api/v1/agents/import${packageQuery(typeof input === "string" ? undefined : input.file, target)}`,
+    `/api/v1/platform/agents/import${packageQuery(typeof input === "string" ? undefined : input.file, target)}`,
     {
       method: "POST",
       credentials: "include",
@@ -131,11 +133,14 @@ export async function inspectAgentPackage(
   diagnostics?: { path: string; message: string }[];
   changes?: { path: string; before: unknown; after: unknown }[];
 }> {
-  const response = await fetch(`/api/v1/agents/${operation}${packageQuery(file, target)}`, {
-    method: "POST",
-    credentials: "include",
-    ...packageRequest({ file }),
-  });
+  const response = await fetch(
+    `/api/v1/platform/agents/${operation}${packageQuery(file, target)}`,
+    {
+      method: "POST",
+      credentials: "include",
+      ...packageRequest({ file }),
+    },
+  );
   if (!response.ok) await throwApiError(response);
   return response.json();
 }
@@ -145,7 +150,7 @@ export async function exportAgentPackage(
   format: "zip" | "toml" | "yaml" | "json" = "zip",
 ): Promise<Blob> {
   const response = await fetch(
-    `/api/v1/agents/${encodeURIComponent(agentName)}/export?format=${format}`,
+    `/api/v1/platform/agents/${encodeURIComponent(agentName)}/export?format=${format}`,
     { credentials: "include", headers: withOrgHeader() },
   );
   if (!response.ok) await throwApiError(response);
@@ -153,25 +158,25 @@ export async function exportAgentPackage(
 }
 
 export async function copyAgent(agentId: string): Promise<Agent> {
-  const response = await api.post<Agent>(`/v1/agents/${agentId}/copy`, {});
+  const response = await api.post<Agent>(`/v1/platform/agents/${agentId}/copy`, {});
   return response.data;
 }
 
 export async function getAgentStats(agentId: string): Promise<ResourceStats> {
-  const response = await api.get<ResourceStats>(`/v1/agents/${agentId}/stats`);
+  const response = await api.get<ResourceStats>(`/v1/platform/agents/${agentId}/stats`);
   return response.data;
 }
 
 export async function getAgentMcpAttachments(agentId: string): Promise<AgentMcpAttachment[]> {
   const response = await api.get<AgentMcpAttachment[]>(
-    `/v1/agents/${encodeURIComponent(agentId)}/mcp-attachments`,
+    `/v1/platform/agents/${encodeURIComponent(agentId)}/mcp-attachments`,
   );
   return response.data;
 }
 
 export async function revokeAgentMcpConnection(agentId: string, name: string): Promise<void> {
   await api.delete(
-    `/v1/agents/${encodeURIComponent(agentId)}/mcp-attachments/${encodeURIComponent(name)}/connection`,
+    `/v1/platform/agents/${encodeURIComponent(agentId)}/mcp-attachments/${encodeURIComponent(name)}/connection`,
   );
 }
 
@@ -182,40 +187,45 @@ export async function checkAgentName(
   const params = new URLSearchParams({ name });
   if (excludeId) params.set("exclude_id", excludeId);
   const response = await api.get<{ available: boolean }>(
-    `/v1/agents/check-name?${params.toString()}`,
+    `/v1/platform/agents/check-name?${params.toString()}`,
   );
   return response.data;
 }
 
 export async function previewAgent(request: PreviewAgentRequest): Promise<AgentPreviewResponse> {
-  const response = await api.post<AgentPreviewResponse>("/v1/agents/preview", request);
+  const response = await api.post<AgentPreviewResponse>("/v1/platform/agents/preview", request);
   return response.data;
 }
 
 export async function analyzeAgent(request: PreviewAgentRequest): Promise<AgentAnalysisResponse> {
-  const response = await api.post<AgentAnalysisResponse>("/v1/agents/analyze", request);
+  const response = await api.post<AgentAnalysisResponse>("/v1/platform/agents/analyze", request);
   return response.data;
 }
 
 export async function triggerHealthCheck(agentId: string): Promise<HealthCheckRun> {
-  const response = await api.post<HealthCheckRun>(`/v1/agents/${agentId}/health-checks`, {});
+  const response = await api.post<HealthCheckRun>(
+    `/v1/platform/agents/${agentId}/health-checks`,
+    {},
+  );
   return response.data;
 }
 
 export async function getHealthCheckRun(agentId: string, runId: string): Promise<HealthCheckRun> {
-  const response = await api.get<HealthCheckRun>(`/v1/agents/${agentId}/health-checks/${runId}`);
+  const response = await api.get<HealthCheckRun>(
+    `/v1/platform/agents/${agentId}/health-checks/${runId}`,
+  );
   return response.data;
 }
 
 export async function getLatestHealthCheckRun(agentId: string): Promise<LatestHealthCheckRun> {
   const response = await api.get<LatestHealthCheckRun>(
-    `/v1/agents/${agentId}/health-checks/latest`,
+    `/v1/platform/agents/${agentId}/health-checks/latest`,
   );
   return response.data;
 }
 
 export async function listHealthCheckRuns(agentId: string): Promise<HealthCheckRun[]> {
-  const response = await api.get<HealthCheckRun[]>(`/v1/agents/${agentId}/health-checks`);
+  const response = await api.get<HealthCheckRun[]>(`/v1/platform/agents/${agentId}/health-checks`);
   return response.data;
 }
 
@@ -236,7 +246,7 @@ export interface CreateAgentCredentialBindingRequest {
 
 export async function listAgentCredentials(agentId: string): Promise<AgentCredentialBinding[]> {
   const response = await api.get<{ data: AgentCredentialBinding[] }>(
-    `/v1/agents/${agentId}/credentials`,
+    `/v1/platform/agents/${agentId}/credentials`,
   );
   return response.data.data;
 }
@@ -246,7 +256,7 @@ export async function createAgentCredentialBinding(
   request: CreateAgentCredentialBindingRequest,
 ): Promise<AgentCredentialBinding> {
   const response = await api.post<AgentCredentialBinding>(
-    `/v1/agents/${agentId}/credentials`,
+    `/v1/platform/agents/${agentId}/credentials`,
     request,
   );
   return response.data;
@@ -259,7 +269,7 @@ export async function setAgentCredentialValue(
   revision: number,
 ): Promise<AgentCredentialBinding> {
   const response = await api.put<AgentCredentialBinding>(
-    `/v1/agents/${agentId}/credentials/${bindingId}`,
+    `/v1/platform/agents/${agentId}/credentials/${bindingId}`,
     { value, revision },
   );
   return response.data;
@@ -269,19 +279,19 @@ export async function deleteAgentCredentialBinding(
   agentId: string,
   bindingId: string,
 ): Promise<void> {
-  await api.delete(`/v1/agents/${agentId}/credentials/${bindingId}`);
+  await api.delete(`/v1/platform/agents/${agentId}/credentials/${bindingId}`);
 }
 
 /// Pause agent (EVE-1007): stops its channels, triggers and schedules without
 /// touching the per-channel publish or per-trigger on/off state that resuming
 /// restores.
 export async function pauseAgent(agentId: string): Promise<Agent> {
-  const response = await api.post<Agent>(`/v1/agents/${agentId}/pause`);
+  const response = await api.post<Agent>(`/v1/platform/agents/${agentId}/pause`);
   return response.data;
 }
 
 export async function resumeAgent(agentId: string): Promise<Agent> {
-  const response = await api.post<Agent>(`/v1/agents/${agentId}/resume`);
+  const response = await api.post<Agent>(`/v1/platform/agents/${agentId}/resume`);
   return response.data;
 }
 
@@ -290,7 +300,7 @@ export async function uploadAgentAvatar(agentId: string, file: File): Promise<Ag
   const formData = new FormData();
   formData.append("file", file);
   // Raw fetch for FormData: the browser sets the multipart boundary.
-  const response = await fetch(`${getApiBaseUrl()}/v1/agents/${agentId}/avatar`, {
+  const response = await fetch(`${getApiBaseUrl()}/v1/platform/agents/${agentId}/avatar`, {
     method: "PUT",
     body: formData,
     credentials: "include",
@@ -301,7 +311,7 @@ export async function uploadAgentAvatar(agentId: string, file: File): Promise<Ag
 }
 
 export async function deleteAgentAvatar(agentId: string): Promise<void> {
-  await api.delete(`/v1/agents/${agentId}/avatar`);
+  await api.delete(`/v1/platform/agents/${agentId}/avatar`);
 }
 
 /** Browser URL of one avatar preset. Sizes come from `avatar.sizes`. */
@@ -323,14 +333,17 @@ export async function listAvatarPresets(): Promise<AvatarPreset[]> {
   return (await api.get<AvatarPreset[]>("/v1/avatar-presets")).data;
 }
 export async function getAvatarPresetSelection(agentId: string): Promise<AvatarPresetSelection> {
-  return (await api.get<AvatarPresetSelection>(`/v1/agents/${agentId}/avatar/preset`)).data;
+  return (await api.get<AvatarPresetSelection>(`/v1/platform/agents/${agentId}/avatar/preset`))
+    .data;
 }
 export async function selectAgentAvatarPreset(
   agentId: string,
   presetId: string,
 ): Promise<AgentAvatar> {
   return (
-    await api.put<AgentAvatar>(`/v1/agents/${agentId}/avatar/preset`, { preset_id: presetId })
+    await api.put<AgentAvatar>(`/v1/platform/agents/${agentId}/avatar/preset`, {
+      preset_id: presetId,
+    })
   ).data;
 }
 export function avatarPresetUrl(
@@ -346,5 +359,7 @@ export async function planAgentCosts(
   guidance: string,
   locale: string,
 ): Promise<AgentCostPlan> {
-  return (await api.post<AgentCostPlan>("/v1/agents/cost-plan", { agent, guidance, locale })).data;
+  return (
+    await api.post<AgentCostPlan>("/v1/platform/agents/cost-plan", { agent, guidance, locale })
+  ).data;
 }

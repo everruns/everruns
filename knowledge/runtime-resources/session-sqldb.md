@@ -118,12 +118,12 @@ See `crates/server/src/session_sqldb/types.rs` for the backend result types. See
 
 ## API Endpoints
 
-All under `/v1/sessions/{session_id}/databases`.
+All under `/v1/platform/sessions/{session_id}/databases`.
 
 ### List Databases
 
 ```http
-GET /v1/sessions/{session_id}/databases
+GET /v1/platform/sessions/{session_id}/databases
 
 Response 200:
 {
@@ -142,7 +142,7 @@ Response 200:
 ### Create Database
 
 ```http
-POST /v1/sessions/{session_id}/databases
+POST /v1/platform/sessions/{session_id}/databases
 Content-Type: application/json
 
 { "name": "analytics" }
@@ -160,7 +160,7 @@ Response 201:
 ### Get Database
 
 ```http
-GET /v1/sessions/{session_id}/databases/{name}
+GET /v1/platform/sessions/{session_id}/databases/{name}
 
 Response 200:
 {
@@ -175,7 +175,7 @@ Response 200:
 ### Delete Database
 
 ```http
-DELETE /v1/sessions/{session_id}/databases/{name}
+DELETE /v1/platform/sessions/{session_id}/databases/{name}
 
 Response 204 No Content
 ```
@@ -183,7 +183,7 @@ Response 204 No Content
 ### Get Schema
 
 ```http
-GET /v1/sessions/{session_id}/databases/{name}/schema
+GET /v1/platform/sessions/{session_id}/databases/{name}/schema
 
 Response 200:
 {

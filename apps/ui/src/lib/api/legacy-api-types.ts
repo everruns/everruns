@@ -624,7 +624,7 @@ export interface LoginRequest {
 export interface RegisterRequest {
   email: string;
   password: string;
-  /** Captcha token; required when /v1/auth/config advertises a captcha. */
+  /** Captcha token; required when /v1/platform/auth/config advertises a captcha. */
   captcha_token?: string;
 }
 
@@ -638,7 +638,7 @@ export interface TokenResponse {
 /** Request to begin a password reset (enumeration-safe). */
 export interface ForgotPasswordRequest {
   email: string;
-  /** Captcha token; required when /v1/auth/config advertises a captcha. */
+  /** Captcha token; required when /v1/platform/auth/config advertises a captcha. */
   captcha_token?: string;
 }
 

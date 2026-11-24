@@ -37,7 +37,7 @@ impl Command for ListAgentCheckRules {
             description: "List the org's agent check rules: built-in rules with their effective \
                           enabled/severity, plus custom rules.",
             method: "GET",
-            path: "/v1/agents/check-rules",
+            path: "/v1/platform/agents/check-rules",
         }
     }
 
@@ -82,7 +82,7 @@ pub struct UpsertAgentCheckRule {
     category = "agents",
     description = "Create or update an agent check rule (built-in override or custom rule).",
     method = "PUT",
-    path = "/v1/agents/check-rules/{rule_id}",
+    path = "/v1/platform/agents/check-rules/{rule_id}",
     policy = AGENT_CHECKS_MANAGE,
     read_only = false,
     cli = CliRoute::new(&["agents", "check-rules"], "upsert").with_examples(&[CliExample::new("Add an LLM-judged rule that flags prompts handling personal data", "everruns agents check-rules upsert --rule-id custom.no-pii --kind nl_rubric --enabled true --category safety --severity warning --rubric 'Flag prompts that tell the agent to store customer personal data' --reason 'Privacy review requirement'",)]),
@@ -111,7 +111,7 @@ pub struct DeleteAgentCheckRule {
     category = "agents",
     description = "Delete an agent check rule (built-in override or custom rule).",
     method = "DELETE",
-    path = "/v1/agents/check-rules/{rule_id}",
+    path = "/v1/platform/agents/check-rules/{rule_id}",
     policy = AGENT_CHECKS_MANAGE,
     read_only = false,
     cli = CliRoute::new(&["agents", "check-rules"], "delete").with_examples(&[CliExample::new("Drop a custom check rule that no longer applies", "everruns agents check-rules delete --rule-id custom.no-pii --reason 'Covered by the org policy'",)]),

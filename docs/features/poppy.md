@@ -32,7 +32,7 @@ Create a `poppy` channel on the agent that should answer, then publish it:
 
 ```bash
 EVERRUNS=https://your-everruns-host/api
-curl -X POST "$EVERRUNS/v1/agents/$AGENT_ID/channels" \
+curl -X POST "$EVERRUNS/v1/platform/agents/$AGENT_ID/channels" \
   -H "Authorization: Bearer $EVERRUNS_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -42,7 +42,7 @@ curl -X POST "$EVERRUNS/v1/agents/$AGENT_ID/channels" \
       "organization_name": "Example Shop"
     }
   }'
-curl -X POST "$EVERRUNS/v1/agents/$AGENT_ID/channels/$CHANNEL_ID/publish" \
+curl -X POST "$EVERRUNS/v1/platform/agents/$AGENT_ID/channels/$CHANNEL_ID/publish" \
   -H "Authorization: Bearer $EVERRUNS_API_KEY"
 ```
 

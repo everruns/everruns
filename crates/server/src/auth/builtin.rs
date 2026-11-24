@@ -839,7 +839,7 @@ mod tests {
     }
 
     // EVE-715: profile-name updates must surface on the next request within the
-    // same access-token session. `/v1/auth/me` builds `UserInfoResponse.name` from
+    // same access-token session. `/v1/platform/auth/me` builds `UserInfoResponse.name` from
     // `AuthUser.name`, which comes from `auth_user_from_claims`. Because profile
     // updates write the DB but do not mint a new token, the name must be sourced
     // from the freshly-loaded DB user row, not the (now stale) JWT claim.

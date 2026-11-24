@@ -259,7 +259,7 @@ pub async fn run(
                 if initial_files_dir.is_some() {
                     anyhow::bail!("--initial-files-dir requires --file");
                 }
-                let client = super::api::ApiClient::new(api_url, api_key, org_id);
+                let client = super::api::ApiClient::connect(api_url, api_key, org_id).await?;
                 save_from_flags(
                     &client,
                     None,
@@ -334,7 +334,7 @@ pub async fn run(
                 }
                 // Update without file requires agent_id
                 let id = agent_id.context("Agent ID is required for update without --file")?;
-                let client = super::api::ApiClient::new(api_url, api_key, org_id);
+                let client = super::api::ApiClient::connect(api_url, api_key, org_id).await?;
                 save_from_flags(
                     &client,
                     Some(&id),
@@ -372,7 +372,7 @@ async fn import_from_file(
     output: OutputFormat,
     quiet: bool,
 ) -> Result<()> {
-    let client = super::api::ApiClient::new(api_url, api_key, org_id);
+    let client = super::api::ApiClient::connect(api_url, api_key, org_id).await?;
     let legacy_hidden_policy = std::fs::read_to_string(path)
         .ok()
         .is_some_and(|s| s.contains("initial_files_allow_hidden"));
@@ -408,7 +408,7 @@ async fn import_from_file(
             }
         }
         let response = client
-            .post_with_reason("/v1/agents/import", Some(&payload), reason)
+            .post_with_reason("/v1/platform/agents/import", Some(&payload), reason)
             .await?;
         print_package_report(output, &response);
         return Ok(());
@@ -459,7 +459,7 @@ async fn import_from_file(
     };
 
     let resp = super::api::with_change_reason(
-        client.request(reqwest::Method::POST, "/v1/agents/import"),
+        client.request(reqwest::Method::POST, "/v1/platform/agents/import"),
         reason,
     )
     .header("Content-Type", content_type)

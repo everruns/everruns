@@ -109,15 +109,15 @@ virtual-user management permission, for an account you manage:
 
 | Method | Path | Purpose |
 |---|---|---|
-| `GET` | `/v1/virtual-users/{id}/mcp-servers` | List your servers and their sign-in state |
-| `POST` | `/v1/virtual-users/{id}/mcp-servers` | Add a server (`{"catalog":"linear"}` or `{"name","url","auth_mode"}`) |
-| `GET` | `/v1/virtual-users/{id}/mcp-servers/{server_id}` | Read one server |
-| `PATCH` | `/v1/virtual-users/{id}/mcp-servers/{server_id}` | Rename, turn on or off, or replace the API key |
-| `DELETE` | `/v1/virtual-users/{id}/mcp-servers/{server_id}` | Remove the server and your sign-in |
-| `GET` | `/v1/virtual-users/{id}/mcp-servers/{server_id}/tools` | List a custom server's tools, asked live, with your [risk labels](/features/mcp/#which-tools-ask-before-they-run) |
-| `PUT` | `/v1/virtual-users/{id}/mcp-servers/{server_id}/tools/{tool}/label` | Label a custom server's tool `read_only` or `changes`, or `null` to clear |
+| `GET` | `/v1/platform/virtual-users/{id}/mcp-servers` | List your servers and their sign-in state |
+| `POST` | `/v1/platform/virtual-users/{id}/mcp-servers` | Add a server (`{"catalog":"linear"}` or `{"name","url","auth_mode"}`) |
+| `GET` | `/v1/platform/virtual-users/{id}/mcp-servers/{server_id}` | Read one server |
+| `PATCH` | `/v1/platform/virtual-users/{id}/mcp-servers/{server_id}` | Rename, turn on or off, or replace the API key |
+| `DELETE` | `/v1/platform/virtual-users/{id}/mcp-servers/{server_id}` | Remove the server and your sign-in |
+| `GET` | `/v1/platform/virtual-users/{id}/mcp-servers/{server_id}/tools` | List a custom server's tools, asked live, with your [risk labels](/features/mcp/#which-tools-ask-before-they-run) |
+| `PUT` | `/v1/platform/virtual-users/{id}/mcp-servers/{server_id}/tools/{tool}/label` | Label a custom server's tool `read_only` or `changes`, or `null` to clear |
 
-Sign in with `GET /v1/virtual-users/{id}/connections/{provider}/authorize`, where
+Sign in with `GET /v1/platform/virtual-users/{id}/connections/{provider}/authorize`, where
 `provider` is the `connection.provider` value a server reports. The URL of a
 server cannot change; remove it and add it again instead.
 

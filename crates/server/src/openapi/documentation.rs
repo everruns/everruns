@@ -477,7 +477,7 @@ mod tests {
     #[test]
     fn summaries_fit_a_page_title() {
         assert_eq!(
-            split_summary("PUT /v1/agents/{agent_id} - Create or update agent (upsert)"),
+            split_summary("PUT /v1/platform/agents/{agent_id} - Create or update agent (upsert)"),
             (
                 "Create or update agent (upsert)".to_owned(),
                 "Create or update agent (upsert)".to_owned()
@@ -492,7 +492,7 @@ mod tests {
         );
         let spec = serde_json::to_value(ApiDoc::openapi()).unwrap();
         assert_eq!(
-            spec["paths"]["/v1/harnesses/{harness_id}"]["get"]["summary"],
+            spec["paths"]["/v1/platform/harnesses/{harness_id}"]["get"]["summary"],
             "Get harness"
         );
         let long: Vec<String> = spec["paths"]
@@ -519,7 +519,7 @@ mod tests {
     fn every_operation_has_public_classification_and_legacy_successors_resolve() {
         let spec = serde_json::to_value(ApiDoc::openapi()).unwrap();
         assert_eq!(spec["x-tagGroups"][0]["name"], "Agent API");
-        let extraction = &spec["paths"]["/v1/extractions"]["post"]["x-docs"];
+        let extraction = &spec["paths"]["/v1/platform/extractions"]["post"]["x-docs"];
         assert_eq!(extraction["group"], "models-integrations");
         assert_eq!(extraction["support"], "preview");
         assert!(
@@ -550,27 +550,31 @@ mod tests {
             "Every endpoint needs its own operation ID and documentation URL"
         );
         for (path, method, id) in [
-            ("/v1/harness-examples", "get", "list_examples"),
-            ("/v1/sessions/{session_id}/tasks", "get", "list_tasks"),
-            ("/v1/files/{file_id}", "get", "get_file"),
-            ("/v1/files/{file_id}", "delete", "delete_file"),
+            ("/v1/platform/harness-examples", "get", "list_examples"),
             (
-                "/v1/orgs/{org}/organization-connections",
+                "/v1/platform/sessions/{session_id}/tasks",
+                "get",
+                "list_tasks",
+            ),
+            ("/v1/platform/files/{file_id}", "get", "get_file"),
+            ("/v1/platform/files/{file_id}", "delete", "delete_file"),
+            (
+                "/v1/platform/orgs/{org}/organization-connections",
                 "get",
                 "list_connections",
             ),
             (
-                "/v1/orgs/{org}/organization-connections/{connection_id}",
+                "/v1/platform/orgs/{org}/organization-connections/{connection_id}",
                 "delete",
                 "delete_connection",
             ),
             (
-                "/v1/orgs/{org}/organization-connections/{connection_id}/verify",
+                "/v1/platform/orgs/{org}/organization-connections/{connection_id}/verify",
                 "post",
                 "verify_connection",
             ),
             (
-                "/v1/virtual-users/{identity_id}/sessions",
+                "/v1/platform/virtual-users/{identity_id}/sessions",
                 "get",
                 "list_sessions",
             ),

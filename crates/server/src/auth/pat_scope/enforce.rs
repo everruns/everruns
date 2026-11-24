@@ -6,7 +6,7 @@
 //   scope with the `RouteAccess` extension the classification layer inserted.
 //   A missing extension is an unclassified route, denied to a narrow token. A
 //   `*` token, a JWT and a cookie (no `pat_scope`) skip the check entirely.
-// Decision: `POST /v1/commands/{name}` (`PerCommand`) passes the route check;
+// Decision: `POST /v1/platform/commands/{name}` (`PerCommand`) passes the route check;
 //   `execute_command` calls `enforce_command` with the named command. The
 //   extractor leaves the token's scope in the request extensions for that.
 // Decision: a denial is a 403 `insufficient_scope` with a fixed message and an
@@ -17,7 +17,7 @@
 // Decision: surfaces that validate a PAT outside the extractor (`/mcp` tools
 //   and methods, the execution API's `org_member`) check one named operation
 //   with `enforce_operation`, which logs and counts the same way. Listings
-//   (`tools/list`, `GET /v1/commands`) filter with `scope_permits` silently:
+//   (`tools/list`, `GET /v1/platform/commands`) filter with `scope_permits` silently:
 //   leaving out what a token cannot run is not a denial.
 // Decision: `Command::run` repeats the check for a `Caller` marked read-only
 //   (`enforce_caller`), behind every surface above. It covers a handler that
@@ -98,7 +98,7 @@ pub(crate) fn enforce_route(
     )
 }
 
-/// Check the command named by `POST /v1/commands/{name}` against the scope
+/// Check the command named by `POST /v1/platform/commands/{name}` against the scope
 /// the extractor left in the request extensions (`None`: not a PAT, or a
 /// full one). Unknown commands are not checked here; they stay 404.
 pub fn enforce_command(

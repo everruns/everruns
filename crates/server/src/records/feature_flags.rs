@@ -9,7 +9,7 @@ use everruns_core::deployment::DeploymentGrade;
 use everruns_core::execution_features::{CONTAINER_SANDBOX_DEFAULT_GRADE, LUA_DEFAULT_GRADE};
 pub use everruns_core::{FeatureFlagDefinition, FeatureFlagGrade};
 
-/// Feature flags exposed via `GET /v1/feature-flags` and consumed by the frontend.
+/// Feature flags exposed via `GET /v1/platform/feature-flags` and consumed by the frontend.
 ///
 /// Resolved booleans derived from rollout grades and organisation overrides.
 ///

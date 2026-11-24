@@ -25,8 +25,8 @@ printf 'AUTHORITY_TOKEN=%s\nAPI_TOKEN=%s\n' "$(openssl rand -hex 32)" "$(openssl
 The default provider is OpenAI with `gpt-6-luna`. Compile with `AGENT_MODEL` to
 select another immutable model and set the Worker's `MODEL` to match.
 `OPENAI_BASE_URL` and credentials remain host settings. `API_TOKEN` authenticates `/v1`; `AUTHORITY_TOKEN` is a
-separate privileged server credential. Use `/v1/sessions` with a stable `id`,
-then `/v1/sessions/{id}/messages` with a stable `message_id` and ordinary message
+separate privileged server credential. Use `/v1/platform/sessions` with a stable `id`,
+then `/v1/platform/sessions/{id}/messages` with a stable `message_id` and ordinary message
 content. Retain identities across uncertain replies. Read `/events`, `/sse` and
 `/admissions/{message_id}` through the same Engine path. No application sends
 raw canonical `input.message` events or constructs runtime backends.

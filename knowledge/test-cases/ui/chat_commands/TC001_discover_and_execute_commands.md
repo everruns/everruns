@@ -34,7 +34,7 @@ Verify slash-command discovery, selection, execution, persistence, and failure b
 
 ## Steps
 
-1. Open `/chats`, start a **New chat** on the built-in **Platform Chat** harness, record the session ID from the thread URL (`/chats/{sessionId}`), and inspect `GET /v1/sessions/{id}/commands`.
+1. Open `/chats`, start a **New chat** on the built-in **Platform Chat** harness, record the session ID from the thread URL (`/chats/{sessionId}`), and inspect `GET /v1/platform/sessions/{id}/commands`.
 2. Type `/`, then `/b`. Verify the accessible menu, filtering, and selected option.
 3. Select `/btw` with the keyboard. Verify it fills the composer until its required argument is supplied.
 4. Submit `/btw` with an argument. Verify the command endpoint is used, the result is dismissible, Escape restores composer focus, and message history count is unchanged.

@@ -137,7 +137,7 @@ pub fn caller_is_memory_owner(owner: Option<Uuid>, caller: &everruns_core::Calle
         .is_some_and(|(owner, caller)| owner == caller)
 }
 
-/// `/memory/user` access for the canonical `/v1/workspaces/{id}/fs/*` surface,
+/// `/memory/user` access for the canonical `/v1/platform/workspaces/{id}/fs/*` surface,
 /// which is keyed by workspace rather than by session.
 ///
 // THREAT[TM-TENANT-013]: `MemoryMountRouter::resolve` mounts `/memory/user`
@@ -164,7 +164,7 @@ pub async fn user_memory_allowed_for_workspace(
 }
 
 /// Resolve the session's workspace for a *write* and enforce the workspace
-/// write boundary, matching the canonical `/v1/workspaces/{workspace_id}/fs/*`
+/// write boundary, matching the canonical `/v1/platform/workspaces/{workspace_id}/fs/*`
 /// behavior:
 ///
 /// * Shared workspaces (where the resolved key differs from the session uuid)

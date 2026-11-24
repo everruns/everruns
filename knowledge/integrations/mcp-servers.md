@@ -201,7 +201,7 @@ already consented, and otherwise stands the elicitation down:
    out-of-band interaction finished. Answering `accept` when the tab opens
    resumes the turn too early: the server checks, finds nothing done, and
    elicits again. The decision posts to
-   `POST /v1/sessions/{id}/mcp-elicitation-consent`, which reads the server,
+   `POST /v1/platform/sessions/{id}/mcp-elicitation-consent`, which reads the server,
    tool and domain back out of the emitted event — the browser does not get to
    say what was consented to — records a `StoredConsent` in session storage on
    an accept, completes the synthetic call, and resumes the turn.
@@ -399,7 +399,7 @@ one effective tool prefix.
 
 ### API Endpoints
 
-#### POST /v1/mcp-servers
+#### POST /v1/platform/mcp-servers
 
 Create a new MCP server configuration.
 
@@ -419,7 +419,7 @@ Create a new MCP server configuration.
 
 **Response:** `201 Created` with McpServer object
 
-#### GET /v1/mcp-servers
+#### GET /v1/platform/mcp-servers
 
 List all MCP servers.
 
@@ -430,13 +430,13 @@ List all MCP servers.
 }
 ```
 
-#### GET /v1/mcp-servers/{server_id}
+#### GET /v1/platform/mcp-servers/{server_id}
 
 Get a specific MCP server by ID.
 
 **Response:** `200 OK` with McpServer object, or `404 Not Found`
 
-#### PATCH /v1/mcp-servers/{server_id}
+#### PATCH /v1/platform/mcp-servers/{server_id}
 
 Update an MCP server. Only provided fields are updated.
 
@@ -454,7 +454,7 @@ Update an MCP server. Only provided fields are updated.
 #### OAuth connection check
 
 An OAuth preset is checked when it is created or switched to OAuth, and again
-on `POST /v1/mcp-servers/{server_id}/check-connection` (command
+on `POST /v1/platform/mcp-servers/{server_id}/check-connection` (command
 `check_mcp_server_connection`, policy `mcp_server.manage`; the catalog's
 **Check again**). The check is the discovery and dynamic client registration
 the first sign-in would run, through the same egress, so a host the network
@@ -483,14 +483,14 @@ authorization-server metadata.
   `crates/server/src/api/user_connections/mcp_oauth.rs`. An unreachable
   sign-in service is logged at info (it is a recorded outcome); policy blocks
   and failed setup log at warn.
-- The check runs where the API layer wires it (REST, MCP, `/v1/commands`);
+- The check runs where the API layer wires it (REST, MCP, `/v1/platform/commands`);
   other surfaces leave a new preset `not_checked`. Presets saved before checks
   existed read `not_checked` until a check or a successful sign-in.
 
 Sources: `crates/server/src/domains/mcp_servers/connection_check.rs`,
 `crates/server/src/api/user_connections/connection_check.rs`.
 
-#### DELETE /v1/mcp-servers/{server_id}
+#### DELETE /v1/platform/mcp-servers/{server_id}
 
 Delete an MCP server.
 

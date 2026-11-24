@@ -1,7 +1,7 @@
 // Change intent: why a caller is changing something, and through which door.
 //
 // Decision: the reason is invocation metadata, not a command param. Every
-// surface carries it beside the params (the `/v1/commands` envelope, the
+// surface carries it beside the params (the `/v1/platform/commands` envelope, the
 // `Everruns-Change-Reason` header on REST, a global `--reason` on the command
 // line, a gRPC field) and lands it here, on `Ctx::change_intent`. The command
 // never sees it; `Command::run` records it. That keeps ~170 mutating commands
@@ -12,7 +12,7 @@
 // places; threading a header through each would be the kind of per-site wiring
 // that silently misses one. The layer runs around every request and
 // `Command::run` reads the task-local when the `Ctx` carries no intent of its
-// own, so an adapter that sets one explicitly (`/v1/commands`, MCP, gRPC)
+// own, so an adapter that sets one explicitly (`/v1/platform/commands`, MCP, gRPC)
 // always wins.
 //
 // See knowledge/execution/change-reasons-and-manager-context.md.
@@ -58,7 +58,7 @@ pub const MAX_REASON_CHARS: usize = 1000;
 pub enum ChangeSurface {
     /// A REST route (the UI and REST clients).
     Api,
-    /// `POST /v1/commands/{name}` (the CLI).
+    /// `POST /v1/platform/commands/{name}` (the CLI).
     Commands,
     /// MCP `execute`.
     Mcp,

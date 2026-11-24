@@ -41,7 +41,7 @@ remaining step. Ending a conversation turn alone does not establish completion.
 - **One reducer.** `WorkReport::from_events` is the only place events become a
   report. Surfaces render it; they do not re-derive it, so the live view and a
   replay cannot disagree.
-- **Computed on read.** `GET /v1/sessions/{id}/work` reduces the turn's events
+- **Computed on read.** `GET /v1/platform/sessions/{id}/work` reduces the turn's events
   when asked; nothing new is stored. Clients refetch on the events they already
   stream. A second client-side reducer and a `work.updated` event were
   considered and rejected: two reducers drift, and a server-pushed snapshot
@@ -122,7 +122,7 @@ anyway. Revisit if a channel gains a status surface that can show counts.
 
 ## Delivery plan
 
-1. Reducer, `GET /v1/sessions/{id}/work`, this concept.
+1. Reducer, `GET /v1/platform/sessions/{id}/work`, this concept.
 2. Result-aware narration for common tool families and counted
    `tool.progress`, so steps say what came out.
 3. Session view: work log header and done line read the report; pinned plan.

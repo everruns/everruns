@@ -51,7 +51,7 @@ python examples/hackernews-reader/run.py "Show me today's top Show HN posts"
 User prompt
   |
   v
-Everruns API (POST /v1/sessions/{id}/messages)
+Everruns API (POST /v1/platform/sessions/{id}/messages)
   |
   v
 Agent Loop (durable workflow)

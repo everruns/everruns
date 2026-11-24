@@ -216,7 +216,7 @@ fn raw_uuid() -> String {
 async fn create_llmsim_agent(server: &TestServer) -> String {
     let provider: Value = server
         .post(
-            "/v1/providers",
+            "/v1/platform/providers",
             json!({
                 "name": unique_id("AG-UI Test Provider"),
                 "provider_type": "llmsim"
@@ -228,7 +228,10 @@ async fn create_llmsim_agent(server: &TestServer) -> String {
 
     let model: Value = server
         .post(
-            &format!("/v1/providers/{}/models", provider["id"].as_str().unwrap()),
+            &format!(
+                "/v1/platform/providers/{}/models",
+                provider["id"].as_str().unwrap()
+            ),
             json!({
                 "model_id": unique_id("llmsim-streaming"),
                 "display_name": unique_id("AG-UI Streaming Model"),
@@ -241,7 +244,7 @@ async fn create_llmsim_agent(server: &TestServer) -> String {
 
     let agent: Value = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": unique_slug("ag-ui-test-agent"),
                 "display_name": unique_id("AG-UI Test Agent"),
@@ -283,7 +286,7 @@ async fn create_published_native_ag_ui_channel(server: &TestServer) -> String {
     let agent_id = create_llmsim_agent(server).await;
     let endpoint: Value = server
         .post(
-            &format!("/v1/agents/{agent_id}/channels"),
+            &format!("/v1/platform/agents/{agent_id}/channels"),
             json!({
                 "channel_type": "ag_ui",
                 "channel_config": { "anonymous": true }
@@ -295,7 +298,7 @@ async fn create_published_native_ag_ui_channel(server: &TestServer) -> String {
     let channel_id = endpoint["id"].as_str().unwrap();
     server
         .post(
-            &format!("/v1/agents/{agent_id}/channels/{channel_id}/publish"),
+            &format!("/v1/platform/agents/{agent_id}/channels/{channel_id}/publish"),
             json!({}),
         )
         .await
@@ -484,7 +487,11 @@ async fn start_ag_ui_run_at_channel(
 }
 
 async fn sessions_with_tag(server: &TestServer, tag: &str) -> Vec<Value> {
-    let sessions: Value = server.get("/v1/sessions").await.assert_success().json();
+    let sessions: Value = server
+        .get("/v1/platform/sessions")
+        .await
+        .assert_success()
+        .json();
     let empty = vec![];
     sessions["data"]
         .as_array()

@@ -1,11 +1,11 @@
 // Capability HTTP routes
-// Routes: /v1/capabilities/...
+// Routes: /v1/platform/capabilities/...
 //
 // Design Decision: Capabilities are defined in everruns-core via the Capability trait.
 // This module provides HTTP endpoints that expose capability information from the
 // CapabilityRegistry in everruns-core.
 //
-// Agent capabilities are managed through the agents API (POST/PATCH /v1/agents).
+// Agent capabilities are managed through the agents API (POST/PATCH /v1/platform/agents).
 
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::storage::StorageBackend;
@@ -59,36 +59,39 @@ impl_dispatchable!(AppState);
 pub fn routes(state: AppState) -> Router {
     Router::new()
         .route(
-            "/v1/capabilities",
+            "/v1/platform/capabilities",
             get(list_capabilities).post(create_declarative_capability),
         )
         .route(
-            "/v1/capabilities/declarative",
+            "/v1/platform/capabilities/declarative",
             get(list_declarative_capabilities),
         )
         .route(
-            "/v1/capabilities/declarative/config",
+            "/v1/platform/capabilities/declarative/config",
             get(declarative_capabilities_config),
         )
         .route(
-            "/v1/capabilities/declarative/{capability_id}",
+            "/v1/platform/capabilities/declarative/{capability_id}",
             get(get_declarative_capability)
                 .patch(update_declarative_capability)
                 .delete(delete_declarative_capability),
         )
         .route(
-            "/v1/capabilities/declarative/{capability_id}/delete",
+            "/v1/platform/capabilities/declarative/{capability_id}/delete",
             post(destroy_declarative_capability),
         )
         .route(
-            "/v1/capabilities/guardrails/dry-run",
+            "/v1/platform/capabilities/guardrails/dry-run",
             post(dry_run_guardrails),
         )
         .route(
-            "/v1/capabilities/guardrails/examples",
+            "/v1/platform/capabilities/guardrails/examples",
             get(list_guardrail_examples),
         )
-        .route("/v1/capabilities/{capability_id}", get(get_capability))
+        .route(
+            "/v1/platform/capabilities/{capability_id}",
+            get(get_capability),
+        )
         .with_state(state)
 }
 
@@ -101,10 +104,10 @@ pub struct ListCapabilitiesQuery {
     pub include_retired: bool,
 }
 
-/// GET /v1/capabilities - List available capabilities with pagination
+/// GET /v1/platform/capabilities - List available capabilities with pagination
 #[utoipa::path(
     get,
-    path = "/v1/capabilities",
+    path = "/v1/platform/capabilities",
     params(
         ("search" = Option<String>, Query, description = "Search by name/description"),
         ("offset" = Option<u32>, Query, description = "Pagination offset (default: 0)"),
@@ -134,10 +137,10 @@ pub async fn list_capabilities(
         .await
 }
 
-/// GET /v1/capabilities/{capability_id} - Get a specific capability
+/// GET /v1/platform/capabilities/{capability_id} - Get a specific capability
 #[utoipa::path(
     get,
-    path = "/v1/capabilities/{capability_id}",
+    path = "/v1/platform/capabilities/{capability_id}",
     params(
         ("capability_id" = String, Path, description = "Capability ID")
     ),
@@ -159,10 +162,10 @@ pub async fn get_capability(
         .await
 }
 
-/// GET /v1/capabilities/declarative/config
+/// GET /v1/platform/capabilities/declarative/config
 #[utoipa::path(
     get,
-    path = "/v1/capabilities/declarative/config",
+    path = "/v1/platform/capabilities/declarative/config",
     responses(
         (status = 200, description = "Resource config for declarative capabilities", body = ResourceConfigResponse),
     ),
@@ -185,10 +188,10 @@ pub async fn declarative_capabilities_config(
     Json(ResourceConfigResponse { policies })
 }
 
-/// POST /v1/capabilities - Create a persisted declarative capability.
+/// POST /v1/platform/capabilities - Create a persisted declarative capability.
 #[utoipa::path(
     post,
-    path = "/v1/capabilities",
+    path = "/v1/platform/capabilities",
     request_body = crate::domains::capabilities::types::CreateDeclarativeCapabilityRequest,
     responses(
         (status = 201, description = "Declarative capability created. Response id uses cap_<32-hex>; capability_id uses declarative:<unique_name>.", body = WithUrls<crate::domains::capabilities::types::DeclarativeCapability>),
@@ -216,10 +219,10 @@ pub async fn create_declarative_capability(
         .await
 }
 
-/// GET /v1/capabilities/declarative - List persisted declarative resources.
+/// GET /v1/platform/capabilities/declarative - List persisted declarative resources.
 #[utoipa::path(
     get,
-    path = "/v1/capabilities/declarative",
+    path = "/v1/platform/capabilities/declarative",
     params(
         ("search" = Option<String>, Query, description = "Search by unique name, display name, or description"),
         ("include_archived" = Option<bool>, Query, description = "Include archived declarative capabilities")
@@ -243,10 +246,10 @@ pub async fn list_declarative_capabilities(
         .await
 }
 
-/// GET /v1/capabilities/declarative/{capability_id} - Get a declarative resource.
+/// GET /v1/platform/capabilities/declarative/{capability_id} - Get a declarative resource.
 #[utoipa::path(
     get,
-    path = "/v1/capabilities/declarative/{capability_id}",
+    path = "/v1/platform/capabilities/declarative/{capability_id}",
     params(("capability_id" = String, Path, description = "Public declarative capability resource ID, e.g. cap_01933b5a000070008000000000000001")),
     responses(
         (status = 200, description = "Declarative capability resource", body = WithUrls<crate::domains::capabilities::types::DeclarativeCapability>),
@@ -265,10 +268,10 @@ pub async fn get_declarative_capability(
         .await
 }
 
-/// PATCH /v1/capabilities/declarative/{capability_id} - Update a declarative resource.
+/// PATCH /v1/platform/capabilities/declarative/{capability_id} - Update a declarative resource.
 #[utoipa::path(
     patch,
-    path = "/v1/capabilities/declarative/{capability_id}",
+    path = "/v1/platform/capabilities/declarative/{capability_id}",
     params(("capability_id" = String, Path, description = "Public declarative capability resource ID")),
     request_body = crate::domains::capabilities::types::UpdateDeclarativeCapabilityRequest,
     responses(
@@ -295,10 +298,10 @@ pub async fn update_declarative_capability(
         .await
 }
 
-/// DELETE /v1/capabilities/declarative/{capability_id} - Archive a declarative resource.
+/// DELETE /v1/platform/capabilities/declarative/{capability_id} - Archive a declarative resource.
 #[utoipa::path(
     delete,
-    path = "/v1/capabilities/declarative/{capability_id}",
+    path = "/v1/platform/capabilities/declarative/{capability_id}",
     params(("capability_id" = String, Path, description = "Public declarative capability resource ID")),
     responses(
         (status = 200, description = "Declarative capability archived"),
@@ -317,10 +320,10 @@ pub async fn delete_declarative_capability(
         .await
 }
 
-/// POST /v1/capabilities/declarative/{capability_id}/delete - Permanently delete archived resource.
+/// POST /v1/platform/capabilities/declarative/{capability_id}/delete - Permanently delete archived resource.
 #[utoipa::path(
     post,
-    path = "/v1/capabilities/declarative/{capability_id}/delete",
+    path = "/v1/platform/capabilities/declarative/{capability_id}/delete",
     params(("capability_id" = String, Path, description = "Public declarative capability resource ID")),
     responses(
         (status = 200, description = "Archived declarative capability permanently deleted"),
@@ -339,10 +342,10 @@ pub async fn destroy_declarative_capability(
         .await
 }
 
-/// POST /v1/capabilities/guardrails/dry-run - Evaluate guardrail checks against sample text.
+/// POST /v1/platform/capabilities/guardrails/dry-run - Evaluate guardrail checks against sample text.
 #[utoipa::path(
     post,
-    path = "/v1/capabilities/guardrails/dry-run",
+    path = "/v1/platform/capabilities/guardrails/dry-run",
     request_body = crate::domains::capabilities::types::GuardrailsDryRunRequest,
     responses(
         (status = 200, description = "Triggered checks for the sample content", body = crate::domains::capabilities::types::GuardrailsDryRunResponse),
@@ -361,10 +364,10 @@ pub async fn dry_run_guardrails(
         .await
 }
 
-/// GET /v1/capabilities/guardrails/examples - List adoptable guardrail presets.
+/// GET /v1/platform/capabilities/guardrails/examples - List adoptable guardrail presets.
 #[utoipa::path(
     get,
-    path = "/v1/capabilities/guardrails/examples",
+    path = "/v1/platform/capabilities/guardrails/examples",
     responses(
         (status = 200, description = "Adoptable guardrail presets with trust metadata", body = crate::domains::capabilities::types::GuardrailExamplesResponse),
     ),

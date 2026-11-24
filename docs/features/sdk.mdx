@@ -27,6 +27,12 @@ For a hands-on lesson, see [Build your first agent](/tutorials/building-agents-u
 
 To call one agent from an application without a personal access token, use the SDKs' `AgentClient` with an agent key instead of the management client. See [Agent API](/features/agent-api/#sdks).
 
+The `Everruns` platform client uses `/api/v1/platform/` for its REST calls.
+Keep the configured base URL at the API root, such as
+`https://app.everruns.com/api`; the SDK adds `/v1/platform` itself.
+`AgentClient` continues using the published agent URL directly.
+
+
 ## Install
 
 <Tabs syncKey="lang">

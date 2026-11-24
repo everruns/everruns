@@ -1,6 +1,6 @@
 // Org costs: the price list, the costs summary, and the org's calendar
 // timezone. Policy management (what used to be budgets) stays on
-// `/v1/budgets`; the UI calls them usage policies.
+// `/v1/platform/budgets`; the UI calls them usage policies.
 
 import { changeReasonOptions } from "./change-history";
 import { api } from "./client";
@@ -87,7 +87,7 @@ export interface CostSettings {
 }
 
 export async function listCostRates(): Promise<CostRate[]> {
-  return (await api.get<CostRate[]>("/v1/cost-rates")).data;
+  return (await api.get<CostRate[]>("/v1/platform/cost-rates")).data;
 }
 
 // A rate's "why" is the ordinary change reason (the Everruns-Change-Reason
@@ -96,12 +96,17 @@ export async function createCostRate(
   input: CreateCostRateRequest,
   reason?: string,
 ): Promise<CostRate> {
-  return (await api.post<CostRate>("/v1/cost-rates", input, changeReasonOptions(reason))).data;
+  return (await api.post<CostRate>("/v1/platform/cost-rates", input, changeReasonOptions(reason)))
+    .data;
 }
 
 export async function retireCostRate(rateId: string, reason?: string): Promise<CostRate> {
   return (
-    await api.post<CostRate>(`/v1/cost-rates/${rateId}/retire`, {}, changeReasonOptions(reason))
+    await api.post<CostRate>(
+      `/v1/platform/cost-rates/${rateId}/retire`,
+      {},
+      changeReasonOptions(reason),
+    )
   ).data;
 }
 
@@ -113,24 +118,24 @@ export async function getCostSummary(params?: {
   if (params?.from) search.set("from", params.from);
   if (params?.to) search.set("to", params.to);
   const qs = search.toString();
-  return (await api.get<CostSummary>(`/v1/costs/summary${qs ? `?${qs}` : ""}`)).data;
+  return (await api.get<CostSummary>(`/v1/platform/costs/summary${qs ? `?${qs}` : ""}`)).data;
 }
 
 export async function getAgentCost(agentId: string): Promise<AgentCost> {
-  return (await api.get<AgentCost>(`/v1/agents/${agentId}/costs`)).data;
+  return (await api.get<AgentCost>(`/v1/platform/agents/${agentId}/costs`)).data;
 }
 
 export async function getCostSettings(): Promise<CostSettings> {
-  return (await api.get<CostSettings>("/v1/costs/settings")).data;
+  return (await api.get<CostSettings>("/v1/platform/costs/settings")).data;
 }
 
 export async function updateCostSettings(input: CostSettings): Promise<CostSettings> {
-  return (await api.patch<CostSettings>("/v1/costs/settings", input)).data;
+  return (await api.patch<CostSettings>("/v1/platform/costs/settings", input)).data;
 }
 
 /** Let this session continue past a usage policy's "ask to continue" step. */
 export async function continueSessionPastAsk(sessionId: string): Promise<void> {
-  await api.post(`/v1/sessions/${sessionId}/resume`);
+  await api.post(`/v1/platform/sessions/${sessionId}/resume`);
 }
 
 export type PolicyStepAction = "notify" | "ask" | "stop";

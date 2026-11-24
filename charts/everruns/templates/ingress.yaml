@@ -31,7 +31,7 @@ spec:
           {{- if include "everruns.dataPlaneRuns" . }}
           {{- /* Prefix rules cannot match /workspaces/{id}/fs alone. The edge
                  routes file calls to the shard and passes workspace records on. */}}
-          {{- range list "/api/v1/sessions" "/api/v1/commands" "/api/v1/workspaces" }}
+          {{- range list "/api/v1/platform/sessions" "/api/v1/platform/commands" "/api/v1/platform/workspaces" "/api/v1/sessions" "/api/v1/commands" "/api/v1/workspaces" }}
           - path: {{ . }}
             pathType: Prefix
             backend:

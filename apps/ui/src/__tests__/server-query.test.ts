@@ -87,8 +87,8 @@ describe("server-query", () => {
       await prefetchAuthBootstrap(new QueryClient(), context);
 
       expect(requestedUrls()).toEqual([
-        "http://server.internal:9000/api/v1/auth/config",
-        "http://server.internal:9000/api/v1/auth/me",
+        "http://server.internal:9000/api/v1/platform/auth/config",
+        "http://server.internal:9000/api/v1/platform/auth/me",
       ]);
       for (const url of requestedUrls()) {
         expect(url).not.toContain(ATTACKER_HOST);
@@ -106,9 +106,9 @@ describe("server-query", () => {
       );
 
       const context = await getServerRequestContext();
-      await expect(serverGet(context, "/v1/auth/me")).rejects.toThrow(/redirected/);
+      await expect(serverGet(context, "/v1/platform/auth/me")).rejects.toThrow(/redirected/);
 
-      expect(requestedUrls()).toEqual(["https://everruns.example.com/api/v1/auth/me"]);
+      expect(requestedUrls()).toEqual(["https://everruns.example.com/api/v1/platform/auth/me"]);
       expect(fetchMock.mock.calls[0][1]).toMatchObject({ redirect: "manual" });
     });
 
@@ -119,7 +119,7 @@ describe("server-query", () => {
       fetchMock.mockResolvedValue(opaque);
 
       const context = await getServerRequestContext();
-      await expect(serverGet(context, "/v1/auth/me")).rejects.toThrow(/redirected/);
+      await expect(serverGet(context, "/v1/platform/auth/me")).rejects.toThrow(/redirected/);
       expect(fetchMock).toHaveBeenCalledTimes(1);
     });
   });

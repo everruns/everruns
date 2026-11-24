@@ -37,10 +37,10 @@ export default async function SessionsPage({
   if (currentOrgId) {
     await Promise.all([
       seedQueryData(queryClient, [...queryKeys.agents.list(true), currentOrgId], () =>
-        serverGetList<Agent>(requestContext, "/v1/agents?include_archived=true"),
+        serverGetList<Agent>(requestContext, "/v1/platform/agents?include_archived=true"),
       ),
       seedQueryData(queryClient, queryKeys.organizations.detail(currentOrgId), () =>
-        serverGet<Organization>(requestContext, `/v1/orgs/${currentOrgId}`),
+        serverGet<Organization>(requestContext, `/v1/platform/orgs/${currentOrgId}`),
       ),
       ...(isDefaultView
         ? [
@@ -50,11 +50,11 @@ export default async function SessionsPage({
               () =>
                 serverGetPaginated<Session>(
                   requestContext,
-                  `/v1/sessions?offset=0&limit=${SESSIONS_PAGE_SIZE}`,
+                  `/v1/platform/sessions?offset=0&limit=${SESSIONS_PAGE_SIZE}`,
                 ),
             ),
             seedQueryData(queryClient, queryKeys.sessions.facets(currentOrgId, ""), () =>
-              serverGet<SessionFacetsResponse>(requestContext, "/v1/sessions/facets"),
+              serverGet<SessionFacetsResponse>(requestContext, "/v1/platform/sessions/facets"),
             ),
           ]
         : []),

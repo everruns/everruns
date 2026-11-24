@@ -24,10 +24,10 @@ Verify that auth bootstrap failures block protected content and that failed sign
 
 | Variant | Failure |
 | --- | --- |
-| Config outage | `/api/v1/auth/config`: 503 or network failure |
-| User outage | `/api/v1/auth/me`: 503 or network failure |
-| Signed out | `/api/v1/auth/me`: 401 |
-| Logout outage | `/api/v1/auth/logout`: 503 |
+| Config outage | `/api/v1/platform/auth/config`: 503 or network failure |
+| User outage | `/api/v1/platform/auth/me`: 503 or network failure |
+| Signed out | `/api/v1/platform/auth/me`: 401 |
+| Logout outage | `/api/v1/platform/auth/logout`: 503 |
 
 ## Steps
 

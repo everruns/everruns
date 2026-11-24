@@ -18,7 +18,8 @@ export function useAgentFailures(agentId: string, after: string, before: string,
     queryKey: ["agent-failures", currentOrg?.public_id, agentId, after, before, offset],
     queryFn: async () => {
       const params = new URLSearchParams({ after, before, offset: String(offset), limit: "20" });
-      return (await api.get<FailureSessions>(`/v1/agents/${agentId}/failures?${params}`)).data;
+      return (await api.get<FailureSessions>(`/v1/platform/agents/${agentId}/failures?${params}`))
+        .data;
     },
     enabled: !!currentOrg,
   });

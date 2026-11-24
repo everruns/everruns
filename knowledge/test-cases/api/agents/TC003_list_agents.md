@@ -31,11 +31,11 @@ Verify that agents are listed correctly, with pagination, and that archived agen
 
 1. Create two agents:
    ```bash
-   curl -s -X POST "http://localhost:9300/api/v1/agents" \
+   curl -s -X POST "http://localhost:9300/api/v1/platform/agents" \
      -H "Content-Type: application/json" \
      -d '{"name": "agent-alpha", "display_name": "Agent Alpha", "system_prompt": "Alpha agent."}'
 
-   curl -s -X POST "http://localhost:9300/api/v1/agents" \
+   curl -s -X POST "http://localhost:9300/api/v1/platform/agents" \
      -H "Content-Type: application/json" \
      -d '{"name": "agent-beta", "display_name": "Agent Beta", "system_prompt": "Beta agent."}'
    ```
@@ -43,22 +43,22 @@ Verify that agents are listed correctly, with pagination, and that archived agen
 
 2. List agents:
    ```bash
-   curl -s "http://localhost:9300/api/v1/agents"
+   curl -s "http://localhost:9300/api/v1/platform/agents"
    ```
 
 3. Archive one agent:
    ```bash
-   curl -s -X DELETE "http://localhost:9300/api/v1/agents/{agent_alpha_id}"
+   curl -s -X DELETE "http://localhost:9300/api/v1/platform/agents/{agent_alpha_id}"
    ```
 
 4. List agents again (default, no archived):
    ```bash
-   curl -s "http://localhost:9300/api/v1/agents"
+   curl -s "http://localhost:9300/api/v1/platform/agents"
    ```
 
 5. List agents including archived:
    ```bash
-   curl -s "http://localhost:9300/api/v1/agents?include_archived=true"
+   curl -s "http://localhost:9300/api/v1/platform/agents?include_archived=true"
    ```
 
 ## Expected Result

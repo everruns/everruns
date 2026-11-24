@@ -1,4 +1,4 @@
-//! `GET /v1/sessions/{session_id}/run-requests`: what the other agents in a
+//! `GET /v1/platform/sessions/{session_id}/run-requests`: what the other agents in a
 //! run wait on the person for, read on the run's first session.
 //!
 //! Spec: `knowledge/runtime-resources/agents-using-agents.md`. The cards are
@@ -22,18 +22,18 @@ use crate::domains::sessions::run_requests::{
 
 pub fn routes() -> axum::Router<AppState> {
     axum::Router::new().route(
-        "/v1/sessions/{session_id}/run-requests",
+        "/v1/platform/sessions/{session_id}/run-requests",
         get(get_run_requests),
     )
 }
 
-/// GET /v1/sessions/{session_id}/run-requests
+/// GET /v1/platform/sessions/{session_id}/run-requests
 ///
 /// Questions and approvals that the agents this session handed work to wait
 /// on. Empty unless the session is a run's first session.
 #[utoipa::path(
     get,
-    path = "/v1/sessions/{session_id}/run-requests",
+    path = "/v1/platform/sessions/{session_id}/run-requests",
     params(
         ("session_id" = String, Path, description = "Session ID (prefixed, e.g., session_...)")
     ),

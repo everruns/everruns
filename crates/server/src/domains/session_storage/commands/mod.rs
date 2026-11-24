@@ -26,7 +26,7 @@ impl Command for ListSessionStorage {
             category: "session_storage",
             description: "List all key-value pairs stored for a session.",
             method: "GET",
-            path: "/v1/sessions/{session_id}/storage/keys",
+            path: "/v1/platform/sessions/{session_id}/storage/keys",
         }
     }
 
@@ -115,7 +115,7 @@ impl Command for ListSessionSecrets {
             category: "session_storage",
             description: "List all secrets stored for a session without revealing values.",
             method: "GET",
-            path: "/v1/sessions/{session_id}/storage/secrets",
+            path: "/v1/platform/sessions/{session_id}/storage/secrets",
         }
     }
 
@@ -196,7 +196,7 @@ pub struct BatchSetSessionSecrets {
     category = "session_storage",
     description = "Encrypt and store multiple session secrets in one request.",
     method = "PUT",
-    path = "/v1/sessions/{session_id}/storage/secrets",
+    path = "/v1/platform/sessions/{session_id}/storage/secrets",
     policy = crate::domains::sessions::SESSION_MANAGE,
     cli = CliRoute::new(&["sessions", "storage", "secrets"], "batch").with_examples(&[CliExample::new("Give a session several credentials in one call", "everruns sessions storage secrets batch --session-id session_01h9 --secrets '{\"SERVICE_TOKEN\":\"s3cr3t\",\"DB_PASSWORD\":\"hunter2\"}' --reason 'Provision credentials for the deploy run'",)]),
 )]
@@ -293,7 +293,7 @@ pub struct DeleteSessionSecret {
     category = "session_storage",
     description = "Delete a user-managed encrypted session secret by name.",
     method = "DELETE",
-    path = "/v1/sessions/{session_id}/storage/secrets/{name}",
+    path = "/v1/platform/sessions/{session_id}/storage/secrets/{name}",
     policy = crate::domains::sessions::SESSION_MANAGE,
     cli = CliRoute::new(&["sessions", "storage", "secrets"], "delete").with_examples(&[CliExample::new("Revoke a credential from a session", "everruns sessions storage secrets delete --session-id session_01h9 --name SERVICE_TOKEN --reason 'Token rotated'",)]),
 )]

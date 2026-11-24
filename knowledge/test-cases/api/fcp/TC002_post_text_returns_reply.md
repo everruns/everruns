@@ -53,7 +53,7 @@ that cookie resumes the same session.
 
 4. Inspect the sessions list to confirm only one FCP session was created:
    ```bash
-   curl -s "http://localhost:9300/api/v1/sessions" \
+   curl -s "http://localhost:9300/api/v1/platform/sessions" \
      | jq -r '.data[] | select(.tags[] | contains("fcp:app:'"$APP_ID"'")) | .id' | wc -l
    ```
 
@@ -84,7 +84,7 @@ echo "$COOKIE" | grep -E '^fcp_session=[0-9a-f-]{36};' >/dev/null
 curl -s -X POST "http://localhost:9300/api/v1/apps/$APP_ID/fcp" \
   -H 'Content-Type: text/plain' -H "Cookie: $COOKIE" --data 'Continue' >/dev/null
 
-session_count=$(curl -s "http://localhost:9300/api/v1/sessions" \
+session_count=$(curl -s "http://localhost:9300/api/v1/platform/sessions" \
   | jq -r --arg id "$APP_ID" '[.data[] | select(.tags[] | contains("fcp:app:\($id)"))] | length')
 [ "$session_count" = "1" ]
 ```

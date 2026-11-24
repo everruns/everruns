@@ -18,7 +18,7 @@ async fn create_app(
 ) -> Value {
     let agent: Value = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": format!("{name}-agent"),
                 "display_name": format!("{name} agent"),
@@ -109,7 +109,7 @@ async fn list_app_sessions(server: &TestServer, app_id: &str, channel_id: &str) 
 
 async fn list_user_message_texts(server: &TestServer, session_id: &str) -> Vec<String> {
     let body: Value = server
-        .get(&format!("/v1/sessions/{session_id}/messages"))
+        .get(&format!("/v1/platform/sessions/{session_id}/messages"))
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -240,7 +240,7 @@ async fn webhook_shared_session_does_not_reuse_user_seeded_tag_session() {
 
     let seed_response = server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             json!({
                 "harness_id": server.seed_generic_harness_id,
                 "title": "seeded attacker session",

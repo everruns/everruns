@@ -155,7 +155,7 @@ async fn room_tools_let_an_mcp_client_take_part_in_a_room() {
 
     // The same files over HTTP.
     let listed_http: Value = server
-        .get(&format!("/v1/rooms/{room_id}/files"))
+        .get(&format!("/v1/platform/rooms/{room_id}/files"))
         .await
         .assert_success()
         .json();

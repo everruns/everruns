@@ -154,7 +154,7 @@ async fn user_message_claim_rejects_concurrent_tool_result() {
     let first = tokio::spawn(async move {
         first_server
             .post(
-                &format!("/v1/sessions/{}/messages", session.id),
+                &format!("/v1/platform/sessions/{}/messages", session.id),
                 json!({
                     "message": {
                         "role": "user",
@@ -174,7 +174,7 @@ async fn user_message_claim_rejects_concurrent_tool_result() {
 
     server
         .post(
-            &format!("/v1/sessions/{}/tool-results", session.id),
+            &format!("/v1/platform/sessions/{}/tool-results", session.id),
             json!({
                 "tool_results": [{
                     "tool_call_id": "call_message-result",
@@ -227,7 +227,7 @@ async fn user_message_claim_rejects_concurrent_user_message() {
     let first = tokio::spawn(async move {
         first_server
             .post(
-                &format!("/v1/sessions/{}/messages", session.id),
+                &format!("/v1/platform/sessions/{}/messages", session.id),
                 json!({
                     "message": {
                         "role": "user",
@@ -244,7 +244,7 @@ async fn user_message_claim_rejects_concurrent_user_message() {
 
     server
         .post(
-            &format!("/v1/sessions/{}/messages", session.id),
+            &format!("/v1/platform/sessions/{}/messages", session.id),
             json!({
                 "message": {
                     "role": "user",
@@ -289,7 +289,7 @@ async fn tool_result_succeeds_for_fast_worker_advanced_statuses() {
 
         server
             .post(
-                &format!("/v1/sessions/{}/tool-results", session.id),
+                &format!("/v1/platform/sessions/{}/tool-results", session.id),
                 json!({
                     "tool_results": [{
                         "tool_call_id": format!("call_fast-worker-{completed_status}"),
@@ -349,7 +349,7 @@ impl TurnBackend for RecordingRunner {
 async fn create_waiting_client_tool_session(server: &TestServer, suffix: &str) -> Session {
     let agent: Agent = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": format!("parked-race-agent-{suffix}"),
                 "display_name": "Parked Race Agent",
@@ -361,7 +361,10 @@ async fn create_waiting_client_tool_session(server: &TestServer, suffix: &str) -
         .assert_status(StatusCode::CREATED)
         .json();
     let session: Session = server
-        .post("/v1/sessions", json!({ "agent_id": agent.public_id }))
+        .post(
+            "/v1/platform/sessions",
+            json!({ "agent_id": agent.public_id }),
+        )
         .await
         .assert_status(StatusCode::CREATED)
         .json();
@@ -424,7 +427,7 @@ async fn shared_command_validates_a_batch_atomically_and_parks_partial_results()
         })
         .await
         .unwrap();
-    let path = format!("/v1/sessions/{}/tool-results", session.id);
+    let path = format!("/v1/platform/sessions/{}/tool-results", session.id);
     server.post(&path, json!({"tool_results":[{"tool_call_id":"a","result":1},{"tool_call_id":"unknown","result":2}]}))
         .await.assert_status(StatusCode::BAD_REQUEST);
     let completions = server
@@ -551,7 +554,7 @@ async fn expired_message_resolution_rejects_tool_results_without_acknowledging_t
 
     server
         .post(
-            &format!("/v1/sessions/{}/tool-results", session.id),
+            &format!("/v1/platform/sessions/{}/tool-results", session.id),
             json!({
                 "tool_results": [{
                     "tool_call_id": "call_stale-message-result",
@@ -587,7 +590,7 @@ async fn omitted_ask_user_question_ids_resume_through_tool_results() {
     .await;
     let agent: Agent = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": "ask-user-test-agent",
                 "display_name": "Ask User Test",
@@ -599,7 +602,10 @@ async fn omitted_ask_user_question_ids_resume_through_tool_results() {
         .assert_status(StatusCode::CREATED)
         .json();
     let session: Session = server
-        .post("/v1/sessions", json!({ "agent_id": agent.public_id }))
+        .post(
+            "/v1/platform/sessions",
+            json!({ "agent_id": agent.public_id }),
+        )
         .await
         .assert_status(StatusCode::CREATED)
         .json();
@@ -651,7 +657,7 @@ async fn omitted_ask_user_question_ids_resume_through_tool_results() {
 
     let response = server
         .post(
-            &format!("/v1/sessions/{}/tool-results", session.id),
+            &format!("/v1/platform/sessions/{}/tool-results", session.id),
             json!({
                 "tool_results": [{
                     "tool_call_id": "call_ask_user",
@@ -703,7 +709,7 @@ async fn user_message_cancels_pending_client_tool_and_resumes_existing_turn() {
     .await;
     let agent: Agent = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": "parked-turn-message-agent",
                 "display_name": "Parked Turn Message",
@@ -717,7 +723,10 @@ async fn user_message_cancels_pending_client_tool_and_resumes_existing_turn() {
 
     for tool_name in ["ask_user", "confirm_url_elicitation", "setup_connection"] {
         let session: Session = server
-            .post("/v1/sessions", json!({ "agent_id": agent.public_id }))
+            .post(
+                "/v1/platform/sessions",
+                json!({ "agent_id": agent.public_id }),
+            )
             .await
             .assert_status(StatusCode::CREATED)
             .json();
@@ -757,7 +766,7 @@ async fn user_message_cancels_pending_client_tool_and_resumes_existing_turn() {
 
         server
             .post(
-                &format!("/v1/sessions/{}/messages", session.id),
+                &format!("/v1/platform/sessions/{}/messages", session.id),
                 json!({
                     "message": {
                         "role": "user",
@@ -798,7 +807,7 @@ async fn user_message_cancels_pending_client_tool_and_resumes_existing_turn() {
 
         server
             .post(
-                &format!("/v1/sessions/{}/tool-results", session.id),
+                &format!("/v1/platform/sessions/{}/tool-results", session.id),
                 json!({
                     "tool_results": [{
                         "tool_call_id": tool_call_id,

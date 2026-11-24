@@ -1,5 +1,5 @@
 // Observer API functions
-// Org is sent via everruns_org cookie (set by OrgProvider via /v1/users/me/switch-org)
+// Org is sent via everruns_org cookie (set by OrgProvider via /v1/platform/users/me/switch-org)
 
 import { api } from "./client";
 import { createCrudApi } from "./crud";
@@ -15,7 +15,7 @@ export const observersCrudApi = createCrudApi<
   Observer,
   CreateObserverRequest,
   UpdateObserverRequest
->("/v1/observers");
+>("/v1/platform/observers");
 
 export const createObserver = observersCrudApi.create;
 export const listObservers = observersCrudApi.list;
@@ -44,8 +44,8 @@ export async function listObserverScores(
   if (params.offset !== undefined) search.set("offset", String(params.offset));
   const query = search.toString();
   const path = query
-    ? `/v1/observers/${observerId}/scores?${query}`
-    : `/v1/observers/${observerId}/scores`;
+    ? `/v1/platform/observers/${observerId}/scores?${query}`
+    : `/v1/platform/observers/${observerId}/scores`;
   const response = await api.get<{ data: TraceScore[] }>(path);
   return response.data.data;
 }
@@ -66,7 +66,7 @@ export async function getObserverSummary(
   if (params.observer_id) search.set("observer_id", params.observer_id);
   const query = search.toString();
   const response = await api.get<QualitySummary>(
-    query ? `/v1/observers/summary?${query}` : "/v1/observers/summary",
+    query ? `/v1/platform/observers/summary?${query}` : "/v1/platform/observers/summary",
   );
   return response.data;
 }

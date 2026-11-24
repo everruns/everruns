@@ -53,7 +53,7 @@ let refreshPromise: Promise<boolean> | null = null;
 async function tryRefreshToken(): Promise<boolean> {
   try {
     // POST with no body — backend reads refresh_token from HttpOnly cookie
-    const response = await fetch(`${API_BASE}/v1/auth/refresh`, {
+    const response = await fetch(`${API_BASE}/v1/platform/auth/refresh`, {
       method: "POST",
       credentials: "include",
     });
@@ -88,7 +88,7 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
   let response = await doFetch();
 
   // On 401, try refreshing the access token once (skip for auth endpoints to avoid loops)
-  if (response.status === 401 && !endpoint.startsWith("/v1/auth/")) {
+  if (response.status === 401 && !endpoint.startsWith("/v1/platform/auth/")) {
     if (!refreshPromise) {
       refreshPromise = tryRefreshToken().finally(() => {
         refreshPromise = null;
@@ -243,7 +243,7 @@ export function getApiBaseUrl(): string {
  */
 export function getBackendUrl(): string {
   // In browser, use window.location to construct the proxy URL
-  // OAuth will go through /api/v1/auth/oauth which gets proxied
+  // OAuth will go through /api/v1/platform/auth/oauth which gets proxied
   if (typeof window !== "undefined") {
     return window.location.origin + API_BASE;
   }

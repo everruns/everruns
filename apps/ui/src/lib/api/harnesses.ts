@@ -1,5 +1,5 @@
 // Harness API functions
-// Org is sent via everruns_org cookie (set by OrgProvider via /v1/users/me/switch-org)
+// Org is sent via everruns_org cookie (set by OrgProvider via /v1/platform/users/me/switch-org)
 
 import { api } from "./client";
 import { createCrudApi } from "./crud";
@@ -13,7 +13,7 @@ import type {
 } from "./types";
 
 export const harnessesCrudApi = createCrudApi<Harness, CreateHarnessRequest, UpdateHarnessRequest>(
-  "/v1/harnesses",
+  "/v1/platform/harnesses",
 );
 
 export const createHarness = harnessesCrudApi.create;
@@ -30,24 +30,24 @@ export async function checkHarnessName(
   const params = new URLSearchParams({ name });
   if (excludeId) params.set("exclude_id", excludeId);
   const response = await api.get<{ available: boolean }>(
-    `/v1/harnesses/check-name?${params.toString()}`,
+    `/v1/platform/harnesses/check-name?${params.toString()}`,
   );
   return response.data;
 }
 
 export async function copyHarness(harnessId: string): Promise<Harness> {
-  const response = await api.post<Harness>(`/v1/harnesses/${harnessId}/copy`, {});
+  const response = await api.post<Harness>(`/v1/platform/harnesses/${harnessId}/copy`, {});
   return response.data;
 }
 
 export async function getHarnessStats(harnessId: string): Promise<ResourceStats> {
-  const response = await api.get<ResourceStats>(`/v1/harnesses/${harnessId}/stats`);
+  const response = await api.get<ResourceStats>(`/v1/platform/harnesses/${harnessId}/stats`);
   return response.data;
 }
 
 export async function previewHarness(
   request: PreviewHarnessRequest,
 ): Promise<AgentPreviewResponse> {
-  const response = await api.post<AgentPreviewResponse>("/v1/harnesses/preview", request);
+  const response = await api.post<AgentPreviewResponse>("/v1/platform/harnesses/preview", request);
   return response.data;
 }

@@ -43,7 +43,7 @@ use utoipa::ToSchema;
 ///
 /// Wrappers (e.g. the SaaS distribution) use this to gate org creation on product
 /// policy — verified email, account/resource limits — without forking the OSS
-/// create-org handler or mounting a parallel `/v1/saas/orgs` endpoint. OSS remains
+/// create-org handler or mounting a parallel `/v1/platform/saas/orgs` endpoint. OSS remains
 /// the owner of org creation; wrappers only supply policy.
 pub struct OrgCreateContext<'a> {
     /// The authenticated user requesting creation.
@@ -176,33 +176,33 @@ pub fn routes(state: AppState) -> Router {
         .command::<crate::domains::organizations::provider_accounts::UpdateOrganizationAccountName>(
         )
         .route(
-            "/v1/orgs",
+            "/v1/platform/orgs",
             get(list_organizations).post(create_organization),
         )
         .route(
-            "/v1/orgs/{org}",
+            "/v1/platform/orgs/{org}",
             get(get_organization).patch(update_organization),
         )
         .route(
-            "/v1/orgs/{org}/onboarding/complete",
+            "/v1/platform/orgs/{org}/onboarding/complete",
             axum::routing::post(complete_org_onboarding),
         )
         // Organization members
         .command::<crate::domains::organizations::egress_allowlist::GetOrgEgressAllowlist>()
         .command::<crate::domains::organizations::egress_allowlist::SetOrgEgressAllowlist>()
         .command::<crate::domains::organizations::egress_allowlist::SetOrgEgressAllowlistGrant>()
-        .route("/v1/orgs/{org}/members", get(list_members).post(add_member))
+        .route("/v1/platform/orgs/{org}/members", get(list_members).post(add_member))
         .route(
-            "/v1/orgs/{org}/members/{user_id}",
+            "/v1/platform/orgs/{org}/members/{user_id}",
             axum::routing::patch(update_member_role).delete(remove_member),
         )
         .with_state(state)
 }
 
-/// GET /v1/orgs - List organizations the current user belongs to
+/// GET /v1/platform/orgs - List organizations the current user belongs to
 #[utoipa::path(
     get,
-    path = "/v1/orgs",
+    path = "/v1/platform/orgs",
     tag = "Organizations",
     responses(
         (status = 200, description = "List of organizations", body = ListResponse<OrganizationResponse>)
@@ -241,10 +241,10 @@ pub async fn list_organizations(
     Ok(Json(ListResponse::new(orgs)))
 }
 
-/// POST /v1/orgs - Create a new organization
+/// POST /v1/platform/orgs - Create a new organization
 #[utoipa::path(
     post,
-    path = "/v1/orgs",
+    path = "/v1/platform/orgs",
     tag = "Organizations",
     request_body = CreateOrganizationRequest,
     responses(
@@ -399,8 +399,8 @@ pub async fn create_organization(
             .into_response(StatusCode::INTERNAL_SERVER_ERROR));
     }
 
-    // Seed agents are available as examples (GET /v1/agent-examples) and adopted
-    // on demand via POST /v1/agent-examples/{slug}/use. No automatic seeding —
+    // Seed agents are available as examples (GET /v1/platform/agent-examples) and adopted
+    // on demand via POST /v1/platform/agent-examples/{slug}/use. No automatic seeding —
     // this prevents duplicate agents when users adopt from the examples gallery.
 
     let org_id = row.org_id;
@@ -418,10 +418,10 @@ pub async fn create_organization(
     Ok((StatusCode::CREATED, Json(response)))
 }
 
-/// GET /v1/orgs/:org - Get organization details
+/// GET /v1/platform/orgs/:org - Get organization details
 #[utoipa::path(
     get,
-    path = "/v1/orgs/{org}",
+    path = "/v1/platform/orgs/{org}",
     tag = "Organizations",
     params(
         ("org" = String, Path, description = "Organization public ID")
@@ -463,10 +463,10 @@ pub async fn get_organization(
     ))
 }
 
-/// PATCH /v1/orgs/:org - Update organization
+/// PATCH /v1/platform/orgs/:org - Update organization
 #[utoipa::path(
     patch,
-    path = "/v1/orgs/{org}",
+    path = "/v1/platform/orgs/{org}",
     tag = "Organizations",
     params(
         ("org" = String, Path, description = "Organization public ID")
@@ -540,7 +540,7 @@ pub async fn update_organization(
     Ok(Json(response))
 }
 
-/// POST /v1/orgs/:org/onboarding/complete - Mark the org's onboarding wizard as
+/// POST /v1/platform/orgs/:org/onboarding/complete - Mark the org's onboarding wizard as
 /// finished (or skipped). Idempotent: the timestamp is set only when NULL.
 ///
 /// Authz mirrors the org-scoped mutations above (admin+), but resolves
@@ -549,7 +549,7 @@ pub async fn update_organization(
 /// that just-created case.
 #[utoipa::path(
     post,
-    path = "/v1/orgs/{org}/onboarding/complete",
+    path = "/v1/platform/orgs/{org}/onboarding/complete",
     tag = "Organizations",
     params(
         ("org" = String, Path, description = "Organization public ID")
@@ -756,7 +756,7 @@ pub struct UpdateMemberRoleRequest {
     pub role: String,
 }
 
-/// GET /v1/orgs/:org/members - List organization members
+/// GET /v1/platform/orgs/:org/members - List organization members
 pub async fn list_members(
     State(state): State<AppState>,
     org: OrgContext,
@@ -782,7 +782,7 @@ pub async fn list_members(
     Ok(Json(ListResponse::new(items)))
 }
 
-/// POST /v1/orgs/:org/members - Add an existing user directly (platform admin only)
+/// POST /v1/platform/orgs/:org/members - Add an existing user directly (platform admin only)
 ///
 /// Org admins bring people in through invitations (`api/org_invitations.rs`),
 /// which require the invitee to accept with a verified matching email. A direct
@@ -878,7 +878,7 @@ pub async fn add_member(
     ))
 }
 
-/// PATCH /v1/orgs/:org/members/:user_id - Update member role
+/// PATCH /v1/platform/orgs/:org/members/:user_id - Update member role
 pub async fn update_member_role(
     State(state): State<AppState>,
     OrgAdmin(org): OrgAdmin,
@@ -963,7 +963,7 @@ pub async fn update_member_role(
     }))
 }
 
-/// DELETE /v1/orgs/:org/members/:user_id - Remove member (Owner or self)
+/// DELETE /v1/platform/orgs/:org/members/:user_id - Remove member (Owner or self)
 pub async fn remove_member(
     State(state): State<AppState>,
     org: OrgContext,

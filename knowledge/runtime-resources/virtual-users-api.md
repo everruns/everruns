@@ -20,7 +20,7 @@ and [generated OpenAPI](../../docs/api/openapi.json) own the exact request and r
 consumer clients use the same domain commands, connection service, and store.
 Different permissions expose different actions and safe projections.
 
-Management authentication remains on the existing `/v1/auth/*`, management
+Management authentication remains on the existing `/v1/platform/auth/*`, management
 user/profile, organization membership, and PAT surfaces. Console preferences
 remain management-account state; agent-facing preferences move to virtual users.
 
@@ -34,20 +34,20 @@ CLI, platform commands, and worker-mediated operations.
 
 | Route | Operations | Authorization and meaning |
 |---|---|---|
-| `/v1/virtual-users/config` | GET | Management capability hints, following existing resource-config conventions. |
-| `/v1/virtual-users` | GET, POST | Org-scoped management listing/creation. Listing is paginated, with usage, archived state, and search filters. Consumer credentials cannot enumerate the org. |
-| `/v1/virtual-users/{id}` | GET, PATCH, DELETE | Authorized resource read, profile update, and archive. Self-service permits profile fields only; management permissions control lifecycle. |
-| `/v1/virtual-users/{id}/delete` | POST | Explicit destructive deletion, following existing lifecycle conventions. Separate dangerous-action policy. |
+| `/v1/platform/virtual-users/config` | GET | Management capability hints, following existing resource-config conventions. |
+| `/v1/platform/virtual-users` | GET, POST | Org-scoped management listing/creation. Listing is paginated, with usage, archived state, and search filters. Consumer credentials cannot enumerate the org. |
+| `/v1/platform/virtual-users/{id}` | GET, PATCH, DELETE | Authorized resource read, profile update, and archive. Self-service permits profile fields only; management permissions control lifecycle. |
+| `/v1/platform/virtual-users/{id}/delete` | POST | Explicit destructive deletion, following existing lifecycle conventions. Separate dangerous-action policy. |
 | `/v1/virtual-users/me` | GET, PATCH | Console resolves the default end-user virtual user in its selected org; runtime auth resolves its verified subject. PATCH changes only the runtime profile. |
-| `/v1/virtual-users/{id}/preferences` | GET | Authorized agent-facing preferences. Per-key GET/PUT/DELETE uses `/preferences/{key}`. |
-| `/v1/virtual-users/{id}/connections` | GET | Sanitized grant metadata. No access or refresh tokens returned. |
-| `/v1/virtual-users/{id}/connections/{provider}` | POST, DELETE | Validate/store an API-key grant or disconnect it. Self-service for end users; explicit management authorization for service accounts. |
-| `/v1/virtual-users/{id}/connections/{provider}/verify` | POST | Verify the stored grant without returning its secret. |
-| `/v1/virtual-users/{id}/connections/{provider}/authorize` | GET, POST | Start target-bound setup. GET redirects console browsers; POST returns an authorization URL for bearer-authenticated clients. |
+| `/v1/platform/virtual-users/{id}/preferences` | GET | Authorized agent-facing preferences. Per-key GET/PUT/DELETE uses `/preferences/{key}`. |
+| `/v1/platform/virtual-users/{id}/connections` | GET | Sanitized grant metadata. No access or refresh tokens returned. |
+| `/v1/platform/virtual-users/{id}/connections/{provider}` | POST, DELETE | Validate/store an API-key grant or disconnect it. Self-service for end users; explicit management authorization for service accounts. |
+| `/v1/platform/virtual-users/{id}/connections/{provider}/verify` | POST | Verify the stored grant without returning its secret. |
+| `/v1/platform/virtual-users/{id}/connections/{provider}/authorize` | GET, POST | Start target-bound setup. GET redirects console browsers; POST returns an authorization URL for bearer-authenticated clients. |
 | `/v1/connection-callbacks/{provider}` | GET | Provider callback resolves its target from verified, one-time setup state, not the current org/account selection. |
 | `/v1/connection-providers` | GET | Safe provider availability in the authorized org/runtime scope. External consumers see only providers allowed by their endpoint. |
-| `/v1/virtual-users/{id}/bindings` | GET | Sanitized linked identity metadata under self/management policy. |
-| `/v1/virtual-users/{id}/bindings/{binding_id}` | DELETE | Authorized unlink, preserving required default/provenance constraints and revoking affected runtime authority. |
+| `/v1/platform/virtual-users/{id}/bindings` | GET | Sanitized linked identity metadata under self/management policy. |
+| `/v1/platform/virtual-users/{id}/bindings/{binding_id}` | DELETE | Authorized unlink, preserving required default/provenance constraints and revoking affected runtime authority. |
 
 `/v1/virtual-users/me/connections` and `/me/preferences` support the same
 subresource operations as the ID-based routes. They resolve `me` once and
@@ -124,7 +124,7 @@ connection subject from stored context and effective tool configuration. A
 worker-supplied subject or `acts_as` value alone cannot grant authority. Cleanup uses the resource's organization-scoped runtime owner and provider. Pending migrations block cleanup until that owner has an explicit grant.
 Provider tokens remain confined to trusted execution components.
 
-`/v1/user/connections/*` and legacy provider callback
+`/v1/platform/user/connections/*` and legacy provider callback
 URLs can be read/request adapters during cutover. All writes dispatch to the
 canonical virtual-user services. Old callback state must either resolve through
 an explicit migration mapping or expire and restart setup; it cannot write into

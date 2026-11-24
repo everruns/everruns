@@ -1,7 +1,7 @@
 // Agent Examples API — read-only catalogue of built-in examples.
 //
 // Decision: Examples live in code (SEED_AGENTS), not in DB.
-// Decision: Import is handled by POST /v1/agents/import?from-example={name}
+// Decision: Import is handled by POST /v1/platform/agents/import?from-example={name}
 // Decision: Examples are identified by their name
 // Decision: Guided templates (crate::agent_templates) are examples with a
 // `setup` the UI walks through after import; same list, same import path.
@@ -30,15 +30,15 @@ impl_auth_state!(AppState);
 /// Create agent example routes
 pub fn routes(state: AppState) -> Router {
     Router::new()
-        .route("/v1/agent-examples", get(list_examples))
+        .route("/v1/platform/agent-examples", get(list_examples))
         .with_state(state)
 }
 
-/// GET /v1/agent-examples — list all available examples
+/// GET /v1/platform/agent-examples — list all available examples
 #[utoipa::path(
     operation_id = "list_agent_examples",
     get,
-    path = "/v1/agent-examples",
+    path = "/v1/platform/agent-examples",
     responses(
         (status = 200, description = "List of agent examples", body = Vec<AgentExample>),
     ),

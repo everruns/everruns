@@ -85,11 +85,11 @@ fn app(extra: ExtraRouteClasses) -> Router {
         Arc::new(ScopedBackend),
     );
     let routes = Router::new()
-        .route("/v1/agents", get(ok).post(ok))
-        .route("/v1/users/me/export", get(ok))
-        .route("/v1/commands/{name}", post(command))
+        .route("/v1/platform/agents", get(ok).post(ok))
+        .route("/v1/platform/users/me/export", get(ok))
+        .route("/v1/platform/commands/{name}", post(command))
         .route("/v1/unlisted", get(ok))
-        .route("/v1/embedder/usage", get(ok).post(ok))
+        .route("/v1/platform/embedder/usage", get(ok).post(ok))
         .with_state(state);
     classify_api_routes(routes, "", extra)
 }
@@ -127,10 +127,16 @@ async fn assert_insufficient_scope(response: Response, what: &str) {
 #[tokio::test]
 async fn read_token_reaches_read_routes() {
     let app = app(ExtraRouteClasses::default());
-    let response = call(app.clone(), "GET", "/v1/agents", bearer(READ_PAT)).await;
+    let response = call(app.clone(), "GET", "/v1/platform/agents", bearer(READ_PAT)).await;
     assert_eq!(response.status(), StatusCode::OK);
     // `PerCommand` passes the route; the command is checked by the handler.
-    let response = call(app, "POST", "/v1/commands/list_agents", bearer(READ_PAT)).await;
+    let response = call(
+        app,
+        "POST",
+        "/v1/platform/commands/list_agents",
+        bearer(READ_PAT),
+    )
+    .await;
     assert_eq!(response.status(), StatusCode::OK);
 }
 
@@ -138,10 +144,10 @@ async fn read_token_reaches_read_routes() {
 async fn read_token_is_denied_write_never_and_unclassified_routes() {
     let app = app(ExtraRouteClasses::default());
     for (method, uri) in [
-        ("POST", "/v1/agents"),
-        ("GET", "/v1/users/me/export"),
+        ("POST", "/v1/platform/agents"),
+        ("GET", "/v1/platform/users/me/export"),
         ("GET", "/v1/unlisted"),
-        ("GET", "/v1/embedder/usage"),
+        ("GET", "/v1/platform/embedder/usage"),
     ] {
         let response = call(app.clone(), method, uri, bearer(READ_PAT)).await;
         assert_insufficient_scope(response, &format!("{method} {uri}")).await;
@@ -160,7 +166,7 @@ async fn every_pat_header_form_is_checked() {
         let response = call(
             app.clone(),
             "POST",
-            "/v1/agents",
+            "/v1/platform/agents",
             Some((header::AUTHORIZATION.as_str(), auth.clone())),
         )
         .await;
@@ -171,7 +177,10 @@ async fn every_pat_header_form_is_checked() {
 #[tokio::test]
 async fn legacy_narrow_token_reaches_nothing() {
     let app = app(ExtraRouteClasses::default());
-    for (method, uri) in [("GET", "/v1/agents"), ("POST", "/v1/commands/list_agents")] {
+    for (method, uri) in [
+        ("GET", "/v1/platform/agents"),
+        ("POST", "/v1/platform/commands/list_agents"),
+    ] {
         let response = call(app.clone(), method, uri, bearer(LEGACY_PAT)).await;
         assert_insufficient_scope(response, &format!("{method} {uri}")).await;
     }
@@ -190,8 +199,8 @@ async fn full_token_jwt_and_cookie_are_unaffected() {
     ];
     for auth in credentials {
         for (method, uri) in [
-            ("POST", "/v1/agents"),
-            ("GET", "/v1/users/me/export"),
+            ("POST", "/v1/platform/agents"),
+            ("GET", "/v1/platform/users/me/export"),
             ("GET", "/v1/unlisted"),
         ] {
             let response = call(app.clone(), method, uri, auth.clone()).await;
@@ -203,9 +212,15 @@ async fn full_token_jwt_and_cookie_are_unaffected() {
 #[tokio::test]
 async fn unauthenticated_stays_401_before_scope() {
     let app = app(ExtraRouteClasses::default());
-    let response = call(app.clone(), "POST", "/v1/agents", None).await;
+    let response = call(app.clone(), "POST", "/v1/platform/agents", None).await;
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
-    let response = call(app, "POST", "/v1/agents", bearer("evr_pat_unknown")).await;
+    let response = call(
+        app,
+        "POST",
+        "/v1/platform/agents",
+        bearer("evr_pat_unknown"),
+    )
+    .await;
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
 }
 
@@ -219,7 +234,7 @@ async fn extractor_leaves_the_pat_scope_for_the_command_check() {
             .to_bytes();
         String::from_utf8(bytes.to_vec()).unwrap()
     };
-    let uri = "/v1/commands/list_agents";
+    let uri = "/v1/platform/commands/list_agents";
     let read = call(app.clone(), "POST", uri, bearer(READ_PAT)).await;
     assert_eq!(body(read).await, "Some(Read)");
     let full = call(app.clone(), "POST", uri, bearer(FULL_PAT)).await;
@@ -233,19 +248,25 @@ async fn extractor_leaves_the_pat_scope_for_the_command_check() {
 #[tokio::test]
 async fn embedder_classifications_open_only_unclassified_routes() {
     let mut extra = ExtraRouteClasses::default();
-    extra.insert("GET", "/v1/embedder/usage", RouteAccess::Read);
-    extra.insert("POST", "/v1/embedder/usage", RouteAccess::Write);
+    extra.insert("GET", "/v1/platform/embedder/usage", RouteAccess::Read);
+    extra.insert("POST", "/v1/platform/embedder/usage", RouteAccess::Write);
     // Built-in classification wins: these do not open anything.
-    extra.insert("POST", "/v1/agents", RouteAccess::Read);
-    extra.insert("GET", "/v1/users/me/export", RouteAccess::Read);
+    extra.insert("POST", "/v1/platform/agents", RouteAccess::Read);
+    extra.insert("GET", "/v1/platform/users/me/export", RouteAccess::Read);
     let app = app(extra);
 
-    let response = call(app.clone(), "GET", "/v1/embedder/usage", bearer(READ_PAT)).await;
+    let response = call(
+        app.clone(),
+        "GET",
+        "/v1/platform/embedder/usage",
+        bearer(READ_PAT),
+    )
+    .await;
     assert_eq!(response.status(), StatusCode::OK);
     for (method, uri) in [
-        ("POST", "/v1/embedder/usage"),
-        ("POST", "/v1/agents"),
-        ("GET", "/v1/users/me/export"),
+        ("POST", "/v1/platform/embedder/usage"),
+        ("POST", "/v1/platform/agents"),
+        ("GET", "/v1/platform/users/me/export"),
     ] {
         let response = call(app.clone(), method, uri, bearer(READ_PAT)).await;
         assert_insufficient_scope(response, &format!("{method} {uri}")).await;
@@ -255,7 +276,11 @@ async fn embedder_classifications_open_only_unclassified_routes() {
 #[test]
 #[should_panic(expected = "cannot be PerCommand")]
 fn embedder_cannot_register_per_command() {
-    ExtraRouteClasses::default().insert("POST", "/v1/embedder/run", RouteAccess::PerCommand);
+    ExtraRouteClasses::default().insert(
+        "POST",
+        "/v1/platform/embedder/run",
+        RouteAccess::PerCommand,
+    );
 }
 
 // --- Per-command check ------------------------------------------------------

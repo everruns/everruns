@@ -5,9 +5,9 @@ use axum::http::{Method, StatusCode};
 use serde_json::{Value, json};
 
 async fn setup(server: &TestServer, capabilities: Value, mode: &str) -> ApiChannel {
-    let agent:Value=server.post("/v1/agents",json!({"name":format!("work-{}",uuid::Uuid::new_v4().simple()),"system_prompt":"Help with work","capabilities":capabilities})).await.assert_status(StatusCode::CREATED).json();
+    let agent:Value=server.post("/v1/platform/agents",json!({"name":format!("work-{}",uuid::Uuid::new_v4().simple()),"system_prompt":"Help with work","capabilities":capabilities})).await.assert_status(StatusCode::CREATED).json();
     let agent_id = agent["id"].as_str().unwrap().to_string();
-    let channel:Value=server.post(&format!("/v1/agents/{agent_id}/channels"),json!({"channel_type":"work_chat","channel_config":{"interface_mode":mode,"execution":{"visibility":"full"}}})).await.assert_status(StatusCode::CREATED).json();
+    let channel:Value=server.post(&format!("/v1/platform/agents/{agent_id}/channels"),json!({"channel_type":"work_chat","channel_config":{"interface_mode":mode,"execution":{"visibility":"full"}}})).await.assert_status(StatusCode::CREATED).json();
     ApiChannel {
         agent_id,
         channel_id: channel["id"].as_str().unwrap().to_string(),
@@ -17,7 +17,7 @@ async fn publish(server: &TestServer, channel: &ApiChannel) -> crate::test_harne
     server
         .post(
             &format!(
-                "/v1/agents/{}/channels/{}/publish",
+                "/v1/platform/agents/{}/channels/{}/publish",
                 channel.agent_id, channel.channel_id
             ),
             json!({}),
@@ -34,7 +34,7 @@ async fn work_chat_publish_requires_effective_coordinator_tools() {
         .assert_status(StatusCode::BAD_REQUEST);
     let config: Value = server
         .get(&format!(
-            "/v1/agents/{}/channels/{}",
+            "/v1/platform/agents/{}/channels/{}",
             channel.agent_id, channel.channel_id
         ))
         .await
@@ -50,14 +50,14 @@ async fn work_chat_publish_requires_effective_coordinator_tools() {
     publish(&server, &coordinator).await.assert_success();
     server
         .patch(
-            &format!("/v1/agents/{}", coordinator.agent_id),
+            &format!("/v1/platform/agents/{}", coordinator.agent_id),
             json!({"capabilities":[]}),
         )
         .await
         .assert_status(StatusCode::BAD_REQUEST);
     let config: Value = server
         .get(&format!(
-            "/v1/agents/{}/chat-features",
+            "/v1/platform/agents/{}/chat-features",
             coordinator.agent_id
         ))
         .await
@@ -104,7 +104,7 @@ async fn work_chat_config_uses_the_agent_avatar() {
     publish(&server, &channel).await.assert_success();
     server
         .put(
-            &format!("/v1/agents/{}/avatar/preset", channel.agent_id),
+            &format!("/v1/platform/agents/{}/avatar/preset", channel.agent_id),
             json!({"preset_id": "familiars-patch"}),
         )
         .await
@@ -425,11 +425,11 @@ async fn work_chat_worker_link_delegates_only_inside_the_consumer_tree() {
 #[tokio::test]
 async fn work_chat_inherited_coordinator_changes_are_atomic() {
     let server = TestServer::in_memory().await;
-    let harness:Value=server.post("/v1/harnesses",json!({"name":"work-coordinator","capabilities":[{"ref":"coordination","config":{"role":"coordinator","workers":[{"id":"self"}]}}]})).await.assert_success().json();
+    let harness:Value=server.post("/v1/platform/harnesses",json!({"name":"work-coordinator","capabilities":[{"ref":"coordination","config":{"role":"coordinator","workers":[{"id":"self"}]}}]})).await.assert_success().json();
     let channel = setup(&server, json!([]), "single_with_threads").await;
     server
         .patch(
-            &format!("/v1/agents/{}", channel.agent_id),
+            &format!("/v1/platform/agents/{}", channel.agent_id),
             json!({"harness_id":harness["id"]}),
         )
         .await
@@ -437,13 +437,16 @@ async fn work_chat_inherited_coordinator_changes_are_atomic() {
     publish(&server, &channel).await.assert_success();
     server
         .patch(
-            &format!("/v1/harnesses/{}", harness["id"].as_str().unwrap()),
+            &format!("/v1/platform/harnesses/{}", harness["id"].as_str().unwrap()),
             json!({"capabilities":[]}),
         )
         .await
         .assert_status(StatusCode::BAD_REQUEST);
     let features: Value = server
-        .get(&format!("/v1/agents/{}/chat-features", channel.agent_id))
+        .get(&format!(
+            "/v1/platform/agents/{}/chat-features",
+            channel.agent_id
+        ))
         .await
         .assert_success()
         .json();
@@ -691,7 +694,7 @@ async fn work_chat_org_members_require_full_scope_on_both_url_spellings() {
         "multi_chat",
     )
     .await;
-    server.patch(&format!("/v1/agents/{}/channels/{}", channel.agent_id, channel.channel_id), json!({"channel_config":{"interface_mode":"multi_chat","execution":{"org_members":true}}})).await.assert_success();
+    server.patch(&format!("/v1/platform/agents/{}/channels/{}", channel.agent_id, channel.channel_id), json!({"channel_config":{"interface_mode":"multi_chat","execution":{"org_members":true}}})).await.assert_success();
     publish(&server, &channel).await.assert_success();
     let full = member_token_with_scopes(&server, true, &["*"]).await;
     let read = member_token_with_scopes(&server, true, &["read"]).await;
@@ -916,7 +919,7 @@ async fn work_chat_uses_the_agent_model() {
     server
         .patch(
             &format!(
-                "/v1/agents/{}/channels/{}",
+                "/v1/platform/agents/{}/channels/{}",
                 channel.agent_id, channel.channel_id
             ),
             json!({"channel_config":{"interface_mode":"multi_chat","allowed_model_ids":[model],"execution":{"visibility":"full"}}}),
@@ -925,7 +928,7 @@ async fn work_chat_uses_the_agent_model() {
         .assert_success();
     let saved: Value = server
         .get(&format!(
-            "/v1/agents/{}/channels/{}",
+            "/v1/platform/agents/{}/channels/{}",
             channel.agent_id, channel.channel_id
         ))
         .await
@@ -1085,7 +1088,7 @@ async fn work_chat_membership_chooses_who_can_sign_in() {
     let server = TestServer::in_memory().await;
     let channel = setup(&server, json!([]), "multi_chat").await;
     let url = format!(
-        "/v1/agents/{}/channels/{}",
+        "/v1/platform/agents/{}/channels/{}",
         channel.agent_id, channel.channel_id
     );
     let missing = server

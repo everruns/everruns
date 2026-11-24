@@ -45,21 +45,21 @@ pub use crate::domains::organizations::provider_accounts::OrganizationConnection
 pub fn routes(state: AppState) -> Router {
     Router::new()
         .route(
-            "/v1/orgs/{org}/organization-connections",
+            "/v1/platform/orgs/{org}/organization-connections",
             get(list_connections),
         )
         .route(
-            "/v1/orgs/{org}/organization-connections/providers/{provider}",
+            "/v1/platform/orgs/{org}/organization-connections/providers/{provider}",
             post(create_connection),
         )
         .route(
-            "/v1/orgs/{org}/organization-connections/{connection_id}",
+            "/v1/platform/orgs/{org}/organization-connections/{connection_id}",
             put(update_connection)
                 .patch(rename_connection)
                 .delete(delete_connection),
         )
         .route(
-            "/v1/orgs/{org}/organization-connections/{connection_id}/verify",
+            "/v1/platform/orgs/{org}/organization-connections/{connection_id}/verify",
             post(verify_connection),
         )
         .with_state(state.clone())
@@ -143,7 +143,7 @@ fn fields(body: &SaveOrganizationConnectionRequest) -> HashMap<String, String> {
     fields
 }
 
-#[utoipa::path(get, path = "/v1/orgs/{org}/organization-connections", description = "List non-secret metadata for organization-owned provider accounts: sandbox provider accounts and web search accounts.", responses((status = 200, body = Vec<OrganizationConnectionResponse>)), tag = "sandbox-templates")]
+#[utoipa::path(get, path = "/v1/platform/orgs/{org}/organization-connections", description = "List non-secret metadata for organization-owned provider accounts: sandbox provider accounts and web search accounts.", responses((status = 200, body = Vec<OrganizationConnectionResponse>)), tag = "sandbox-templates")]
 pub async fn list_connections(
     State(state): State<AppState>,
     OrgAdmin(org): OrgAdmin,
@@ -163,7 +163,7 @@ pub async fn list_connections(
     ))
 }
 
-#[utoipa::path(post, path = "/v1/orgs/{org}/organization-connections/providers/{provider}", description = "Create and validate an encrypted organization-owned account for a connector that declares sandbox_provisioning or web_search.", request_body = SaveOrganizationConnectionRequest, responses((status = 201, body = OrganizationConnectionResponse)), tag = "sandbox-templates")]
+#[utoipa::path(post, path = "/v1/platform/orgs/{org}/organization-connections/providers/{provider}", description = "Create and validate an encrypted organization-owned account for a connector that declares sandbox_provisioning or web_search.", request_body = SaveOrganizationConnectionRequest, responses((status = 201, body = OrganizationConnectionResponse)), tag = "sandbox-templates")]
 pub async fn create_connection(
     State(state): State<AppState>,
     OrgAdmin(org): OrgAdmin,
@@ -216,7 +216,7 @@ pub async fn create_connection(
     ))
 }
 
-#[utoipa::path(put, path = "/v1/orgs/{org}/organization-connections/{connection_id}", description = "Replace the name and credential for an organization-owned provider account.", request_body = SaveOrganizationConnectionRequest, responses((status = 200, body = OrganizationConnectionResponse)), tag = "sandbox-templates")]
+#[utoipa::path(put, path = "/v1/platform/orgs/{org}/organization-connections/{connection_id}", description = "Replace the name and credential for an organization-owned provider account.", request_body = SaveOrganizationConnectionRequest, responses((status = 200, body = OrganizationConnectionResponse)), tag = "sandbox-templates")]
 pub async fn update_connection(
     State(state): State<AppState>,
     OrgAdmin(org): OrgAdmin,
@@ -294,7 +294,7 @@ pub async fn update_connection(
 pub struct RenameOrganizationConnectionRequest {
     pub name: String,
 }
-#[utoipa::path(patch, path = "/v1/orgs/{org}/organization-connections/{connection_id}", description = "Rename an organization account without replacing credentials.", request_body = RenameOrganizationConnectionRequest, responses((status = 200, body = OrganizationConnectionResponse)), tag = "sandbox-templates")]
+#[utoipa::path(patch, path = "/v1/platform/orgs/{org}/organization-connections/{connection_id}", description = "Rename an organization account without replacing credentials.", request_body = RenameOrganizationConnectionRequest, responses((status = 200, body = OrganizationConnectionResponse)), tag = "sandbox-templates")]
 pub async fn rename_connection(
     State(state): State<AppState>,
     OrgAdmin(org): OrgAdmin,
@@ -336,7 +336,7 @@ pub async fn rename_connection(
     Ok(Json(OrganizationConnectionResponse::from_row(row)))
 }
 
-#[utoipa::path(delete, path = "/v1/orgs/{org}/organization-connections/{connection_id}", description = "Delete an organization-owned provider account when no active sandbox configuration or lease references it.", responses((status = 204)), tag = "sandbox-templates")]
+#[utoipa::path(delete, path = "/v1/platform/orgs/{org}/organization-connections/{connection_id}", description = "Delete an organization-owned provider account when no active sandbox configuration or lease references it.", responses((status = 204)), tag = "sandbox-templates")]
 pub async fn delete_connection(
     State(state): State<AppState>,
     OrgAdmin(org): OrgAdmin,
@@ -373,7 +373,7 @@ pub async fn delete_connection(
     }
 }
 
-#[utoipa::path(post, path = "/v1/orgs/{org}/organization-connections/{connection_id}/verify", description = "Revalidate an organization-owned provider credential without returning the secret.", responses((status = 200, body = VerifyConnectionResponse)), tag = "sandbox-templates")]
+#[utoipa::path(post, path = "/v1/platform/orgs/{org}/organization-connections/{connection_id}/verify", description = "Revalidate an organization-owned provider credential without returning the secret.", responses((status = 200, body = VerifyConnectionResponse)), tag = "sandbox-templates")]
 pub async fn verify_connection(
     State(state): State<AppState>,
     OrgAdmin(org): OrgAdmin,

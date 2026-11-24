@@ -70,7 +70,7 @@ function host(url: string) {
 }
 
 function connectUrl(identityId: string, provider: string) {
-  return `${getBackendUrl()}/v1/virtual-users/${encodeURIComponent(identityId)}/connections/${encodeURIComponent(provider)}/authorize?return_to=${encodeURIComponent(window.location.pathname)}`;
+  return `${getBackendUrl()}/v1/platform/virtual-users/${encodeURIComponent(identityId)}/connections/${encodeURIComponent(provider)}/authorize?return_to=${encodeURIComponent(window.location.pathname)}`;
 }
 
 function SignInBadge({ server }: { server: UserMcpServer }) {
@@ -494,7 +494,7 @@ function AddServerDialog({
 export function UserMcpServersPanel({ identityId = "me" }: { identityId?: string }) {
   const ui = useUiTranslations();
   const { data: servers = [], isLoading, error } = useUserMcpServers(identityId);
-  // Sign-ins are listed for the viewer only (`/v1/user/mcp-connections`).
+  // Sign-ins are listed for the viewer only (`/v1/platform/user/mcp-connections`).
   const signIns = useUserMcpConnections();
   const [adding, setAdding] = useState(false);
   const listedProviders = new Set(

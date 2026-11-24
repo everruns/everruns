@@ -783,7 +783,7 @@ async fn window(
 }
 
 /// Get recorded execution history for the organization.
-#[utoipa::path(get, path = "/v1/monitoring/timeline", tag = "monitoring", params(TimelineQuery),
+#[utoipa::path(get, path = "/v1/platform/monitoring/timeline", tag = "monitoring", params(TimelineQuery),
     responses((status = 200, description = "Organization execution history", body = MonitoringTimeline),
         (status = 400, description = "Invalid range", body = ErrorResponse),
         (status = 403, description = "Forbidden", body = ErrorResponse), (status = 404, description = "Not enrolled", body = ErrorResponse)))]
@@ -797,7 +797,7 @@ pub async fn get_monitoring_timeline(
 }
 
 /// Get recorded execution history across all organizations. Requires platform-user access.
-#[utoipa::path(get, path = "/v1/durable/monitoring/timeline", tag = "durable", params(TimelineQuery),
+#[utoipa::path(get, path = "/v1/platform/durable/monitoring/timeline", tag = "durable", params(TimelineQuery),
     responses((status = 200, description = "Platform execution history", body = MonitoringTimeline),
         (status = 400, description = "Invalid range", body = ErrorResponse),
         (status = 403, description = "Platform access required", body = ErrorResponse)))]
@@ -810,7 +810,7 @@ pub async fn get_fleet_monitoring_timeline(
 }
 
 /// Break down a window by agent and failure cause.
-#[utoipa::path(get, path = "/v1/monitoring/timeline/window", tag = "monitoring", params(TimelineWindowQuery),
+#[utoipa::path(get, path = "/v1/platform/monitoring/timeline/window", tag = "monitoring", params(TimelineWindowQuery),
     responses((status = 200, description = "Organization window breakdown", body = MonitoringTimelineWindow),
         (status = 400, description = "Invalid window", body = ErrorResponse),
         (status = 403, description = "Forbidden", body = ErrorResponse), (status = 404, description = "Not enrolled", body = ErrorResponse)))]
@@ -824,7 +824,7 @@ pub async fn get_monitoring_timeline_window(
 }
 
 /// Break down a selected window across organizations. Requires platform-user access.
-#[utoipa::path(get, path = "/v1/durable/monitoring/timeline/window", tag = "durable", params(TimelineWindowQuery),
+#[utoipa::path(get, path = "/v1/platform/durable/monitoring/timeline/window", tag = "durable", params(TimelineWindowQuery),
     responses((status = 200, description = "Platform window breakdown", body = MonitoringTimelineWindow),
         (status = 400, description = "Invalid window", body = ErrorResponse),
         (status = 403, description = "Platform access required", body = ErrorResponse)))]
@@ -993,7 +993,7 @@ fn shard_bucket(r: &TimelineShardBucketRow) -> MonitoringShardBucket {
 }
 
 /// List shards with their newest report and history. Requires platform-user access.
-#[utoipa::path(get, path = "/v1/durable/monitoring/shards", tag = "durable", params(TimelineQuery),
+#[utoipa::path(get, path = "/v1/platform/durable/monitoring/shards", tag = "durable", params(TimelineQuery),
     responses((status = 200, description = "Shards and their history", body = MonitoringShards),
         (status = 400, description = "Invalid range", body = ErrorResponse),
         (status = 403, description = "Platform access required", body = ErrorResponse)))]

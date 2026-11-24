@@ -1,13 +1,13 @@
 // Plugin marketplace and install HTTP routes.
 //
 // Routes:
-//   GET/POST   /v1/plugin_marketplaces
-//   GET/PATCH/DELETE /v1/plugin_marketplaces/{id}
-//   POST       /v1/plugin_marketplaces/{id}/sync
-//   GET        /v1/plugin_marketplaces/{id}/plugins
-//   GET/POST   /v1/plugins
-//   GET/PATCH/DELETE /v1/plugins/{id}
-//   POST       /v1/plugins/{id}/update
+//   GET/POST   /v1/platform/plugin_marketplaces
+//   GET/PATCH/DELETE /v1/platform/plugin_marketplaces/{id}
+//   POST       /v1/platform/plugin_marketplaces/{id}/sync
+//   GET        /v1/platform/plugin_marketplaces/{id}/plugins
+//   GET/POST   /v1/platform/plugins
+//   GET/PATCH/DELETE /v1/platform/plugins/{id}
+//   POST       /v1/platform/plugins/{id}/update
 //
 // Spec: knowledge/integrations/plugins.md
 
@@ -97,31 +97,34 @@ impl_dispatchable!(AppState);
 pub fn routes(state: AppState) -> Router {
     Router::new()
         .route(
-            "/v1/plugin_marketplaces",
+            "/v1/platform/plugin_marketplaces",
             get(list_plugin_marketplaces).post(create_plugin_marketplace),
         )
         .route(
-            "/v1/plugin_marketplaces/{id}",
+            "/v1/platform/plugin_marketplaces/{id}",
             get(get_plugin_marketplace)
                 .patch(update_plugin_marketplace)
                 .delete(delete_plugin_marketplace),
         )
         .route(
-            "/v1/plugin_marketplaces/{id}/sync",
+            "/v1/platform/plugin_marketplaces/{id}/sync",
             post(sync_plugin_marketplace),
         )
         .route(
-            "/v1/plugin_marketplaces/{id}/plugins",
+            "/v1/platform/plugin_marketplaces/{id}/plugins",
             get(get_marketplace_catalog),
         )
-        .route("/v1/plugins", get(list_plugins).post(install_plugin))
         .route(
-            "/v1/plugins/{id}",
+            "/v1/platform/plugins",
+            get(list_plugins).post(install_plugin),
+        )
+        .route(
+            "/v1/platform/plugins/{id}",
             get(get_plugin)
                 .patch(patch_installed_plugin)
                 .delete(uninstall_plugin),
         )
-        .route("/v1/plugins/{id}/update", post(update_plugin))
+        .route("/v1/platform/plugins/{id}/update", post(update_plugin))
         .with_state(state)
 }
 
@@ -129,10 +132,10 @@ pub fn routes(state: AppState) -> Router {
 // Marketplace handlers
 // ============================================================================
 
-/// GET /v1/plugin_marketplaces
+/// GET /v1/platform/plugin_marketplaces
 #[utoipa::path(
     get,
-    path = "/v1/plugin_marketplaces",
+    path = "/v1/platform/plugin_marketplaces",
     params(ListPluginMarketplacesQuery),
     responses(
         (status = 200, description = "List of plugin marketplaces"),
@@ -153,10 +156,10 @@ pub async fn list_plugin_marketplaces(
         .await
 }
 
-/// POST /v1/plugin_marketplaces
+/// POST /v1/platform/plugin_marketplaces
 #[utoipa::path(
     post,
-    path = "/v1/plugin_marketplaces",
+    path = "/v1/platform/plugin_marketplaces",
     request_body = CreatePluginMarketplaceRequest,
     responses(
         (status = 201, description = "Marketplace created"),
@@ -183,10 +186,10 @@ pub async fn create_plugin_marketplace(
         .await
 }
 
-/// GET /v1/plugin_marketplaces/{id}
+/// GET /v1/platform/plugin_marketplaces/{id}
 #[utoipa::path(
     get,
-    path = "/v1/plugin_marketplaces/{id}",
+    path = "/v1/platform/plugin_marketplaces/{id}",
     params(("id" = String, Path, description = "Marketplace ID (plgmkt_...)")),
     responses(
         (status = 200, description = "Marketplace found"),
@@ -206,10 +209,10 @@ pub async fn get_plugin_marketplace(
         .await
 }
 
-/// PATCH /v1/plugin_marketplaces/{id}
+/// PATCH /v1/platform/plugin_marketplaces/{id}
 #[utoipa::path(
     patch,
-    path = "/v1/plugin_marketplaces/{id}",
+    path = "/v1/platform/plugin_marketplaces/{id}",
     params(("id" = String, Path, description = "Marketplace ID (plgmkt_...)")),
     request_body = UpdatePluginMarketplaceRequest,
     responses(
@@ -232,10 +235,10 @@ pub async fn update_plugin_marketplace(
         .await
 }
 
-/// DELETE /v1/plugin_marketplaces/{id}
+/// DELETE /v1/platform/plugin_marketplaces/{id}
 #[utoipa::path(
     delete,
-    path = "/v1/plugin_marketplaces/{id}",
+    path = "/v1/platform/plugin_marketplaces/{id}",
     params(("id" = String, Path, description = "Marketplace ID (plgmkt_...)")),
     responses(
         (status = 204, description = "Marketplace deleted"),
@@ -255,10 +258,10 @@ pub async fn delete_plugin_marketplace(
         .await
 }
 
-/// POST /v1/plugin_marketplaces/{id}/sync
+/// POST /v1/platform/plugin_marketplaces/{id}/sync
 #[utoipa::path(
     post,
-    path = "/v1/plugin_marketplaces/{id}/sync",
+    path = "/v1/platform/plugin_marketplaces/{id}/sync",
     params(("id" = String, Path, description = "Marketplace ID (plgmkt_...)")),
     responses(
         (status = 200, description = "Marketplace synced"),
@@ -279,10 +282,10 @@ pub async fn sync_plugin_marketplace(
         .await
 }
 
-/// GET /v1/plugin_marketplaces/{id}/plugins
+/// GET /v1/platform/plugin_marketplaces/{id}/plugins
 #[utoipa::path(
     get,
-    path = "/v1/plugin_marketplaces/{id}/plugins",
+    path = "/v1/platform/plugin_marketplaces/{id}/plugins",
     params(("id" = String, Path, description = "Marketplace ID (plgmkt_...)")),
     responses(
         (status = 200, description = "Catalog entries"),
@@ -307,10 +310,10 @@ pub async fn get_marketplace_catalog(
 // Installed plugin handlers
 // ============================================================================
 
-/// GET /v1/plugins
+/// GET /v1/platform/plugins
 #[utoipa::path(
     get,
-    path = "/v1/plugins",
+    path = "/v1/platform/plugins",
     params(ListPluginsQuery),
     responses(
         (status = 200, description = "List of installed plugins"),
@@ -331,10 +334,10 @@ pub async fn list_plugins(
         .await
 }
 
-/// POST /v1/plugins
+/// POST /v1/platform/plugins
 #[utoipa::path(
     post,
-    path = "/v1/plugins",
+    path = "/v1/platform/plugins",
     request_body = InstallPluginRequest,
     responses(
         (status = 201, description = "Plugin installed"),
@@ -361,10 +364,10 @@ pub async fn install_plugin(
         .await
 }
 
-/// GET /v1/plugins/{id}
+/// GET /v1/platform/plugins/{id}
 #[utoipa::path(
     get,
-    path = "/v1/plugins/{id}",
+    path = "/v1/platform/plugins/{id}",
     params(("id" = String, Path, description = "Plugin install ID (plugin_...)")),
     responses(
         (status = 200, description = "Installed plugin"),
@@ -384,10 +387,10 @@ pub async fn get_plugin(
         .await
 }
 
-/// PATCH /v1/plugins/{id}
+/// PATCH /v1/platform/plugins/{id}
 #[utoipa::path(
     patch,
-    path = "/v1/plugins/{id}",
+    path = "/v1/platform/plugins/{id}",
     params(("id" = String, Path, description = "Plugin install ID (plugin_...)")),
     request_body = UpdateInstalledPluginRequest,
     responses(
@@ -410,10 +413,10 @@ pub async fn patch_installed_plugin(
         .await
 }
 
-/// DELETE /v1/plugins/{id}
+/// DELETE /v1/platform/plugins/{id}
 #[utoipa::path(
     delete,
-    path = "/v1/plugins/{id}",
+    path = "/v1/platform/plugins/{id}",
     params(("id" = String, Path, description = "Plugin install ID (plugin_...)")),
     responses(
         (status = 204, description = "Plugin uninstalled"),
@@ -433,10 +436,10 @@ pub async fn uninstall_plugin(
         .await
 }
 
-/// POST /v1/plugins/{id}/update
+/// POST /v1/platform/plugins/{id}/update
 #[utoipa::path(
     post,
-    path = "/v1/plugins/{id}/update",
+    path = "/v1/platform/plugins/{id}/update",
     params(("id" = String, Path, description = "Plugin install ID (plugin_...)")),
     responses(
         (status = 200, description = "Plugin updated"),

@@ -19,7 +19,8 @@ export function DurablePageContextProvider({ children }: { children: ReactNode }
   // Global rows require the platform policy, never an inferred tenant-admin role.
   const policy = useQuery({
     queryKey: [...queryKeys.policies.config("durable"), org],
-    queryFn: async () => (await api.get<ResourceConfigResponse>("/v1/durable/config")).data,
+    queryFn: async () =>
+      (await api.get<ResourceConfigResponse>("/v1/platform/durable/config")).data,
     enabled: !!mode && !!org,
     staleTime: 5 * 60 * 1000,
   });

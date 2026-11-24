@@ -304,7 +304,7 @@ pub struct SessionFacetCount {
 /// Facet-rail counts and masthead metrics for the sessions surface (EVE-852).
 ///
 /// Every count is aggregated server-side over the same filter predicate as
-/// `GET /v1/sessions`, so a client never derives them by paging the list. Each
+/// `GET /v1/platform/sessions`, so a client never derives them by paging the list. Each
 /// facet dimension is counted with the other filters applied but its own
 /// selection excluded, which is what lets the rail offer multi-select.
 #[derive(Debug, Clone, Serialize, ToSchema)]

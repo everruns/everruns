@@ -74,7 +74,7 @@ export const MODEL_JOBS: {
   },
 ];
 
-const BASE = "/v1/model-presets";
+const BASE = "/v1/platform/model-presets";
 const path = (id: string) => `${BASE}/${encodeURIComponent(id)}`;
 
 export async function listModelPresets(): Promise<ModelPreset[]> {

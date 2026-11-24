@@ -2,7 +2,7 @@
 // signed-in person approved on `/oauth/authorize`.
 //
 // Spec: knowledge/integrations/mcp-connected-clients.md (phase 1). User-scoped
-// like `/v1/user/preferences`: a grant spans all of the person's organizations.
+// like `/v1/platform/user/preferences`: a grant spans all of the person's organizations.
 // MCP access tokens are rejected on `/api/*`, so a connected client cannot list
 // or revoke grants itself.
 
@@ -25,9 +25,12 @@ type ApiError = (StatusCode, Json<ErrorResponse>);
 
 pub fn routes(state: ApiState) -> Router {
     Router::new()
-        .route("/v1/user/connected-clients", get(list_connected_clients))
         .route(
-            "/v1/user/connected-clients/{grant_id}",
+            "/v1/platform/user/connected-clients",
+            get(list_connected_clients),
+        )
+        .route(
+            "/v1/platform/user/connected-clients/{grant_id}",
             delete(revoke_connected_client),
         )
         .with_state(state)
@@ -39,7 +42,7 @@ fn internal(context: &str, error: anyhow::Error) -> ApiError {
         .into_response(StatusCode::INTERNAL_SERVER_ERROR)
 }
 
-#[utoipa::path(summary = "List the AI clients you connected to Everruns MCP.", description = "External MCP clients (Claude, ChatGPT, Cursor, ...) you approved to act as you on `/mcp`, most recently used first.", get, path = "/v1/user/connected-clients", responses((status = 200, description = "Success", body = ConnectedClientsResponse), (status = 401, description = "Authentication required")), tag = "users")]
+#[utoipa::path(summary = "List the AI clients you connected to Everruns MCP.", description = "External MCP clients (Claude, ChatGPT, Cursor, ...) you approved to act as you on `/mcp`, most recently used first.", get, path = "/v1/platform/user/connected-clients", responses((status = 200, description = "Success", body = ConnectedClientsResponse), (status = 401, description = "Authentication required")), tag = "users")]
 pub async fn list_connected_clients(
     State(state): State<ApiState>,
     user: AuthUser,
@@ -50,7 +53,7 @@ pub async fn list_connected_clients(
     Ok(Json(ConnectedClientsResponse { data }))
 }
 
-#[utoipa::path(summary = "Disconnect an AI client.", description = "Revokes the grant: the client's refresh tokens are deleted and `/mcp` rejects its access tokens within about 30 seconds. Reconnecting needs a new approval.", delete, path = "/v1/user/connected-clients/{grant_id}", params(("grant_id" = Uuid, Path, description = "Connected client (grant) id")), responses((status = 204, description = "Revoked"), (status = 401, description = "Authentication required"), (status = 404, description = "Not found")), tag = "users")]
+#[utoipa::path(summary = "Disconnect an AI client.", description = "Revokes the grant: the client's refresh tokens are deleted and `/mcp` rejects its access tokens within about 30 seconds. Reconnecting needs a new approval.", delete, path = "/v1/platform/user/connected-clients/{grant_id}", params(("grant_id" = Uuid, Path, description = "Connected client (grant) id")), responses((status = 204, description = "Revoked"), (status = 401, description = "Authentication required"), (status = 404, description = "Not found")), tag = "users")]
 pub async fn revoke_connected_client(
     State(state): State<ApiState>,
     connect_info: Option<Extension<ConnectInfo<SocketAddr>>>,

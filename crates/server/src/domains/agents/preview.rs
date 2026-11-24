@@ -51,7 +51,7 @@ pub struct AgentPreview {
     category = "agents",
     description = "Preview the final agent shape with capabilities applied.",
     method = "POST",
-    path = "/v1/agents/preview",
+    path = "/v1/platform/agents/preview",
     policy = crate::domains::agents::AGENT_VIEW,
     read_only = true,
     cli = CliRoute::new(&["agents"], "preview").with_examples(&[CliExample::new("See the prompt a draft configuration would produce, without creating it", "everruns agents preview --system-prompt 'Triage incoming issues'",)]),

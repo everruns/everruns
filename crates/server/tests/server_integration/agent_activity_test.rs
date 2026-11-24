@@ -1,4 +1,4 @@
-//! PostgreSQL contract for `GET /v1/agents/activity`: turns land in the hour
+//! PostgreSQL contract for `GET /v1/platform/agents/activity`: turns land in the hour
 //! they started, failures count separately, old turns fall outside the window,
 //! and the agent's load and triggers come back keyed by its public id. Channel
 //! audience counts distinct people and the median time to the first reply.

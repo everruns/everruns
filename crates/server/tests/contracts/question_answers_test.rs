@@ -73,7 +73,7 @@ async fn waiting_session(server: &TestServer) -> SessionId {
 async fn waiting_session_for_agent(server: &TestServer, platform: bool) -> SessionId {
     let agent: Agent = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": "ask-user-test-agent",
                 "display_name": "Ask User Test",
@@ -86,7 +86,7 @@ async fn waiting_session_for_agent(server: &TestServer, platform: bool) -> Sessi
         .json();
     let session: Session = server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             if platform {
                 json!({"agent_name":"platform-chat"})
             } else {
@@ -242,7 +242,10 @@ async fn post_answer(
     body: Value,
 ) -> test_harness::TestResponse {
     server
-        .post(&format!("/v1/sessions/{session_id}/question-answers"), body)
+        .post(
+            &format!("/v1/platform/sessions/{session_id}/question-answers"),
+            body,
+        )
         .await
 }
 
@@ -340,7 +343,7 @@ async fn platform_chat_non_owner_cannot_resume_through_answer_or_raw_tool_result
         };
 
         server
-            .post(&format!("/v1/sessions/{session_id}/{path}"), body)
+            .post(&format!("/v1/platform/sessions/{session_id}/{path}"), body)
             .await
             .assert_status(StatusCode::NOT_FOUND);
 
@@ -548,7 +551,7 @@ async fn a_chat_message_cancels_the_question_and_is_still_delivered() {
 
     server
         .post(
-            &format!("/v1/sessions/{session_id}/messages"),
+            &format!("/v1/platform/sessions/{session_id}/messages"),
             json!({ "message": { "role": "user", "content": [{"type": "text", "text": "just use staging"}] } }),
         )
         .await
@@ -587,7 +590,7 @@ async fn a_chat_message_cancels_the_question_and_is_still_delivered() {
     );
 
     let messages: Value = server
-        .get(&format!("/v1/sessions/{session_id}/messages"))
+        .get(&format!("/v1/platform/sessions/{session_id}/messages"))
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -616,7 +619,7 @@ async fn a_secret_answer_puts_the_credential_in_no_event() {
     // encrypted it. The question-answer endpoint is never given the value.
     server
         .put(
-            &format!("/v1/sessions/{session_id}/storage/secrets"),
+            &format!("/v1/platform/sessions/{session_id}/storage/secrets"),
             json!({"secrets": {"STRIPE_API_KEY": CREDENTIAL}}),
         )
         .await

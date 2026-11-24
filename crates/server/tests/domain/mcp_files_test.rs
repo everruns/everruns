@@ -66,7 +66,7 @@ async fn message_tools_take_files() {
     assert!(!is_error(&sent), "failed: {}", text(&sent));
 
     let messages = server
-        .get(&format!("/v1/sessions/{session_id}/messages"))
+        .get(&format!("/v1/platform/sessions/{session_id}/messages"))
         .await
         .assert_status(StatusCode::OK)
         .text();

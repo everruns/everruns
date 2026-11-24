@@ -10,7 +10,7 @@ tags:
 
 ## Overview
 
-`everruns`, command-line interface for the Everruns platform. Manages agents, sessions, chat, and file sync. It has no SDK dependency: platform commands go through the shared contract and `POST /v1/commands`, the rest is plain HTTP.
+`everruns`, command-line interface for the Everruns platform. Manages agents, sessions, chat, and file sync. It has no SDK dependency: platform commands go through the shared contract and `POST /v1/platform/commands`, the rest is plain HTTP.
 
 **Crate:** `crates/cli/`
 
@@ -38,7 +38,7 @@ Interactive authentication. Uses localhost HTTP callback OAuth flow.
 - `login`, Open browser for OAuth login, receive a personal access token via localhost callback
 - `login --token`, Paste a personal access token directly (headless/SSH fallback)
 
-Flow: CLI → `POST /v1/auth/cli/start` (returns `auth_url` + a CSRF `state` nonce) → open browser → user logs in → server redirects to `localhost:{port}/callback?code=...&state=...` → CLI rejects the callback unless `state` matches the value from `/cli/start` (CSRF binding) → CLI calls `POST /v1/auth/cli/exchange` → receives a personal access token + user info + orgs → interactive org selection → stores in credential file.
+Flow: CLI → `POST /v1/platform/auth/cli/start` (returns `auth_url` + a CSRF `state` nonce) → open browser → user logs in → server redirects to `localhost:{port}/callback?code=...&state=...` → CLI rejects the callback unless `state` matches the value from `/cli/start` (CSRF binding) → CLI calls `POST /v1/platform/auth/cli/exchange` → receives a personal access token + user info + orgs → interactive org selection → stores in credential file.
 
 ### `everruns logout`
 
@@ -102,7 +102,7 @@ Session management.
 Send message and poll for response.
 
 - `chat --session <id> "<message>" [--timeout <s>] [--no-stream]`
-- Snapshots the latest event id, posts the message, then follows `GET /v1/sessions/{id}/sse` from that id (deltas excluded) until `turn.completed`, `turn.failed` or timeout. The stream reconnects with `since_id` and backoff; see `crates/cli/src/events.rs`.
+- Snapshots the latest event id, posts the message, then follows `GET /v1/platform/sessions/{id}/sse` from that id (deltas excluded) until `turn.completed`, `turn.failed` or timeout. The stream reconnects with `since_id` and backoff; see `crates/cli/src/events.rs`.
 - No timeout by default (waits indefinitely); use `--timeout <s>` to set a limit
 
 ### `everruns connections`
@@ -129,7 +129,7 @@ Session filesystem operations, sync, push, pull, list. See [Files](#files) secti
 Every other command (`agents list`, `agents versions rollback`, `agents triggers ...`,
 `sessions participants ...`, `capabilities`, `plugins`, `skills`, `knowledge-bases`, and the
 rest) is mounted from the shared command contract, resolved by the same mapper agents use
-(`everruns_cli_contract::Mapper`), and sent to `POST /v1/commands/{wire_name}`. See
+(`everruns_cli_contract::Mapper`), and sent to `POST /v1/platform/commands/{wire_name}`. See
 [command-tree.md](../execution/command-tree.md). A hand-written command exists only where
 the work is local: login, file sync, streaming, and reading or writing local agent
 packages. A contract spelling the CLI hand-writes is not mounted. Output is the command's
@@ -273,12 +273,12 @@ for each file in (local ∪ remote):
 
 Uses existing session filesystem REST API:
 
-- **List remote:** `GET /v1/sessions/{id}/fs/?recursive=true`
-- **Read file:** `GET /v1/sessions/{id}/fs/{path}`
-- **Create file:** `POST /v1/sessions/{id}/fs/{path}` with `{ "content": "...", "encoding": "text"|"base64" }`
-- **Update file:** `PUT /v1/sessions/{id}/fs/{path}` with `{ "content": "...", "encoding": "text"|"base64" }`
-- **Delete file:** `DELETE /v1/sessions/{id}/fs/{path}`
-- **Create dir:** `POST /v1/sessions/{id}/fs/{path}` with `{ "is_directory": true }`
+- **List remote:** `GET /v1/platform/sessions/{id}/fs/?recursive=true`
+- **Read file:** `GET /v1/platform/sessions/{id}/fs/{path}`
+- **Create file:** `POST /v1/platform/sessions/{id}/fs/{path}` with `{ "content": "...", "encoding": "text"|"base64" }`
+- **Update file:** `PUT /v1/platform/sessions/{id}/fs/{path}` with `{ "content": "...", "encoding": "text"|"base64" }`
+- **Delete file:** `DELETE /v1/platform/sessions/{id}/fs/{path}`
+- **Create dir:** `POST /v1/platform/sessions/{id}/fs/{path}` with `{ "is_directory": true }`
 
 Binary detection: same as server, null bytes in first 8KB → base64.
 

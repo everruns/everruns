@@ -146,12 +146,12 @@ for unattended work that goes wrong. Each is about one subject, kept in
   Its cost is monitoring spend: only the org and agent budgets pay. No model
   marks the episode unavailable; a bad answer is retried after an hour, three
   times at most.
-- **Dismiss** (`POST /v1/health-issues/{id}/dismiss`) closes a finding with a
+- **Dismiss** (`POST /v1/platform/health-issues/{id}/dismiss`) closes a finding with a
   `note` saying why, kept on its write-up row for calibrating detectors. A dismissed
   session finding stays closed when a detector or classifier says yes about
   the same session again. A dismissed runaway schedule reopens if the schedule
   keeps repeating itself, since that is new evidence.
-- **Platform side.** `GET /v1/system/detections` (`everruns system
+- **Platform side.** `GET /v1/platform/system/detections` (`everruns system
   detections`, platform users only) lists open suspected-abuse findings in
   every org with the Inspector's write-up, for the deployment's operator.
   Suspension still needs a person.
@@ -242,7 +242,7 @@ The window is fixed at 10 messages. Source:
 
 Defaults are constants in code, not environment variables, so every
 deployment starts safe. Org admins change them in **Settings → Limits**
-(`organization_settings.background_limits`, PATCH `/v1/orgs/{org}`). Changing
+(`organization_settings.background_limits`, PATCH `/v1/platform/orgs/{org}`). Changing
 the daily cap updates the live `org_unattended` budget; removing it disables
 that budget. A later SaaS hook can supply per-plan defaults.
 

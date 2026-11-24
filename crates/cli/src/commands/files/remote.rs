@@ -70,7 +70,7 @@ impl RemoteClient {
     ) -> Self {
         Self {
             http: reqwest::Client::new(),
-            base_url: api_url.trim_end_matches('/').to_string(),
+            base_url: format!("{}/v1/platform", api_url.trim_end_matches('/')),
             session_id: session_id.to_string(),
             api_key: api_key.to_string(),
             org_id: org_id
@@ -79,13 +79,24 @@ impl RemoteClient {
         }
     }
 
+    pub async fn connect(
+        api_url: &str,
+        api_key: &str,
+        session_id: &str,
+        org_id: Option<&str>,
+    ) -> Result<Self> {
+        let mut client = Self::new_with_org(api_url, api_key, session_id, org_id);
+        client.base_url = crate::commands::api::management_base_url(&client.http, api_url).await?;
+        Ok(client)
+    }
+
     fn fs_url(&self, path: &str) -> String {
         let clean = path.trim_start_matches('/');
         if clean.is_empty() {
-            format!("{}/v1/sessions/{}/fs", self.base_url, self.session_id)
+            format!("{}/sessions/{}/fs", self.base_url, self.session_id)
         } else {
             format!(
-                "{}/v1/sessions/{}/fs/{}",
+                "{}/sessions/{}/fs/{}",
                 self.base_url, self.session_id, clean
             )
         }
@@ -277,7 +288,7 @@ mod tests {
         let client = test_client();
         assert_eq!(
             client.fs_url("/"),
-            "https://api.example.com/v1/sessions/ses_123/fs"
+            "https://api.example.com/v1/platform/sessions/ses_123/fs"
         );
     }
 
@@ -286,7 +297,7 @@ mod tests {
         let client = test_client();
         assert_eq!(
             client.fs_url("/src/main.rs"),
-            "https://api.example.com/v1/sessions/ses_123/fs/src/main.rs"
+            "https://api.example.com/v1/platform/sessions/ses_123/fs/src/main.rs"
         );
     }
 
@@ -295,7 +306,7 @@ mod tests {
         let client = RemoteClient::new("https://api.example.com/", "key", "ses_1");
         assert_eq!(
             client.fs_url("/file.txt"),
-            "https://api.example.com/v1/sessions/ses_1/fs/file.txt"
+            "https://api.example.com/v1/platform/sessions/ses_1/fs/file.txt"
         );
     }
 

@@ -96,7 +96,7 @@ update_provider_key() {
 
   local response
   local http_code
-  response=$(curl -s -w "\n%{http_code}" -X PATCH "$API_URL/v1/llm-providers/$provider_id" \
+  response=$(curl -s -w "\n%{http_code}" -X PATCH "$API_URL/api/v1/platform/providers/$provider_id" \
     -H "Content-Type: application/json" \
     -d "$payload")
 

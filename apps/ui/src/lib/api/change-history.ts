@@ -1,8 +1,8 @@
 // Change history, restore and manager context API.
 //
-// Routes: GET /v1/history/{ref}, GET /v1/history/{ref}/revisions/{revision},
-// GET /v1/history/{ref}/diff, POST /v1/history/{ref}/restore, and
-// GET/PUT /v1/context/{ref}.
+// Routes: GET /v1/platform/history/{ref}, GET /v1/platform/history/{ref}/revisions/{revision},
+// GET /v1/platform/history/{ref}/diff, POST /v1/platform/history/{ref}/restore, and
+// GET/PUT /v1/platform/context/{ref}.
 //
 // Decision: a change reason is invocation metadata, not a body field. REST
 // routes read it from the `Everruns-Change-Reason` header (UTF-8
@@ -57,7 +57,7 @@ export async function listEntityHistory(
   if (before) params.set("before", before);
   if (kind) params.set("kind", kind);
   const response = await api.get<EntityChange[]>(
-    `/v1/history/${refPath(entityRef)}?${params.toString()}`,
+    `/v1/platform/history/${refPath(entityRef)}?${params.toString()}`,
     ...(signal ? [{ signal }] : []),
   );
   const entries = response.data;
@@ -74,7 +74,7 @@ export async function getEntityRevision(
   kind?: string,
 ): Promise<EntityRevision> {
   const response = await api.get<EntityRevision>(
-    `/v1/history/${refPath(entityRef)}/revisions/${revision}${kind ? `?kind=${encodeURIComponent(kind)}` : ""}`,
+    `/v1/platform/history/${refPath(entityRef)}/revisions/${revision}${kind ? `?kind=${encodeURIComponent(kind)}` : ""}`,
   );
   return response.data;
 }
@@ -91,7 +91,7 @@ export async function diffEntityRevisions(
   if (to !== undefined) params.set("to", String(to));
   if (kind) params.set("kind", kind);
   const response = await api.get<FieldDiff[]>(
-    `/v1/history/${refPath(entityRef)}/diff?${params.toString()}`,
+    `/v1/platform/history/${refPath(entityRef)}/diff?${params.toString()}`,
     ...(signal ? [{ signal }] : []),
   );
   return response.data;
@@ -105,7 +105,7 @@ export async function restoreEntityRevision(
   options?: { expected_revision?: number; fields?: string[]; kind?: string },
 ): Promise<RestoreResult & { revision?: number | null }> {
   const response = await api.post<RestoreResult & { revision?: number | null }>(
-    `/v1/history/${refPath(entityRef)}/restore`,
+    `/v1/platform/history/${refPath(entityRef)}/restore`,
     { revision, ...options },
     changeReasonOptions(reason),
   );
@@ -113,7 +113,7 @@ export async function restoreEntityRevision(
 }
 
 export async function getManagerContext(entityRef: string): Promise<ManagerContext> {
-  const response = await api.get<ManagerContext>(`/v1/context/${refPath(entityRef)}`);
+  const response = await api.get<ManagerContext>(`/v1/platform/context/${refPath(entityRef)}`);
   return response.data;
 }
 
@@ -128,7 +128,7 @@ export async function setManagerContext(
   reason?: string,
 ): Promise<ManagerContext> {
   const response = await api.put<ManagerContext>(
-    `/v1/context/${refPath(entityRef)}`,
+    `/v1/platform/context/${refPath(entityRef)}`,
     { content, expected_revision: expectedRevision },
     changeReasonOptions(reason),
   );

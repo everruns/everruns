@@ -44,7 +44,7 @@ const PERSON_FACING_TOOLS: [&str; 4] = [
 /// The agent a request came from.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
 pub struct RequestingAgent {
-    /// The agent's id, as `/v1/agents/{agent_id}` takes it.
+    /// The agent's id, as `/v1/platform/agents/{agent_id}` takes it.
     #[schema(example = "agent_01933b5a00007000800000000000001")]
     pub id: String,
     /// The agent's display name.

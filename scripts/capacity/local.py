@@ -124,7 +124,7 @@ def bootstrap(lab):
         users = identity_fixture["users"]
         fixtures = []
         for index in range(lab.args.tenants):
-            org = api("/v1/orgs", "POST", {"name": f"Capacity tenant {index}"})
+            org = api("/v1/platform/orgs", "POST", {"name": f"Capacity tenant {index}"})
             org_id = org.get("public_id", org.get("id"))
             if not isinstance(org_id, str) or not re.fullmatch(
                 r"org_[0-9a-f]{32}", org_id
@@ -145,13 +145,13 @@ def bootstrap(lab):
                     )
             lab.psql("\n".join(sql))
             provider = api(
-                "/v1/providers",
+                "/v1/platform/providers",
                 "POST",
                 {"name": "Capacity simulator", "provider_type": "llmsim"},
                 org_id,
             )
             model = api(
-                f"/v1/providers/{provider['id']}/models",
+                f"/v1/platform/providers/{provider['id']}/models",
                 "POST",
                 {
                     "model_id": f"llmsim-capacity-{index}",
@@ -161,12 +161,12 @@ def bootstrap(lab):
                 },
                 org_id,
             )
-            harnesses = api("/v1/harnesses", org=org_id)["data"]
+            harnesses = api("/v1/platform/harnesses", org=org_id)["data"]
             harness = next(
                 (h for h in harnesses if h.get("name") == "base"), harnesses[0]
             )
             agent = api(
-                "/v1/agents",
+                "/v1/platform/agents",
                 "POST",
                 {
                     "name": "capacity-agent",
@@ -178,9 +178,9 @@ def bootstrap(lab):
                 },
                 org_id,
             )
-            console_agent = api("/v1/agents/platform-chat", org=org_id)
+            console_agent = api("/v1/platform/agents/platform-chat", org=org_id)
             api_channel = api(
-                f"/v1/agents/{agent['id']}/channels",
+                f"/v1/platform/agents/{agent['id']}/channels",
                 "POST",
                 {
                     "channel_type": "api",
@@ -190,13 +190,13 @@ def bootstrap(lab):
                 org_id,
             )
             api(
-                f"/v1/agents/{agent['id']}/channels/{api_channel['id']}/publish",
+                f"/v1/platform/agents/{agent['id']}/channels/{api_channel['id']}/publish",
                 "POST",
                 {},
                 org_id,
             )
             key = api(
-                f"/v1/agents/{agent['id']}/channels/{api_channel['id']}/keys",
+                f"/v1/platform/agents/{agent['id']}/channels/{api_channel['id']}/keys",
                 "POST",
                 {"name": "capacity fixture", "permissions": ["sessions", "end_user"]},
                 org_id,
@@ -213,7 +213,7 @@ def bootstrap(lab):
                 ],
             }
             chat = api(
-                f"/v1/agents/{agent['id']}/channels",
+                f"/v1/platform/agents/{agent['id']}/channels",
                 "POST",
                 {
                     "channel_type": "work_chat",
@@ -226,7 +226,7 @@ def bootstrap(lab):
                 org_id,
             )
             api(
-                f"/v1/agents/{agent['id']}/channels/{chat['id']}/publish",
+                f"/v1/platform/agents/{agent['id']}/channels/{chat['id']}/publish",
                 "POST",
                 {},
                 org_id,

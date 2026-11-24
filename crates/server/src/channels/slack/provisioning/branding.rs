@@ -302,7 +302,7 @@ mod tests {
             Arc::new(crate::platform::oss_built_in_harnesses()),
         )
         .with_slack_provisioner(Some(Arc::new(provisioner)));
-        let response = api::agents::routes(state).oneshot(Request::builder().method("PATCH").uri(format!("/v1/agents/{}",agent.public_id))
+        let response = api::agents::routes(state).oneshot(Request::builder().method("PATCH").uri(format!("/v1/platform/agents/{}",agent.public_id))
             .header("content-type","application/json").body(Body::from(json!({"display_name":"Renamed in Everruns","description":"Edited in Everruns"}).to_string())).unwrap()).await.unwrap();
         assert_eq!(response.status(), StatusCode::OK);
         let requests = tokio::time::timeout(std::time::Duration::from_secs(3), async {

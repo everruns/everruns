@@ -483,7 +483,7 @@ pub struct ListAgentMcpAttachments {
     category = "agents",
     description = "List an agent's MCP servers after capability, harness and agent layers are merged, with each server's sign-in state for the caller: whether it works, renews, expires or needs a person to sign in again.",
     method = "GET",
-    path = "/v1/agents/{id}/mcp-attachments",
+    path = "/v1/platform/agents/{id}/mcp-attachments",
     policy = AGENT_VIEW,
     positional = "id",
     cli = CliRoute::new(&["agents", "mcp"], "list").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Check whether an agent's MCP sign-ins still work", "everruns agents mcp list agent_01h9")]),
@@ -705,7 +705,7 @@ pub struct RevokeAgentMcpConnection {
     category = "agents",
     description = "Revoke the caller's own sign-in for an agent's MCP server, or the agent's shared sign-in when the caller has none (needs MCP server management). The attachment stays; sign in again on the agent's MCP sheet.",
     method = "DELETE",
-    path = "/v1/agents/{id}/mcp-attachments/{name}/connection",
+    path = "/v1/platform/agents/{id}/mcp-attachments/{name}/connection",
     policy = AGENT_VIEW,
     cli = CliRoute::new(&["agents", "mcp"], "revoke").with_args(&[CliArg::new("id").at(1), CliArg::new("name").at(2)]).with_examples(&[CliExample::new("Remove the agent's stend sign-in before signing in again", "everruns agents mcp revoke agent_01h9 stend --reason 'Sign-in stopped renewing'")]),
 )]

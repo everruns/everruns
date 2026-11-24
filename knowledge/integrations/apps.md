@@ -44,8 +44,8 @@ New schedules continue to use Agent triggers, which establish the durable workfl
 
 Only two authenticated management-plane operations remain:
 
-- deprecated `GET /v1/apps`
-- deprecated `GET /v1/apps/{app_id}`
+- deprecated `GET /v1/platform/apps`
+- deprecated `GET /v1/platform/apps/{app_id}`
 
 They return frozen records for archival consumers. Create, update, delete, publish, unpublish, channel management, run history, and key rotation operations are retired. App commands are absent from the command inventory and tool catalogs. The `/apps` user interface is removed.
 

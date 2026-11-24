@@ -18,7 +18,7 @@ import { publicChatUrl } from "@/components/agents/channels/channel-summary";
 function ingressPath(kind: ChannelType, channelId: string, agentId?: string): string | null {
   switch (kind) {
     case "voice":
-      return agentId ? `/v1/agents/${agentId}/channels/${channelId}/voice/calls` : null;
+      return agentId ? `/v1/platform/agents/${agentId}/channels/${channelId}/voice/calls` : null;
     case "webhook":
       return `/v1/channels/${channelId}/webhook`;
     case "api":

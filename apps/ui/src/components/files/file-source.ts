@@ -51,7 +51,7 @@ export interface FileSource {
   writes?: FileSourceWrites;
 }
 
-/** A session workspace (`/v1/workspaces/{id}/fs`), rooted at `/workspace`. */
+/** A session workspace (`/v1/platform/workspaces/{id}/fs`), rooted at `/workspace`. */
 export function workspaceFileSource(
   workspaceId: string | undefined,
   {

@@ -41,7 +41,7 @@
     "method": "POST",
     "name": "accept_eval_proposal",
     "output_shape": "unknown",
-    "path": "/v1/eval-proposals/{proposal_id}/accept",
+    "path": "/v1/platform/eval-proposals/{proposal_id}/accept",
     "positional_arg": null,
     "read_only": false
   },
@@ -101,7 +101,7 @@
     "method": "POST",
     "name": "add_knowledge_source",
     "output_shape": "unknown",
-    "path": "/v1/knowledge/{collection_id}/sources",
+    "path": "/v1/platform/knowledge/{collection_id}/sources",
     "positional_arg": null,
     "read_only": false
   },
@@ -135,7 +135,7 @@
     "method": "PUT",
     "name": "add_message_reaction",
     "output_shape": "unknown",
-    "path": "/v1/sessions/{session_id}/messages/{message_id}/reactions/{emoji}",
+    "path": "/v1/platform/sessions/{session_id}/messages/{message_id}/reactions/{emoji}",
     "positional_arg": "session_id",
     "read_only": false
   },
@@ -281,7 +281,7 @@
     "method": "POST",
     "name": "add_room_member",
     "output_shape": "unknown",
-    "path": "/v1/rooms/{room_id}/members",
+    "path": "/v1/platform/rooms/{room_id}/members",
     "positional_arg": null,
     "read_only": false
   },
@@ -362,7 +362,7 @@
     "method": "POST",
     "name": "add_session_participant",
     "output_shape": "unknown",
-    "path": "/v1/sessions/{session_id}/participants",
+    "path": "/v1/platform/sessions/{session_id}/participants",
     "positional_arg": null,
     "read_only": false
   },
@@ -386,7 +386,7 @@
     "method": "POST",
     "name": "adopt_agent_example",
     "output_shape": "unknown",
-    "path": "/v1/agents/import",
+    "path": "/v1/platform/agents/import",
     "positional_arg": "name",
     "read_only": false
   },
@@ -410,7 +410,7 @@
     "method": "POST",
     "name": "adopt_harness_example",
     "output_shape": "unknown",
-    "path": "/v1/harnesses/import",
+    "path": "/v1/platform/harnesses/import",
     "positional_arg": "name",
     "read_only": false
   },
@@ -1022,7 +1022,7 @@
     "method": "POST",
     "name": "analyze_agent",
     "output_shape": "unknown",
-    "path": "/v1/agents/analyze",
+    "path": "/v1/platform/agents/analyze",
     "positional_arg": null,
     "read_only": false
   },
@@ -1058,7 +1058,7 @@
     "method": "POST",
     "name": "append_manager_context",
     "output_shape": "unknown",
-    "path": "/v1/context/{entity_ref}/append",
+    "path": "/v1/platform/context/{entity_ref}/append",
     "positional_arg": "entity_ref",
     "read_only": false
   },
@@ -1082,7 +1082,7 @@
     "method": "POST",
     "name": "apply_finding_fix",
     "output_shape": "unknown",
-    "path": "/v1/evals/fixes/{fix_id}/apply",
+    "path": "/v1/platform/evals/fixes/{fix_id}/apply",
     "positional_arg": null,
     "read_only": false
   },
@@ -1105,7 +1105,7 @@
     "method": "POST",
     "name": "apply_model_preset",
     "output_shape": "unknown",
-    "path": "/v1/model-presets/{id}/apply",
+    "path": "/v1/platform/model-presets/{id}/apply",
     "positional_arg": "id",
     "read_only": false
   },
@@ -1157,7 +1157,7 @@
     "method": "POST",
     "name": "apply_model_selection",
     "output_shape": "unknown",
-    "path": "/v1/models/selection",
+    "path": "/v1/platform/models/selection",
     "positional_arg": null,
     "read_only": false
   },
@@ -1187,7 +1187,7 @@
     "method": "POST",
     "name": "apply_sandbox_template_build",
     "output_shape": "unknown",
-    "path": "/v1/sandbox-template-builds/{id}/apply",
+    "path": "/v1/platform/sandbox-template-builds/{id}/apply",
     "positional_arg": null,
     "read_only": false
   },
@@ -1209,7 +1209,7 @@
     "method": "DELETE",
     "name": "archive_knowledge",
     "output_shape": "unknown",
-    "path": "/v1/knowledge/{collection_id}",
+    "path": "/v1/platform/knowledge/{collection_id}",
     "positional_arg": null,
     "read_only": false
   },
@@ -1235,7 +1235,7 @@
     "method": "POST",
     "name": "archive_room",
     "output_shape": "unknown",
-    "path": "/v1/rooms/{room_id}/archive",
+    "path": "/v1/platform/rooms/{room_id}/archive",
     "positional_arg": null,
     "read_only": false
   },
@@ -1258,7 +1258,7 @@
     "method": "PUT",
     "name": "archive_session",
     "output_shape": "unknown",
-    "path": "/v1/sessions/{session_id}/archive",
+    "path": "/v1/platform/sessions/{session_id}/archive",
     "positional_arg": null,
     "read_only": false
   },
@@ -1323,7 +1323,7 @@
     "method": "POST",
     "name": "backfill_observer",
     "output_shape": "unknown",
-    "path": "/v1/observers/{observer_id}/backfill",
+    "path": "/v1/platform/observers/{observer_id}/backfill",
     "positional_arg": null,
     "read_only": false
   },
@@ -1446,7 +1446,7 @@
     "method": "PUT",
     "name": "batch_set_session_secrets",
     "output_shape": "unknown",
-    "path": "/v1/sessions/{session_id}/storage/secrets",
+    "path": "/v1/platform/sessions/{session_id}/storage/secrets",
     "positional_arg": null,
     "read_only": false
   },
@@ -1571,7 +1571,7 @@
     "method": "PATCH",
     "name": "bulk_update_eval_run_scores",
     "output_shape": "unknown",
-    "path": "/v1/evals/{eval_id}/runs/{run_id}/scores",
+    "path": "/v1/platform/evals/{eval_id}/runs/{run_id}/scores",
     "positional_arg": null,
     "read_only": false
   },
@@ -1599,7 +1599,7 @@
     "method": "POST",
     "name": "cancel_eval_run",
     "output_shape": "unknown",
-    "path": "/v1/evals/{eval_id}/runs/{run_id}/cancel",
+    "path": "/v1/platform/evals/{eval_id}/runs/{run_id}/cancel",
     "positional_arg": null,
     "read_only": false
   },
@@ -1629,7 +1629,7 @@
     "method": "POST",
     "name": "cancel_sandbox_template_build",
     "output_shape": "unknown",
-    "path": "/v1/sandbox-template-builds/{id}/cancel",
+    "path": "/v1/platform/sandbox-template-builds/{id}/cancel",
     "positional_arg": null,
     "read_only": false
   },
@@ -1652,7 +1652,7 @@
     "method": "POST",
     "name": "cancel_session",
     "output_shape": "unknown",
-    "path": "/v1/sessions/{session_id}/cancel",
+    "path": "/v1/platform/sessions/{session_id}/cancel",
     "positional_arg": null,
     "read_only": false
   },
@@ -1680,7 +1680,7 @@
     "method": "POST",
     "name": "cancel_session_task",
     "output_shape": "unknown",
-    "path": "/v1/sessions/{session_id}/tasks/{task_id}/cancel",
+    "path": "/v1/platform/sessions/{session_id}/tasks/{task_id}/cancel",
     "positional_arg": null,
     "read_only": false
   },
@@ -1710,7 +1710,7 @@
     "method": "GET",
     "name": "check_agent_name",
     "output_shape": "unknown",
-    "path": "/v1/agents/check-name",
+    "path": "/v1/platform/agents/check-name",
     "positional_arg": null,
     "read_only": true
   },
@@ -1733,7 +1733,7 @@
     "method": "GET",
     "name": "check_budget",
     "output_shape": "unknown",
-    "path": "/v1/budgets/{budget_id}/check",
+    "path": "/v1/platform/budgets/{budget_id}/check",
     "positional_arg": null,
     "read_only": true
   },
@@ -1796,7 +1796,7 @@
     "method": "POST",
     "name": "check_finding_fix",
     "output_shape": "unknown",
-    "path": "/v1/evals/fixes/{fix_id}/check",
+    "path": "/v1/platform/evals/fixes/{fix_id}/check",
     "positional_arg": null,
     "read_only": false
   },
@@ -1827,7 +1827,7 @@
     "method": "GET",
     "name": "check_harness_name",
     "output_shape": "unknown",
-    "path": "/v1/harnesses/check-name",
+    "path": "/v1/platform/harnesses/check-name",
     "positional_arg": null,
     "read_only": true
   },
@@ -1853,7 +1853,7 @@
     "method": "POST",
     "name": "check_health_issue",
     "output_shape": "unknown",
-    "path": "/v1/health-issues/{issue_id}/check",
+    "path": "/v1/platform/health-issues/{issue_id}/check",
     "positional_arg": null,
     "read_only": false
   },
@@ -1877,7 +1877,7 @@
     "method": "POST",
     "name": "check_mcp_server_connection",
     "output_shape": "unknown",
-    "path": "/v1/mcp-servers/{id}/check-connection",
+    "path": "/v1/platform/mcp-servers/{id}/check-connection",
     "positional_arg": "id",
     "read_only": false
   },
@@ -1919,7 +1919,7 @@
     "method": "POST",
     "name": "check_provider_credentials",
     "output_shape": "unknown",
-    "path": "/v1/providers/check-credentials",
+    "path": "/v1/platform/providers/check-credentials",
     "positional_arg": null,
     "read_only": false
   },
@@ -1942,7 +1942,7 @@
     "method": "GET",
     "name": "check_session_budgets",
     "output_shape": "unknown",
-    "path": "/v1/sessions/{session_id}/budget-check",
+    "path": "/v1/platform/sessions/{session_id}/budget-check",
     "positional_arg": "session_id",
     "read_only": true
   },
@@ -1981,7 +1981,7 @@
     "method": "DELETE",
     "name": "clear_manager_context",
     "output_shape": "unknown",
-    "path": "/v1/context/{entity_ref}",
+    "path": "/v1/platform/context/{entity_ref}",
     "positional_arg": "entity_ref",
     "read_only": false
   },
@@ -2034,7 +2034,7 @@
     "method": "POST",
     "name": "connect_agent_github",
     "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/github/connect",
+    "path": "/v1/platform/agents/{agent_id}/github/connect",
     "positional_arg": null,
     "read_only": false
   },
@@ -2158,7 +2158,7 @@
     "method": "PUT",
     "name": "connect_agent_source",
     "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/source",
+    "path": "/v1/platform/agents/{agent_id}/source",
     "positional_arg": null,
     "read_only": false
   },
@@ -2182,7 +2182,7 @@
     "method": "POST",
     "name": "copy_agent",
     "output_shape": "unknown",
-    "path": "/v1/agents/{id}/copy",
+    "path": "/v1/platform/agents/{id}/copy",
     "positional_arg": "id",
     "read_only": false
   },
@@ -2206,7 +2206,7 @@
     "method": "POST",
     "name": "copy_harness",
     "output_shape": "unknown",
-    "path": "/v1/harnesses/{id}/copy",
+    "path": "/v1/platform/harnesses/{id}/copy",
     "positional_arg": "id",
     "read_only": false
   },
@@ -2258,7 +2258,7 @@
     "method": "POST",
     "name": "copy_workspace_file",
     "output_shape": "unknown",
-    "path": "/v1/sessions/{session_id}/fs/_/copy",
+    "path": "/v1/platform/sessions/{session_id}/fs/_/copy",
     "positional_arg": null,
     "read_only": false
   },
@@ -3526,7 +3526,7 @@
     "method": "POST",
     "name": "create_agent",
     "output_shape": "unknown",
-    "path": "/v1/agents",
+    "path": "/v1/platform/agents",
     "positional_arg": null,
     "read_only": false
   },
@@ -3597,7 +3597,7 @@
     "method": "POST",
     "name": "create_agent_channel",
     "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/channels",
+    "path": "/v1/platform/agents/{agent_id}/channels",
     "positional_arg": null,
     "read_only": false
   },
@@ -3691,7 +3691,7 @@
     "method": "POST",
     "name": "create_agent_credential_binding",
     "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/credentials",
+    "path": "/v1/platform/agents/{agent_id}/credentials",
     "positional_arg": null,
     "read_only": false
   },
@@ -3751,7 +3751,7 @@
     "method": "POST",
     "name": "create_agent_key",
     "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/channels/{channel_id}/keys",
+    "path": "/v1/platform/agents/{agent_id}/channels/{channel_id}/keys",
     "positional_arg": null,
     "read_only": false
   },
@@ -3817,7 +3817,7 @@
     "method": "POST",
     "name": "create_agent_script",
     "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/scripts",
+    "path": "/v1/platform/agents/{agent_id}/scripts",
     "positional_arg": null,
     "read_only": false
   },
@@ -4117,7 +4117,7 @@
     "method": "POST",
     "name": "create_agent_trigger",
     "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/triggers",
+    "path": "/v1/platform/agents/{agent_id}/triggers",
     "positional_arg": null,
     "read_only": false
   },
@@ -4322,7 +4322,7 @@
     "method": "POST",
     "name": "create_budget",
     "output_shape": "unknown",
-    "path": "/v1/budgets",
+    "path": "/v1/platform/budgets",
     "positional_arg": null,
     "read_only": false
   },
@@ -4378,7 +4378,7 @@
     "method": "POST",
     "name": "create_cost_rate",
     "output_shape": "unknown",
-    "path": "/v1/cost-rates",
+    "path": "/v1/platform/cost-rates",
     "positional_arg": null,
     "read_only": false
   },
@@ -4402,7 +4402,7 @@
     "method": "POST",
     "name": "create_declarative_capability",
     "output_shape": "unknown",
-    "path": "/v1/capabilities",
+    "path": "/v1/platform/capabilities",
     "positional_arg": null,
     "read_only": false
   },
@@ -4576,7 +4576,7 @@
     "method": "POST",
     "name": "create_eval",
     "output_shape": "unknown",
-    "path": "/v1/evals",
+    "path": "/v1/platform/evals",
     "positional_arg": null,
     "read_only": false
   },
@@ -5424,7 +5424,7 @@
     "method": "POST",
     "name": "create_eval_case",
     "output_shape": "unknown",
-    "path": "/v1/evals/{eval_id}/cases",
+    "path": "/v1/platform/evals/{eval_id}/cases",
     "positional_arg": null,
     "read_only": false
   },
@@ -5639,7 +5639,7 @@
     "method": "POST",
     "name": "create_eval_experiment",
     "output_shape": "unknown",
-    "path": "/v1/evals/{eval_id}/experiments",
+    "path": "/v1/platform/evals/{eval_id}/experiments",
     "positional_arg": null,
     "read_only": false
   },
@@ -5835,7 +5835,7 @@
     "method": "POST",
     "name": "create_eval_run",
     "output_shape": "unknown",
-    "path": "/v1/evals/{eval_id}/runs",
+    "path": "/v1/platform/evals/{eval_id}/runs",
     "positional_arg": null,
     "read_only": false
   },
@@ -5863,7 +5863,7 @@
     "method": "POST",
     "name": "create_eval_run_share",
     "output_shape": "unknown",
-    "path": "/v1/evals/{eval_id}/runs/{run_id}/share",
+    "path": "/v1/platform/evals/{eval_id}/runs/{run_id}/share",
     "positional_arg": null,
     "read_only": false
   },
@@ -6344,7 +6344,7 @@
     "method": "POST",
     "name": "create_harness",
     "output_shape": "unknown",
-    "path": "/v1/harnesses",
+    "path": "/v1/platform/harnesses",
     "positional_arg": null,
     "read_only": false
   },
@@ -6413,7 +6413,7 @@
     "method": "POST",
     "name": "create_knowledge",
     "output_shape": "unknown",
-    "path": "/v1/knowledge",
+    "path": "/v1/platform/knowledge",
     "positional_arg": null,
     "read_only": false
   },
@@ -6458,7 +6458,7 @@
     "method": "POST",
     "name": "create_knowledge_indexer",
     "output_shape": "unknown",
-    "path": "/v1/knowledge-indexers",
+    "path": "/v1/platform/knowledge-indexers",
     "positional_arg": null,
     "read_only": false
   },
@@ -6640,7 +6640,7 @@
     "method": "POST",
     "name": "create_mcp_server",
     "output_shape": "unknown",
-    "path": "/v1/mcp-servers",
+    "path": "/v1/platform/mcp-servers",
     "positional_arg": null,
     "read_only": false
   },
@@ -6818,7 +6818,7 @@
     "method": "POST",
     "name": "create_memory",
     "output_shape": "unknown",
-    "path": "/v1/memories",
+    "path": "/v1/platform/memories",
     "positional_arg": null,
     "read_only": false
   },
@@ -7387,7 +7387,7 @@
     "method": "POST",
     "name": "create_message",
     "output_shape": "unknown",
-    "path": "/v1/sessions/{session_id}/messages",
+    "path": "/v1/platform/sessions/{session_id}/messages",
     "positional_arg": null,
     "read_only": false
   },
@@ -7468,7 +7468,7 @@
     "method": "POST",
     "name": "create_model",
     "output_shape": "unknown",
-    "path": "/v1/providers/{provider_id}/models",
+    "path": "/v1/platform/providers/{provider_id}/models",
     "positional_arg": null,
     "read_only": false
   },
@@ -7566,7 +7566,7 @@
     "method": "POST",
     "name": "create_model_preset",
     "output_shape": "unknown",
-    "path": "/v1/model-presets",
+    "path": "/v1/platform/model-presets",
     "positional_arg": null,
     "read_only": false
   },
@@ -8286,7 +8286,7 @@
     "method": "POST",
     "name": "create_observer",
     "output_shape": "unknown",
-    "path": "/v1/observers",
+    "path": "/v1/platform/observers",
     "positional_arg": null,
     "read_only": false
   },
@@ -8323,7 +8323,7 @@
     "method": "POST",
     "name": "create_plugin_marketplace",
     "output_shape": "unknown",
-    "path": "/v1/plugin_marketplaces",
+    "path": "/v1/platform/plugin_marketplaces",
     "positional_arg": null,
     "read_only": false
   },
@@ -8462,7 +8462,7 @@
     "method": "POST",
     "name": "create_provider",
     "output_shape": "unknown",
-    "path": "/v1/providers",
+    "path": "/v1/platform/providers",
     "positional_arg": null,
     "read_only": false
   },
@@ -8669,7 +8669,7 @@
     "method": "POST",
     "name": "create_room",
     "output_shape": "unknown",
-    "path": "/v1/rooms",
+    "path": "/v1/platform/rooms",
     "positional_arg": null,
     "read_only": false
   },
@@ -8785,7 +8785,7 @@
     "method": "POST",
     "name": "create_schedule",
     "output_shape": "unknown",
-    "path": "/v1/durable/schedules",
+    "path": "/v1/platform/durable/schedules",
     "positional_arg": null,
     "read_only": false
   },
@@ -9069,7 +9069,7 @@
     "method": "POST",
     "name": "create_scoped_credential",
     "output_shape": "unknown",
-    "path": "/v1/credential-bindings",
+    "path": "/v1/platform/credential-bindings",
     "positional_arg": null,
     "read_only": false
   },
@@ -10207,7 +10207,7 @@
     "method": "POST",
     "name": "create_session",
     "output_shape": "unknown",
-    "path": "/v1/sessions",
+    "path": "/v1/platform/sessions",
     "positional_arg": null,
     "read_only": false
   },
@@ -10235,7 +10235,7 @@
     "method": "POST",
     "name": "create_session_database",
     "output_shape": "unknown",
-    "path": "/v1/sessions/{session_id}/databases",
+    "path": "/v1/platform/sessions/{session_id}/databases",
     "positional_arg": null,
     "read_only": false
   },
@@ -10260,7 +10260,7 @@
     "method": "POST",
     "name": "create_skill",
     "output_shape": "unknown",
-    "path": "/v1/skills",
+    "path": "/v1/platform/skills",
     "positional_arg": null,
     "read_only": false
   },
@@ -10310,7 +10310,7 @@
     "method": "POST",
     "name": "create_task_push_config",
     "output_shape": "unknown",
-    "path": "/v1/sessions/{session_id}/tasks/{task_id}/push-configs",
+    "path": "/v1/platform/sessions/{session_id}/tasks/{task_id}/push-configs",
     "positional_arg": null,
     "read_only": false
   },
@@ -10380,7 +10380,7 @@
     "method": "POST",
     "name": "create_virtual_user",
     "output_shape": "unknown",
-    "path": "/v1/virtual-users",
+    "path": "/v1/platform/virtual-users",
     "positional_arg": null,
     "read_only": false
   },
@@ -10455,7 +10455,7 @@
     "method": "POST",
     "name": "create_workspace_file",
     "output_shape": "unknown",
-    "path": "/v1/sessions/{session_id}/fs/{path}",
+    "path": "/v1/platform/sessions/{session_id}/fs/{path}",
     "positional_arg": null,
     "read_only": false
   },
@@ -10479,7 +10479,7 @@
     "method": "DELETE",
     "name": "delete_agent",
     "output_shape": "unknown",
-    "path": "/v1/agents/{id}",
+    "path": "/v1/platform/agents/{id}",
     "positional_arg": "id",
     "read_only": false
   },
@@ -10507,7 +10507,7 @@
     "method": "DELETE",
     "name": "delete_agent_channel",
     "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/channels/{channel_id}",
+    "path": "/v1/platform/agents/{agent_id}/channels/{channel_id}",
     "positional_arg": null,
     "read_only": false
   },
@@ -10531,7 +10531,7 @@
     "method": "DELETE",
     "name": "delete_agent_check_rule",
     "output_shape": "unknown",
-    "path": "/v1/agents/check-rules/{rule_id}",
+    "path": "/v1/platform/agents/check-rules/{rule_id}",
     "positional_arg": null,
     "read_only": false
   },
@@ -10560,7 +10560,7 @@
     "method": "DELETE",
     "name": "delete_agent_script",
     "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/scripts/{script_id}",
+    "path": "/v1/platform/agents/{agent_id}/scripts/{script_id}",
     "positional_arg": null,
     "read_only": false
   },
@@ -10589,7 +10589,7 @@
     "method": "DELETE",
     "name": "delete_agent_trigger",
     "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/triggers/{trigger_id}",
+    "path": "/v1/platform/agents/{agent_id}/triggers/{trigger_id}",
     "positional_arg": null,
     "read_only": false
   },
@@ -10612,7 +10612,7 @@
     "method": "DELETE",
     "name": "delete_budget",
     "output_shape": "unknown",
-    "path": "/v1/budgets/{budget_id}",
+    "path": "/v1/platform/budgets/{budget_id}",
     "positional_arg": "budget_id",
     "read_only": false
   },
@@ -10635,7 +10635,7 @@
     "method": "DELETE",
     "name": "delete_declarative_capability",
     "output_shape": "unknown",
-    "path": "/v1/capabilities/declarative/{id}",
+    "path": "/v1/platform/capabilities/declarative/{id}",
     "positional_arg": "id",
     "read_only": false
   },
@@ -10658,7 +10658,7 @@
     "method": "DELETE",
     "name": "delete_eval",
     "output_shape": "unknown",
-    "path": "/v1/evals/{eval_id}",
+    "path": "/v1/platform/evals/{eval_id}",
     "positional_arg": null,
     "read_only": false
   },
@@ -10686,7 +10686,7 @@
     "method": "DELETE",
     "name": "delete_eval_case",
     "output_shape": "unknown",
-    "path": "/v1/evals/{eval_id}/cases/{case_id}",
+    "path": "/v1/platform/evals/{eval_id}/cases/{case_id}",
     "positional_arg": null,
     "read_only": false
   },
@@ -10710,7 +10710,7 @@
     "method": "DELETE",
     "name": "delete_harness",
     "output_shape": "unknown",
-    "path": "/v1/harnesses/{id}",
+    "path": "/v1/platform/harnesses/{id}",
     "positional_arg": "id",
     "read_only": false
   },
@@ -10736,7 +10736,7 @@
     "method": "DELETE",
     "name": "delete_knowledge_file",
     "output_shape": "unknown",
-    "path": "/v1/knowledge/{collection_id}/files",
+    "path": "/v1/platform/knowledge/{collection_id}/files",
     "positional_arg": null,
     "read_only": false
   },
@@ -10760,7 +10760,7 @@
     "method": "DELETE",
     "name": "delete_mcp_server",
     "output_shape": "unknown",
-    "path": "/v1/mcp-servers/{id}",
+    "path": "/v1/platform/mcp-servers/{id}",
     "positional_arg": "id",
     "read_only": false
   },
@@ -10783,7 +10783,7 @@
     "method": "DELETE",
     "name": "delete_memory",
     "output_shape": "unknown",
-    "path": "/v1/memories/{memory_id}",
+    "path": "/v1/platform/memories/{memory_id}",
     "positional_arg": null,
     "read_only": false
   },
@@ -10806,7 +10806,7 @@
     "method": "DELETE",
     "name": "delete_model",
     "output_shape": "unknown",
-    "path": "/v1/models/{id}",
+    "path": "/v1/platform/models/{id}",
     "positional_arg": "id",
     "read_only": false
   },
@@ -10829,7 +10829,7 @@
     "method": "DELETE",
     "name": "delete_model_preset",
     "output_shape": "unknown",
-    "path": "/v1/model-presets/{id}",
+    "path": "/v1/platform/model-presets/{id}",
     "positional_arg": null,
     "read_only": false
   },
@@ -10852,7 +10852,7 @@
     "method": "DELETE",
     "name": "delete_observer",
     "output_shape": "unknown",
-    "path": "/v1/observers/{observer_id}",
+    "path": "/v1/platform/observers/{observer_id}",
     "positional_arg": null,
     "read_only": false
   },
@@ -10876,7 +10876,7 @@
     "method": "DELETE",
     "name": "delete_plugin_marketplace",
     "output_shape": "unknown",
-    "path": "/v1/plugin_marketplaces/{id}",
+    "path": "/v1/platform/plugin_marketplaces/{id}",
     "positional_arg": "id",
     "read_only": false
   },
@@ -10899,7 +10899,7 @@
     "method": "DELETE",
     "name": "delete_provider",
     "output_shape": "unknown",
-    "path": "/v1/providers/{id}",
+    "path": "/v1/platform/providers/{id}",
     "positional_arg": "id",
     "read_only": false
   },
@@ -10941,7 +10941,7 @@
     "method": "DELETE",
     "name": "delete_room_file",
     "output_shape": "unknown",
-    "path": "/v1/rooms/{room_id}/files",
+    "path": "/v1/platform/rooms/{room_id}/files",
     "positional_arg": "room_id",
     "read_only": false
   },
@@ -10973,7 +10973,7 @@
     "method": "DELETE",
     "name": "delete_room_message",
     "output_shape": "unknown",
-    "path": "/v1/rooms/{room_id}/messages/{message_id}",
+    "path": "/v1/platform/rooms/{room_id}/messages/{message_id}",
     "positional_arg": null,
     "read_only": false
   },
@@ -10997,7 +10997,7 @@
     "method": "DELETE",
     "name": "delete_schedule",
     "output_shape": "unknown",
-    "path": "/v1/durable/schedules/{schedule_id}",
+    "path": "/v1/platform/durable/schedules/{schedule_id}",
     "positional_arg": null,
     "read_only": false
   },
@@ -11020,7 +11020,7 @@
     "method": "DELETE",
     "name": "delete_session",
     "output_shape": "unknown",
-    "path": "/v1/sessions/{session_id}",
+    "path": "/v1/platform/sessions/{session_id}",
     "positional_arg": null,
     "read_only": false
   },
@@ -11048,7 +11048,7 @@
     "method": "DELETE",
     "name": "delete_session_database",
     "output_shape": "unknown",
-    "path": "/v1/sessions/{session_id}/databases/{name}",
+    "path": "/v1/platform/sessions/{session_id}/databases/{name}",
     "positional_arg": null,
     "read_only": false
   },
@@ -11079,7 +11079,7 @@
     "method": "DELETE",
     "name": "delete_session_secret",
     "output_shape": "unknown",
-    "path": "/v1/sessions/{session_id}/storage/secrets/{name}",
+    "path": "/v1/platform/sessions/{session_id}/storage/secrets/{name}",
     "positional_arg": null,
     "read_only": false
   },
@@ -11103,7 +11103,7 @@
     "method": "DELETE",
     "name": "delete_skill",
     "output_shape": "unknown",
-    "path": "/v1/skills/{id}",
+    "path": "/v1/platform/skills/{id}",
     "positional_arg": "id",
     "read_only": false
   },
@@ -11136,7 +11136,7 @@
     "method": "DELETE",
     "name": "delete_task_push_config",
     "output_shape": "unknown",
-    "path": "/v1/sessions/{session_id}/tasks/{task_id}/push-configs/{config_id}",
+    "path": "/v1/platform/sessions/{session_id}/tasks/{task_id}/push-configs/{config_id}",
     "positional_arg": null,
     "read_only": false
   },
@@ -11160,7 +11160,7 @@
     "method": "DELETE",
     "name": "delete_virtual_user",
     "output_shape": "unknown",
-    "path": "/v1/virtual-users/{identity_id}",
+    "path": "/v1/platform/virtual-users/{identity_id}",
     "positional_arg": "id",
     "read_only": false
   },
@@ -11183,7 +11183,7 @@
     "method": "DELETE",
     "name": "delete_workspace",
     "output_shape": "unknown",
-    "path": "/v1/workspaces/{workspace_id}",
+    "path": "/v1/platform/workspaces/{workspace_id}",
     "positional_arg": "workspace_id",
     "read_only": false
   },
@@ -11215,7 +11215,7 @@
     "method": "DELETE",
     "name": "delete_workspace_file",
     "output_shape": "unknown",
-    "path": "/v1/sessions/{session_id}/fs/{path}",
+    "path": "/v1/platform/sessions/{session_id}/fs/{path}",
     "positional_arg": null,
     "read_only": false
   },
@@ -11239,7 +11239,7 @@
     "method": "POST",
     "name": "destroy_agent",
     "output_shape": "unknown",
-    "path": "/v1/agents/{id}/delete",
+    "path": "/v1/platform/agents/{id}/delete",
     "positional_arg": "id",
     "read_only": false
   },
@@ -11262,7 +11262,7 @@
     "method": "POST",
     "name": "destroy_declarative_capability",
     "output_shape": "unknown",
-    "path": "/v1/capabilities/declarative/{id}/delete",
+    "path": "/v1/platform/capabilities/declarative/{id}/delete",
     "positional_arg": "id",
     "read_only": false
   },
@@ -11286,7 +11286,7 @@
     "method": "POST",
     "name": "destroy_harness",
     "output_shape": "unknown",
-    "path": "/v1/harnesses/{id}/delete",
+    "path": "/v1/platform/harnesses/{id}/delete",
     "positional_arg": "id",
     "read_only": false
   },
@@ -11310,7 +11310,7 @@
     "method": "POST",
     "name": "destroy_mcp_server",
     "output_shape": "unknown",
-    "path": "/v1/mcp-servers/{id}/delete",
+    "path": "/v1/platform/mcp-servers/{id}/delete",
     "positional_arg": "id",
     "read_only": false
   },
@@ -11334,7 +11334,7 @@
     "method": "POST",
     "name": "destroy_skill",
     "output_shape": "unknown",
-    "path": "/v1/skills/{id}/delete",
+    "path": "/v1/platform/skills/{id}/delete",
     "positional_arg": "id",
     "read_only": false
   },
@@ -11358,7 +11358,7 @@
     "method": "POST",
     "name": "destroy_virtual_user",
     "output_shape": "unknown",
-    "path": "/v1/virtual-users/{identity_id}/delete",
+    "path": "/v1/platform/virtual-users/{identity_id}/delete",
     "positional_arg": "id",
     "read_only": false
   },
@@ -11382,7 +11382,7 @@
     "method": "GET",
     "name": "diagnose_sandbox",
     "output_shape": "unknown",
-    "path": "/v1/sandboxes/{id}/diagnosis",
+    "path": "/v1/platform/sandboxes/{id}/diagnosis",
     "positional_arg": "id",
     "read_only": true
   },
@@ -11425,7 +11425,7 @@
     "method": "POST",
     "name": "diff_agent_package",
     "output_shape": "unknown",
-    "path": "/v1/agents/diff",
+    "path": "/v1/platform/agents/diff",
     "positional_arg": "file",
     "read_only": true
   },
@@ -11470,7 +11470,7 @@
     "method": "GET",
     "name": "diff_entity_revisions",
     "output_shape": "array",
-    "path": "/v1/history/{entity_ref}/diff",
+    "path": "/v1/platform/history/{entity_ref}/diff",
     "positional_arg": "entity_ref",
     "read_only": true
   },
@@ -11494,7 +11494,7 @@
     "method": "DELETE",
     "name": "disable_external_agent",
     "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/external-worker",
+    "path": "/v1/platform/agents/{agent_id}/external-worker",
     "positional_arg": null,
     "read_only": false
   },
@@ -11524,7 +11524,7 @@
     "method": "POST",
     "name": "discard_sandbox_template_build",
     "output_shape": "unknown",
-    "path": "/v1/sandbox-template-builds/{id}/discard",
+    "path": "/v1/platform/sandbox-template-builds/{id}/discard",
     "positional_arg": null,
     "read_only": false
   },
@@ -11548,7 +11548,7 @@
     "method": "DELETE",
     "name": "disconnect_agent_github",
     "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/github",
+    "path": "/v1/platform/agents/{agent_id}/github",
     "positional_arg": null,
     "read_only": false
   },
@@ -11570,7 +11570,7 @@
     "method": "DELETE",
     "name": "disconnect_agent_source",
     "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/source",
+    "path": "/v1/platform/agents/{agent_id}/source",
     "positional_arg": null,
     "read_only": false
   },
@@ -11616,7 +11616,7 @@
     "method": "POST",
     "name": "dismiss_eval_proposal",
     "output_shape": "unknown",
-    "path": "/v1/eval-proposals/{proposal_id}/dismiss",
+    "path": "/v1/platform/eval-proposals/{proposal_id}/dismiss",
     "positional_arg": null,
     "read_only": false
   },
@@ -11665,7 +11665,7 @@
     "method": "POST",
     "name": "dismiss_health_issue",
     "output_shape": "unknown",
-    "path": "/v1/health-issues/{issue_id}/dismiss",
+    "path": "/v1/platform/health-issues/{issue_id}/dismiss",
     "positional_arg": null,
     "read_only": false
   },
@@ -11878,7 +11878,7 @@
     "method": "POST",
     "name": "draft_agent",
     "output_shape": "unknown",
-    "path": "/v1/agents/draft",
+    "path": "/v1/platform/agents/draft",
     "positional_arg": null,
     "read_only": false
   },
@@ -11933,7 +11933,7 @@
     "method": "POST",
     "name": "dry_run_guardrails",
     "output_shape": "unknown",
-    "path": "/v1/capabilities/guardrails/dry-run",
+    "path": "/v1/platform/capabilities/guardrails/dry-run",
     "positional_arg": null,
     "read_only": false
   },
@@ -11997,7 +11997,7 @@
     "method": "POST",
     "name": "edit_room_file",
     "output_shape": "unknown",
-    "path": "/v1/rooms/{room_id}/files/edit",
+    "path": "/v1/platform/rooms/{room_id}/files/edit",
     "positional_arg": null,
     "read_only": false
   },
@@ -12033,7 +12033,7 @@
     "method": "PATCH",
     "name": "edit_room_message",
     "output_shape": "unknown",
-    "path": "/v1/rooms/{room_id}/messages/{message_id}",
+    "path": "/v1/platform/rooms/{room_id}/messages/{message_id}",
     "positional_arg": null,
     "read_only": false
   },
@@ -12047,7 +12047,7 @@
     "method": "POST",
     "name": "ensure_platform_chat",
     "output_shape": "unknown",
-    "path": "/v1/sessions/platform-chat",
+    "path": "/v1/platform/sessions/platform-chat",
     "positional_arg": null,
     "read_only": false
   },
@@ -12062,7 +12062,7 @@
     "method": "GET",
     "name": "eval_import_preflight",
     "output_shape": "unknown",
-    "path": "/v1/evals/import/preflight",
+    "path": "/v1/platform/evals/import/preflight",
     "positional_arg": null,
     "read_only": true
   },
@@ -12086,7 +12086,7 @@
     "method": "GET",
     "name": "events_summary",
     "output_shape": "unknown",
-    "path": "/v1/sessions/{session_id}/events/summary",
+    "path": "/v1/platform/sessions/{session_id}/events/summary",
     "positional_arg": "session_id",
     "read_only": true
   },
@@ -12124,7 +12124,7 @@
     "method": "GET",
     "name": "export_agent",
     "output_shape": "unknown",
-    "path": "/v1/agents/{id}/export",
+    "path": "/v1/platform/agents/{id}/export",
     "positional_arg": "id",
     "read_only": false
   },
@@ -12152,7 +12152,7 @@
     "method": "GET",
     "name": "export_eval_run_artifacts",
     "output_shape": "unknown",
-    "path": "/v1/evals/{eval_id}/runs/{run_id}/artifacts",
+    "path": "/v1/platform/evals/{eval_id}/runs/{run_id}/artifacts",
     "positional_arg": null,
     "read_only": true
   },
@@ -12195,7 +12195,7 @@
           "type": "string"
         },
         "ExportEvalRunDatasetRequest": {
-          "description": "Request body for `POST /v1/evals/{eval_id}/runs/{run_id}/dataset`.",
+          "description": "Request body for `POST /v1/platform/evals/{eval_id}/runs/{run_id}/dataset`.",
           "properties": {
             "filters": {
               "$ref": "#/$defs/DatasetFilters",
@@ -12251,7 +12251,7 @@
     "method": "POST",
     "name": "export_eval_run_dataset",
     "output_shape": "unknown",
-    "path": "/v1/evals/{eval_id}/runs/{run_id}/dataset",
+    "path": "/v1/platform/evals/{eval_id}/runs/{run_id}/dataset",
     "positional_arg": null,
     "read_only": false
   },
@@ -12274,7 +12274,7 @@
     "method": "GET",
     "name": "export_eval_samples",
     "output_shape": "unknown",
-    "path": "/v1/evals/{eval_id}/samples",
+    "path": "/v1/platform/evals/{eval_id}/samples",
     "positional_arg": null,
     "read_only": true
   },
@@ -12311,7 +12311,7 @@
     "method": "GET",
     "name": "export_session_messages",
     "output_shape": "unknown",
-    "path": "/v1/sessions/{session_id}/export",
+    "path": "/v1/platform/sessions/{session_id}/export",
     "positional_arg": "session_id",
     "read_only": true
   },
@@ -12427,7 +12427,7 @@
     "method": "POST",
     "name": "fork_session",
     "output_shape": "unknown",
-    "path": "/v1/sessions/{session_id}/fork",
+    "path": "/v1/platform/sessions/{session_id}/fork",
     "positional_arg": null,
     "read_only": false
   },
@@ -12482,7 +12482,7 @@
     "method": "GET",
     "name": "gate_eval_experiment",
     "output_shape": "unknown",
-    "path": "/v1/evals/{eval_id}/experiments/{experiment_id}/gate",
+    "path": "/v1/platform/evals/{eval_id}/experiments/{experiment_id}/gate",
     "positional_arg": null,
     "read_only": true
   },
@@ -12537,7 +12537,7 @@
     "method": "POST",
     "name": "generate_agent_avatar",
     "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/avatar/generate",
+    "path": "/v1/platform/agents/{agent_id}/avatar/generate",
     "positional_arg": "agent_id",
     "read_only": false
   },
@@ -12560,7 +12560,7 @@
     "method": "GET",
     "name": "get_account_profile",
     "output_shape": "unknown",
-    "path": "/v1/users/{id}/profile",
+    "path": "/v1/platform/users/{id}/profile",
     "positional_arg": null,
     "read_only": true
   },
@@ -12584,7 +12584,7 @@
     "method": "GET",
     "name": "get_agent",
     "output_shape": "unknown",
-    "path": "/v1/agents/{id}",
+    "path": "/v1/platform/agents/{id}",
     "positional_arg": "id",
     "read_only": true
   },
@@ -12612,7 +12612,7 @@
     "method": "GET",
     "name": "get_agent_channel",
     "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/channels/{channel_id}",
+    "path": "/v1/platform/agents/{agent_id}/channels/{channel_id}",
     "positional_arg": null,
     "read_only": true
   },
@@ -12635,7 +12635,7 @@
     "method": "GET",
     "name": "get_agent_cost",
     "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/costs",
+    "path": "/v1/platform/agents/{agent_id}/costs",
     "positional_arg": "agent_id",
     "read_only": true
   },
@@ -12659,7 +12659,7 @@
     "method": "GET",
     "name": "get_agent_github",
     "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/github",
+    "path": "/v1/platform/agents/{agent_id}/github",
     "positional_arg": null,
     "read_only": true
   },
@@ -12688,7 +12688,7 @@
     "method": "GET",
     "name": "get_agent_health_check_run",
     "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/health-checks/{run_id}",
+    "path": "/v1/platform/agents/{agent_id}/health-checks/{run_id}",
     "positional_arg": null,
     "read_only": true
   },
@@ -12717,7 +12717,7 @@
     "method": "GET",
     "name": "get_agent_script",
     "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/scripts/{script_id}",
+    "path": "/v1/platform/agents/{agent_id}/scripts/{script_id}",
     "positional_arg": null,
     "read_only": true
   },
@@ -12739,7 +12739,7 @@
     "method": "GET",
     "name": "get_agent_source",
     "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/source",
+    "path": "/v1/platform/agents/{agent_id}/source",
     "positional_arg": null,
     "read_only": true
   },
@@ -12816,7 +12816,7 @@
     "method": "POST",
     "name": "get_agent_source_options",
     "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/source/options",
+    "path": "/v1/platform/agents/{agent_id}/source/options",
     "positional_arg": null,
     "read_only": true
   },
@@ -12845,7 +12845,7 @@
     "method": "GET",
     "name": "get_agent_trigger",
     "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/triggers/{trigger_id}",
+    "path": "/v1/platform/agents/{agent_id}/triggers/{trigger_id}",
     "positional_arg": null,
     "read_only": true
   },
@@ -12875,7 +12875,7 @@
     "method": "GET",
     "name": "get_agent_view_settings",
     "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/view",
+    "path": "/v1/platform/agents/{agent_id}/view",
     "positional_arg": null,
     "read_only": true
   },
@@ -12898,7 +12898,7 @@
     "method": "GET",
     "name": "get_budget",
     "output_shape": "unknown",
-    "path": "/v1/budgets/{budget_id}",
+    "path": "/v1/platform/budgets/{budget_id}",
     "positional_arg": "budget_id",
     "read_only": true
   },
@@ -12922,7 +12922,7 @@
     "method": "GET",
     "name": "get_capability",
     "output_shape": "unknown",
-    "path": "/v1/capabilities/{id}",
+    "path": "/v1/platform/capabilities/{id}",
     "positional_arg": "id",
     "read_only": true
   },
@@ -12936,7 +12936,7 @@
     "method": "GET",
     "name": "get_cost_settings",
     "output_shape": "unknown",
-    "path": "/v1/costs/settings",
+    "path": "/v1/platform/costs/settings",
     "positional_arg": null,
     "read_only": true
   },
@@ -12976,7 +12976,7 @@
     "method": "GET",
     "name": "get_cost_summary",
     "output_shape": "unknown",
-    "path": "/v1/costs/summary",
+    "path": "/v1/platform/costs/summary",
     "positional_arg": null,
     "read_only": true
   },
@@ -12999,7 +12999,7 @@
     "method": "GET",
     "name": "get_declarative_capability",
     "output_shape": "unknown",
-    "path": "/v1/capabilities/declarative/{id}",
+    "path": "/v1/platform/capabilities/declarative/{id}",
     "positional_arg": "id",
     "read_only": true
   },
@@ -13014,7 +13014,7 @@
     "method": "GET",
     "name": "get_default_decision_model",
     "output_shape": "unknown",
-    "path": "/v1/models/decision-default",
+    "path": "/v1/platform/models/decision-default",
     "positional_arg": null,
     "read_only": true
   },
@@ -13029,7 +13029,7 @@
     "method": "GET",
     "name": "get_default_image_model",
     "output_shape": "unknown",
-    "path": "/v1/models/images-default",
+    "path": "/v1/platform/models/images-default",
     "positional_arg": null,
     "read_only": true
   },
@@ -13044,7 +13044,7 @@
     "method": "GET",
     "name": "get_default_model",
     "output_shape": "unknown",
-    "path": "/v1/models/default",
+    "path": "/v1/platform/models/default",
     "positional_arg": null,
     "read_only": true
   },
@@ -13067,7 +13067,7 @@
     "method": "GET",
     "name": "get_eval",
     "output_shape": "unknown",
-    "path": "/v1/evals/{eval_id}",
+    "path": "/v1/platform/evals/{eval_id}",
     "positional_arg": "eval_id",
     "read_only": true
   },
@@ -13095,7 +13095,7 @@
     "method": "GET",
     "name": "get_eval_case",
     "output_shape": "unknown",
-    "path": "/v1/evals/{eval_id}/cases/{case_id}",
+    "path": "/v1/platform/evals/{eval_id}/cases/{case_id}",
     "positional_arg": null,
     "read_only": true
   },
@@ -13123,7 +13123,7 @@
     "method": "GET",
     "name": "get_eval_experiment",
     "output_shape": "unknown",
-    "path": "/v1/evals/{eval_id}/experiments/{experiment_id}",
+    "path": "/v1/platform/evals/{eval_id}/experiments/{experiment_id}",
     "positional_arg": null,
     "read_only": true
   },
@@ -13151,7 +13151,7 @@
     "method": "GET",
     "name": "get_eval_run",
     "output_shape": "unknown",
-    "path": "/v1/evals/{eval_id}/runs/{run_id}",
+    "path": "/v1/platform/evals/{eval_id}/runs/{run_id}",
     "positional_arg": null,
     "read_only": true
   },
@@ -13185,7 +13185,7 @@
     "method": "GET",
     "name": "get_eval_run_dataset",
     "output_shape": "unknown",
-    "path": "/v1/evals/{eval_id}/runs/{run_id}/dataset/{dataset_id}",
+    "path": "/v1/platform/evals/{eval_id}/runs/{run_id}/dataset/{dataset_id}",
     "positional_arg": null,
     "read_only": true
   },
@@ -13213,7 +13213,7 @@
     "method": "GET",
     "name": "get_eval_run_share",
     "output_shape": "unknown",
-    "path": "/v1/evals/{eval_id}/runs/{run_id}/share",
+    "path": "/v1/platform/evals/{eval_id}/runs/{run_id}/share",
     "positional_arg": null,
     "read_only": true
   },
@@ -13237,7 +13237,7 @@
     "method": "GET",
     "name": "get_execution",
     "output_shape": "unknown",
-    "path": "/v1/durable/executions/{execution_id}",
+    "path": "/v1/platform/durable/executions/{execution_id}",
     "positional_arg": "execution_id",
     "read_only": true
   },
@@ -13261,7 +13261,7 @@
     "method": "GET",
     "name": "get_external_agent",
     "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/external-worker",
+    "path": "/v1/platform/agents/{agent_id}/external-worker",
     "positional_arg": null,
     "read_only": true
   },
@@ -13285,7 +13285,7 @@
     "method": "GET",
     "name": "get_harness",
     "output_shape": "unknown",
-    "path": "/v1/harnesses/{id}",
+    "path": "/v1/platform/harnesses/{id}",
     "positional_arg": "id",
     "read_only": true
   },
@@ -13311,7 +13311,7 @@
     "method": "GET",
     "name": "get_health_issue",
     "output_shape": "unknown",
-    "path": "/v1/health-issues/{issue_id}",
+    "path": "/v1/platform/health-issues/{issue_id}",
     "positional_arg": null,
     "read_only": true
   },
@@ -13334,7 +13334,7 @@
     "method": "GET",
     "name": "get_image",
     "output_shape": "unknown",
-    "path": "/v1/images/{id}",
+    "path": "/v1/platform/images/{id}",
     "positional_arg": "id",
     "read_only": true
   },
@@ -13356,7 +13356,7 @@
     "method": "GET",
     "name": "get_knowledge",
     "output_shape": "unknown",
-    "path": "/v1/knowledge/{collection_id}",
+    "path": "/v1/platform/knowledge/{collection_id}",
     "positional_arg": null,
     "read_only": true
   },
@@ -13380,7 +13380,7 @@
     "method": "GET",
     "name": "get_latest_agent_health_check_run",
     "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/health-checks/latest",
+    "path": "/v1/platform/agents/{agent_id}/health-checks/latest",
     "positional_arg": null,
     "read_only": true
   },
@@ -13411,7 +13411,7 @@
     "method": "GET",
     "name": "get_manager_context",
     "output_shape": "unknown",
-    "path": "/v1/context/{entity_ref}",
+    "path": "/v1/platform/context/{entity_ref}",
     "positional_arg": "entity_ref",
     "read_only": true
   },
@@ -13435,7 +13435,7 @@
     "method": "GET",
     "name": "get_marketplace_catalog",
     "output_shape": "unknown",
-    "path": "/v1/plugin_marketplaces/{id}/plugins",
+    "path": "/v1/platform/plugin_marketplaces/{id}/plugins",
     "positional_arg": "id",
     "read_only": true
   },
@@ -13459,7 +13459,7 @@
     "method": "GET",
     "name": "get_mcp_server",
     "output_shape": "unknown",
-    "path": "/v1/mcp-servers/{id}",
+    "path": "/v1/platform/mcp-servers/{id}",
     "positional_arg": "id",
     "read_only": true
   },
@@ -13482,7 +13482,7 @@
     "method": "GET",
     "name": "get_memory",
     "output_shape": "unknown",
-    "path": "/v1/memories/{memory_id}",
+    "path": "/v1/platform/memories/{memory_id}",
     "positional_arg": "memory_id",
     "read_only": true
   },
@@ -13505,7 +13505,7 @@
     "method": "GET",
     "name": "get_model",
     "output_shape": "unknown",
-    "path": "/v1/models/{id}",
+    "path": "/v1/platform/models/{id}",
     "positional_arg": "id",
     "read_only": true
   },
@@ -13528,7 +13528,7 @@
     "method": "GET",
     "name": "get_model_preset",
     "output_shape": "unknown",
-    "path": "/v1/model-presets/{id}",
+    "path": "/v1/platform/model-presets/{id}",
     "positional_arg": "id",
     "read_only": true
   },
@@ -13551,7 +13551,7 @@
     "method": "GET",
     "name": "get_observer",
     "output_shape": "unknown",
-    "path": "/v1/observers/{observer_id}",
+    "path": "/v1/platform/observers/{observer_id}",
     "positional_arg": "observer_id",
     "read_only": true
   },
@@ -13591,7 +13591,7 @@
     "method": "GET",
     "name": "get_observer_summary",
     "output_shape": "unknown",
-    "path": "/v1/observers/summary",
+    "path": "/v1/platform/observers/summary",
     "positional_arg": null,
     "read_only": true
   },
@@ -13614,7 +13614,7 @@
     "method": "GET",
     "name": "get_org",
     "output_shape": "unknown",
-    "path": "/v1/orgs/{org}",
+    "path": "/v1/platform/orgs/{org}",
     "positional_arg": "org",
     "read_only": true
   },
@@ -13637,7 +13637,7 @@
     "method": "GET",
     "name": "get_org_decision_settings",
     "output_shape": "unknown",
-    "path": "/v1/orgs/{org}/decision-settings",
+    "path": "/v1/platform/orgs/{org}/decision-settings",
     "positional_arg": null,
     "read_only": true
   },
@@ -13660,7 +13660,7 @@
     "method": "GET",
     "name": "get_org_egress_allowlist",
     "output_shape": "unknown",
-    "path": "/v1/orgs/{org}/egress-allowlist",
+    "path": "/v1/platform/orgs/{org}/egress-allowlist",
     "positional_arg": "org",
     "read_only": true
   },
@@ -13684,7 +13684,7 @@
     "method": "GET",
     "name": "get_org_quality_monitoring",
     "output_shape": "unknown",
-    "path": "/v1/orgs/{org}/quality-monitoring",
+    "path": "/v1/platform/orgs/{org}/quality-monitoring",
     "positional_arg": null,
     "read_only": true
   },
@@ -13708,7 +13708,7 @@
     "method": "GET",
     "name": "get_organization_account",
     "output_shape": "unknown",
-    "path": "/v1/organization-accounts/{id}",
+    "path": "/v1/platform/organization-accounts/{id}",
     "positional_arg": null,
     "read_only": true
   },
@@ -13755,7 +13755,7 @@
     "method": "GET",
     "name": "get_plugin",
     "output_shape": "unknown",
-    "path": "/v1/plugins/{id}",
+    "path": "/v1/platform/plugins/{id}",
     "positional_arg": "id",
     "read_only": true
   },
@@ -13779,7 +13779,7 @@
     "method": "GET",
     "name": "get_plugin_marketplace",
     "output_shape": "unknown",
-    "path": "/v1/plugin_marketplaces/{id}",
+    "path": "/v1/platform/plugin_marketplaces/{id}",
     "positional_arg": "id",
     "read_only": true
   },
@@ -13802,7 +13802,7 @@
     "method": "GET",
     "name": "get_provider",
     "output_shape": "unknown",
-    "path": "/v1/providers/{id}",
+    "path": "/v1/platform/providers/{id}",
     "positional_arg": "id",
     "read_only": true
   },
@@ -13825,7 +13825,7 @@
     "method": "GET",
     "name": "get_room",
     "output_shape": "unknown",
-    "path": "/v1/rooms/{room_id}",
+    "path": "/v1/platform/rooms/{room_id}",
     "positional_arg": "room_id",
     "read_only": true
   },
@@ -13851,7 +13851,7 @@
     "method": "GET",
     "name": "get_room_message",
     "output_shape": "unknown",
-    "path": "/v1/rooms/{room_id}/messages/{message_id}",
+    "path": "/v1/platform/rooms/{room_id}/messages/{message_id}",
     "positional_arg": null,
     "read_only": true
   },
@@ -13875,7 +13875,7 @@
     "method": "GET",
     "name": "get_sandbox",
     "output_shape": "unknown",
-    "path": "/v1/sandboxes/{id}",
+    "path": "/v1/platform/sandboxes/{id}",
     "positional_arg": "id",
     "read_only": true
   },
@@ -13935,7 +13935,7 @@
     "method": "GET",
     "name": "get_sandbox_fleet_stats",
     "output_shape": "unknown",
-    "path": "/v1/sandboxes/stats",
+    "path": "/v1/platform/sandboxes/stats",
     "positional_arg": null,
     "read_only": true
   },
@@ -13959,7 +13959,7 @@
     "method": "GET",
     "name": "get_sandbox_provider_state",
     "output_shape": "unknown",
-    "path": "/v1/sandboxes/{id}/provider",
+    "path": "/v1/platform/sandboxes/{id}/provider",
     "positional_arg": "id",
     "read_only": true
   },
@@ -13989,7 +13989,7 @@
     "method": "GET",
     "name": "get_sandbox_template_build",
     "output_shape": "unknown",
-    "path": "/v1/sandbox-template-builds/{id}",
+    "path": "/v1/platform/sandbox-template-builds/{id}",
     "positional_arg": null,
     "read_only": true
   },
@@ -14020,7 +14020,7 @@
     "method": "GET",
     "name": "get_sandbox_template_metadata",
     "output_shape": "unknown",
-    "path": "/v1/sandbox-template-metadata/{id}",
+    "path": "/v1/platform/sandbox-template-metadata/{id}",
     "positional_arg": null,
     "read_only": true
   },
@@ -14104,7 +14104,7 @@
     "method": "GET",
     "name": "get_sandbox_timeline",
     "output_shape": "unknown",
-    "path": "/v1/sandboxes/timeline",
+    "path": "/v1/platform/sandboxes/timeline",
     "positional_arg": null,
     "read_only": true
   },
@@ -14128,7 +14128,7 @@
     "method": "GET",
     "name": "get_schedule",
     "output_shape": "unknown",
-    "path": "/v1/durable/schedules/{schedule_id}",
+    "path": "/v1/platform/durable/schedules/{schedule_id}",
     "positional_arg": "schedule_id",
     "read_only": true
   },
@@ -14152,7 +14152,7 @@
     "method": "GET",
     "name": "get_schedule_stats",
     "output_shape": "unknown",
-    "path": "/v1/durable/schedules/{schedule_id}/stats",
+    "path": "/v1/platform/durable/schedules/{schedule_id}/stats",
     "positional_arg": null,
     "read_only": true
   },
@@ -14175,7 +14175,7 @@
     "method": "GET",
     "name": "get_session",
     "output_shape": "unknown",
-    "path": "/v1/sessions/{session_id}",
+    "path": "/v1/platform/sessions/{session_id}",
     "positional_arg": "session_id",
     "read_only": true
   },
@@ -14234,7 +14234,7 @@
     "method": "GET",
     "name": "get_session_agent_view",
     "output_shape": "unknown",
-    "path": "/v1/sessions/{session_id}/agent-view",
+    "path": "/v1/platform/sessions/{session_id}/agent-view",
     "positional_arg": null,
     "read_only": true
   },
@@ -14257,7 +14257,7 @@
     "method": "GET",
     "name": "get_session_approval_mode",
     "output_shape": "unknown",
-    "path": "/v1/sessions/{session_id}/approval-mode",
+    "path": "/v1/platform/sessions/{session_id}/approval-mode",
     "positional_arg": null,
     "read_only": true
   },
@@ -14280,7 +14280,7 @@
     "method": "GET",
     "name": "get_session_context_report",
     "output_shape": "unknown",
-    "path": "/v1/sessions/{session_id}/context-report",
+    "path": "/v1/platform/sessions/{session_id}/context-report",
     "positional_arg": "session_id",
     "read_only": true
   },
@@ -14303,7 +14303,7 @@
     "method": "GET",
     "name": "get_session_cost",
     "output_shape": "unknown",
-    "path": "/v1/sessions/{session_id}/cost",
+    "path": "/v1/platform/sessions/{session_id}/cost",
     "positional_arg": "session_id",
     "read_only": true
   },
@@ -14331,7 +14331,7 @@
     "method": "GET",
     "name": "get_session_database",
     "output_shape": "unknown",
-    "path": "/v1/sessions/{session_id}/databases/{name}",
+    "path": "/v1/platform/sessions/{session_id}/databases/{name}",
     "positional_arg": null,
     "read_only": true
   },
@@ -14359,7 +14359,7 @@
     "method": "GET",
     "name": "get_session_database_schema",
     "output_shape": "unknown",
-    "path": "/v1/sessions/{session_id}/databases/{name}/schema",
+    "path": "/v1/platform/sessions/{session_id}/databases/{name}/schema",
     "positional_arg": null,
     "read_only": true
   },
@@ -14490,7 +14490,7 @@
     "method": "GET",
     "name": "get_session_facets",
     "output_shape": "unknown",
-    "path": "/v1/sessions/facets",
+    "path": "/v1/platform/sessions/facets",
     "positional_arg": null,
     "read_only": true
   },
@@ -14513,7 +14513,7 @@
     "method": "GET",
     "name": "get_session_repositories",
     "output_shape": "unknown",
-    "path": "/v1/sessions/{session_id}/repositories",
+    "path": "/v1/platform/sessions/{session_id}/repositories",
     "positional_arg": "session_id",
     "read_only": true
   },
@@ -14536,7 +14536,7 @@
     "method": "GET",
     "name": "get_session_run",
     "output_shape": "unknown",
-    "path": "/v1/sessions/{session_id}/run",
+    "path": "/v1/platform/sessions/{session_id}/run",
     "positional_arg": "session_id",
     "read_only": true
   },
@@ -14559,7 +14559,7 @@
     "method": "GET",
     "name": "get_session_sandbox",
     "output_shape": "unknown",
-    "path": "/v1/sessions/{session_id}/sandbox",
+    "path": "/v1/platform/sessions/{session_id}/sandbox",
     "positional_arg": "session_id",
     "read_only": true
   },
@@ -14573,7 +14573,7 @@
     "method": "GET",
     "name": "get_session_stats",
     "output_shape": "unknown",
-    "path": "/v1/sessions/stats",
+    "path": "/v1/platform/sessions/stats",
     "positional_arg": null,
     "read_only": true
   },
@@ -14617,7 +14617,7 @@
     "method": "GET",
     "name": "get_session_task",
     "output_shape": "unknown",
-    "path": "/v1/sessions/{session_id}/tasks/{task_id}",
+    "path": "/v1/platform/sessions/{session_id}/tasks/{task_id}",
     "positional_arg": null,
     "read_only": true
   },
@@ -14648,7 +14648,7 @@
     "method": "GET",
     "name": "get_session_trace",
     "output_shape": "unknown",
-    "path": "/v1/sessions/{session_id}/trace",
+    "path": "/v1/platform/sessions/{session_id}/trace",
     "positional_arg": "session_id",
     "read_only": true
   },
@@ -14690,7 +14690,7 @@
     "method": "GET",
     "name": "get_session_trace_step",
     "output_shape": "unknown",
-    "path": "/v1/sessions/{session_id}/trace/turns/{turn}/steps/{step}",
+    "path": "/v1/platform/sessions/{session_id}/trace/turns/{turn}/steps/{step}",
     "positional_arg": "session_id",
     "read_only": true
   },
@@ -14719,7 +14719,7 @@
     "method": "GET",
     "name": "get_session_trace_turn_input",
     "output_shape": "unknown",
-    "path": "/v1/sessions/{session_id}/trace/turns/{turn}/input",
+    "path": "/v1/platform/sessions/{session_id}/trace/turns/{turn}/input",
     "positional_arg": "session_id",
     "read_only": true
   },
@@ -14750,7 +14750,7 @@
     "method": "GET",
     "name": "get_session_work",
     "output_shape": "unknown",
-    "path": "/v1/sessions/{session_id}/work",
+    "path": "/v1/platform/sessions/{session_id}/work",
     "positional_arg": "session_id",
     "read_only": true
   },
@@ -14774,7 +14774,7 @@
     "method": "GET",
     "name": "get_skill",
     "output_shape": "unknown",
-    "path": "/v1/skills/{id}",
+    "path": "/v1/platform/skills/{id}",
     "positional_arg": "id",
     "read_only": true
   },
@@ -14798,7 +14798,7 @@
     "method": "GET",
     "name": "get_skill_content",
     "output_shape": "unknown",
-    "path": "/v1/skills/{id}/content",
+    "path": "/v1/platform/skills/{id}/content",
     "positional_arg": "id",
     "read_only": true
   },
@@ -14824,7 +14824,7 @@
     "method": "GET",
     "name": "get_tracing_destination_metadata",
     "output_shape": "unknown",
-    "path": "/v1/tracing/destination-metadata/{id}",
+    "path": "/v1/platform/tracing/destination-metadata/{id}",
     "positional_arg": null,
     "read_only": true
   },
@@ -14849,7 +14849,7 @@
     "method": "GET",
     "name": "get_tracing_policy",
     "output_shape": "unknown",
-    "path": "/v1/tracing/policies/{id}",
+    "path": "/v1/platform/tracing/policies/{id}",
     "positional_arg": null,
     "read_only": true
   },
@@ -14873,7 +14873,7 @@
     "method": "GET",
     "name": "get_virtual_user",
     "output_shape": "unknown",
-    "path": "/v1/virtual-users/{identity_id}",
+    "path": "/v1/platform/virtual-users/{identity_id}",
     "positional_arg": "id",
     "read_only": true
   },
@@ -14896,7 +14896,7 @@
     "method": "GET",
     "name": "get_workspace",
     "output_shape": "unknown",
-    "path": "/v1/workspaces/{workspace_id}",
+    "path": "/v1/platform/workspaces/{workspace_id}",
     "positional_arg": "workspace_id",
     "read_only": true
   },
@@ -14928,7 +14928,7 @@
     "method": "GET",
     "name": "get_workspace_file",
     "output_shape": "unknown",
-    "path": "/v1/sessions/{session_id}/fs/{path}",
+    "path": "/v1/platform/sessions/{session_id}/fs/{path}",
     "positional_arg": null,
     "read_only": true
   },
@@ -15061,7 +15061,7 @@
     "method": "POST",
     "name": "grant_resource_access",
     "output_shape": "unknown",
-    "path": "/v1/resources/{id}/grants",
+    "path": "/v1/platform/resources/{id}/grants",
     "positional_arg": null,
     "read_only": false
   },
@@ -15115,7 +15115,7 @@
     "method": "POST",
     "name": "grep_workspace_files",
     "output_shape": "unknown",
-    "path": "/v1/sessions/{session_id}/fs/_/grep",
+    "path": "/v1/platform/sessions/{session_id}/fs/_/grep",
     "positional_arg": null,
     "read_only": true
   },
@@ -15172,7 +15172,7 @@
     "method": "POST",
     "name": "import_agent",
     "output_shape": "unknown",
-    "path": "/v1/agents/import",
+    "path": "/v1/platform/agents/import",
     "positional_arg": "file",
     "read_only": false
   },
@@ -15201,7 +15201,7 @@
     "method": "POST",
     "name": "import_atif_trajectories",
     "output_shape": "unknown",
-    "path": "/v1/evals/{eval_id}/atif_import",
+    "path": "/v1/platform/evals/{eval_id}/atif_import",
     "positional_arg": null,
     "read_only": false
   },
@@ -15528,7 +15528,7 @@
     "method": "POST",
     "name": "import_eval_run",
     "output_shape": "unknown",
-    "path": "/v1/evals/import",
+    "path": "/v1/platform/evals/import",
     "positional_arg": null,
     "read_only": false
   },
@@ -15614,7 +15614,7 @@
     "method": "POST",
     "name": "import_eval_samples",
     "output_shape": "unknown",
-    "path": "/v1/evals/{eval_id}/samples",
+    "path": "/v1/platform/evals/{eval_id}/samples",
     "positional_arg": null,
     "read_only": false
   },
@@ -15645,7 +15645,7 @@
     "method": "POST",
     "name": "install_plugin",
     "output_shape": "unknown",
-    "path": "/v1/plugins",
+    "path": "/v1/platform/plugins",
     "positional_arg": null,
     "read_only": false
   },
@@ -15673,7 +15673,7 @@
     "method": "DELETE",
     "name": "leave_session_participant",
     "output_shape": "unknown",
-    "path": "/v1/sessions/{session_id}/participants/{participant_id}",
+    "path": "/v1/platform/sessions/{session_id}/participants/{participant_id}",
     "positional_arg": null,
     "read_only": false
   },
@@ -15696,7 +15696,7 @@
     "method": "GET",
     "name": "list_agent_channels",
     "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/channels",
+    "path": "/v1/platform/agents/{agent_id}/channels",
     "positional_arg": null,
     "read_only": true
   },
@@ -15711,7 +15711,7 @@
     "method": "GET",
     "name": "list_agent_check_rules",
     "output_shape": "unknown",
-    "path": "/v1/agents/check-rules",
+    "path": "/v1/platform/agents/check-rules",
     "positional_arg": null,
     "read_only": true
   },
@@ -15726,7 +15726,7 @@
     "method": "GET",
     "name": "list_agent_examples",
     "output_shape": "array",
-    "path": "/v1/agent-examples",
+    "path": "/v1/platform/agent-examples",
     "positional_arg": null,
     "read_only": true
   },
@@ -15780,7 +15780,7 @@
     "method": "GET",
     "name": "list_agent_failures",
     "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/failures",
+    "path": "/v1/platform/agents/{agent_id}/failures",
     "positional_arg": null,
     "read_only": true
   },
@@ -15804,7 +15804,7 @@
     "method": "GET",
     "name": "list_agent_health_check_runs",
     "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/health-checks",
+    "path": "/v1/platform/agents/{agent_id}/health-checks",
     "positional_arg": null,
     "read_only": true
   },
@@ -15830,7 +15830,7 @@
     "method": "GET",
     "name": "list_agent_keys",
     "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/channels/{channel_id}/keys",
+    "path": "/v1/platform/agents/{agent_id}/channels/{channel_id}/keys",
     "positional_arg": null,
     "read_only": true
   },
@@ -15854,7 +15854,7 @@
     "method": "GET",
     "name": "list_agent_mcp_attachments",
     "output_shape": "unknown",
-    "path": "/v1/agents/{id}/mcp-attachments",
+    "path": "/v1/platform/agents/{id}/mcp-attachments",
     "positional_arg": "id",
     "read_only": true
   },
@@ -15882,7 +15882,7 @@
     "method": "GET",
     "name": "list_agent_scripts",
     "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/scripts",
+    "path": "/v1/platform/agents/{agent_id}/scripts",
     "positional_arg": "agent_id",
     "read_only": true
   },
@@ -15904,7 +15904,7 @@
     "method": "GET",
     "name": "list_agent_source_accounts",
     "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/source/accounts",
+    "path": "/v1/platform/agents/{agent_id}/source/accounts",
     "positional_arg": null,
     "read_only": true
   },
@@ -15941,7 +15941,7 @@
     "method": "GET",
     "name": "list_agent_trigger_deliveries",
     "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/triggers/{trigger_id}/deliveries",
+    "path": "/v1/platform/agents/{agent_id}/triggers/{trigger_id}/deliveries",
     "positional_arg": null,
     "read_only": true
   },
@@ -15969,7 +15969,7 @@
     "method": "GET",
     "name": "list_agent_trigger_runs",
     "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/triggers/{trigger_id}/runs",
+    "path": "/v1/platform/agents/{agent_id}/triggers/{trigger_id}/runs",
     "positional_arg": null,
     "read_only": true
   },
@@ -15997,7 +15997,7 @@
     "method": "GET",
     "name": "list_agent_triggers",
     "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/triggers",
+    "path": "/v1/platform/agents/{agent_id}/triggers",
     "positional_arg": "agent_id",
     "read_only": true
   },
@@ -16041,7 +16041,7 @@
     "method": "GET",
     "name": "list_agents",
     "output_shape": "paginated",
-    "path": "/v1/agents",
+    "path": "/v1/platform/agents",
     "positional_arg": null,
     "read_only": true
   },
@@ -16055,7 +16055,7 @@
     "method": "GET",
     "name": "list_all_eval_experiments",
     "output_shape": "unknown",
-    "path": "/v1/evals/experiments",
+    "path": "/v1/platform/evals/experiments",
     "positional_arg": null,
     "read_only": true
   },
@@ -16117,7 +16117,7 @@
     "method": "GET",
     "name": "list_audit_logs",
     "output_shape": "unknown",
-    "path": "/v1/orgs/{org}/audit-logs",
+    "path": "/v1/platform/orgs/{org}/audit-logs",
     "positional_arg": null,
     "read_only": true
   },
@@ -16165,7 +16165,7 @@
     "method": "GET",
     "name": "list_budget_ledger",
     "output_shape": "unknown",
-    "path": "/v1/budgets/{budget_id}/ledger",
+    "path": "/v1/platform/budgets/{budget_id}/ledger",
     "positional_arg": null,
     "read_only": true
   },
@@ -16195,7 +16195,7 @@
     "method": "GET",
     "name": "list_budgets",
     "output_shape": "unknown",
-    "path": "/v1/budgets",
+    "path": "/v1/platform/budgets",
     "positional_arg": null,
     "read_only": true
   },
@@ -16241,7 +16241,7 @@
     "method": "GET",
     "name": "list_capabilities",
     "output_shape": "paginated",
-    "path": "/v1/capabilities",
+    "path": "/v1/platform/capabilities",
     "positional_arg": null,
     "read_only": true
   },
@@ -16264,7 +16264,7 @@
     "method": "GET",
     "name": "list_connection_providers",
     "output_shape": "unknown",
-    "path": "/v1/user/connections/providers",
+    "path": "/v1/platform/user/connections/providers",
     "positional_arg": null,
     "read_only": true
   },
@@ -16279,7 +16279,7 @@
     "method": "GET",
     "name": "list_cost_rates",
     "output_shape": "unknown",
-    "path": "/v1/cost-rates",
+    "path": "/v1/platform/cost-rates",
     "positional_arg": null,
     "read_only": true
   },
@@ -16306,7 +16306,7 @@
     "method": "GET",
     "name": "list_declarative_capabilities",
     "output_shape": "unknown",
-    "path": "/v1/capabilities/declarative",
+    "path": "/v1/platform/capabilities/declarative",
     "positional_arg": null,
     "read_only": true
   },
@@ -16360,7 +16360,7 @@
     "method": "GET",
     "name": "list_entity_history",
     "output_shape": "array",
-    "path": "/v1/history/{entity_ref}",
+    "path": "/v1/platform/history/{entity_ref}",
     "positional_arg": "entity_ref",
     "read_only": true
   },
@@ -16383,7 +16383,7 @@
     "method": "GET",
     "name": "list_eval_cases",
     "output_shape": "unknown",
-    "path": "/v1/evals/{eval_id}/cases",
+    "path": "/v1/platform/evals/{eval_id}/cases",
     "positional_arg": null,
     "read_only": true
   },
@@ -16406,7 +16406,7 @@
     "method": "GET",
     "name": "list_eval_experiments",
     "output_shape": "unknown",
-    "path": "/v1/evals/{eval_id}/experiments",
+    "path": "/v1/platform/evals/{eval_id}/experiments",
     "positional_arg": null,
     "read_only": true
   },
@@ -16429,7 +16429,7 @@
     "method": "GET",
     "name": "list_eval_proposals",
     "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/eval-proposals",
+    "path": "/v1/platform/agents/{agent_id}/eval-proposals",
     "positional_arg": null,
     "read_only": true
   },
@@ -16452,7 +16452,7 @@
     "method": "GET",
     "name": "list_eval_runs",
     "output_shape": "unknown",
-    "path": "/v1/evals/{eval_id}/runs",
+    "path": "/v1/platform/evals/{eval_id}/runs",
     "positional_arg": null,
     "read_only": true
   },
@@ -16483,7 +16483,7 @@
     "method": "GET",
     "name": "list_evals",
     "output_shape": "unknown",
-    "path": "/v1/evals",
+    "path": "/v1/platform/evals",
     "positional_arg": null,
     "read_only": true
   },
@@ -16644,7 +16644,7 @@
     "method": "GET",
     "name": "list_events",
     "output_shape": "unknown",
-    "path": "/v1/sessions/{session_id}/events",
+    "path": "/v1/platform/sessions/{session_id}/events",
     "positional_arg": "session_id",
     "read_only": true
   },
@@ -16669,7 +16669,7 @@
     "method": "GET",
     "name": "list_finding_actions",
     "output_shape": "unknown",
-    "path": "/v1/health-issues/{issue_id}/actions",
+    "path": "/v1/platform/health-issues/{issue_id}/actions",
     "positional_arg": null,
     "read_only": true
   },
@@ -16705,7 +16705,7 @@
     "method": "GET",
     "name": "list_finding_fixes",
     "output_shape": "unknown",
-    "path": "/v1/evals/fixes",
+    "path": "/v1/platform/evals/fixes",
     "positional_arg": null,
     "read_only": true
   },
@@ -16720,7 +16720,7 @@
     "method": "GET",
     "name": "list_guardrail_examples",
     "output_shape": "unknown",
-    "path": "/v1/capabilities/guardrails/examples",
+    "path": "/v1/platform/capabilities/guardrails/examples",
     "positional_arg": null,
     "read_only": true
   },
@@ -16735,7 +16735,7 @@
     "method": "GET",
     "name": "list_harness_examples",
     "output_shape": "array",
-    "path": "/v1/harness-examples",
+    "path": "/v1/platform/harness-examples",
     "positional_arg": null,
     "read_only": true
   },
@@ -16763,7 +16763,7 @@
     "method": "GET",
     "name": "list_harnesses",
     "output_shape": "array",
-    "path": "/v1/harnesses",
+    "path": "/v1/platform/harnesses",
     "positional_arg": null,
     "read_only": true
   },
@@ -16806,7 +16806,7 @@
     "method": "GET",
     "name": "list_health_issues",
     "output_shape": "unknown",
-    "path": "/v1/health-issues",
+    "path": "/v1/platform/health-issues",
     "positional_arg": null,
     "read_only": true
   },
@@ -16840,7 +16840,7 @@
     "method": "GET",
     "name": "list_images",
     "output_shape": "unknown",
-    "path": "/v1/images",
+    "path": "/v1/platform/images",
     "positional_arg": null,
     "read_only": true
   },
@@ -16870,7 +16870,7 @@
     "method": "GET",
     "name": "list_knowledge",
     "output_shape": "unknown",
-    "path": "/v1/knowledge",
+    "path": "/v1/platform/knowledge",
     "positional_arg": null,
     "read_only": true
   },
@@ -16962,7 +16962,7 @@
     "method": "GET",
     "name": "list_knowledge_files",
     "output_shape": "unknown",
-    "path": "/v1/knowledge/{collection_id}/files",
+    "path": "/v1/platform/knowledge/{collection_id}/files",
     "positional_arg": null,
     "read_only": true
   },
@@ -16976,7 +16976,7 @@
     "method": "GET",
     "name": "list_knowledge_indexers",
     "output_shape": "unknown",
-    "path": "/v1/knowledge-indexers",
+    "path": "/v1/platform/knowledge-indexers",
     "positional_arg": null,
     "read_only": true
   },
@@ -17000,7 +17000,7 @@
     "method": "GET",
     "name": "list_mcp_server_tools",
     "output_shape": "unknown",
-    "path": "/v1/mcp-servers/{id}/tools",
+    "path": "/v1/platform/mcp-servers/{id}/tools",
     "positional_arg": "id",
     "read_only": true
   },
@@ -17026,7 +17026,7 @@
     "method": "GET",
     "name": "list_mcp_servers",
     "output_shape": "unknown",
-    "path": "/v1/mcp-servers",
+    "path": "/v1/platform/mcp-servers",
     "positional_arg": null,
     "read_only": true
   },
@@ -17056,7 +17056,7 @@
     "method": "GET",
     "name": "list_memories",
     "output_shape": "unknown",
-    "path": "/v1/memories",
+    "path": "/v1/platform/memories",
     "positional_arg": null,
     "read_only": true
   },
@@ -17080,7 +17080,7 @@
     "method": "GET",
     "name": "list_message_feedback",
     "output_shape": "unknown",
-    "path": "/v1/sessions/{session_id}/feedback",
+    "path": "/v1/platform/sessions/{session_id}/feedback",
     "positional_arg": "session_id",
     "read_only": true
   },
@@ -17111,7 +17111,7 @@
     "method": "GET",
     "name": "list_message_reactions",
     "output_shape": "unknown",
-    "path": "/v1/sessions/{session_id}/reactions",
+    "path": "/v1/platform/sessions/{session_id}/reactions",
     "positional_arg": "session_id",
     "read_only": true
   },
@@ -17142,7 +17142,7 @@
     "method": "GET",
     "name": "list_messages",
     "output_shape": "unknown",
-    "path": "/v1/sessions/{session_id}/messages",
+    "path": "/v1/platform/sessions/{session_id}/messages",
     "positional_arg": "session_id",
     "read_only": true
   },
@@ -17156,7 +17156,7 @@
     "method": "GET",
     "name": "list_model_presets",
     "output_shape": "unknown",
-    "path": "/v1/model-presets",
+    "path": "/v1/platform/model-presets",
     "positional_arg": null,
     "read_only": true
   },
@@ -17227,7 +17227,7 @@
     "method": "GET",
     "name": "list_models",
     "output_shape": "array",
-    "path": "/v1/models",
+    "path": "/v1/platform/models",
     "positional_arg": null,
     "read_only": true
   },
@@ -17251,7 +17251,7 @@
     "method": "GET",
     "name": "list_notifications",
     "output_shape": "unknown",
-    "path": "/v1/notifications",
+    "path": "/v1/platform/notifications",
     "positional_arg": null,
     "read_only": true
   },
@@ -17293,7 +17293,7 @@
     "method": "GET",
     "name": "list_observer_scores",
     "output_shape": "unknown",
-    "path": "/v1/observers/{observer_id}/scores",
+    "path": "/v1/platform/observers/{observer_id}/scores",
     "positional_arg": null,
     "read_only": true
   },
@@ -17317,7 +17317,7 @@
     "method": "GET",
     "name": "list_observers",
     "output_shape": "unknown",
-    "path": "/v1/observers",
+    "path": "/v1/platform/observers",
     "positional_arg": null,
     "read_only": true
   },
@@ -17387,7 +17387,7 @@
     "method": "GET",
     "name": "list_org_history",
     "output_shape": "array",
-    "path": "/v1/history",
+    "path": "/v1/platform/history",
     "positional_arg": null,
     "read_only": true
   },
@@ -17411,7 +17411,7 @@
     "method": "GET",
     "name": "list_org_quality_monitoring_scores",
     "output_shape": "unknown",
-    "path": "/v1/orgs/{org}/quality-monitoring/scores",
+    "path": "/v1/platform/orgs/{org}/quality-monitoring/scores",
     "positional_arg": null,
     "read_only": true
   },
@@ -17442,7 +17442,7 @@
     "method": "GET",
     "name": "list_org_room_events",
     "output_shape": "unknown",
-    "path": "/v1/rooms/events",
+    "path": "/v1/platform/rooms/events",
     "positional_arg": null,
     "read_only": true
   },
@@ -17496,7 +17496,7 @@
     "method": "GET",
     "name": "list_org_tasks",
     "output_shape": "unknown",
-    "path": "/v1/tasks",
+    "path": "/v1/platform/tasks",
     "positional_arg": null,
     "read_only": true
   },
@@ -17519,7 +17519,7 @@
     "method": "GET",
     "name": "list_organization_connections",
     "output_shape": "array",
-    "path": "/v1/orgs/{org}/organization-connections",
+    "path": "/v1/platform/orgs/{org}/organization-connections",
     "positional_arg": null,
     "read_only": true
   },
@@ -17533,7 +17533,7 @@
     "method": "GET",
     "name": "list_orgs",
     "output_shape": "unknown",
-    "path": "/v1/orgs",
+    "path": "/v1/platform/orgs",
     "positional_arg": null,
     "read_only": true
   },
@@ -17566,7 +17566,7 @@
     "method": "GET",
     "name": "list_platform_detections",
     "output_shape": "unknown",
-    "path": "/v1/system/detections",
+    "path": "/v1/platform/system/detections",
     "positional_arg": null,
     "read_only": true
   },
@@ -17590,7 +17590,7 @@
     "method": "GET",
     "name": "list_plugin_marketplaces",
     "output_shape": "unknown",
-    "path": "/v1/plugin_marketplaces",
+    "path": "/v1/platform/plugin_marketplaces",
     "positional_arg": null,
     "read_only": true
   },
@@ -17614,7 +17614,7 @@
     "method": "GET",
     "name": "list_plugins",
     "output_shape": "unknown",
-    "path": "/v1/plugins",
+    "path": "/v1/platform/plugins",
     "positional_arg": null,
     "read_only": true
   },
@@ -17637,7 +17637,7 @@
     "method": "GET",
     "name": "list_provider_models",
     "output_shape": "unknown",
-    "path": "/v1/providers/{provider_id}/models",
+    "path": "/v1/platform/providers/{provider_id}/models",
     "positional_arg": null,
     "read_only": true
   },
@@ -17651,7 +17651,7 @@
     "method": "GET",
     "name": "list_providers",
     "output_shape": "unknown",
-    "path": "/v1/providers",
+    "path": "/v1/platform/providers",
     "positional_arg": null,
     "read_only": true
   },
@@ -17676,7 +17676,7 @@
     "method": "GET",
     "name": "list_resource_grants",
     "output_shape": "unknown",
-    "path": "/v1/resources/{id}/grants",
+    "path": "/v1/platform/resources/{id}/grants",
     "positional_arg": null,
     "read_only": true
   },
@@ -17713,7 +17713,7 @@
     "method": "GET",
     "name": "list_room_events",
     "output_shape": "unknown",
-    "path": "/v1/rooms/{room_id}/events",
+    "path": "/v1/platform/rooms/{room_id}/events",
     "positional_arg": null,
     "read_only": true
   },
@@ -17747,7 +17747,7 @@
     "method": "GET",
     "name": "list_room_file_history",
     "output_shape": "unknown",
-    "path": "/v1/rooms/{room_id}/files/history",
+    "path": "/v1/platform/rooms/{room_id}/files/history",
     "positional_arg": "room_id",
     "read_only": true
   },
@@ -17776,7 +17776,7 @@
     "method": "GET",
     "name": "list_room_files",
     "output_shape": "unknown",
-    "path": "/v1/rooms/{room_id}/files",
+    "path": "/v1/platform/rooms/{room_id}/files",
     "positional_arg": "room_id",
     "read_only": true
   },
@@ -17805,7 +17805,7 @@
     "method": "GET",
     "name": "list_room_members",
     "output_shape": "unknown",
-    "path": "/v1/rooms/{room_id}/members",
+    "path": "/v1/platform/rooms/{room_id}/members",
     "positional_arg": "room_id",
     "read_only": true
   },
@@ -17831,7 +17831,7 @@
     "method": "GET",
     "name": "list_room_message_readers",
     "output_shape": "unknown",
-    "path": "/v1/rooms/{room_id}/messages/{message_id}/readers",
+    "path": "/v1/platform/rooms/{room_id}/messages/{message_id}/readers",
     "positional_arg": null,
     "read_only": true
   },
@@ -17876,7 +17876,7 @@
     "method": "GET",
     "name": "list_room_messages",
     "output_shape": "unknown",
-    "path": "/v1/rooms/{room_id}/messages",
+    "path": "/v1/platform/rooms/{room_id}/messages",
     "positional_arg": "room_id",
     "read_only": true
   },
@@ -17898,7 +17898,7 @@
     "method": "GET",
     "name": "list_room_pins",
     "output_shape": "unknown",
-    "path": "/v1/rooms/{room_id}/pins",
+    "path": "/v1/platform/rooms/{room_id}/pins",
     "positional_arg": "room_id",
     "read_only": true
   },
@@ -17945,7 +17945,7 @@
     "method": "GET",
     "name": "list_room_replies",
     "output_shape": "unknown",
-    "path": "/v1/rooms/{room_id}/messages/{message_id}/replies",
+    "path": "/v1/platform/rooms/{room_id}/messages/{message_id}/replies",
     "positional_arg": null,
     "read_only": true
   },
@@ -17989,7 +17989,7 @@
     "method": "GET",
     "name": "list_rooms",
     "output_shape": "unknown",
-    "path": "/v1/rooms",
+    "path": "/v1/platform/rooms",
     "positional_arg": null,
     "read_only": true
   },
@@ -18036,7 +18036,7 @@
     "method": "GET",
     "name": "list_sandbox_events",
     "output_shape": "unknown",
-    "path": "/v1/sandboxes/{id}/events",
+    "path": "/v1/platform/sandboxes/{id}/events",
     "positional_arg": null,
     "read_only": true
   },
@@ -18050,7 +18050,7 @@
     "method": "GET",
     "name": "list_sandbox_targets",
     "output_shape": "unknown",
-    "path": "/v1/sandbox-targets",
+    "path": "/v1/platform/sandbox-targets",
     "positional_arg": null,
     "read_only": true
   },
@@ -18085,7 +18085,7 @@
     "method": "GET",
     "name": "list_sandbox_template_builds",
     "output_shape": "array",
-    "path": "/v1/sandbox-templates/{id}/builds",
+    "path": "/v1/platform/sandbox-templates/{id}/builds",
     "positional_arg": null,
     "read_only": true
   },
@@ -18161,7 +18161,7 @@
     "method": "GET",
     "name": "list_sandboxes",
     "output_shape": "unknown",
-    "path": "/v1/sandboxes",
+    "path": "/v1/platform/sandboxes",
     "positional_arg": null,
     "read_only": true
   },
@@ -18214,7 +18214,7 @@
     "method": "GET",
     "name": "list_schedule_executions",
     "output_shape": "unknown",
-    "path": "/v1/durable/schedules/{schedule_id}/executions",
+    "path": "/v1/platform/durable/schedules/{schedule_id}/executions",
     "positional_arg": null,
     "read_only": true
   },
@@ -18267,7 +18267,7 @@
     "method": "GET",
     "name": "list_schedules",
     "output_shape": "unknown",
-    "path": "/v1/durable/schedules",
+    "path": "/v1/platform/durable/schedules",
     "positional_arg": null,
     "read_only": true
   },
@@ -18332,7 +18332,7 @@
     "method": "GET",
     "name": "list_scoped_credentials",
     "output_shape": "unknown",
-    "path": "/v1/credential-bindings",
+    "path": "/v1/platform/credential-bindings",
     "positional_arg": null,
     "read_only": true
   },
@@ -18355,7 +18355,7 @@
     "method": "GET",
     "name": "list_session_budgets",
     "output_shape": "unknown",
-    "path": "/v1/sessions/{session_id}/budgets",
+    "path": "/v1/platform/sessions/{session_id}/budgets",
     "positional_arg": "session_id",
     "read_only": true
   },
@@ -18378,7 +18378,7 @@
     "method": "GET",
     "name": "list_session_databases",
     "output_shape": "unknown",
-    "path": "/v1/sessions/{session_id}/databases",
+    "path": "/v1/platform/sessions/{session_id}/databases",
     "positional_arg": "session_id",
     "read_only": true
   },
@@ -18401,7 +18401,7 @@
     "method": "GET",
     "name": "list_session_mcp_servers",
     "output_shape": "unknown",
-    "path": "/v1/sessions/{session_id}/mcp-servers",
+    "path": "/v1/platform/sessions/{session_id}/mcp-servers",
     "positional_arg": "session_id",
     "read_only": true
   },
@@ -18424,7 +18424,7 @@
     "method": "GET",
     "name": "list_session_participants",
     "output_shape": "unknown",
-    "path": "/v1/sessions/{session_id}/participants",
+    "path": "/v1/platform/sessions/{session_id}/participants",
     "positional_arg": null,
     "read_only": true
   },
@@ -18447,7 +18447,7 @@
     "method": "GET",
     "name": "list_session_resources",
     "output_shape": "unknown",
-    "path": "/v1/sessions/{session_id}/resources",
+    "path": "/v1/platform/sessions/{session_id}/resources",
     "positional_arg": "session_id",
     "read_only": true
   },
@@ -18470,7 +18470,7 @@
     "method": "GET",
     "name": "list_session_secrets",
     "output_shape": "unknown",
-    "path": "/v1/sessions/{session_id}/storage/secrets",
+    "path": "/v1/platform/sessions/{session_id}/storage/secrets",
     "positional_arg": "session_id",
     "read_only": true
   },
@@ -18493,7 +18493,7 @@
     "method": "GET",
     "name": "list_session_storage",
     "output_shape": "unknown",
-    "path": "/v1/sessions/{session_id}/storage/keys",
+    "path": "/v1/platform/sessions/{session_id}/storage/keys",
     "positional_arg": "session_id",
     "read_only": true
   },
@@ -18530,7 +18530,7 @@
     "method": "GET",
     "name": "list_session_tasks",
     "output_shape": "unknown",
-    "path": "/v1/sessions/{session_id}/tasks",
+    "path": "/v1/platform/sessions/{session_id}/tasks",
     "positional_arg": "session_id",
     "read_only": true
   },
@@ -18602,7 +18602,7 @@
     "method": "GET",
     "name": "list_session_trace_request",
     "output_shape": "unknown",
-    "path": "/v1/sessions/{session_id}/trace/turns/{turn}/steps/{step}/request",
+    "path": "/v1/platform/sessions/{session_id}/trace/turns/{turn}/steps/{step}/request",
     "positional_arg": "session_id",
     "read_only": true
   },
@@ -18662,7 +18662,7 @@
     "method": "GET",
     "name": "list_session_trace_steps",
     "output_shape": "unknown",
-    "path": "/v1/sessions/{session_id}/trace/turns/{turn}/steps",
+    "path": "/v1/platform/sessions/{session_id}/trace/turns/{turn}/steps",
     "positional_arg": "session_id",
     "read_only": true
   },
@@ -18707,7 +18707,7 @@
     "method": "GET",
     "name": "list_session_trace_turn_events",
     "output_shape": "unknown",
-    "path": "/v1/sessions/{session_id}/trace/turns/{turn}/events",
+    "path": "/v1/platform/sessions/{session_id}/trace/turns/{turn}/events",
     "positional_arg": "session_id",
     "read_only": true
   },
@@ -18770,7 +18770,7 @@
     "method": "GET",
     "name": "list_session_trace_turns",
     "output_shape": "unknown",
-    "path": "/v1/sessions/{session_id}/trace/turns",
+    "path": "/v1/platform/sessions/{session_id}/trace/turns",
     "positional_arg": "session_id",
     "read_only": true
   },
@@ -18923,7 +18923,7 @@
     "method": "GET",
     "name": "list_sessions",
     "output_shape": "unknown",
-    "path": "/v1/sessions",
+    "path": "/v1/platform/sessions",
     "positional_arg": null,
     "read_only": true
   },
@@ -18951,7 +18951,7 @@
     "method": "GET",
     "name": "list_skills",
     "output_shape": "unknown",
-    "path": "/v1/skills",
+    "path": "/v1/platform/skills",
     "positional_arg": null,
     "read_only": true
   },
@@ -18966,7 +18966,7 @@
     "method": "GET",
     "name": "list_skills_usage",
     "output_shape": "unknown",
-    "path": "/v1/skills/usage",
+    "path": "/v1/platform/skills/usage",
     "positional_arg": null,
     "read_only": true
   },
@@ -18994,7 +18994,7 @@
     "method": "GET",
     "name": "list_task_push_configs",
     "output_shape": "unknown",
-    "path": "/v1/sessions/{session_id}/tasks/{task_id}/push-configs",
+    "path": "/v1/platform/sessions/{session_id}/tasks/{task_id}/push-configs",
     "positional_arg": null,
     "read_only": true
   },
@@ -19017,7 +19017,7 @@
     "method": "GET",
     "name": "list_user_connections",
     "output_shape": "unknown",
-    "path": "/v1/user/connections",
+    "path": "/v1/platform/user/connections",
     "positional_arg": null,
     "read_only": true
   },
@@ -19040,7 +19040,7 @@
     "method": "GET",
     "name": "list_users",
     "output_shape": "unknown",
-    "path": "/v1/users",
+    "path": "/v1/platform/users",
     "positional_arg": null,
     "read_only": true
   },
@@ -19111,7 +19111,7 @@
     "method": "GET",
     "name": "list_virtual_users",
     "output_shape": "paginated",
-    "path": "/v1/virtual-users",
+    "path": "/v1/platform/virtual-users",
     "positional_arg": null,
     "read_only": true
   },
@@ -19138,7 +19138,7 @@
     "method": "GET",
     "name": "list_workspace_files",
     "output_shape": "unknown",
-    "path": "/v1/sessions/{session_id}/fs",
+    "path": "/v1/platform/sessions/{session_id}/fs",
     "positional_arg": "session_id",
     "read_only": true
   },
@@ -19168,7 +19168,7 @@
     "method": "GET",
     "name": "list_workspaces",
     "output_shape": "unknown",
-    "path": "/v1/workspaces",
+    "path": "/v1/platform/workspaces",
     "positional_arg": null,
     "read_only": true
   },
@@ -19206,7 +19206,7 @@
     "method": "POST",
     "name": "manage_session_sandbox",
     "output_shape": "unknown",
-    "path": "/v1/sessions/{session_id}/sandbox",
+    "path": "/v1/platform/sessions/{session_id}/sandbox",
     "positional_arg": null,
     "read_only": false
   },
@@ -19229,7 +19229,7 @@
     "method": "POST",
     "name": "mark_notification_viewed",
     "output_shape": "unknown",
-    "path": "/v1/notifications/{notification_id}/view",
+    "path": "/v1/platform/notifications/{notification_id}/view",
     "positional_arg": "notification_id",
     "read_only": false
   },
@@ -19264,7 +19264,7 @@
     "method": "POST",
     "name": "mark_room_read",
     "output_shape": "unknown",
-    "path": "/v1/rooms/{room_id}/read",
+    "path": "/v1/platform/rooms/{room_id}/read",
     "positional_arg": null,
     "read_only": false
   },
@@ -19303,7 +19303,7 @@
     "method": "POST",
     "name": "move_room_file",
     "output_shape": "unknown",
-    "path": "/v1/rooms/{room_id}/files/move",
+    "path": "/v1/platform/rooms/{room_id}/files/move",
     "positional_arg": null,
     "read_only": false
   },
@@ -19355,7 +19355,7 @@
     "method": "POST",
     "name": "move_workspace_file",
     "output_shape": "unknown",
-    "path": "/v1/sessions/{session_id}/fs/_/move",
+    "path": "/v1/platform/sessions/{session_id}/fs/_/move",
     "positional_arg": null,
     "read_only": false
   },
@@ -19425,7 +19425,7 @@
     "method": "PATCH",
     "name": "patch_installed_plugin",
     "output_shape": "unknown",
-    "path": "/v1/plugins/{id}",
+    "path": "/v1/platform/plugins/{id}",
     "positional_arg": "id",
     "read_only": false
   },
@@ -19449,7 +19449,7 @@
     "method": "POST",
     "name": "pause_agent",
     "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/pause",
+    "path": "/v1/platform/agents/{agent_id}/pause",
     "positional_arg": "agent_id",
     "read_only": false
   },
@@ -19473,7 +19473,7 @@
     "method": "POST",
     "name": "pause_schedule",
     "output_shape": "unknown",
-    "path": "/v1/durable/schedules/{schedule_id}/pause",
+    "path": "/v1/platform/durable/schedules/{schedule_id}/pause",
     "positional_arg": null,
     "read_only": false
   },
@@ -19509,7 +19509,7 @@
     "method": "POST",
     "name": "pin_room_message",
     "output_shape": "unknown",
-    "path": "/v1/rooms/{room_id}/messages/{message_id}/pin",
+    "path": "/v1/platform/rooms/{room_id}/messages/{message_id}/pin",
     "positional_arg": null,
     "read_only": false
   },
@@ -19532,7 +19532,7 @@
     "method": "PUT",
     "name": "pin_session",
     "output_shape": "unknown",
-    "path": "/v1/sessions/{session_id}/pin",
+    "path": "/v1/platform/sessions/{session_id}/pin",
     "positional_arg": null,
     "read_only": false
   },
@@ -19879,7 +19879,7 @@
     "method": "POST",
     "name": "plan_agent_costs",
     "output_shape": "unknown",
-    "path": "/v1/agents/cost-plan",
+    "path": "/v1/platform/agents/cost-plan",
     "positional_arg": null,
     "read_only": false
   },
@@ -19920,7 +19920,7 @@
     "method": "POST",
     "name": "post_room_message",
     "output_shape": "unknown",
-    "path": "/v1/rooms/{room_id}/messages",
+    "path": "/v1/platform/rooms/{room_id}/messages",
     "positional_arg": null,
     "read_only": false
   },
@@ -20015,7 +20015,7 @@
     "method": "POST",
     "name": "post_session_task_message",
     "output_shape": "unknown",
-    "path": "/v1/sessions/{session_id}/tasks/{task_id}/messages",
+    "path": "/v1/platform/sessions/{session_id}/tasks/{task_id}/messages",
     "positional_arg": null,
     "read_only": false
   },
@@ -20628,7 +20628,7 @@
     "method": "POST",
     "name": "preview_agent",
     "output_shape": "unknown",
-    "path": "/v1/agents/preview",
+    "path": "/v1/platform/agents/preview",
     "positional_arg": null,
     "read_only": true
   },
@@ -20703,7 +20703,7 @@
     "method": "POST",
     "name": "preview_agent_source",
     "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/source/preview",
+    "path": "/v1/platform/agents/{agent_id}/source/preview",
     "positional_arg": null,
     "read_only": true
   },
@@ -20973,7 +20973,7 @@
     "method": "POST",
     "name": "preview_harness",
     "output_shape": "unknown",
-    "path": "/v1/harnesses/preview",
+    "path": "/v1/platform/harnesses/preview",
     "positional_arg": null,
     "read_only": true
   },
@@ -20996,7 +20996,7 @@
     "method": "POST",
     "name": "propose_eval_cases",
     "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/eval-proposals",
+    "path": "/v1/platform/agents/{agent_id}/eval-proposals",
     "positional_arg": null,
     "read_only": false
   },
@@ -21024,7 +21024,7 @@
     "method": "POST",
     "name": "publish_agent_channel",
     "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/channels/{channel_id}/publish",
+    "path": "/v1/platform/agents/{agent_id}/channels/{channel_id}/publish",
     "positional_arg": null,
     "read_only": false
   },
@@ -21065,7 +21065,7 @@
     "method": "POST",
     "name": "react_to_room_message",
     "output_shape": "unknown",
-    "path": "/v1/rooms/{room_id}/messages/{message_id}/reactions",
+    "path": "/v1/platform/rooms/{room_id}/messages/{message_id}/reactions",
     "positional_arg": null,
     "read_only": false
   },
@@ -21100,7 +21100,7 @@
     "method": "GET",
     "name": "read_room_file",
     "output_shape": "unknown",
-    "path": "/v1/rooms/{room_id}/files/content",
+    "path": "/v1/platform/rooms/{room_id}/files/content",
     "positional_arg": "room_id",
     "read_only": true
   },
@@ -21139,7 +21139,7 @@
     "method": "POST",
     "name": "read_room_unread",
     "output_shape": "unknown",
-    "path": "/v1/rooms/{room_id}/unread",
+    "path": "/v1/platform/rooms/{room_id}/unread",
     "positional_arg": null,
     "read_only": false
   },
@@ -21184,7 +21184,7 @@
     "method": "POST",
     "name": "reject_finding_fix",
     "output_shape": "unknown",
-    "path": "/v1/evals/fixes/{fix_id}/reject",
+    "path": "/v1/platform/evals/fixes/{fix_id}/reject",
     "positional_arg": null,
     "read_only": false
   },
@@ -21218,7 +21218,7 @@
     "method": "DELETE",
     "name": "remove_message_reaction",
     "output_shape": "unknown",
-    "path": "/v1/sessions/{session_id}/messages/{message_id}/reactions/{emoji}",
+    "path": "/v1/platform/sessions/{session_id}/messages/{message_id}/reactions/{emoji}",
     "positional_arg": "session_id",
     "read_only": false
   },
@@ -21244,7 +21244,7 @@
     "method": "DELETE",
     "name": "remove_room_member",
     "output_shape": "unknown",
-    "path": "/v1/rooms/{room_id}/members/{member_id}",
+    "path": "/v1/platform/rooms/{room_id}/members/{member_id}",
     "positional_arg": null,
     "read_only": false
   },
@@ -21275,7 +21275,7 @@
     "method": "DELETE",
     "name": "remove_session_mcp_server",
     "output_shape": "unknown",
-    "path": "/v1/sessions/{session_id}/mcp-servers/{name}",
+    "path": "/v1/platform/sessions/{session_id}/mcp-servers/{name}",
     "positional_arg": null,
     "read_only": false
   },
@@ -21426,7 +21426,7 @@
     "method": "PUT",
     "name": "replace_agent_view",
     "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/view",
+    "path": "/v1/platform/agents/{agent_id}/view",
     "positional_arg": null,
     "read_only": false
   },
@@ -21449,7 +21449,7 @@
     "method": "GET",
     "name": "resolve_org",
     "output_shape": "unknown",
-    "path": "/v1/resolve-org",
+    "path": "/v1/platform/resolve-org",
     "positional_arg": "id",
     "read_only": true
   },
@@ -21504,7 +21504,7 @@
     "method": "POST",
     "name": "restore_entity_revision",
     "output_shape": "unknown",
-    "path": "/v1/history/{entity_ref}/restore",
+    "path": "/v1/platform/history/{entity_ref}/restore",
     "positional_arg": "entity_ref",
     "read_only": false
   },
@@ -21544,7 +21544,7 @@
     "method": "POST",
     "name": "restore_room_file",
     "output_shape": "unknown",
-    "path": "/v1/rooms/{room_id}/files/restore",
+    "path": "/v1/platform/rooms/{room_id}/files/restore",
     "positional_arg": null,
     "read_only": false
   },
@@ -21568,7 +21568,7 @@
     "method": "POST",
     "name": "resume_agent",
     "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/resume",
+    "path": "/v1/platform/agents/{agent_id}/resume",
     "positional_arg": "agent_id",
     "read_only": false
   },
@@ -21592,7 +21592,7 @@
     "method": "POST",
     "name": "resume_schedule",
     "output_shape": "unknown",
-    "path": "/v1/durable/schedules/{schedule_id}/resume",
+    "path": "/v1/platform/durable/schedules/{schedule_id}/resume",
     "positional_arg": null,
     "read_only": false
   },
@@ -21615,7 +21615,7 @@
     "method": "POST",
     "name": "resume_session_budgets",
     "output_shape": "unknown",
-    "path": "/v1/sessions/{session_id}/resume",
+    "path": "/v1/platform/sessions/{session_id}/resume",
     "positional_arg": "session_id",
     "read_only": false
   },
@@ -21647,7 +21647,7 @@
     "method": "POST",
     "name": "retire_cost_rate",
     "output_shape": "unknown",
-    "path": "/v1/cost-rates/{rate_id}/retire",
+    "path": "/v1/platform/cost-rates/{rate_id}/retire",
     "positional_arg": null,
     "read_only": false
   },
@@ -21704,7 +21704,7 @@
     "method": "POST",
     "name": "review_observer_score",
     "output_shape": "unknown",
-    "path": "/v1/observers/{observer_id}/scores/{score_id}/review",
+    "path": "/v1/platform/observers/{observer_id}/scores/{score_id}/review",
     "positional_arg": null,
     "read_only": false
   },
@@ -21763,7 +21763,7 @@
     "method": "PUT",
     "name": "review_org_quality_monitoring_score",
     "output_shape": "unknown",
-    "path": "/v1/orgs/{org}/quality-monitoring/scores/{score}/review",
+    "path": "/v1/platform/orgs/{org}/quality-monitoring/scores/{score}/review",
     "positional_arg": null,
     "read_only": false
   },
@@ -21786,7 +21786,7 @@
     "method": "POST",
     "name": "review_provider_models",
     "output_shape": "unknown",
-    "path": "/v1/providers/{id}/models/review",
+    "path": "/v1/platform/providers/{id}/models/review",
     "positional_arg": null,
     "read_only": false
   },
@@ -21816,7 +21816,7 @@
     "method": "POST",
     "name": "revoke_agent_key",
     "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/channels/{channel_id}/keys/{key_id}/revoke",
+    "path": "/v1/platform/agents/{agent_id}/channels/{channel_id}/keys/{key_id}/revoke",
     "positional_arg": null,
     "read_only": false
   },
@@ -21845,7 +21845,7 @@
     "method": "DELETE",
     "name": "revoke_agent_mcp_connection",
     "output_shape": "unknown",
-    "path": "/v1/agents/{id}/mcp-attachments/{name}/connection",
+    "path": "/v1/platform/agents/{id}/mcp-attachments/{name}/connection",
     "positional_arg": null,
     "read_only": false
   },
@@ -21873,7 +21873,7 @@
     "method": "DELETE",
     "name": "revoke_eval_run_share",
     "output_shape": "unknown",
-    "path": "/v1/evals/{eval_id}/runs/{run_id}/share",
+    "path": "/v1/platform/evals/{eval_id}/runs/{run_id}/share",
     "positional_arg": null,
     "read_only": false
   },
@@ -21904,7 +21904,7 @@
     "method": "DELETE",
     "name": "revoke_resource_grant",
     "output_shape": "unknown",
-    "path": "/v1/resources/{id}/grants/{grant_id}",
+    "path": "/v1/platform/resources/{id}/grants/{grant_id}",
     "positional_arg": null,
     "read_only": false
   },
@@ -21935,7 +21935,7 @@
     "method": "DELETE",
     "name": "revoke_scoped_credential",
     "output_shape": "unknown",
-    "path": "/v1/credential-bindings/{id}",
+    "path": "/v1/platform/credential-bindings/{id}",
     "positional_arg": null,
     "read_only": false
   },
@@ -21974,7 +21974,7 @@
     "method": "POST",
     "name": "rotate_agent_key",
     "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/channels/{channel_id}/keys/{key_id}/rotate",
+    "path": "/v1/platform/agents/{agent_id}/channels/{channel_id}/keys/{key_id}/rotate",
     "positional_arg": null,
     "read_only": false
   },
@@ -22022,7 +22022,7 @@
     "method": "POST",
     "name": "run_health_issue_fixer",
     "output_shape": "unknown",
-    "path": "/v1/health-issues/{issue_id}/fix",
+    "path": "/v1/platform/health-issues/{issue_id}/fix",
     "positional_arg": null,
     "read_only": false
   },
@@ -22045,7 +22045,7 @@
     "method": "GET",
     "name": "run_system_doctor",
     "output_shape": "unknown",
-    "path": "/v1/system/doctor",
+    "path": "/v1/platform/system/doctor",
     "positional_arg": null,
     "read_only": true
   },
@@ -22110,7 +22110,7 @@
     "method": "POST",
     "name": "search_knowledge_collections",
     "output_shape": "unknown",
-    "path": "/v1/knowledge/search",
+    "path": "/v1/platform/knowledge/search",
     "positional_arg": null,
     "read_only": true
   },
@@ -22144,7 +22144,7 @@
     "method": "GET",
     "name": "search_room_messages",
     "output_shape": "unknown",
-    "path": "/v1/rooms/{room_id}/search",
+    "path": "/v1/platform/rooms/{room_id}/search",
     "positional_arg": null,
     "read_only": true
   },
@@ -22229,7 +22229,7 @@
     "method": "POST",
     "name": "search_workspace_files",
     "output_shape": "unknown",
-    "path": "/v1/sessions/{session_id}/fs/_/search",
+    "path": "/v1/platform/sessions/{session_id}/fs/_/search",
     "positional_arg": null,
     "read_only": true
   },
@@ -22291,7 +22291,7 @@
     "method": "POST",
     "name": "set_agent_avatar",
     "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/avatar/set",
+    "path": "/v1/platform/agents/{agent_id}/avatar/set",
     "positional_arg": "agent_id",
     "read_only": false
   },
@@ -22315,7 +22315,7 @@
     "method": "PUT",
     "name": "set_default_decision_model",
     "output_shape": "unknown",
-    "path": "/v1/models/decision-default",
+    "path": "/v1/platform/models/decision-default",
     "positional_arg": null,
     "read_only": false
   },
@@ -22339,7 +22339,7 @@
     "method": "PUT",
     "name": "set_default_image_model",
     "output_shape": "unknown",
-    "path": "/v1/models/images-default",
+    "path": "/v1/platform/models/images-default",
     "positional_arg": null,
     "read_only": false
   },
@@ -22383,7 +22383,7 @@
     "method": "PUT",
     "name": "set_manager_context",
     "output_shape": "unknown",
-    "path": "/v1/context/{entity_ref}",
+    "path": "/v1/platform/context/{entity_ref}",
     "positional_arg": "entity_ref",
     "read_only": false
   },
@@ -22433,7 +22433,7 @@
     "method": "PUT",
     "name": "set_mcp_tool_label",
     "output_shape": "unknown",
-    "path": "/v1/mcp-servers/{id}/tools/{tool_name}/label",
+    "path": "/v1/platform/mcp-servers/{id}/tools/{tool_name}/label",
     "positional_arg": "id",
     "read_only": false
   },
@@ -22490,7 +22490,7 @@
     "method": "PUT",
     "name": "set_message_feedback",
     "output_shape": "unknown",
-    "path": "/v1/sessions/{session_id}/messages/{message_id}/feedback",
+    "path": "/v1/platform/sessions/{session_id}/messages/{message_id}/feedback",
     "positional_arg": "session_id",
     "read_only": false
   },
@@ -22521,7 +22521,7 @@
     "method": "PUT",
     "name": "set_org_egress_allowlist",
     "output_shape": "unknown",
-    "path": "/v1/orgs/{org}/egress-allowlist",
+    "path": "/v1/platform/orgs/{org}/egress-allowlist",
     "positional_arg": null,
     "read_only": false
   },
@@ -22558,7 +22558,7 @@
     "method": "PUT",
     "name": "set_org_egress_allowlist_grant",
     "output_shape": "unknown",
-    "path": "/v1/orgs/{org}/egress-allowlist/grant",
+    "path": "/v1/platform/orgs/{org}/egress-allowlist/grant",
     "positional_arg": null,
     "read_only": false
   },
@@ -22692,7 +22692,7 @@
     "method": "PUT",
     "name": "set_session_agent_view_preference",
     "output_shape": "unknown",
-    "path": "/v1/sessions/{session_id}/agent-view",
+    "path": "/v1/platform/sessions/{session_id}/agent-view",
     "positional_arg": null,
     "read_only": false
   },
@@ -22722,7 +22722,7 @@
     "method": "PUT",
     "name": "set_session_approval_mode",
     "output_shape": "unknown",
-    "path": "/v1/sessions/{session_id}/approval-mode",
+    "path": "/v1/platform/sessions/{session_id}/approval-mode",
     "positional_arg": null,
     "read_only": false
   },
@@ -22761,7 +22761,7 @@
     "method": "GET",
     "name": "show_entity_revision",
     "output_shape": "unknown",
-    "path": "/v1/history/{entity_ref}/revisions/{revision}",
+    "path": "/v1/platform/history/{entity_ref}/revisions/{revision}",
     "positional_arg": "entity_ref",
     "read_only": true
   },
@@ -22787,7 +22787,7 @@
     "method": "POST",
     "name": "snooze_health_issue",
     "output_shape": "unknown",
-    "path": "/v1/health-issues/{issue_id}/snooze",
+    "path": "/v1/platform/health-issues/{issue_id}/snooze",
     "positional_arg": null,
     "read_only": false
   },
@@ -22934,7 +22934,7 @@
     "method": "POST",
     "name": "start_sandbox_template_build",
     "output_shape": "unknown",
-    "path": "/v1/sandbox-templates/{id}/builds",
+    "path": "/v1/platform/sandbox-templates/{id}/builds",
     "positional_arg": null,
     "read_only": false
   },
@@ -22979,7 +22979,7 @@
     "method": "POST",
     "name": "stat_workspace_file",
     "output_shape": "unknown",
-    "path": "/v1/sessions/{session_id}/fs/_/stat",
+    "path": "/v1/platform/sessions/{session_id}/fs/_/stat",
     "positional_arg": null,
     "read_only": true
   },
@@ -23002,7 +23002,7 @@
     "method": "GET",
     "name": "stream_sse",
     "output_shape": "unknown",
-    "path": "/v1/sessions/{session_id}/sse",
+    "path": "/v1/platform/sessions/{session_id}/sse",
     "positional_arg": "session_id",
     "read_only": true
   },
@@ -23060,7 +23060,7 @@
     "method": "POST",
     "name": "submit_tool_results",
     "output_shape": "unknown",
-    "path": "/v1/sessions/{session_id}/tool-results",
+    "path": "/v1/platform/sessions/{session_id}/tool-results",
     "positional_arg": "session_id",
     "read_only": false
   },
@@ -23084,7 +23084,7 @@
     "method": "POST",
     "name": "suggest_mcp_tool_labels",
     "output_shape": "unknown",
-    "path": "/v1/mcp-servers/{id}/tools/suggest-labels",
+    "path": "/v1/platform/mcp-servers/{id}/tools/suggest-labels",
     "positional_arg": "id",
     "read_only": false
   },
@@ -23106,7 +23106,7 @@
     "method": "POST",
     "name": "sync_agent_source",
     "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/source/sync",
+    "path": "/v1/platform/agents/{agent_id}/source/sync",
     "positional_arg": null,
     "read_only": false
   },
@@ -23128,7 +23128,7 @@
     "method": "POST",
     "name": "sync_knowledge",
     "output_shape": "unknown",
-    "path": "/v1/knowledge/{collection_id}/sync",
+    "path": "/v1/platform/knowledge/{collection_id}/sync",
     "positional_arg": null,
     "read_only": false
   },
@@ -23151,7 +23151,7 @@
     "method": "POST",
     "name": "sync_memory_now",
     "output_shape": "unknown",
-    "path": "/v1/memories/{memory_id}/sync",
+    "path": "/v1/platform/memories/{memory_id}/sync",
     "positional_arg": null,
     "read_only": false
   },
@@ -23175,7 +23175,7 @@
     "method": "POST",
     "name": "sync_plugin_marketplace",
     "output_shape": "unknown",
-    "path": "/v1/plugin_marketplaces/{id}/sync",
+    "path": "/v1/platform/plugin_marketplaces/{id}/sync",
     "positional_arg": "id",
     "read_only": false
   },
@@ -23198,7 +23198,7 @@
     "method": "POST",
     "name": "sync_provider_models",
     "output_shape": "unknown",
-    "path": "/v1/providers/{id}/sync-models",
+    "path": "/v1/platform/providers/{id}/sync-models",
     "positional_arg": null,
     "read_only": false
   },
@@ -23245,7 +23245,7 @@
     "method": "POST",
     "name": "take_finding_action",
     "output_shape": "unknown",
-    "path": "/v1/health-issues/{issue_id}/actions",
+    "path": "/v1/platform/health-issues/{issue_id}/actions",
     "positional_arg": null,
     "read_only": false
   },
@@ -23303,7 +23303,7 @@
     "method": "POST",
     "name": "top_up_budget",
     "output_shape": "unknown",
-    "path": "/v1/budgets/{budget_id}/top-up",
+    "path": "/v1/platform/budgets/{budget_id}/top-up",
     "positional_arg": null,
     "read_only": false
   },
@@ -23331,7 +23331,7 @@
     "method": "POST",
     "name": "trigger_agent_channel",
     "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/channels/{channel_id}/trigger",
+    "path": "/v1/platform/agents/{agent_id}/channels/{channel_id}/trigger",
     "positional_arg": null,
     "read_only": false
   },
@@ -23355,7 +23355,7 @@
     "method": "POST",
     "name": "trigger_agent_health_check",
     "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/health-checks",
+    "path": "/v1/platform/agents/{agent_id}/health-checks",
     "positional_arg": null,
     "read_only": false
   },
@@ -23462,7 +23462,7 @@
     "method": "POST",
     "name": "trigger_agent_trigger",
     "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/triggers/{trigger_id}/trigger",
+    "path": "/v1/platform/agents/{agent_id}/triggers/{trigger_id}/trigger",
     "positional_arg": null,
     "read_only": false
   },
@@ -23486,7 +23486,7 @@
     "method": "POST",
     "name": "trigger_schedule",
     "output_shape": "unknown",
-    "path": "/v1/durable/schedules/{schedule_id}/trigger",
+    "path": "/v1/platform/durable/schedules/{schedule_id}/trigger",
     "positional_arg": null,
     "read_only": false
   },
@@ -23509,7 +23509,7 @@
     "method": "DELETE",
     "name": "unarchive_session",
     "output_shape": "unknown",
-    "path": "/v1/sessions/{session_id}/archive",
+    "path": "/v1/platform/sessions/{session_id}/archive",
     "positional_arg": null,
     "read_only": false
   },
@@ -23539,7 +23539,7 @@
     "method": "POST",
     "name": "undo_finding_action",
     "output_shape": "unknown",
-    "path": "/v1/health-issues/{issue_id}/actions/{action_id}/undo",
+    "path": "/v1/platform/health-issues/{issue_id}/actions/{action_id}/undo",
     "positional_arg": null,
     "read_only": false
   },
@@ -23589,7 +23589,7 @@
     "method": "POST",
     "name": "undo_model_selection",
     "output_shape": "unknown",
-    "path": "/v1/models/selection/undo",
+    "path": "/v1/platform/models/selection/undo",
     "positional_arg": null,
     "read_only": false
   },
@@ -23613,7 +23613,7 @@
     "method": "DELETE",
     "name": "uninstall_plugin",
     "output_shape": "unknown",
-    "path": "/v1/plugins/{id}",
+    "path": "/v1/platform/plugins/{id}",
     "positional_arg": "id",
     "read_only": false
   },
@@ -23636,7 +23636,7 @@
     "method": "DELETE",
     "name": "unpin_session",
     "output_shape": "unknown",
-    "path": "/v1/sessions/{session_id}/pin",
+    "path": "/v1/platform/sessions/{session_id}/pin",
     "positional_arg": null,
     "read_only": false
   },
@@ -23664,7 +23664,7 @@
     "method": "POST",
     "name": "unpublish_agent_channel",
     "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/channels/{channel_id}/unpublish",
+    "path": "/v1/platform/agents/{agent_id}/channels/{channel_id}/unpublish",
     "positional_arg": null,
     "read_only": false
   },
@@ -23691,7 +23691,7 @@
     "method": "PATCH",
     "name": "update_account_profile",
     "output_shape": "unknown",
-    "path": "/v1/users/me",
+    "path": "/v1/platform/users/me",
     "positional_arg": null,
     "read_only": false
   },
@@ -25022,7 +25022,7 @@
     "method": "PATCH",
     "name": "update_agent",
     "output_shape": "unknown",
-    "path": "/v1/agents/{id}",
+    "path": "/v1/platform/agents/{id}",
     "positional_arg": "id",
     "read_only": false
   },
@@ -25075,7 +25075,7 @@
     "method": "PATCH",
     "name": "update_agent_channel",
     "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/channels/{channel_id}",
+    "path": "/v1/platform/agents/{agent_id}/channels/{channel_id}",
     "positional_arg": null,
     "read_only": false
   },
@@ -25140,7 +25140,7 @@
     "method": "PATCH",
     "name": "update_agent_script",
     "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/scripts/{script_id}",
+    "path": "/v1/platform/agents/{agent_id}/scripts/{script_id}",
     "positional_arg": null,
     "read_only": false
   },
@@ -25444,7 +25444,7 @@
     "method": "PATCH",
     "name": "update_agent_trigger",
     "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/triggers/{trigger_id}",
+    "path": "/v1/platform/agents/{agent_id}/triggers/{trigger_id}",
     "positional_arg": null,
     "read_only": false
   },
@@ -25567,7 +25567,7 @@
     "method": "PATCH",
     "name": "update_budget",
     "output_shape": "unknown",
-    "path": "/v1/budgets/{budget_id}",
+    "path": "/v1/platform/budgets/{budget_id}",
     "positional_arg": null,
     "read_only": false
   },
@@ -25590,7 +25590,7 @@
     "method": "PATCH",
     "name": "update_cost_settings",
     "output_shape": "unknown",
-    "path": "/v1/costs/settings",
+    "path": "/v1/platform/costs/settings",
     "positional_arg": null,
     "read_only": false
   },
@@ -25640,7 +25640,7 @@
     "method": "PATCH",
     "name": "update_declarative_capability",
     "output_shape": "unknown",
-    "path": "/v1/capabilities/declarative/{id}",
+    "path": "/v1/platform/capabilities/declarative/{id}",
     "positional_arg": "id",
     "read_only": false
   },
@@ -25833,7 +25833,7 @@
     "method": "PATCH",
     "name": "update_eval",
     "output_shape": "unknown",
-    "path": "/v1/evals/{eval_id}",
+    "path": "/v1/platform/evals/{eval_id}",
     "positional_arg": null,
     "read_only": false
   },
@@ -26691,7 +26691,7 @@
     "method": "PATCH",
     "name": "update_eval_case",
     "output_shape": "unknown",
-    "path": "/v1/evals/{eval_id}/cases/{case_id}",
+    "path": "/v1/platform/evals/{eval_id}/cases/{case_id}",
     "positional_arg": null,
     "read_only": false
   },
@@ -26799,7 +26799,7 @@
     "method": "PATCH",
     "name": "update_eval_result_scores",
     "output_shape": "unknown",
-    "path": "/v1/evals/{eval_id}/runs/{run_id}/results/{result_id}/scores",
+    "path": "/v1/platform/evals/{eval_id}/runs/{run_id}/results/{result_id}/scores",
     "positional_arg": null,
     "read_only": false
   },
@@ -26853,7 +26853,7 @@
     "method": "PATCH",
     "name": "update_finding_fix",
     "output_shape": "unknown",
-    "path": "/v1/evals/fixes/{fix_id}",
+    "path": "/v1/platform/evals/fixes/{fix_id}",
     "positional_arg": null,
     "read_only": false
   },
@@ -27409,7 +27409,7 @@
     "method": "PATCH",
     "name": "update_harness",
     "output_shape": "unknown",
-    "path": "/v1/harnesses/{id}",
+    "path": "/v1/platform/harnesses/{id}",
     "positional_arg": "id",
     "read_only": false
   },
@@ -27489,7 +27489,7 @@
     "method": "PATCH",
     "name": "update_knowledge",
     "output_shape": "unknown",
-    "path": "/v1/knowledge/{collection_id}",
+    "path": "/v1/platform/knowledge/{collection_id}",
     "positional_arg": null,
     "read_only": false
   },
@@ -27551,7 +27551,7 @@
     "method": "PATCH",
     "name": "update_knowledge_file_metadata",
     "output_shape": "unknown",
-    "path": "/v1/knowledge/{collection_id}/files",
+    "path": "/v1/platform/knowledge/{collection_id}/files",
     "positional_arg": null,
     "read_only": false
   },
@@ -27784,7 +27784,7 @@
     "method": "PATCH",
     "name": "update_mcp_server",
     "output_shape": "unknown",
-    "path": "/v1/mcp-servers/{id}",
+    "path": "/v1/platform/mcp-servers/{id}",
     "positional_arg": "id",
     "read_only": false
   },
@@ -27983,7 +27983,7 @@
     "method": "PATCH",
     "name": "update_memory",
     "output_shape": "unknown",
-    "path": "/v1/memories/{memory_id}",
+    "path": "/v1/platform/memories/{memory_id}",
     "positional_arg": null,
     "read_only": false
   },
@@ -28084,7 +28084,7 @@
     "method": "PATCH",
     "name": "update_model",
     "output_shape": "unknown",
-    "path": "/v1/models/{id}",
+    "path": "/v1/platform/models/{id}",
     "positional_arg": null,
     "read_only": false
   },
@@ -28178,7 +28178,7 @@
     "method": "PATCH",
     "name": "update_model_preset",
     "output_shape": "unknown",
-    "path": "/v1/model-presets/{id}",
+    "path": "/v1/platform/model-presets/{id}",
     "positional_arg": null,
     "read_only": false
   },
@@ -28938,7 +28938,7 @@
     "method": "PATCH",
     "name": "update_observer",
     "output_shape": "unknown",
-    "path": "/v1/observers/{observer_id}",
+    "path": "/v1/platform/observers/{observer_id}",
     "positional_arg": null,
     "read_only": false
   },
@@ -29300,7 +29300,7 @@
               "oneOf": [
                 {
                   "$ref": "#/$defs/SystemDecisions",
-                  "description": "Who answers deployment-owned decision checks (guardrail `jev` checks\nand the Slack relevance check). `organization` uses the org's default\ndecision model (`PUT /v1/models/decision-default`) on its own provider\naccount; when that model is missing or failing, guardrail checks fail\nopen and Slack stays silent, never falling back to the deployment."
+                  "description": "Who answers deployment-owned decision checks (guardrail `jev` checks\nand the Slack relevance check). `organization` uses the org's default\ndecision model (`PUT /v1/platform/models/decision-default`) on its own provider\naccount; when that model is missing or failing, guardrail checks fail\nopen and Slack stays silent, never falling back to the deployment."
                 },
                 {
                   "type": "null"
@@ -29407,7 +29407,7 @@
     "method": "PATCH",
     "name": "update_org",
     "output_shape": "unknown",
-    "path": "/v1/orgs/{org}",
+    "path": "/v1/platform/orgs/{org}",
     "positional_arg": null,
     "read_only": false
   },
@@ -29452,7 +29452,7 @@
     "method": "PATCH",
     "name": "update_organization_account_name",
     "output_shape": "unknown",
-    "path": "/v1/organization-accounts/{id}",
+    "path": "/v1/platform/organization-accounts/{id}",
     "positional_arg": null,
     "read_only": false
   },
@@ -29572,7 +29572,7 @@
     "method": "POST",
     "name": "update_plugin",
     "output_shape": "unknown",
-    "path": "/v1/plugins/{id}/update",
+    "path": "/v1/platform/plugins/{id}/update",
     "positional_arg": "id",
     "read_only": false
   },
@@ -29625,7 +29625,7 @@
     "method": "PATCH",
     "name": "update_plugin_marketplace",
     "output_shape": "unknown",
-    "path": "/v1/plugin_marketplaces/{id}",
+    "path": "/v1/platform/plugin_marketplaces/{id}",
     "positional_arg": "id",
     "read_only": false
   },
@@ -29796,7 +29796,7 @@
     "method": "PATCH",
     "name": "update_provider",
     "output_shape": "unknown",
-    "path": "/v1/providers/{id}",
+    "path": "/v1/platform/providers/{id}",
     "positional_arg": null,
     "read_only": false
   },
@@ -29876,7 +29876,7 @@
     "method": "PATCH",
     "name": "update_room",
     "output_shape": "unknown",
-    "path": "/v1/rooms/{room_id}",
+    "path": "/v1/platform/rooms/{room_id}",
     "positional_arg": null,
     "read_only": false
   },
@@ -29973,7 +29973,7 @@
     "method": "PATCH",
     "name": "update_room_member",
     "output_shape": "unknown",
-    "path": "/v1/rooms/{room_id}/members/{member_id}",
+    "path": "/v1/platform/rooms/{room_id}/members/{member_id}",
     "positional_arg": null,
     "read_only": false
   },
@@ -30029,7 +30029,7 @@
     "method": "PATCH",
     "name": "update_sandbox_template_metadata",
     "output_shape": "unknown",
-    "path": "/v1/sandbox-template-metadata/{id}",
+    "path": "/v1/platform/sandbox-template-metadata/{id}",
     "positional_arg": null,
     "read_only": false
   },
@@ -30174,7 +30174,7 @@
     "method": "PATCH",
     "name": "update_schedule",
     "output_shape": "unknown",
-    "path": "/v1/durable/schedules/{schedule_id}",
+    "path": "/v1/platform/durable/schedules/{schedule_id}",
     "positional_arg": null,
     "read_only": false
   },
@@ -30265,7 +30265,7 @@
     "method": "PATCH",
     "name": "update_session",
     "output_shape": "unknown",
-    "path": "/v1/sessions/{session_id}",
+    "path": "/v1/platform/sessions/{session_id}",
     "positional_arg": null,
     "read_only": false
   },
@@ -30332,7 +30332,7 @@
     "method": "PATCH",
     "name": "update_skill",
     "output_shape": "unknown",
-    "path": "/v1/skills/{id}",
+    "path": "/v1/platform/skills/{id}",
     "positional_arg": "id",
     "read_only": false
   },
@@ -30374,7 +30374,7 @@
     "method": "PATCH",
     "name": "update_tracing_destination_metadata",
     "output_shape": "unknown",
-    "path": "/v1/tracing/destination-metadata/{id}",
+    "path": "/v1/platform/tracing/destination-metadata/{id}",
     "positional_arg": null,
     "read_only": false
   },
@@ -30434,7 +30434,7 @@
     "method": "PATCH",
     "name": "update_tracing_policy",
     "output_shape": "unknown",
-    "path": "/v1/tracing/policies/{id}",
+    "path": "/v1/platform/tracing/policies/{id}",
     "positional_arg": null,
     "read_only": false
   },
@@ -30531,7 +30531,7 @@
     "method": "PATCH",
     "name": "update_virtual_user",
     "output_shape": "unknown",
-    "path": "/v1/virtual-users/{identity_id}",
+    "path": "/v1/platform/virtual-users/{identity_id}",
     "positional_arg": "id",
     "read_only": false
   },
@@ -30586,7 +30586,7 @@
     "method": "PATCH",
     "name": "update_workspace",
     "output_shape": "unknown",
-    "path": "/v1/workspaces/{workspace_id}",
+    "path": "/v1/platform/workspaces/{workspace_id}",
     "positional_arg": null,
     "read_only": false
   },
@@ -30667,7 +30667,7 @@
     "method": "PUT",
     "name": "update_workspace_file",
     "output_shape": "unknown",
-    "path": "/v1/sessions/{session_id}/fs/{path}",
+    "path": "/v1/platform/sessions/{session_id}/fs/{path}",
     "positional_arg": null,
     "read_only": false
   },
@@ -31955,7 +31955,7 @@
     "method": "PUT",
     "name": "upsert_agent",
     "output_shape": "unknown",
-    "path": "/v1/agents/{id}",
+    "path": "/v1/platform/agents/{id}",
     "positional_arg": "id",
     "read_only": false
   },
@@ -32048,7 +32048,7 @@
     "method": "PUT",
     "name": "upsert_agent_check_rule",
     "output_shape": "unknown",
-    "path": "/v1/agents/check-rules/{rule_id}",
+    "path": "/v1/platform/agents/check-rules/{rule_id}",
     "positional_arg": null,
     "read_only": false
   },
@@ -32095,7 +32095,7 @@
     "method": "POST",
     "name": "use_agent_everruns_app",
     "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/github/everruns-app",
+    "path": "/v1/platform/agents/{agent_id}/github/everruns-app",
     "positional_arg": null,
     "read_only": false
   },
@@ -32138,7 +32138,7 @@
     "method": "POST",
     "name": "validate_agent_package",
     "output_shape": "unknown",
-    "path": "/v1/agents/validate",
+    "path": "/v1/platform/agents/validate",
     "positional_arg": "file",
     "read_only": true
   },
@@ -32230,7 +32230,7 @@
     "method": "GET",
     "name": "validate_knowledge_okf",
     "output_shape": "unknown",
-    "path": "/v1/knowledge/{collection_id}/okf",
+    "path": "/v1/platform/knowledge/{collection_id}/okf",
     "positional_arg": null,
     "read_only": true
   },
@@ -32313,7 +32313,7 @@
     "method": "PUT",
     "name": "write_knowledge_file",
     "output_shape": "unknown",
-    "path": "/v1/knowledge/{collection_id}/files",
+    "path": "/v1/platform/knowledge/{collection_id}/files",
     "positional_arg": null,
     "read_only": false
   },
@@ -32367,7 +32367,7 @@
     "method": "PUT",
     "name": "write_room_file",
     "output_shape": "unknown",
-    "path": "/v1/rooms/{room_id}/files",
+    "path": "/v1/platform/rooms/{room_id}/files",
     "positional_arg": null,
     "read_only": false
   }

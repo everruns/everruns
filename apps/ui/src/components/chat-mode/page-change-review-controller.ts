@@ -311,12 +311,12 @@ export class PageChangeReviewController {
   beforeWrite = async (method: string, endpoint: string): Promise<ObservedWrite | undefined> => {
     const epoch = this.epoch;
     const resource =
-      ["/v1/users/me", "/v1/virtual-users/me"].includes(endpoint) &&
+      ["/v1/platform/users/me", "/v1/virtual-users/me"].includes(endpoint) &&
       method.toUpperCase() === "PATCH"
         ? [...this.forms.values()].find(
             (form) =>
               form.resource.kind ===
-              (endpoint === "/v1/users/me" ? "user_profile" : "virtual_user"),
+              (endpoint === "/v1/platform/users/me" ? "user_profile" : "virtual_user"),
           )?.resource
         : resourceWrite(method, endpoint, this.org);
     if (!resource || !this.live()) return;

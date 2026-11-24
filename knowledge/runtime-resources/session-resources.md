@@ -98,7 +98,7 @@ V1 limitation:
 
 ### API
 
-`GET /v1/sessions/{session_id}/resources`, returns `Vec<SessionResourceEntry>`.
+`GET /v1/platform/sessions/{session_id}/resources`, returns `Vec<SessionResourceEntry>`.
 
 ### Runtime modes
 

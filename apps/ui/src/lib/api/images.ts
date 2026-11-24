@@ -1,5 +1,5 @@
 // Image upload API
-// Org is sent via everruns_org cookie (set by OrgProvider via /v1/users/me/switch-org)
+// Org is sent via everruns_org cookie (set by OrgProvider via /v1/platform/users/me/switch-org)
 //
 // API functions for uploading, retrieving, and deleting images.
 // Images can be attached to messages as image_file content parts.
@@ -52,7 +52,7 @@ export async function uploadImage(file: File, sessionId?: string): Promise<Image
 
   const baseUrl = getApiBaseUrl();
   const params = sessionId ? `?session_id=${sessionId}` : "";
-  const url = `${baseUrl}/v1/images${params}`;
+  const url = `${baseUrl}/v1/platform/images${params}`;
 
   // Raw fetch needed for FormData (no Content-Type header — browser sets multipart boundary)
   const response = await fetch(url, {
@@ -73,28 +73,30 @@ export async function uploadImage(file: File, sessionId?: string): Promise<Image
  * Get image URL for display (original size)
  */
 export function getImageUrl(imageId: string): string {
-  return `${getApiBaseUrl()}/v1/images/${imageId}`;
+  return `${getApiBaseUrl()}/v1/platform/images/${imageId}`;
 }
 
 /**
  * Get thumbnail URL for display
  */
 export function getThumbnailUrl(imageId: string): string {
-  return `${getApiBaseUrl()}/v1/images/${imageId}/thumbnail`;
+  return `${getApiBaseUrl()}/v1/platform/images/${imageId}/thumbnail`;
 }
 
 /**
  * Delete an image
  */
 export async function deleteImage(imageId: string): Promise<void> {
-  await api.delete(`/v1/images/${imageId}`);
+  await api.delete(`/v1/platform/images/${imageId}`);
 }
 
 /**
  * List images
  */
 export async function listImages(limit: number = 50, offset: number = 0): Promise<ImageInfo[]> {
-  const response = await api.get<ImageInfo[]>(`/v1/images?limit=${limit}&offset=${offset}`);
+  const response = await api.get<ImageInfo[]>(
+    `/v1/platform/images?limit=${limit}&offset=${offset}`,
+  );
   return response.data;
 }
 

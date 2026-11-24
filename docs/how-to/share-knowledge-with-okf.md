@@ -38,16 +38,16 @@ Only `type` is required. `index.md` and `log.md` are reserved navigation/history
 
 ## Import a bundle
 
-`POST /v1/knowledge-bases/{kb_id}/okf_import` accepts either inline files or a base64-encoded `.tar.gz` bundle. It is **idempotent**: re-importing an updated bundle converges the Knowledge Base to the bundle's state without creating duplicates.
+`POST /v1/platform/knowledge-bases/{kb_id}/okf_import` accepts either inline files or a base64-encoded `.tar.gz` bundle. It is **idempotent**: re-importing an updated bundle converges the Knowledge Base to the bundle's state without creating duplicates.
 
 Create a Knowledge Base, then import inline files:
 
 ```bash
-KB_ID=$(curl -s -X POST "http://localhost:9300/api/v1/knowledge-bases" \
+KB_ID=$(curl -s -X POST "http://localhost:9300/api/v1/platform/knowledge-bases" \
   -H "Content-Type: application/json" \
   -d '{"name": "Sales Knowledge"}' | jq -r .id)
 
-curl -s -X POST "http://localhost:9300/api/v1/knowledge-bases/$KB_ID/okf_import" \
+curl -s -X POST "http://localhost:9300/api/v1/platform/knowledge-bases/$KB_ID/okf_import" \
   -H "Content-Type: application/json" \
   -d '{
     "files": [
@@ -62,7 +62,7 @@ curl -s -X POST "http://localhost:9300/api/v1/knowledge-bases/$KB_ID/okf_import"
 Or import a tarball you already have:
 
 ```bash
-curl -s -X POST "http://localhost:9300/api/v1/knowledge-bases/$KB_ID/okf_import" \
+curl -s -X POST "http://localhost:9300/api/v1/platform/knowledge-bases/$KB_ID/okf_import" \
   -H "Content-Type: application/json" \
   -d "{\"bundle_base64\": \"$(base64 -w0 sales-bundle.tar.gz)\"}"
 ```
@@ -78,7 +78,7 @@ The response summarizes the run:
 Re-run the same import whenever the bundle changes, matched entries update in place (keyed on `resource`, or the bundle path when there is no `resource`). To make the Knowledge Base a strict mirror of the bundle, pass `"prune": true`; entries that came from a previous import and are absent from the new bundle are removed.
 
 ```bash
-curl -s -X POST "http://localhost:9300/api/v1/knowledge-bases/$KB_ID/okf_import" \
+curl -s -X POST "http://localhost:9300/api/v1/platform/knowledge-bases/$KB_ID/okf_import" \
   -H "Content-Type: application/json" \
   -d "{\"prune\": true, \"bundle_base64\": \"$(base64 -w0 sales-bundle.tar.gz)\"}"
 ```
@@ -100,10 +100,10 @@ Import is tolerant by design (per OKF conformance): reserved files are skipped, 
 
 ## Export a bundle
 
-`GET /v1/knowledge-bases/{kb_id}/okf_export` streams a conformant OKF bundle as a gzipped tarball, including a root `index.md` that declares the format version.
+`GET /v1/platform/knowledge-bases/{kb_id}/okf_export` streams a conformant OKF bundle as a gzipped tarball, including a root `index.md` that declares the format version.
 
 ```bash
-curl -s "http://localhost:9300/api/v1/knowledge-bases/$KB_ID/okf_export" \
+curl -s "http://localhost:9300/api/v1/platform/knowledge-bases/$KB_ID/okf_export" \
   -o sales-bundle.tar.gz
 tar tzf sales-bundle.tar.gz
 ```

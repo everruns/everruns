@@ -19,7 +19,7 @@ Verify read-only credential restrictions and caller permissions agree across RES
 - Authenticated stack and disposable owner, admin, and member fixtures with known org roles.
 - Full-access and read-only PATs for the owner; cookies excluded from PAT requests.
 - A disposable active MCP preset, an archived preset, an agent, and a harness in the selected org.
-- Requests use the current command schemas from `GET /api/v1/commands`. For MCP, initialize normally and follow the published tool input schemas; do not guess payloads.
+- Requests use the current command schemas from `GET /api/v1/platform/commands`. For MCP, initialize normally and follow the published tool input schemas; do not guess payloads.
 
 ## Test Data
 
@@ -37,7 +37,7 @@ Verify read-only credential restrictions and caller permissions agree across RES
 
 ## Steps
 
-1. Record fixture state and execution counts. Execute each row over its REST route, then the matching `POST /api/v1/commands/<name>` entry point with the same credential and org.
+1. Record fixture state and execution counts. Execute each row over its REST route, then the matching `POST /api/v1/platform/commands/<name>` entry point with the same credential and org.
 2. Initialize MCP using each owner's PAT. Inspect tools/list and discover the available commands.
 3. With the read-only PAT, perform an authorized read, then attempt the equivalent write with `tools/call` using the schema saved from full-access discovery.
 4. Inspect the MCP result, including its error flag. A successful HTTP transport alone is not a successful operation.

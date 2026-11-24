@@ -43,7 +43,7 @@ This decoupling is intentional. The internal database key for a resource and its
 
 For resources that accept client-supplied IDs on create, you can pass your own `id` as long as it matches the format above and uses the correct prefix for the resource type. If you omit `id`, the server assigns one.
 
-A subset of resources additionally expose `PUT /v1/{resource}/{id}` as an upsert: the same call creates the resource if it does not exist (`201 Created`) and updates it in place if it does (`200 OK`). Where supported, this makes idempotent provisioning straightforward, replay the same `PUT` and the end state is identical. The OpenAPI reference is the source of truth for which resources support this; not every resource has a `PUT` route.
+A subset of resources additionally expose `PUT /v1/platform/{resource}/{id}` as an upsert: the same call creates the resource if it does not exist (`201 Created`) and updates it in place if it does (`200 OK`). Where supported, this makes idempotent provisioning straightforward, replay the same `PUT` and the end state is identical. The OpenAPI reference is the source of truth for which resources support this; not every resource has a `PUT` route.
 
 ## Serialization
 

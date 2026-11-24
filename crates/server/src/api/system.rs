@@ -20,18 +20,21 @@ use crate::domains::system::{ListPlatformDetections, RunSystemDoctor};
 
 pub fn routes(state: ApiState) -> Router {
     Router::new()
-        .route("/v1/system/doctor", get(run_system_doctor))
-        .route("/v1/system/detections", get(list_platform_detections))
+        .route("/v1/platform/system/doctor", get(run_system_doctor))
+        .route(
+            "/v1/platform/system/detections",
+            get(list_platform_detections),
+        )
         .with_state(state.clone())
         // The control plane's /dp/v1 routes and org tokens ride along:
         // app_builder sits at the file-size ratchet.
         .merge(super::data_plane::routes(state))
 }
 
-/// GET /v1/system/doctor - Check the whole install
+/// GET /v1/platform/system/doctor - Check the whole install
 #[utoipa::path(
     get,
-    path = "/v1/system/doctor",
+    path = "/v1/platform/system/doctor",
     params(
         ("refresh" = Option<bool>, Query, description = "Run every check now instead of returning the report from the last minute")
     ),
@@ -51,10 +54,10 @@ pub async fn run_system_doctor(
     Ok(axum::Json(query.run(&state.platform_ctx(&auth)).await?))
 }
 
-/// GET /v1/system/detections - Open abuse detections in every organization
+/// GET /v1/platform/system/detections - Open abuse detections in every organization
 #[utoipa::path(
     get,
-    path = "/v1/system/detections",
+    path = "/v1/platform/system/detections",
     params(
         ("offset" = Option<i64>, Query, description = "Number of detections to skip"),
         ("limit" = Option<i64>, Query, description = "Page size from 1 through 100; defaults to 20")

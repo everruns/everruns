@@ -31,7 +31,7 @@ Verify all CRUD operations work correctly via the REST API.
 ### 1. Create Schedule (POST)
 
 ```bash
-curl -X POST "$API_URL/v1/durable/schedules" \
+curl -X POST "$API_URL/v1/platform/durable/schedules" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "api-test-schedule",
@@ -53,7 +53,7 @@ curl -X POST "$API_URL/v1/durable/schedules" \
 ### 2. Get Schedule (GET)
 
 ```bash
-curl "$API_URL/v1/durable/schedules/$SCHEDULE_ID"
+curl "$API_URL/v1/platform/durable/schedules/$SCHEDULE_ID"
 ```
 
 **Expected**: 200 OK, fields match creation request; five-field cron is normalized to seven fields
@@ -61,7 +61,7 @@ curl "$API_URL/v1/durable/schedules/$SCHEDULE_ID"
 ### 3. List Schedules (GET)
 
 ```bash
-curl "$API_URL/v1/durable/schedules"
+curl "$API_URL/v1/platform/durable/schedules"
 ```
 
 **Expected**: 200 OK, `data` array contains the created schedule, `total` >= 1
@@ -69,7 +69,7 @@ curl "$API_URL/v1/durable/schedules"
 ### 4. Update Schedule (PATCH)
 
 ```bash
-curl -X PATCH "$API_URL/v1/durable/schedules/$SCHEDULE_ID" \
+curl -X PATCH "$API_URL/v1/platform/durable/schedules/$SCHEDULE_ID" \
   -H "Content-Type: application/json" \
   -d '{
     "description": "Updated description",
@@ -82,7 +82,7 @@ curl -X PATCH "$API_URL/v1/durable/schedules/$SCHEDULE_ID" \
 ### 5. Pause Schedule (POST)
 
 ```bash
-curl -X POST "$API_URL/v1/durable/schedules/$SCHEDULE_ID/pause"
+curl -X POST "$API_URL/v1/platform/durable/schedules/$SCHEDULE_ID/pause"
 ```
 
 **Expected**: 200 OK, `enabled: false`, `next_trigger_at: null`
@@ -90,7 +90,7 @@ curl -X POST "$API_URL/v1/durable/schedules/$SCHEDULE_ID/pause"
 ### 6. Resume Schedule (POST)
 
 ```bash
-curl -X POST "$API_URL/v1/durable/schedules/$SCHEDULE_ID/resume"
+curl -X POST "$API_URL/v1/platform/durable/schedules/$SCHEDULE_ID/resume"
 ```
 
 **Expected**: 200 OK, `enabled: true`, `next_trigger_at` populated
@@ -98,7 +98,7 @@ curl -X POST "$API_URL/v1/durable/schedules/$SCHEDULE_ID/resume"
 ### 7. Manual Trigger (POST)
 
 ```bash
-curl -X POST "$API_URL/v1/durable/schedules/$SCHEDULE_ID/trigger"
+curl -X POST "$API_URL/v1/platform/durable/schedules/$SCHEDULE_ID/trigger"
 ```
 
 **Expected**: 200 OK, response contains `execution_id`
@@ -106,7 +106,7 @@ curl -X POST "$API_URL/v1/durable/schedules/$SCHEDULE_ID/trigger"
 ### 8. List Executions (GET)
 
 ```bash
-curl "$API_URL/v1/durable/schedules/$SCHEDULE_ID/executions"
+curl "$API_URL/v1/platform/durable/schedules/$SCHEDULE_ID/executions"
 ```
 
 **Expected**: 200 OK, `data` array contains at least one execution from step 7
@@ -114,7 +114,7 @@ curl "$API_URL/v1/durable/schedules/$SCHEDULE_ID/executions"
 ### 9. Get Execution (GET)
 
 ```bash
-curl "$API_URL/v1/durable/executions/$EXECUTION_ID"
+curl "$API_URL/v1/platform/durable/executions/$EXECUTION_ID"
 ```
 
 **Expected**: 200 OK, execution details with status and timing
@@ -122,7 +122,7 @@ curl "$API_URL/v1/durable/executions/$EXECUTION_ID"
 ### 10. Delete Schedule (DELETE)
 
 ```bash
-curl -X DELETE "$API_URL/v1/durable/schedules/$SCHEDULE_ID"
+curl -X DELETE "$API_URL/v1/platform/durable/schedules/$SCHEDULE_ID"
 ```
 
 **Expected**: 204 No Content
@@ -130,7 +130,7 @@ curl -X DELETE "$API_URL/v1/durable/schedules/$SCHEDULE_ID"
 ### 11. Verify Deletion (GET)
 
 ```bash
-curl "$API_URL/v1/durable/schedules/$SCHEDULE_ID"
+curl "$API_URL/v1/platform/durable/schedules/$SCHEDULE_ID"
 ```
 
 **Expected**: 404 Not Found

@@ -138,7 +138,7 @@ impl CliRoute {
 ///
 /// Two facts each command already carries are enough for almost all of them.
 /// The REST path holds the hierarchy that flat names hide:
-/// `/v1/agents/{id}/triggers` is `agents triggers`, which no amount of string
+/// `/v1/platform/agents/{id}/triggers` is `agents triggers`, which no amount of string
 /// surgery on `list_agent_triggers` would have found. The verb is the flat
 /// name's first token.
 ///
@@ -156,11 +156,13 @@ pub fn derived_route(wire_name: &str, http_path: &str) -> Option<(Vec<String>, S
         return None;
     }
     let verb = wire_name.split('_').next()?.to_string();
-    let mut nouns: Vec<String> = http_path
-        .trim_matches('/')
-        .split('/')
-        // Skip the version segment; drop path parameters.
-        .skip(1)
+    // Transport namespaces do not add nouns to the command line. Skip the
+    // version and at most one leading Platform segment; nested nouns stay.
+    let mut segments = http_path.trim_matches('/').split('/').skip(1).peekable();
+    if segments.peek() == Some(&"platform") {
+        segments.next();
+    }
+    let mut nouns: Vec<String> = segments
         .filter(|segment| !segment.is_empty() && !segment.starts_with('{'))
         // REST paths are not uniformly spelled; a CLI is. `plugin_marketplaces`
         // is a path segment, `plugin-marketplaces` is a command.
@@ -168,7 +170,7 @@ pub fn derived_route(wire_name: &str, http_path: &str) -> Option<(Vec<String>, S
         .collect();
 
     // A REST action endpoint repeats the verb as its last segment, so
-    // `/v1/sessions/{id}/archive` would otherwise spell `sessions archive
+    // `/v1/platform/sessions/{id}/archive` would otherwise spell `sessions archive
     // archive`.
     if nouns
         .last()
@@ -190,13 +192,16 @@ mod tests {
     #[test]
     fn the_rest_path_supplies_the_hierarchy_a_flat_name_hides() {
         assert_eq!(
-            derived_route("list_agent_triggers", "/v1/agents/{agent_id}/triggers"),
+            derived_route(
+                "list_agent_triggers",
+                "/v1/platform/agents/{agent_id}/triggers"
+            ),
             Some((vec!["agents".into(), "triggers".into()], "list".into()))
         );
         assert_eq!(
             derived_route(
                 "list_session_participants",
-                "/v1/sessions/{id}/participants"
+                "/v1/platform/sessions/{id}/participants"
             ),
             Some((
                 vec!["sessions".into(), "participants".into()],
@@ -208,7 +213,7 @@ mod tests {
     #[test]
     fn an_action_endpoint_does_not_repeat_its_verb() {
         assert_eq!(
-            derived_route("archive_session", "/v1/sessions/{id}/archive"),
+            derived_route("archive_session", "/v1/platform/sessions/{id}/archive"),
             Some((vec!["sessions".into()], "archive".into()))
         );
     }
@@ -218,13 +223,27 @@ mod tests {
         assert_eq!(
             derived_route(
                 "get_latest_agent_health_check_run",
-                "/v1/agents/{id}/health-checks/latest"
+                "/v1/platform/agents/{id}/health-checks/latest"
             ),
             Some((
                 vec!["agents".into(), "health-checks".into(), "latest".into()],
                 "get".into()
             ))
         );
+    }
+
+    #[test]
+    fn management_namespace_preserves_the_command_spelling() {
+        let expected = Some((vec!["agents".into(), "platform".into()], "get".into()));
+        assert_eq!(
+            derived_route("get_agent_platform", "/v1/agents/{id}/platform"),
+            expected
+        );
+        assert_eq!(
+            derived_route("get_agent_platform", "/v1/platform/agents/{id}/platform"),
+            expected
+        );
+        assert_eq!(derived_route("get_platform", "/v1/platform"), None);
     }
 
     /// A command whose path carries no noun has to say what it is called.
@@ -237,7 +256,10 @@ mod tests {
     #[test]
     fn nouns_are_kebab_even_when_the_path_is_not() {
         assert_eq!(
-            derived_route("list_plugin_marketplaces", "/v1/plugin_marketplaces"),
+            derived_route(
+                "list_plugin_marketplaces",
+                "/v1/platform/plugin_marketplaces"
+            ),
             Some((vec!["plugin-marketplaces".into()], "list".into()))
         );
     }

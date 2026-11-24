@@ -48,7 +48,7 @@ pub struct TracingPolicyMetadata {
     /// Distinct destination identifiers from this organization; at most eight selections.
     pub destination_ids: Vec<Uuid>,
 }
-#[command(name="get_tracing_policy",http=plain,summary="Get tracing policy",params(("id"=String,Path,description="Tracing resource ID")),category="tracing",description="Read organization or agent trace routing without credentials.",method="GET",path="/v1/tracing/policies/{id}",policy=TRACING_MANAGE,cli=CliRoute::new(&["tracing","routing"],"get").with_examples(&[CliExample::new("Read an agent's external tracing policy","everruns tracing routing get --id agent_01933b5a000070008000000000000001")]))]
+#[command(name="get_tracing_policy",http=plain,summary="Get tracing policy",params(("id"=String,Path,description="Tracing resource ID")),category="tracing",description="Read organization or agent trace routing without credentials.",method="GET",path="/v1/platform/tracing/policies/{id}",policy=TRACING_MANAGE,cli=CliRoute::new(&["tracing","routing"],"get").with_examples(&[CliExample::new("Read an agent's external tracing policy","everruns tracing routing get --id agent_01933b5a000070008000000000000001")]))]
 impl Command for GetTracingPolicy {
     type Output = TracingPolicyMetadata;
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
@@ -81,7 +81,7 @@ pub struct UpdateTracingPolicy {
     #[schema(example = 1)]
     pub expected_revision: Option<i64>,
 }
-#[command(name="update_tracing_policy",http=plain,params(("id"=String,Path,description="Tracing resource ID")),category="tracing",description="Set organization or agent destinations for future turns. Requires organization settings authority; never accepts credentials.",method="PATCH",path="/v1/tracing/policies/{id}",policy=TRACING_MANAGE,cli=CliRoute::new(&["tracing","routing"],"update").with_examples(&[CliExample::new("Stop an agent's external trace exports","everruns tracing routing update --id agent_01933b5a000070008000000000000001 --mode off --destination-ids '[]' --reason 'Disable external exports'")]))]
+#[command(name="update_tracing_policy",http=plain,params(("id"=String,Path,description="Tracing resource ID")),category="tracing",description="Set organization or agent destinations for future turns. Requires organization settings authority; never accepts credentials.",method="PATCH",path="/v1/platform/tracing/policies/{id}",policy=TRACING_MANAGE,cli=CliRoute::new(&["tracing","routing"],"update").with_examples(&[CliExample::new("Stop an agent's external trace exports","everruns tracing routing update --id agent_01933b5a000070008000000000000001 --mode off --destination-ids '[]' --reason 'Disable external exports'")]))]
 impl Command for UpdateTracingPolicy {
     type Output = TracingPolicyMetadata;
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {

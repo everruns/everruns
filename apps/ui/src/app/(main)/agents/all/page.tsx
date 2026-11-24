@@ -24,10 +24,10 @@ export default async function AllAgentsPage() {
   if (currentOrgId) {
     await Promise.all([
       seedQueryData(queryClient, [...queryKeys.agents.list(false), currentOrgId], () =>
-        serverGetList<Agent>(requestContext, "/v1/agents"),
+        serverGetList<Agent>(requestContext, "/v1/platform/agents"),
       ),
       seedQueryData(queryClient, ["capabilities", currentOrgId], () =>
-        serverGetList<Capability>(requestContext, "/v1/capabilities"),
+        serverGetList<Capability>(requestContext, "/v1/platform/capabilities"),
       ),
     ]);
   }

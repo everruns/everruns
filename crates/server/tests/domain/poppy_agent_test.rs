@@ -123,7 +123,7 @@ impl EgressService for ToTestServer {
 async fn personal_agent_session(server: &TestServer) -> String {
     let agent: Value = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": format!("pa-{}", uuid::Uuid::new_v4().simple()),
                 "display_name": "Personal agent",
@@ -135,7 +135,7 @@ async fn personal_agent_session(server: &TestServer) -> String {
         .assert_status(StatusCode::CREATED)
         .json();
     let session: Value = server
-        .post("/v1/sessions", json!({ "agent_id": agent["id"] }))
+        .post("/v1/platform/sessions", json!({ "agent_id": agent["id"] }))
         .await
         .assert_success()
         .json();

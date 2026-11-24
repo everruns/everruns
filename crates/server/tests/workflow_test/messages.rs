@@ -26,7 +26,7 @@ async fn test_message_triggers_agent_workflow() {
     // Step 0: Create LlmSim provider and model (no real API keys needed)
     println!("\nStep 0: Creating LlmSim provider and model...");
     let provider_response = client
-        .post(format!("{}/v1/providers", API_BASE_URL))
+        .post(format!("{}/v1/platform/providers", API_BASE_URL))
         .json(&json!({
             "name": "LlmSim Test Provider",
             "provider_type": "llmsim"
@@ -51,7 +51,7 @@ async fn test_message_triggers_agent_workflow() {
 
     let model_response = client
         .post(format!(
-            "{}/v1/providers/{}/models",
+            "{}/v1/platform/providers/{}/models",
             API_BASE_URL, provider.id
         ))
         .json(&json!({
@@ -77,7 +77,7 @@ async fn test_message_triggers_agent_workflow() {
     // Step 1: Create agent with LlmSim model
     println!("\nStep 1: Creating agent with LlmSim model...");
     let agent_response = client
-        .post(format!("{}/v1/agents", API_BASE_URL))
+        .post(format!("{}/v1/platform/agents", API_BASE_URL))
         .json(&json!({
             "name": "workflow-test-agent",
             "display_name": "Workflow Test Agent",
@@ -98,7 +98,7 @@ async fn test_message_triggers_agent_workflow() {
     // Step 2: Create session
     println!("\nStep 2: Creating session...");
     let session_response = client
-        .post(format!("{}/v1/sessions", API_BASE_URL))
+        .post(format!("{}/v1/platform/sessions", API_BASE_URL))
         .json(&json!({"harness_name": SEED_HARNESS_NAME, "agent_id": agent.public_id, "title": "Workflow Test Session"}))
         .send()
         .await
@@ -116,7 +116,7 @@ async fn test_message_triggers_agent_workflow() {
     let start = Instant::now();
     let message_response = client
         .post(format!(
-            "{}/v1/sessions/{}/messages",
+            "{}/v1/platform/sessions/{}/messages",
             API_BASE_URL, session.id
         ))
         .json(&json!({
@@ -156,7 +156,7 @@ async fn test_message_triggers_agent_workflow() {
 
         let messages_response = client
             .get(format!(
-                "{}/v1/sessions/{}/messages",
+                "{}/v1/platform/sessions/{}/messages",
                 API_BASE_URL, session.id
             ))
             .send()
@@ -207,7 +207,7 @@ async fn test_message_triggers_agent_workflow() {
         println!("\nDebug: Checking events for session...");
         if let Ok(resp) = client
             .get(format!(
-                "{}/v1/sessions/{}/events",
+                "{}/v1/platform/sessions/{}/events",
                 API_BASE_URL, session.id
             ))
             .send()
@@ -244,7 +244,7 @@ async fn test_message_triggers_agent_workflow() {
     println!("\nStep 5: Verifying events...");
     let events_response = client
         .get(format!(
-            "{}/v1/sessions/{}/events",
+            "{}/v1/platform/sessions/{}/events",
             API_BASE_URL, session.id
         ))
         .send()
@@ -271,20 +271,20 @@ async fn test_message_triggers_agent_workflow() {
     // first or the model delete is refused (EVE-955).
     cleanup_delete(
         &client,
-        format!("{}/v1/sessions/{}", API_BASE_URL, session.id),
+        format!("{}/v1/platform/sessions/{}", API_BASE_URL, session.id),
         "session",
     )
     .await;
     cleanup_agent(&client, &agent.public_id).await;
     cleanup_delete(
         &client,
-        format!("{}/v1/models/{}", API_BASE_URL, model.id),
+        format!("{}/v1/platform/models/{}", API_BASE_URL, model.id),
         "model",
     )
     .await;
     cleanup_delete(
         &client,
-        format!("{}/v1/providers/{}", API_BASE_URL, provider.id),
+        format!("{}/v1/platform/providers/{}", API_BASE_URL, provider.id),
         "provider",
     )
     .await;
@@ -293,7 +293,7 @@ async fn test_message_triggers_agent_workflow() {
 }
 
 // ============================================================================
-// POST /v1/sessions/:id/messages?wait=true (workflow test)
+// POST /v1/platform/sessions/:id/messages?wait=true (workflow test)
 // ============================================================================
 
 /// Tests POST /messages?wait=true blocks until the worker completes the turn (workflow test):
@@ -311,7 +311,7 @@ async fn test_post_message_wait_returns_completed_turn() {
     // Step 1: Register LlmSim provider + model and create agent.
     let provider_name = "wait-test-llmsim";
     let provider_response = client
-        .post(format!("{}/v1/providers", API_BASE_URL))
+        .post(format!("{}/v1/platform/providers", API_BASE_URL))
         .json(&json!({
             "name": provider_name,
             "provider_type": "llmsim",
@@ -329,7 +329,7 @@ async fn test_post_message_wait_returns_completed_turn() {
     let model_id = "llmsim-wait-test";
     let model_create = client
         .post(format!(
-            "{}/v1/providers/{}/models",
+            "{}/v1/platform/providers/{}/models",
             API_BASE_URL, provider.id
         ))
         .json(&json!({
@@ -351,7 +351,7 @@ async fn test_post_message_wait_returns_completed_turn() {
 
     let agent_name = "wait-test-agent";
     let agent_response = client
-        .post(format!("{}/v1/agents", API_BASE_URL))
+        .post(format!("{}/v1/platform/agents", API_BASE_URL))
         .json(&json!({
             "default_model_id": model.id,
             "name": agent_name,
@@ -367,7 +367,7 @@ async fn test_post_message_wait_returns_completed_turn() {
 
     // Step 2: Create a session for the agent.
     let session_response = client
-        .post(format!("{}/v1/sessions", API_BASE_URL))
+        .post(format!("{}/v1/platform/sessions", API_BASE_URL))
         .json(&json!({
             "harness_name": SEED_HARNESS_NAME,
             "agent_id": agent.public_id,
@@ -385,7 +385,7 @@ async fn test_post_message_wait_returns_completed_turn() {
     // Step 3: POST with wait=true; the worker completes the turn, expect 200 completed.
     let message_response = client
         .post(format!(
-            "{}/v1/sessions/{}/messages?wait=true&timeout_ms=60000",
+            "{}/v1/platform/sessions/{}/messages?wait=true&timeout_ms=60000",
             API_BASE_URL, session.id
         ))
         .json(&json!({
@@ -412,20 +412,20 @@ async fn test_post_message_wait_returns_completed_turn() {
     // failed on a 409 for the agent name it had already taken (EVE-955).
     cleanup_delete(
         &client,
-        format!("{}/v1/sessions/{}", API_BASE_URL, session.id),
+        format!("{}/v1/platform/sessions/{}", API_BASE_URL, session.id),
         "session",
     )
     .await;
     cleanup_agent(&client, &agent.public_id).await;
     cleanup_delete(
         &client,
-        format!("{}/v1/models/{}", API_BASE_URL, model.id),
+        format!("{}/v1/platform/models/{}", API_BASE_URL, model.id),
         "model",
     )
     .await;
     cleanup_delete(
         &client,
-        format!("{}/v1/providers/{}", API_BASE_URL, provider.id),
+        format!("{}/v1/platform/providers/{}", API_BASE_URL, provider.id),
         "provider",
     )
     .await;
@@ -456,7 +456,7 @@ async fn test_second_message_triggers_workflow() {
     // Step 0: Create LlmSim provider and model (no real API keys needed)
     println!("\nStep 0: Creating LlmSim provider and model...");
     let provider_response = client
-        .post(format!("{}/v1/providers", API_BASE_URL))
+        .post(format!("{}/v1/platform/providers", API_BASE_URL))
         .json(&json!({
             "name": "LlmSim Second Message Test",
             "provider_type": "llmsim"
@@ -481,7 +481,7 @@ async fn test_second_message_triggers_workflow() {
 
     let model_response = client
         .post(format!(
-            "{}/v1/providers/{}/models",
+            "{}/v1/platform/providers/{}/models",
             API_BASE_URL, provider.id
         ))
         .json(&json!({
@@ -507,7 +507,7 @@ async fn test_second_message_triggers_workflow() {
     // Step 1: Create agent with LlmSim model
     println!("\nStep 1: Creating agent with LlmSim model...");
     let agent_response = client
-        .post(format!("{}/v1/agents", API_BASE_URL))
+        .post(format!("{}/v1/platform/agents", API_BASE_URL))
         .json(&json!({
             "name": "second-message-test-agent",
             "display_name": "Second Message Test Agent",
@@ -528,7 +528,7 @@ async fn test_second_message_triggers_workflow() {
     // Step 2: Create session
     println!("\nStep 2: Creating session...");
     let session_response = client
-        .post(format!("{}/v1/sessions", API_BASE_URL))
+        .post(format!("{}/v1/platform/sessions", API_BASE_URL))
         .json(&json!({"harness_name": SEED_HARNESS_NAME, "agent_id": agent.public_id, "title": "Second Message Test Session"}))
         .send()
         .await
@@ -545,7 +545,7 @@ async fn test_second_message_triggers_workflow() {
     println!("\nStep 3: Sending FIRST message...");
     let first_message_response = client
         .post(format!(
-            "{}/v1/sessions/{}/messages",
+            "{}/v1/platform/sessions/{}/messages",
             API_BASE_URL, session.id
         ))
         .json(&json!({
@@ -572,7 +572,7 @@ async fn test_second_message_triggers_workflow() {
 
         let messages_response = client
             .get(format!(
-                "{}/v1/sessions/{}/messages",
+                "{}/v1/platform/sessions/{}/messages",
                 API_BASE_URL, session.id
             ))
             .send()
@@ -612,7 +612,7 @@ async fn test_second_message_triggers_workflow() {
     let second_message_start = Instant::now();
     let second_message_response = client
         .post(format!(
-            "{}/v1/sessions/{}/messages",
+            "{}/v1/platform/sessions/{}/messages",
             API_BASE_URL, session.id
         ))
         .json(&json!({
@@ -642,7 +642,7 @@ async fn test_second_message_triggers_workflow() {
 
         let messages_response = client
             .get(format!(
-                "{}/v1/sessions/{}/messages",
+                "{}/v1/platform/sessions/{}/messages",
                 API_BASE_URL, session.id
             ))
             .send()
@@ -680,7 +680,7 @@ async fn test_second_message_triggers_workflow() {
         println!("\nDebug: Final message state:");
         if let Ok(resp) = client
             .get(format!(
-                "{}/v1/sessions/{}/messages",
+                "{}/v1/platform/sessions/{}/messages",
                 API_BASE_URL, session.id
             ))
             .send()
@@ -710,7 +710,7 @@ async fn test_second_message_triggers_workflow() {
     println!("\nStep 5: Verifying message counts...");
     let final_messages_response = client
         .get(format!(
-            "{}/v1/sessions/{}/messages",
+            "{}/v1/platform/sessions/{}/messages",
             API_BASE_URL, session.id
         ))
         .send()
@@ -747,20 +747,20 @@ async fn test_second_message_triggers_workflow() {
     // first or the model delete is refused (EVE-955).
     cleanup_delete(
         &client,
-        format!("{}/v1/sessions/{}", API_BASE_URL, session.id),
+        format!("{}/v1/platform/sessions/{}", API_BASE_URL, session.id),
         "session",
     )
     .await;
     cleanup_agent(&client, &agent.public_id).await;
     cleanup_delete(
         &client,
-        format!("{}/v1/models/{}", API_BASE_URL, model.id),
+        format!("{}/v1/platform/models/{}", API_BASE_URL, model.id),
         "model",
     )
     .await;
     cleanup_delete(
         &client,
-        format!("{}/v1/providers/{}", API_BASE_URL, provider.id),
+        format!("{}/v1/platform/providers/{}", API_BASE_URL, provider.id),
         "provider",
     )
     .await;

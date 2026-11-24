@@ -42,14 +42,14 @@ async function mockAppApi(page: Page) {
   await page.route("**/api/v1/**", async (route) => {
     const pathname = new URL(route.request().url()).pathname;
     let json: unknown;
-    if (pathname === "/api/v1/auth/config") {
+    if (pathname === "/api/v1/platform/auth/config") {
       json = {
         mode: "none",
         password_auth_enabled: false,
         oauth_providers: [],
         signup_enabled: false,
       };
-    } else if (pathname === "/api/v1/auth/me") {
+    } else if (pathname === "/api/v1/platform/auth/me") {
       json = {
         id: "user-1",
         email: "dev@example.com",
@@ -69,7 +69,7 @@ async function mockAppApi(page: Page) {
       json = { success: true, org_id: DEFAULT_ORG_ID };
     } else if (pathname.endsWith("/config")) {
       json = { policies: {} };
-    } else if (pathname === "/api/v1/sessions/facets") {
+    } else if (pathname === "/api/v1/platform/sessions/facets") {
       json = {
         active_now: 0,
         by_activity: [],

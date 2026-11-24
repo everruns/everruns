@@ -184,7 +184,7 @@ impl From<ListKnowledgeBasesQuery> for ListKnowledgeBases {
     description = "List knowledge bases in the current organization.",
     method = "GET",
     cli = CliRoute::new(&["knowledge-bases"], "list").with_examples(&[CliExample::new("Find a knowledge base by name when you do not know the id", "everruns knowledge-bases list --search runbooks")]),
-    path = "/v1/knowledge-bases",
+    path = "/v1/platform/knowledge-bases",
     policy = KNOWLEDGE_BASE_VIEW,
 )]
 impl Command for ListKnowledgeBases {
@@ -238,7 +238,7 @@ impl From<CreateKnowledgeBaseRequest> for CreateKnowledgeBase {
     description = "Create a knowledge base in the current organization.",
     method = "POST",
     cli = CliRoute::new(&["knowledge-bases"], "create").with_examples(&[CliExample::new("Start a knowledge base for a team's runbooks", "everruns knowledge-bases create --name support-runbooks --description 'How we handle common support cases' --reason 'Give agents a shared source of answers'")]),
-    path = "/v1/knowledge-bases",
+    path = "/v1/platform/knowledge-bases",
     policy = KNOWLEDGE_BASE_MANAGE,
 )]
 impl Command for CreateKnowledgeBase {
@@ -280,7 +280,7 @@ pub struct GetKnowledgeBase {
     description = "Get a knowledge base by ID.",
     method = "GET",
     cli = CliRoute::new(&["knowledge-bases"], "get").with_args(&[CliArg::new("kb_id").at(1)]).with_examples(&[CliExample::new("Show a knowledge base's settings", "everruns knowledge-bases get kb_01h9")]),
-    path = "/v1/knowledge-bases/{kb_id}",
+    path = "/v1/platform/knowledge-bases/{kb_id}",
     policy = KNOWLEDGE_BASE_VIEW,
     positional = "kb_id",
 )]
@@ -316,7 +316,7 @@ pub struct UpdateKnowledgeBaseCmd {
     description = "Update a knowledge base.",
     method = "PATCH",
     cli = CliRoute::new(&["knowledge-bases"], "update").with_examples(&[CliExample::new("Rename a knowledge base", "everruns knowledge-bases update --kb-id kb_01h9 --name support-playbooks --reason 'Broader scope than runbooks'")]),
-    path = "/v1/knowledge-bases/{kb_id}",
+    path = "/v1/platform/knowledge-bases/{kb_id}",
     policy = KNOWLEDGE_BASE_MANAGE,
 )]
 impl Command for UpdateKnowledgeBaseCmd {
@@ -387,7 +387,7 @@ pub struct DeleteKnowledgeBase {
     description = "Archive a knowledge base.",
     method = "DELETE",
     cli = CliRoute::new(&["knowledge-bases"], "delete").with_examples(&[CliExample::new("Archive a knowledge base nobody uses any more", "everruns knowledge-bases delete --kb-id kb_01h9 --reason 'Merged into support-runbooks'")]),
-    path = "/v1/knowledge-bases/{kb_id}",
+    path = "/v1/platform/knowledge-bases/{kb_id}",
     policy = KNOWLEDGE_BASE_MANAGE,
 )]
 impl Command for DeleteKnowledgeBase {
@@ -465,7 +465,7 @@ impl ListKnowledgeEntries {
     description = "List entries inside a knowledge base.",
     method = "GET",
     cli = CliRoute::new(&["knowledge-bases", "entries"], "list").with_examples(&[CliExample::new("Find entries about a topic inside one knowledge base", "everruns knowledge-bases entries list --kb-id kb_01h9 --search refund")]),
-    path = "/v1/knowledge-bases/{kb_id}/entries",
+    path = "/v1/platform/knowledge-bases/{kb_id}/entries",
     policy = KNOWLEDGE_BASE_VIEW,
 )]
 impl Command for ListKnowledgeEntries {
@@ -525,7 +525,7 @@ impl CreateKnowledgeEntry {
     description = "Create an entry inside a knowledge base.",
     method = "POST",
     cli = CliRoute::new(&["knowledge-bases", "entries"], "create").with_examples(&[CliExample::new("Add a runbook entry to a knowledge base", "everruns knowledge-bases entries create --kb-id kb_01h9 --title 'Refund a payment past 30 days' --body 'Escalate to billing with the order id.' --kind runbook --tags billing,refunds --reason 'Document the refund exception'")]),
-    path = "/v1/knowledge-bases/{kb_id}/entries",
+    path = "/v1/platform/knowledge-bases/{kb_id}/entries",
     policy = KNOWLEDGE_BASE_MANAGE,
 )]
 impl Command for CreateKnowledgeEntry {
@@ -569,7 +569,7 @@ pub struct GetKnowledgeEntry {
     description = "Get a knowledge entry by ID.",
     method = "GET",
     cli = CliRoute::new(&["knowledge-bases", "entries"], "get").with_examples(&[CliExample::new("Read one entry's full body", "everruns knowledge-bases entries get --kb-id kb_01h9 --entry-id kbe_01h9")]),
-    path = "/v1/knowledge-bases/{kb_id}/entries/{entry_id}",
+    path = "/v1/platform/knowledge-bases/{kb_id}/entries/{entry_id}",
     policy = KNOWLEDGE_BASE_VIEW,
 )]
 impl Command for GetKnowledgeEntry {
@@ -607,7 +607,7 @@ pub struct UpdateKnowledgeEntryCmd {
     description = "Update a knowledge entry.",
     method = "PATCH",
     cli = CliRoute::new(&["knowledge-bases", "entries"], "update").with_examples(&[CliExample::new("Correct an entry's body after a policy change", "everruns knowledge-bases entries update --kb-id kb_01h9 --entry-id kbe_01h9 --body 'Escalate to billing within 24 hours.' --reason 'Updated refund policy'")]),
-    path = "/v1/knowledge-bases/{kb_id}/entries/{entry_id}",
+    path = "/v1/platform/knowledge-bases/{kb_id}/entries/{entry_id}",
     policy = KNOWLEDGE_BASE_MANAGE,
 )]
 impl Command for UpdateKnowledgeEntryCmd {
@@ -677,7 +677,7 @@ pub struct DeleteKnowledgeEntry {
     description = "Delete a knowledge entry.",
     method = "DELETE",
     cli = CliRoute::new(&["knowledge-bases", "entries"], "delete").with_examples(&[CliExample::new("Remove an outdated entry", "everruns knowledge-bases entries delete --kb-id kb_01h9 --entry-id kbe_01h9 --reason 'Policy changed'")]),
-    path = "/v1/knowledge-bases/{kb_id}/entries/{entry_id}",
+    path = "/v1/platform/knowledge-bases/{kb_id}/entries/{entry_id}",
     policy = KNOWLEDGE_BASE_MANAGE,
 )]
 impl Command for DeleteKnowledgeEntry {

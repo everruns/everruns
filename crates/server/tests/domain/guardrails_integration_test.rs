@@ -1,7 +1,7 @@
 //! Guardrails integration tests
 //!
 //! Covers the `guardrails` capability surfacing in the capability listing
-//! and the `POST /v1/capabilities/guardrails/dry-run` endpoint.
+//! and the `POST /v1/platform/capabilities/guardrails/dry-run` endpoint.
 
 use crate::test_harness;
 
@@ -15,7 +15,7 @@ async fn test_dry_run_blocks_on_match() {
 
     let resp = server
         .post(
-            "/v1/capabilities/guardrails/dry-run",
+            "/v1/platform/capabilities/guardrails/dry-run",
             json!({
                 "config": {
                     "checks": [
@@ -44,7 +44,7 @@ async fn test_dry_run_advisory_logs_without_blocking() {
 
     let resp = server
         .post(
-            "/v1/capabilities/guardrails/dry-run",
+            "/v1/platform/capabilities/guardrails/dry-run",
             json!({
                 "config": {
                     "mode": "advisory",
@@ -71,7 +71,7 @@ async fn test_dry_run_no_match_is_empty() {
 
     let resp = server
         .post(
-            "/v1/capabilities/guardrails/dry-run",
+            "/v1/platform/capabilities/guardrails/dry-run",
             json!({
                 "config": {
                     "checks": [
@@ -95,7 +95,7 @@ async fn test_dry_run_tool_pattern_uses_tool_name() {
 
     let resp = server
         .post(
-            "/v1/capabilities/guardrails/dry-run",
+            "/v1/platform/capabilities/guardrails/dry-run",
             json!({
                 "config": {
                     "checks": [
@@ -121,7 +121,7 @@ async fn test_gallery_preset_config_round_trips_through_dry_run() {
     // Pull the secret-detection preset from the gallery and feed its config
     // straight into dry-run — the adoption path a client takes.
     let examples = server
-        .get("/v1/capabilities/guardrails/examples")
+        .get("/v1/platform/capabilities/guardrails/examples")
         .await
         .assert_success()
         .json_value();
@@ -135,7 +135,7 @@ async fn test_gallery_preset_config_round_trips_through_dry_run() {
 
     let resp = server
         .post(
-            "/v1/capabilities/guardrails/dry-run",
+            "/v1/platform/capabilities/guardrails/dry-run",
             json!({
                 "config": preset["config"],
                 "stage": "tool_output",
@@ -155,7 +155,7 @@ async fn test_dry_run_rejects_invalid_regex() {
 
     let resp = server
         .post(
-            "/v1/capabilities/guardrails/dry-run",
+            "/v1/platform/capabilities/guardrails/dry-run",
             json!({
                 "config": {
                     "checks": [

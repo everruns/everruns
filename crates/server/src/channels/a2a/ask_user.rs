@@ -32,7 +32,7 @@ use crate::storage::StorageBackend;
 /// Find the `ask_user` answer a caller put on the message, if any.
 ///
 /// The payload under [`ASK_USER_ANSWER_KEY`] is the
-/// `/v1/sessions/{id}/question-answers` request body verbatim. Reusing that
+/// `/v1/platform/sessions/{id}/question-answers` request body verbatim. Reusing that
 /// type rather than minting an A2A-shaped twin is what keeps every surface
 /// answering `ask_user` in one vocabulary; the schema advertised on the way
 /// out describes exactly this shape.

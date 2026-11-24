@@ -6,7 +6,7 @@
 // the platform delegates user identity to a third-party provider (PropelAuth,
 // Auth0, Clerk, etc.) and the built-in OAuth flow is intentionally disabled.
 // Since #1492 the runtime quietly hides configured providers and returns 401 on
-// `/v1/auth/oauth/{provider}` and `/v1/auth/callback/{provider}` (the login
+// `/v1/platform/auth/oauth/{provider}` and `/v1/auth/callback/{provider}` (the login
 // OAuth handlers — distinct from the MCP `/oauth/...` handlers). That made
 // hybrid deployments fail silently — operators saw 401s only at request
 // time. We now fail fast at startup: `AuthConfig::validate()` rejects
@@ -205,7 +205,7 @@ pub struct AuthConfig {
     pub session_max_age: Duration,
     /// Cloudflare Turnstile challenge for abuse-prone auth endpoints
     /// (register, forgot-password, resend-verification). Enabled when both
-    /// keys are configured; the site key is surfaced via `/v1/auth/config`
+    /// keys are configured; the site key is surfaced via `/v1/platform/auth/config`
     /// so the UI can render the (invisible) widget.
     pub turnstile: Option<TurnstileAuthConfig>,
     /// When true, email/password signup does NOT create a session: the

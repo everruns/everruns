@@ -147,7 +147,7 @@ function AvailableProviderRow({
   const ui = useUiTranslations();
   const handleConnect = () => {
     if (provider.connection_type === "oauth") {
-      window.location.href = `${getBackendUrl()}/v1/virtual-users/${identityId}/connections/${encodeURIComponent(provider.provider_id)}/authorize?return_to=${encodeURIComponent(window.location.pathname)}`;
+      window.location.href = `${getBackendUrl()}/v1/platform/virtual-users/${identityId}/connections/${encodeURIComponent(provider.provider_id)}/authorize?return_to=${encodeURIComponent(window.location.pathname)}`;
     } else {
       onConnectApiKey(provider);
     }

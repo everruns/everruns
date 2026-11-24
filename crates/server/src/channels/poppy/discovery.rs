@@ -165,7 +165,10 @@ mod tests {
             Some("ch_1")
         );
         assert_eq!(channel_of_issuer_path("v1/channels/ch_1/a2a"), None);
-        assert_eq!(channel_of_issuer_path("v1/agents/ch_1/poppy"), None);
+        assert_eq!(
+            channel_of_issuer_path("v1/platform/agents/ch_1/poppy"),
+            None
+        );
         assert_eq!(channel_of_issuer_path("v1/channels//poppy"), None);
     }
 }

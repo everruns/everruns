@@ -20,7 +20,7 @@ Makes an agent aware of its budget constraints. The agent receives budget inform
 
 Query the budget status for the current session.
 
-> The tool reports whether budgets are configured. For balances, limits, and the status of each budget, use `GET /v1/sessions/{id}/budget-check`.
+> The tool reports whether budgets are configured. For balances, limits, and the status of each budget, use `GET /v1/platform/sessions/{id}/budget-check`.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|

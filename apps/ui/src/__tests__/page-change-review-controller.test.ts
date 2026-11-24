@@ -9,7 +9,7 @@ const resource: PageResource = {
   id: "model_01933b5a000070008000000000000001",
   label: "Model",
 };
-const endpoint = `/v1/models/${resource.id}`;
+const endpoint = `/v1/platform/models/${resource.id}`;
 function setup(initialRevision = 1) {
   let org = "org_test",
     revision = initialRevision;
@@ -147,8 +147,8 @@ it("drops receipts and late responses on organization change/disposal", async ()
 it("does not infer a configuration write from actions, credentials or creates", () => {
   for (const [method, path] of [
     ["POST", endpoint],
-    ["POST", "/v1/durable/workers/demo/drain"],
-    ["PUT", "/v1/credential-bindings/01933b5a000070008000000000000001"],
+    ["POST", "/v1/platform/durable/workers/demo/drain"],
+    ["PUT", "/v1/platform/credential-bindings/01933b5a000070008000000000000001"],
     ["PATCH", `${endpoint}/credentials`],
     ["DELETE", endpoint],
   ]) {
@@ -366,7 +366,7 @@ it("uses the server's captured baseline when first writing a migrated resource",
 });
 
 it.each([
-  ["/v1/users/me", "user_profile"],
+  ["/v1/platform/users/me", "user_profile"],
   ["/v1/virtual-users/me", "virtual_user"],
 ])("guards %s using only the explicitly registered form identity", async (path, kind) => {
   const { manager, transport } = setup();
@@ -394,7 +394,7 @@ it("bounds receipts from ordinary row saves without requiring page navigation", 
       label: "Model",
     };
     setRevision(1);
-    const write = await manager.beforeWrite("PATCH", `/v1/models/${row.id}`);
+    const write = await manager.beforeWrite("PATCH", `/v1/platform/models/${row.id}`);
     setRevision(2);
     await write!.succeeded({ ...row, revision: 2 });
   }

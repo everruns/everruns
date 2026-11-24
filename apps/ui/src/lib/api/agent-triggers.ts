@@ -7,7 +7,7 @@ import type {
   UpdateAgentTriggerRequest,
 } from "./types";
 
-const base = (agentId: string) => `/v1/agents/${agentId}/triggers`;
+const base = (agentId: string) => `/v1/platform/agents/${agentId}/triggers`;
 
 export async function listAgentTriggers(agentId: string): Promise<AgentTrigger[]> {
   return (await api.get<AgentTrigger[]>(base(agentId))).data;

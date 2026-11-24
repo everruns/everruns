@@ -213,7 +213,7 @@ pub struct GetAgentViewSettings {
     category = "agent_views",
     description = "Read the view definition and its revision for an Agent.",
     method = "GET",
-    path = "/v1/agents/{agent_id}/view",
+    path = "/v1/platform/agents/{agent_id}/view",
     policy = AGENT_VIEW,
     http = plain,
     cli = CliRoute::new(&["agents", "view"], "get").with_examples(&[CliExample::new(
@@ -252,7 +252,7 @@ pub struct ReplaceAgentView {
     category = "agent_views",
     description = "Replace or remove an Agent view using its current revision.",
     method = "PUT",
-    path = "/v1/agents/{agent_id}/view",
+    path = "/v1/platform/agents/{agent_id}/view",
     policy = AGENT_MANAGE,
     http = plain,
     request_body(ReplaceAgentViewRequest),

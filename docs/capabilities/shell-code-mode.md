@@ -253,7 +253,7 @@ tools scripts triage-prs repo=a/b  # run one
 - Saved scripts can call each other, up to four deep.
 - Saving needs the `manage_scripts` setting. Every agent with the capability
   can run its saved scripts. Scripts are also managed through the
-  `/v1/agents/{agent_id}/scripts` API and the `everruns agents scripts` command.
+  `/v1/platform/agents/{agent_id}/scripts` API and the `everruns agents scripts` command.
 - A schedule or webhook [trigger](/features/agent-triggers/#run-a-saved-script)
   can run a saved script without a model call.
 

@@ -62,9 +62,12 @@ impl_auth_state!(AppState);
 
 pub fn routes(state: AppState) -> Router {
     Router::new()
-        .route("/v1/sessions/{session_id}/sandbox", post(manage_sandbox))
         .route(
-            "/v1/sessions/{session_id}/repositories",
+            "/v1/platform/sessions/{session_id}/sandbox",
+            post(manage_sandbox),
+        )
+        .route(
+            "/v1/platform/sessions/{session_id}/repositories",
             get(get_session_repositories),
         )
         .with_state(state)
@@ -73,7 +76,7 @@ pub fn routes(state: AppState) -> Router {
 #[utoipa::path(
     description = "Manage the session sandbox lifecycle (start, stop, reset).",
     post,
-    path = "/v1/sessions/{session_id}/sandbox",
+    path = "/v1/platform/sessions/{session_id}/sandbox",
     params(
         ("session_id" = String, Path, description = "Session ID")
     ),
@@ -104,7 +107,7 @@ pub async fn manage_sandbox(
 #[utoipa::path(
     description = "List the repositories checked out in the session's sandbox and what the session changed in each. Reads a running sandbox only; it never starts or resumes one.",
     get,
-    path = "/v1/sessions/{session_id}/repositories",
+    path = "/v1/platform/sessions/{session_id}/repositories",
     params(
         ("session_id" = String, Path, description = "Session ID")
     ),

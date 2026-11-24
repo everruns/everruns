@@ -91,6 +91,7 @@ mod org_isolation_test;
 mod org_lifecycle_test;
 mod pat_scope_coverage_test;
 mod platform_command_line_test;
+mod platform_compatibility_test;
 mod poppy_agent_test;
 mod schedule_integration_test;
 mod service_mcp_oauth_lifecycle_test;

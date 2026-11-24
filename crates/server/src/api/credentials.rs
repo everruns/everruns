@@ -28,14 +28,17 @@ pub struct CreatedResource {
 
 pub fn routes(state: ApiState) -> Router {
     Router::new()
-        .route("/v1/credential-bindings", get(list).post(create))
+        .route("/v1/platform/credential-bindings", get(list).post(create))
         .route(
-            "/v1/credential-bindings/{id}",
+            "/v1/platform/credential-bindings/{id}",
             put(set_value).delete(revoke),
         )
-        .route("/v1/resources/{id}/grants", get(grants).post(grant))
         .route(
-            "/v1/resources/{id}/grants/{grant_id}",
+            "/v1/platform/resources/{id}/grants",
+            get(grants).post(grant),
+        )
+        .route(
+            "/v1/platform/resources/{id}/grants/{grant_id}",
             axum::routing::delete(revoke_grant),
         )
         .with_state(state)
@@ -58,7 +61,7 @@ fn context(
     Ok(ctx)
 }
 
-#[utoipa::path(get,path="/v1/credential-bindings",params(("scope"=String,Query,description="session, agent, virtual_user, organization"),("owner_id"=Option<String>,Query,description="Owner ID, or me for the current virtual user"),("usage"=String,Query,description="user or service")),responses((status=200,description="Write-only credential metadata",body=Vec<domain::ManagedCredential>)),tag="credentials")]
+#[utoipa::path(get,path="/v1/platform/credential-bindings",params(("scope"=String,Query,description="session, agent, virtual_user, organization"),("owner_id"=Option<String>,Query,description="Owner ID, or me for the current virtual user"),("usage"=String,Query,description="user or service")),responses((status=200,description="Write-only credential metadata",body=Vec<domain::ManagedCredential>)),tag="credentials")]
 pub async fn list(
     org: ResolvedOrg,
     State(state): State<ApiState>,
@@ -70,7 +73,7 @@ pub async fn list(
             .await?,
     ))
 }
-#[utoipa::path(post,path="/v1/credential-bindings",request_body=domain::CreateScopedCredential,responses((status=201,description="Binding declared; value is provisioned separately",body=CreatedResource)),tag="credentials")]
+#[utoipa::path(post,path="/v1/platform/credential-bindings",request_body=domain::CreateScopedCredential,responses((status=201,description="Binding declared; value is provisioned separately",body=CreatedResource)),tag="credentials")]
 pub async fn create(
     org: ResolvedOrg,
     State(state): State<ApiState>,
@@ -94,7 +97,7 @@ pub struct SetCredentialValue {
     /// Last observed resource revision; stale updates are rejected.
     pub revision: i64,
 }
-#[utoipa::path(put,path="/v1/credential-bindings/{id}",params(("id"=Uuid,Path,description="Binding ID")),request_body=SetCredentialValue,responses((status=204,description="Credential securely stored; no value is returned")),tag="credentials")]
+#[utoipa::path(put,path="/v1/platform/credential-bindings/{id}",params(("id"=Uuid,Path,description="Binding ID")),request_body=SetCredentialValue,responses((status=204,description="Credential securely stored; no value is returned")),tag="credentials")]
 pub async fn set_value(
     org: ResolvedOrg,
     State(state): State<ApiState>,
@@ -117,7 +120,7 @@ pub struct Revision {
     /// Last observed resource revision; stale revocations are rejected.
     pub revision: i64,
 }
-#[utoipa::path(delete,path="/v1/credential-bindings/{id}",params(("id"=Uuid,Path,description="Binding ID"),("revision"=i64,Query,description="Last observed resource revision")),responses((status=204,description="Credential revoked")),tag="credentials")]
+#[utoipa::path(delete,path="/v1/platform/credential-bindings/{id}",params(("id"=Uuid,Path,description="Binding ID"),("revision"=i64,Query,description="Last observed resource revision")),responses((status=204,description="Credential revoked")),tag="credentials")]
 pub async fn revoke(
     org: ResolvedOrg,
     State(state): State<ApiState>,
@@ -132,7 +135,7 @@ pub async fn revoke(
     .await?;
     Ok(StatusCode::NO_CONTENT)
 }
-#[utoipa::path(get,path="/v1/resources/{id}/grants",params(("id"=Uuid,Path,description="Resource ID")),responses((status=200,description="Explicit access grants",body=Vec<domain::ManagedResourceGrant>)),tag="credentials")]
+#[utoipa::path(get,path="/v1/platform/resources/{id}/grants",params(("id"=Uuid,Path,description="Resource ID")),responses((status=200,description="Explicit access grants",body=Vec<domain::ManagedResourceGrant>)),tag="credentials")]
 pub async fn grants(
     org: ResolvedOrg,
     State(state): State<ApiState>,
@@ -144,7 +147,7 @@ pub async fn grants(
             .await?,
     ))
 }
-#[utoipa::path(post,path="/v1/resources/{id}/grants",params(("id"=Uuid,Path,description="Resource ID")),request_body=domain::GrantCredential,responses((status=201,description="Access granted",body=CreatedResource)),tag="credentials")]
+#[utoipa::path(post,path="/v1/platform/resources/{id}/grants",params(("id"=Uuid,Path,description="Resource ID")),request_body=domain::GrantCredential,responses((status=201,description="Access granted",body=CreatedResource)),tag="credentials")]
 pub async fn grant(
     org: ResolvedOrg,
     State(state): State<ApiState>,
@@ -160,7 +163,7 @@ pub async fn grant(
         }),
     ))
 }
-#[utoipa::path(delete,path="/v1/resources/{id}/grants/{grant_id}",params(("id"=Uuid,Path,description="Resource ID"),("grant_id"=Uuid,Path,description="Grant ID")),responses((status=204,description="Grant revoked")),tag="credentials")]
+#[utoipa::path(delete,path="/v1/platform/resources/{id}/grants/{grant_id}",params(("id"=Uuid,Path,description="Resource ID"),("grant_id"=Uuid,Path,description="Grant ID")),responses((status=204,description="Grant revoked")),tag="credentials")]
 pub async fn revoke_grant(
     org: ResolvedOrg,
     State(state): State<ApiState>,

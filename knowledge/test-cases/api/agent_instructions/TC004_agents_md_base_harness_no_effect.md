@@ -29,7 +29,7 @@ Verify that AGENTS.md is not read when using the Base harness, which does not in
 
 1. Create session with Base harness:
    ```bash
-   curl -s -X POST "http://localhost:9000/v1/sessions" \
+   curl -s -X POST "http://localhost:9000/v1/platform/sessions" \
      -H "Content-Type: application/json" \
      -d '{"harness_id": "harness_01933b5a000070008000000000000601"}'
    ```

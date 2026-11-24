@@ -6,8 +6,8 @@
 // Decision: listing and adopting are commands, so the CLI and MCP reach the
 // same catalogue the console's Harnesses → Examples page does. Before this an
 // agent working over MCP saw only the org's harnesses, concluded Coding did
-// not exist and fell back to Sandbox Worker. `GET /v1/harness-examples` and
-// `POST /v1/harnesses/import?from-example={name}` delegate here; there is one
+// not exist and fell back to Sandbox Worker. `GET /v1/platform/harness-examples` and
+// `POST /v1/platform/harnesses/import?from-example={name}` delegate here; there is one
 // filter (dev-only, registered capabilities) and one adoption path.
 // Decision: the deployment grade is read from the environment, as the REST
 // state does, and the capability registry is the one `CapabilityService` was
@@ -126,7 +126,7 @@ pub struct ListHarnessExamples {}
     category = "harnesses",
     description = "List adoptable harness examples (ready-made harnesses such as coding, the Yolop-based coding harness, and data-analyst): name, description, parent harness, capabilities. They are not in list_harnesses until adopted; adopt one by name with adopt_harness_example before building a harness from scratch.",
     method = "GET",
-    path = "/v1/harness-examples",
+    path = "/v1/platform/harness-examples",
     policy = HARNESS_VIEW,
     cli = CliRoute::new(&["harnesses", "examples"], "list").with_examples(&[CliExample::new("Find a ready-made harness (such as coding) before writing one by hand", "everruns harnesses examples list")]),
 )]
@@ -165,7 +165,7 @@ pub struct AdoptHarnessExample {
     category = "harnesses",
     description = "Create an org harness from a harness example by name (see list_harness_examples), e.g. coding for the Yolop-based coding harness. The harness is named after the example, with a short suffix when that name is taken, and inherits from the example's parent harness. Agents then select it by that name.",
     method = "POST",
-    path = "/v1/harnesses/import",
+    path = "/v1/platform/harnesses/import",
     policy = HARNESS_MANAGE,
     positional = "name",
     cli = CliRoute::new(&["harnesses", "examples"], "adopt").with_args(&[CliArg::new("name").at(1)]).with_examples(&[CliExample::new("Add the Coding harness to the org so agents can use it", "everruns harnesses examples adopt coding --reason 'Coding agents need the Coding harness'")]),

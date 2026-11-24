@@ -26,7 +26,7 @@ describe("extractResultImages", () => {
       { type: "image_file", image_id: "img_0193", filename: "browser_screenshot-1.png" },
     ];
     const [src] = extractResultImages(result);
-    expect(src).toMatch(/\/v1\/images\/img_0193$/);
+    expect(src).toMatch(/\/v1\/platform\/images\/img_0193$/);
   });
 
   it("is empty without a result and caps a long strip", () => {

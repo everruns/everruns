@@ -18,7 +18,7 @@ async fn test_create_session() {
     // Create an agent first
     let agent: Agent = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": "session-test-agent",
                 "display_name": "Session Test Agent",
@@ -32,7 +32,7 @@ async fn test_create_session() {
     // Create a session
     let session: Session = server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             json!({
                 "harness_id": server.seed_base_harness_id,
                 "agent_id": agent.public_id,
@@ -49,7 +49,7 @@ async fn test_create_session() {
     assert_eq!(session.locale.as_deref(), Some("uk-UA"));
 
     let fetched: Session = server
-        .get(&format!("/v1/sessions/{}", session.id))
+        .get(&format!("/v1/platform/sessions/{}", session.id))
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -62,7 +62,7 @@ async fn test_session_secret_lifecycle_is_write_only_and_reserves_internal_names
     let sentinel = "session-secret-must-never-be-returned";
     let agent: Agent = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": "session-secret-agent",
                 "display_name": "Session Secret Agent",
@@ -74,7 +74,7 @@ async fn test_session_secret_lifecycle_is_write_only_and_reserves_internal_names
         .json();
     let session: Session = server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             json!({
                 "harness_id": server.seed_base_harness_id,
                 "agent_id": agent.public_id,
@@ -84,7 +84,7 @@ async fn test_session_secret_lifecycle_is_write_only_and_reserves_internal_names
         .await
         .assert_status(StatusCode::CREATED)
         .json();
-    let secrets_url = format!("/v1/sessions/{}/storage/secrets", session.id);
+    let secrets_url = format!("/v1/platform/sessions/{}/storage/secrets", session.id);
 
     let stored: Value = server
         .put(
@@ -132,7 +132,7 @@ async fn test_create_session_nonexistent_model_returns_404() {
 
     server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             json!({
                 "harness_id": server.seed_base_harness_id,
                 "model_id": "model_00000000000000000000000000000000",
@@ -152,7 +152,7 @@ async fn test_get_session_schedule_wrong_parent_returns_not_found() {
 
     let body: Value = server
         .get(&format!(
-            "/v1/sessions/{}/schedules/{}",
+            "/v1/platform/sessions/{}/schedules/{}",
             other_session.id, schedule_id
         ))
         .await
@@ -172,7 +172,7 @@ async fn test_update_session_schedule_wrong_parent_returns_not_found() {
     let body: Value = server
         .patch(
             &format!(
-                "/v1/sessions/{}/schedules/{}",
+                "/v1/platform/sessions/{}/schedules/{}",
                 other_session.id, schedule_id
             ),
             json!({ "enabled": false }),
@@ -199,7 +199,7 @@ async fn test_delete_session_schedule_wrong_parent_returns_not_found() {
 
     let body: Value = server
         .delete(&format!(
-            "/v1/sessions/{}/schedules/{}",
+            "/v1/platform/sessions/{}/schedules/{}",
             other_session.id, schedule_id
         ))
         .await
@@ -225,7 +225,7 @@ async fn test_trigger_session_schedule_wrong_parent_returns_not_found() {
     let body: Value = server
         .post(
             &format!(
-                "/v1/sessions/{}/schedules/{}/trigger",
+                "/v1/platform/sessions/{}/schedules/{}/trigger",
                 other_session.id, schedule_id
             ),
             json!({}),
@@ -251,7 +251,7 @@ async fn test_get_session_context_report_without_generation() {
 
     let session: Session = server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             json!({
                 "harness_id": server.seed_base_harness_id,
                 "title": "Context Report Test"
@@ -262,7 +262,10 @@ async fn test_get_session_context_report_without_generation() {
         .json();
 
     let report: SessionContextReport = server
-        .get(&format!("/v1/sessions/{}/context-report", session.id))
+        .get(&format!(
+            "/v1/platform/sessions/{}/context-report",
+            session.id
+        ))
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -279,7 +282,7 @@ async fn test_sessions_pagination() {
     // Create an agent
     let agent: Agent = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": "pagination-test-agent",
                 "display_name": "Pagination Test Agent",
@@ -294,7 +297,7 @@ async fn test_sessions_pagination() {
     for i in 1..=15 {
         let _: Session = server
             .post(
-                "/v1/sessions",
+                "/v1/platform/sessions",
                 json!({
                     "harness_id": server.seed_base_harness_id,
                     "agent_id": agent.public_id,
@@ -308,7 +311,10 @@ async fn test_sessions_pagination() {
 
     // Test default pagination
     let body: Value = server
-        .get(&format!("/v1/sessions?agent_id={}", agent.public_id))
+        .get(&format!(
+            "/v1/platform/sessions?agent_id={}",
+            agent.public_id
+        ))
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -318,7 +324,7 @@ async fn test_sessions_pagination() {
     // Test custom limit
     let body: Value = server
         .get(&format!(
-            "/v1/sessions?agent_id={}&limit=5",
+            "/v1/platform/sessions?agent_id={}&limit=5",
             agent.public_id
         ))
         .await
@@ -330,7 +336,7 @@ async fn test_sessions_pagination() {
     // Test offset pagination
     let body: Value = server
         .get(&format!(
-            "/v1/sessions?agent_id={}&offset=10&limit=10",
+            "/v1/platform/sessions?agent_id={}&offset=10&limit=10",
             agent.public_id
         ))
         .await
@@ -346,7 +352,7 @@ async fn test_session_filesystem() {
     // Create agent and session
     let agent: Agent = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": "filesystem-test-agent",
                 "display_name": "Filesystem Test Agent",
@@ -359,7 +365,7 @@ async fn test_session_filesystem() {
 
     let session: Session = server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             json!({
                 "harness_id": server.seed_base_harness_id,
                 "agent_id": agent.public_id
@@ -369,7 +375,7 @@ async fn test_session_filesystem() {
         .assert_status(StatusCode::CREATED)
         .json();
 
-    let fs_url = format!("/v1/sessions/{}/fs", session.id);
+    let fs_url = format!("/v1/platform/sessions/{}/fs", session.id);
 
     // List root (new sessions mount scoped memory under the reserved memory root)
     let data: Value = server
@@ -446,7 +452,7 @@ async fn test_session_filesystem_list_nonexistent_directory_returns_404() {
     // Create agent and session
     let agent: Agent = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": "fs-404-test-agent",
                 "display_name": "FS 404 Test Agent",
@@ -459,7 +465,7 @@ async fn test_session_filesystem_list_nonexistent_directory_returns_404() {
 
     let session: Session = server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             json!({
                 "harness_id": server.seed_base_harness_id,
                 "agent_id": agent.public_id
@@ -469,7 +475,7 @@ async fn test_session_filesystem_list_nonexistent_directory_returns_404() {
         .assert_status(StatusCode::CREATED)
         .json();
 
-    let fs_url = format!("/v1/sessions/{}/fs", session.id);
+    let fs_url = format!("/v1/platform/sessions/{}/fs", session.id);
 
     // List a directory that doesn't exist — should return 404, not 500
     let resp = server.get(&format!("{}/.agents/skills", fs_url)).await;
@@ -482,7 +488,7 @@ async fn test_session_file_download_path_returns_raw_bytes() {
 
     let agent: Agent = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": "fs-download-agent",
                 "display_name": "FS Download Agent",
@@ -495,7 +501,7 @@ async fn test_session_file_download_path_returns_raw_bytes() {
 
     let session: Session = server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             json!({
                 "harness_id": server.seed_base_harness_id,
                 "agent_id": agent.public_id
@@ -505,7 +511,7 @@ async fn test_session_file_download_path_returns_raw_bytes() {
         .assert_status(StatusCode::CREATED)
         .json();
 
-    let fs_url = format!("/v1/sessions/{}/fs", session.id);
+    let fs_url = format!("/v1/platform/sessions/{}/fs", session.id);
     let pdf_bytes = b"%PDF-1.7\n%\x80\x81\x82\x83\n".to_vec();
 
     server
@@ -556,7 +562,7 @@ async fn test_session_file_read_accept_octet_stream_returns_raw_bytes() {
 
     let agent: Agent = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": "fs-negotiate-agent",
                 "display_name": "FS Negotiate Agent",
@@ -569,7 +575,7 @@ async fn test_session_file_read_accept_octet_stream_returns_raw_bytes() {
 
     let session: Session = server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             json!({
                 "harness_id": server.seed_base_harness_id,
                 "agent_id": agent.public_id
@@ -579,7 +585,7 @@ async fn test_session_file_read_accept_octet_stream_returns_raw_bytes() {
         .assert_status(StatusCode::CREATED)
         .json();
 
-    let fs_url = format!("/v1/sessions/{}/fs", session.id);
+    let fs_url = format!("/v1/platform/sessions/{}/fs", session.id);
     let raw_bytes = vec![0, 159, 146, 150];
 
     server
@@ -626,7 +632,7 @@ async fn test_session_file_read_accept_octet_stream_q_zero_keeps_json_response()
 
     let agent: Agent = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": "fs-negotiate-q-zero-agent",
                 "display_name": "FS Negotiate Q Zero Agent",
@@ -639,7 +645,7 @@ async fn test_session_file_read_accept_octet_stream_q_zero_keeps_json_response()
 
     let session: Session = server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             json!({
                 "harness_id": server.seed_base_harness_id,
                 "agent_id": agent.public_id
@@ -649,7 +655,7 @@ async fn test_session_file_read_accept_octet_stream_q_zero_keeps_json_response()
         .assert_status(StatusCode::CREATED)
         .json();
 
-    let fs_url = format!("/v1/sessions/{}/fs", session.id);
+    let fs_url = format!("/v1/platform/sessions/{}/fs", session.id);
     let raw_bytes = vec![0, 159, 146, 150];
 
     server
@@ -687,7 +693,7 @@ async fn test_session_file_download_path_rejects_directories() {
 
     let agent: Agent = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": "fs-download-dir-agent",
                 "display_name": "FS Download Dir Agent",
@@ -700,7 +706,7 @@ async fn test_session_file_download_path_rejects_directories() {
 
     let session: Session = server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             json!({
                 "harness_id": server.seed_base_harness_id,
                 "agent_id": agent.public_id
@@ -710,7 +716,7 @@ async fn test_session_file_download_path_rejects_directories() {
         .assert_status(StatusCode::CREATED)
         .json();
 
-    let fs_url = format!("/v1/sessions/{}/fs", session.id);
+    let fs_url = format!("/v1/platform/sessions/{}/fs", session.id);
 
     server
         .post(
@@ -736,7 +742,7 @@ async fn test_session_commands_are_scoped_to_active_capabilities() {
 
     let generic_session: Session = server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             json!({
                 "harness_id": server.seed_generic_harness_id,
                 "title": "Generic command session"
@@ -748,7 +754,7 @@ async fn test_session_commands_are_scoped_to_active_capabilities() {
 
     let base_session: Session = server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             json!({
                 "harness_id": server.seed_base_harness_id,
                 "title": "Base command session"
@@ -759,12 +765,18 @@ async fn test_session_commands_are_scoped_to_active_capabilities() {
         .json();
 
     let generic_commands: Value = server
-        .get(&format!("/v1/sessions/{}/commands", generic_session.id))
+        .get(&format!(
+            "/v1/platform/sessions/{}/commands",
+            generic_session.id
+        ))
         .await
         .assert_status(StatusCode::OK)
         .json();
     let base_commands: Value = server
-        .get(&format!("/v1/sessions/{}/commands", base_session.id))
+        .get(&format!(
+            "/v1/platform/sessions/{}/commands",
+            base_session.id
+        ))
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -793,7 +805,7 @@ async fn test_session_databases_crud() {
     // Create agent + session for the test
     let agent: Agent = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": "sql-test-agent",
                 "display_name": "SQL Test Agent",
@@ -807,7 +819,7 @@ async fn test_session_databases_crud() {
 
     let session: Session = server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             json!({
                 "harness_id": server.seed_base_harness_id,
                 "agent_id": agent.public_id.to_string()
@@ -821,7 +833,7 @@ async fn test_session_databases_crud() {
 
     // List databases (should be empty)
     let list: Value = server
-        .get(&format!("/v1/sessions/{session_id}/databases"))
+        .get(&format!("/v1/platform/sessions/{session_id}/databases"))
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -830,7 +842,7 @@ async fn test_session_databases_crud() {
     // Create a database
     let db_info: Value = server
         .post(
-            &format!("/v1/sessions/{session_id}/databases"),
+            &format!("/v1/platform/sessions/{session_id}/databases"),
             json!({"name": "analytics"}),
         )
         .await
@@ -841,7 +853,9 @@ async fn test_session_databases_crud() {
 
     // Get database
     let db_info: Value = server
-        .get(&format!("/v1/sessions/{session_id}/databases/analytics"))
+        .get(&format!(
+            "/v1/platform/sessions/{session_id}/databases/analytics"
+        ))
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -849,7 +863,7 @@ async fn test_session_databases_crud() {
 
     // List databases (should have 1)
     let list: Value = server
-        .get(&format!("/v1/sessions/{session_id}/databases"))
+        .get(&format!("/v1/platform/sessions/{session_id}/databases"))
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -858,7 +872,7 @@ async fn test_session_databases_crud() {
     // Create duplicate (should conflict)
     server
         .post(
-            &format!("/v1/sessions/{session_id}/databases"),
+            &format!("/v1/platform/sessions/{session_id}/databases"),
             json!({"name": "analytics"}),
         )
         .await
@@ -866,25 +880,31 @@ async fn test_session_databases_crud() {
 
     // Get nonexistent database (should 404)
     server
-        .get(&format!("/v1/sessions/{session_id}/databases/nope"))
+        .get(&format!(
+            "/v1/platform/sessions/{session_id}/databases/nope"
+        ))
         .await
         .assert_status(StatusCode::NOT_FOUND);
 
     // Delete database
     server
-        .delete(&format!("/v1/sessions/{session_id}/databases/analytics"))
+        .delete(&format!(
+            "/v1/platform/sessions/{session_id}/databases/analytics"
+        ))
         .await
         .assert_status(StatusCode::NO_CONTENT);
 
     // Delete again (should 404)
     server
-        .delete(&format!("/v1/sessions/{session_id}/databases/analytics"))
+        .delete(&format!(
+            "/v1/platform/sessions/{session_id}/databases/analytics"
+        ))
         .await
         .assert_status(StatusCode::NOT_FOUND);
 
     // List should be empty again
     let list: Value = server
-        .get(&format!("/v1/sessions/{session_id}/databases"))
+        .get(&format!("/v1/platform/sessions/{session_id}/databases"))
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -898,7 +918,7 @@ async fn test_session_databases_schema() {
     // Create agent + session
     let agent: Agent = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": "sql-schema-agent",
                 "display_name": "SQL Schema Agent",
@@ -912,7 +932,7 @@ async fn test_session_databases_schema() {
 
     let session: Session = server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             json!({"harness_id": server.seed_base_harness_id, "agent_id": agent.public_id.to_string()}),
         )
         .await
@@ -924,7 +944,7 @@ async fn test_session_databases_schema() {
     // Create a database
     server
         .post(
-            &format!("/v1/sessions/{session_id}/databases"),
+            &format!("/v1/platform/sessions/{session_id}/databases"),
             json!({"name": "test_db"}),
         )
         .await
@@ -933,7 +953,7 @@ async fn test_session_databases_schema() {
     // Schema of empty database should have no tables
     let schema: Value = server
         .get(&format!(
-            "/v1/sessions/{session_id}/databases/test_db/schema"
+            "/v1/platform/sessions/{session_id}/databases/test_db/schema"
         ))
         .await
         .assert_status(StatusCode::OK)
@@ -943,7 +963,9 @@ async fn test_session_databases_schema() {
 
     // Schema of nonexistent database should 404
     server
-        .get(&format!("/v1/sessions/{session_id}/databases/nope/schema"))
+        .get(&format!(
+            "/v1/platform/sessions/{session_id}/databases/nope/schema"
+        ))
         .await
         .assert_status(StatusCode::NOT_FOUND);
 }
@@ -954,7 +976,7 @@ async fn test_session_databases_invalid_name() {
 
     let agent: Agent = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": "sql-invalid-name-agent",
                 "display_name": "SQL Invalid Name Agent",
@@ -967,7 +989,7 @@ async fn test_session_databases_invalid_name() {
 
     let session: Session = server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             json!({"harness_id": server.seed_base_harness_id, "agent_id": agent.public_id.to_string()}),
         )
         .await
@@ -979,7 +1001,7 @@ async fn test_session_databases_invalid_name() {
     // Invalid name (starts with number)
     server
         .post(
-            &format!("/v1/sessions/{session_id}/databases"),
+            &format!("/v1/platform/sessions/{session_id}/databases"),
             json!({"name": "1bad"}),
         )
         .await
@@ -988,7 +1010,7 @@ async fn test_session_databases_invalid_name() {
     // Invalid name (contains dash)
     server
         .post(
-            &format!("/v1/sessions/{session_id}/databases"),
+            &format!("/v1/platform/sessions/{session_id}/databases"),
             json!({"name": "my-db"}),
         )
         .await
@@ -1001,7 +1023,7 @@ async fn test_session_databases_limit_exceeded_returns_422() {
 
     let agent: Agent = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": "sql-limit-agent",
                 "display_name": "SQL Limit Agent",
@@ -1014,7 +1036,7 @@ async fn test_session_databases_limit_exceeded_returns_422() {
 
     let session: Session = server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             json!({"harness_id": server.seed_base_harness_id, "agent_id": agent.public_id.to_string()}),
         )
         .await
@@ -1026,7 +1048,7 @@ async fn test_session_databases_limit_exceeded_returns_422() {
     for i in 0..10 {
         server
             .post(
-                &format!("/v1/sessions/{session_id}/databases"),
+                &format!("/v1/platform/sessions/{session_id}/databases"),
                 json!({ "name": format!("db_{i}") }),
             )
             .await
@@ -1035,7 +1057,7 @@ async fn test_session_databases_limit_exceeded_returns_422() {
 
     server
         .post(
-            &format!("/v1/sessions/{session_id}/databases"),
+            &format!("/v1/platform/sessions/{session_id}/databases"),
             json!({ "name": "db_overflow" }),
         )
         .await
@@ -1052,7 +1074,7 @@ async fn test_session_features_persisted_in_get() {
 
     let agent: Agent = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({"name": "get-features-agent", "display_name": "Get Features Agent", "system_prompt": "Test"}),
         )
         .await
@@ -1061,7 +1083,7 @@ async fn test_session_features_persisted_in_get() {
 
     let session: Session = server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             json!({
                 "harness_id": server.seed_generic_harness_id,
                 "agent_id": agent.public_id,
@@ -1073,7 +1095,7 @@ async fn test_session_features_persisted_in_get() {
 
     // Features should also appear in GET response
     let fetched: Session = server
-        .get(&format!("/v1/sessions/{}", session.id))
+        .get(&format!("/v1/platform/sessions/{}", session.id))
         .await
         .assert_success()
         .json();
@@ -1090,7 +1112,7 @@ async fn test_session_features_in_list() {
 
     let agent: Agent = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({"name": "list-features-agent", "display_name": "List Features Agent", "system_prompt": "Test"}),
         )
         .await
@@ -1099,7 +1121,7 @@ async fn test_session_features_in_list() {
 
     let _session: Session = server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             json!({
                 "harness_id": server.seed_generic_harness_id,
                 "agent_id": agent.public_id,
@@ -1111,7 +1133,10 @@ async fn test_session_features_in_list() {
 
     // Features should appear in list response
     let list_body: Value = server
-        .get(&format!("/v1/sessions?agent_id={}", agent.public_id))
+        .get(&format!(
+            "/v1/platform/sessions?agent_id={}",
+            agent.public_id
+        ))
         .await
         .assert_success()
         .json_value();
@@ -1135,7 +1160,7 @@ async fn test_session_features_with_session_capabilities() {
 
     let agent: Agent = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({"name": "session-cap-features-agent", "display_name": "Session Cap Features Agent", "system_prompt": "Test"}),
         )
         .await
@@ -1145,7 +1170,7 @@ async fn test_session_features_with_session_capabilities() {
     // Base harness has no caps, but add session_schedule at session level
     let session: Session = server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             json!({
                 "harness_id": server.seed_base_harness_id,
                 "agent_id": agent.public_id,
@@ -1169,7 +1194,7 @@ async fn test_session_features_sql_database() {
 
     let agent: Agent = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({"name": "sqldb-features-agent", "display_name": "SqlDb Features Agent", "system_prompt": "Test"}),
         )
         .await
@@ -1179,7 +1204,7 @@ async fn test_session_features_sql_database() {
     // Add session_sql_database via session-level capability
     let session: Session = server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             json!({
                 "harness_id": server.seed_base_harness_id,
                 "agent_id": agent.public_id,
@@ -1203,7 +1228,7 @@ async fn test_delete_entities_referenced_only_by_session_succeeds() {
 
     let harness: Harness = server
         .post(
-            "/v1/harnesses",
+            "/v1/platform/harnesses",
             json!({
                 "name": "session-only-delete-harness",
                 "display_name": "Session Only Delete Harness",
@@ -1215,7 +1240,7 @@ async fn test_delete_entities_referenced_only_by_session_succeeds() {
         .json();
     let agent: Value = server
         .post(
-            "/v1/agents",
+            "/v1/platform/agents",
             json!({
                 "name": "session-only-delete-agent",
                 "display_name": "Session Only Delete Agent",
@@ -1227,7 +1252,7 @@ async fn test_delete_entities_referenced_only_by_session_succeeds() {
         .json();
     let identity: Value = server
         .post(
-            "/v1/virtual-users",
+            "/v1/platform/virtual-users",
             json!({"name": "Session Only Delete Identity"}),
         )
         .await
@@ -1236,7 +1261,7 @@ async fn test_delete_entities_referenced_only_by_session_succeeds() {
 
     server
         .post(
-            "/v1/sessions",
+            "/v1/platform/sessions",
             json!({
                 "harness_id": harness.id,
                 "agent_id": agent["id"],
@@ -1248,16 +1273,19 @@ async fn test_delete_entities_referenced_only_by_session_succeeds() {
         .assert_status(StatusCode::CREATED);
 
     server
-        .delete(&format!("/v1/agents/{}", agent["id"].as_str().unwrap()))
+        .delete(&format!(
+            "/v1/platform/agents/{}",
+            agent["id"].as_str().unwrap()
+        ))
         .await
         .assert_status(StatusCode::NO_CONTENT);
     server
-        .delete(&format!("/v1/harnesses/{}", harness.id))
+        .delete(&format!("/v1/platform/harnesses/{}", harness.id))
         .await
         .assert_status(StatusCode::NO_CONTENT);
     server
         .delete(&format!(
-            "/v1/virtual-users/{}",
+            "/v1/platform/virtual-users/{}",
             identity["id"].as_str().unwrap()
         ))
         .await
@@ -1308,7 +1336,7 @@ async fn test_playground_input_is_available_without_org_opt_in() {
         .unwrap();
     let result: Value = server
         .post(
-            &format!("/v1/sessions/{}/messages", session.id),
+            &format!("/v1/platform/sessions/{}/messages", session.id),
             json!({"message":{"role":"user","content":[{"type":"text","text":"Playground input"}]}}),
         )
         .await
@@ -1316,7 +1344,7 @@ async fn test_playground_input_is_available_without_org_opt_in() {
         .json();
     assert!(result["id"].is_string(), "{result}");
     server
-        .get(&format!("/v1/sessions/{}", session.id))
+        .get(&format!("/v1/platform/sessions/{}", session.id))
         .await
         .assert_status(StatusCode::OK);
 }

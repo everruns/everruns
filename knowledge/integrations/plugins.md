@@ -141,9 +141,9 @@ resolves by tool prefix. The compiled definition's `oauth_provider_id` is set
 to the anchor's `mcp_oauth_{uuid}`. This reuses the existing MCP-OAuth
 machinery unchanged:
 
-- The anchor surfaces in `GET /v1/user/connections/providers` as an OAuth
+- The anchor surfaces in `GET /v1/platform/user/connections/providers` as an OAuth
   provider, so the standard authorize/callback flow
-  (`/v1/user/connections/{provider}/authorize`), dynamic client registration,
+  (`/v1/platform/user/connections/{provider}/authorize`), dynamic client registration,
   and encrypted token storage all work against it.
 - At execution, the worker resolves the session's connection token for the
   server's `oauth_provider_id` and injects it as a `Bearer` header. When no
@@ -242,17 +242,17 @@ never re-seeded lazily on read.
 ## API sketch
 
 ```
-GET/POST          /v1/plugin_marketplaces
-GET/PATCH/DELETE  /v1/plugin_marketplaces/{id}
-POST              /v1/plugin_marketplaces/{id}/sync
-GET               /v1/plugin_marketplaces/{id}/plugins     # catalog
-GET/POST          /v1/plugins                              # installed; install
-GET/PATCH/DELETE  /v1/plugins/{id}
-POST              /v1/plugins/{id}/update
+GET/POST          /v1/platform/plugin_marketplaces
+GET/PATCH/DELETE  /v1/platform/plugin_marketplaces/{id}
+POST              /v1/platform/plugin_marketplaces/{id}/sync
+GET               /v1/platform/plugin_marketplaces/{id}/plugins     # catalog
+GET/POST          /v1/platform/plugins                              # installed; install
+GET/PATCH/DELETE  /v1/platform/plugins/{id}
+POST              /v1/platform/plugins/{id}/update
 ```
 
 Resources follow the dual-ID pattern ([id-schema.md](../foundations/id-schema.md)).
-Installed plugins appear in `GET /v1/capabilities` as a distinct kind next to
+Installed plugins appear in `GET /v1/platform/capabilities` as a distinct kind next to
 built-in, MCP, skill, and declarative refs.
 
 ## UI

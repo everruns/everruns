@@ -99,9 +99,12 @@ where
 
 pub fn routes(state: ApiState) -> Router {
     Router::new()
-        .route("/v1/task-webhooks", get(list_webhooks).post(create_webhook))
         .route(
-            "/v1/task-webhooks/{webhook_id}",
+            "/v1/platform/task-webhooks",
+            get(list_webhooks).post(create_webhook),
+        )
+        .route(
+            "/v1/platform/task-webhooks/{webhook_id}",
             get(get_webhook)
                 .patch(update_webhook)
                 .delete(delete_webhook),
@@ -112,7 +115,7 @@ pub fn routes(state: ApiState) -> Router {
 /// List all task webhooks configured for the organization.
 #[utoipa::path(
     get,
-    path = "/v1/task-webhooks",
+    path = "/v1/platform/task-webhooks",
     responses(
         (status = 200, description = "Webhook list", body = ListResponse<TaskWebhookResponse>),
         (status = 401, description = "Unauthorized", body = ErrorResponse),
@@ -139,7 +142,7 @@ pub async fn list_webhooks(
 /// Create a new task webhook for the organization.
 #[utoipa::path(
     post,
-    path = "/v1/task-webhooks",
+    path = "/v1/platform/task-webhooks",
     request_body = CreateTaskWebhookRequest,
     responses(
         (status = 201, description = "Webhook created", body = TaskWebhookResponse),
@@ -181,7 +184,7 @@ pub async fn create_webhook(
 /// Get a single task webhook.
 #[utoipa::path(
     get,
-    path = "/v1/task-webhooks/{webhook_id}",
+    path = "/v1/platform/task-webhooks/{webhook_id}",
     params(("webhook_id" = String, Path, description = "Webhook public ID")),
     responses(
         (status = 200, description = "Webhook", body = TaskWebhookResponse),
@@ -208,7 +211,7 @@ pub async fn get_webhook(
 /// Update a task webhook.
 #[utoipa::path(
     patch,
-    path = "/v1/task-webhooks/{webhook_id}",
+    path = "/v1/platform/task-webhooks/{webhook_id}",
     params(("webhook_id" = String, Path, description = "Webhook public ID")),
     request_body = UpdateTaskWebhookRequest,
     responses(
@@ -250,7 +253,7 @@ pub async fn update_webhook(
 /// Delete a task webhook.
 #[utoipa::path(
     delete,
-    path = "/v1/task-webhooks/{webhook_id}",
+    path = "/v1/platform/task-webhooks/{webhook_id}",
     params(("webhook_id" = String, Path, description = "Webhook public ID")),
     responses(
         (status = 204, description = "Webhook deleted"),

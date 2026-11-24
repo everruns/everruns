@@ -89,7 +89,7 @@ The saved cursor is for *application restart* recovery. A JSON payload ID on an 
 ### Subscribe
 
 ```bash
-curl -N "https://your-host/api/v1/sessions/$SESSION_ID/sse" \
+curl -N "https://your-host/api/v1/platform/sessions/$SESSION_ID/sse" \
   -H "Authorization: Bearer $EVERRUNS_API_KEY"
 ```
 
@@ -111,7 +111,7 @@ Pass `since_id` to pick up where you left off:
 ![SSE reconnect sequence: the client subscribes and receives connected, events with ids, heartbeats and a disconnecting notice; the stream closes; it reconnects with since_id set to the last event id; the server replays the stored events after that id from PostgreSQL, then continues with live events.](../images/concepts/sse-reconnect.svg)
 
 ```bash
-curl -N "https://your-host/api/v1/sessions/$SESSION_ID/sse?since_id=event_..." \
+curl -N "https://your-host/api/v1/platform/sessions/$SESSION_ID/sse?since_id=event_..." \
   -H "Authorization: Bearer $EVERRUNS_API_KEY"
 ```
 
@@ -144,7 +144,7 @@ Clients should reconnect immediately using the last durable SSE `id:` value as `
 
 ```javascript
 function connect(sessionId, lastEventId) {
-  const url = new URL(`/api/v1/sessions/${sessionId}/sse`, API_BASE);
+  const url = new URL(`/api/v1/platform/sessions/${sessionId}/sse`, API_BASE);
   if (lastEventId) url.searchParams.set("since_id", lastEventId);
 
   const es = new EventSource(url, { withCredentials: true });
@@ -179,7 +179,7 @@ The native `EventSource` API uses the `retry:` field that every event includes (
 If your environment can't hold long-lived connections (some serverless runtimes), poll instead:
 
 ```bash
-curl "https://your-host/api/v1/sessions/$SESSION_ID/events?since_id=$LAST_ID" \
+curl "https://your-host/api/v1/platform/sessions/$SESSION_ID/events?since_id=$LAST_ID" \
   -H "Authorization: Bearer $EVERRUNS_API_KEY"
 ```
 

@@ -24,7 +24,7 @@ export async function listSessionTasks(
   if (options?.kind) params.set("kind", options.kind);
   const queryString = params.toString();
   const response = await api.get<SessionTask[]>(
-    `/v1/sessions/${sessionId}/tasks${queryString ? `?${queryString}` : ""}`,
+    `/v1/platform/sessions/${sessionId}/tasks${queryString ? `?${queryString}` : ""}`,
   );
   return response.data;
 }
@@ -53,7 +53,9 @@ export async function listOrgTasks(options?: ListOrgTasksOptions): Promise<Sessi
   if (options?.created_after) params.set("created_after", options.created_after);
   if (options?.limit != null) params.set("limit", String(options.limit));
   const queryString = params.toString();
-  const response = await api.get<SessionTask[]>(`/v1/tasks${queryString ? `?${queryString}` : ""}`);
+  const response = await api.get<SessionTask[]>(
+    `/v1/platform/tasks${queryString ? `?${queryString}` : ""}`,
+  );
   return response.data;
 }
 
@@ -62,7 +64,9 @@ export async function getSessionTask(
   sessionId: string,
   taskId: string,
 ): Promise<SessionTaskDetail> {
-  const response = await api.get<SessionTaskDetail>(`/v1/sessions/${sessionId}/tasks/${taskId}`);
+  const response = await api.get<SessionTaskDetail>(
+    `/v1/platform/sessions/${sessionId}/tasks/${taskId}`,
+  );
   return response.data;
 }
 
@@ -74,7 +78,7 @@ export async function postSessionTaskMessage(
   request: PostTaskMessageRequest,
 ): Promise<TaskMessage> {
   const response = await api.post<TaskMessage>(
-    `/v1/sessions/${sessionId}/tasks/${taskId}/messages`,
+    `/v1/platform/sessions/${sessionId}/tasks/${taskId}/messages`,
     request,
   );
   return response.data;
@@ -82,6 +86,8 @@ export async function postSessionTaskMessage(
 
 /** Record cooperative cancel intent. Returns the task snapshot. */
 export async function cancelSessionTask(sessionId: string, taskId: string): Promise<SessionTask> {
-  const response = await api.post<SessionTask>(`/v1/sessions/${sessionId}/tasks/${taskId}/cancel`);
+  const response = await api.post<SessionTask>(
+    `/v1/platform/sessions/${sessionId}/tasks/${taskId}/cancel`,
+  );
   return response.data;
 }
