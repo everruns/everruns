@@ -166,6 +166,42 @@ pub struct StreamRecord {
     pub group: String,
     #[serde(flatten)]
     pub record: FeedRecord,
+    /// An `Events` pointer's events, read from the session when served
+    /// ([`expand`]): the stream gives every tapped event, as it did when
+    /// the feed carried copies.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub events: Option<Vec<Value>>,
+}
+
+/// Fill each `Events` pointer of `records` with the events it names, read
+/// from its session. A session that cannot be read now leaves the pointer
+/// without them; its events stay in the session's history.
+async fn expand(gateway: &Arc<Gateway>, records: &mut [StreamRecord]) {
+    for record in records.iter_mut() {
+        let crate::dp::Record::Events {
+            session_id,
+            from,
+            to,
+            types,
+        } = &record.record.record
+        else {
+            continue;
+        };
+        let Ok(session) = session_id.parse::<everruns_contracts::typed_id::SessionId>() else {
+            continue;
+        };
+        let Ok(events) = crate::gateway_v1::read_events(gateway, session, from - 1).await else {
+            continue;
+        };
+        record.events = Some(
+            events
+                .into_iter()
+                .filter(|e| e.sequence.is_some_and(|s| s <= *to))
+                .filter(|e| types.iter().any(|t| *t == e.event_type))
+                .map(|e| serde_json::to_value(e.into_public()).unwrap_or(Value::Null))
+                .collect(),
+        );
+    }
 }
 
 /// A page of the stream after `cursor`, at most `limit` records.
@@ -240,6 +276,7 @@ pub async fn read(
                 incarnation,
                 group: record.org_id.clone(),
                 record,
+                events: None,
             });
         }
     }
@@ -389,7 +426,8 @@ async fn stream_inner(
         .is_some_and(|a| a.contains("text/event-stream"));
     if sse {
         // First read here, so a bad cursor answers with its status.
-        let (first, next) = read(&store, &sources()?, &cursor, &filter, limit).await?;
+        let (mut first, next) = read(&store, &sources()?, &cursor, &filter, limit).await?;
+        expand(&gateway, &mut first).await;
         // Each event's id is the cursor just past it, so a client that
         // reconnects with `Last-Event-ID` resumes there. Records filtered out
         // after the last one sent are read again then, and skipped again.
@@ -424,7 +462,8 @@ async fn stream_inner(
                         Err(_) => continue,
                     };
                     match read(&store, &sources, &next, &filter, 500).await {
-                        Ok((page, after)) => {
+                        Ok((mut page, after)) => {
+                            expand(&gateway, &mut page).await;
                             pending = page;
                             next = after;
                         }
@@ -439,8 +478,9 @@ async fn stream_inner(
     }
     let deadline = tokio::time::Instant::now() + wait;
     loop {
-        let (records, next) = read(&store, &sources()?, &cursor, &filter, limit).await?;
+        let (mut records, next) = read(&store, &sources()?, &cursor, &filter, limit).await?;
         if !records.is_empty() || tokio::time::Instant::now() >= deadline {
+            expand(&gateway, &mut records).await;
             return Ok(Json(json!({ "data": records, "cursor": next.encode() })).into_response());
         }
         // Nothing yet: what was scanned past (filtered out) stays skipped.

@@ -247,6 +247,14 @@ async fn a_pushed_agent_runs_with_a_pushed_key_and_the_stream_reports_it() {
             assert_eq!(record["labels"]["org"], "o1", "{record}");
             assert_eq!(record["group"], "o1", "{record}");
             kinds.push(record["type"].as_str().unwrap().to_owned());
+            // A pointer to tapped events comes with the events it names.
+            if record["type"] == "Events" {
+                let events = record["events"]
+                    .as_array()
+                    .expect("events read from the session");
+                assert!(!events.is_empty(), "{record}");
+                kinds.extend(events.iter().map(|_| "Event".to_owned()));
+            }
             assert!(positions.insert(position(record)), "read twice: {record}");
         }
         cursor = page["cursor"].as_str().unwrap().to_owned();
