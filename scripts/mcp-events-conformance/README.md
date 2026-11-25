@@ -8,7 +8,9 @@ The Events job uses unmodified upstream revision
 `c8625de3118c2d5dc0561696cddeb0baaf124f2c` from stacked client PR
 [541](https://github.com/modelcontextprotocol/conformance/pull/541), including
 server PR [521](https://github.com/modelcontextprotocol/conformance/pull/521).
-The released runner has no Events scenarios. Install with
+Neither stable 0.1.16 nor published 0.2.0-alpha.12 lists Events scenarios. The
+source revision above contains all nine; its package version alone does not
+identify that code. Install with
 `bash scripts/mcp-events-conformance.sh --setup-only`; omit the flag to run.
 
 Four of the nine optional scenarios run: server discovery and webhook delivery,

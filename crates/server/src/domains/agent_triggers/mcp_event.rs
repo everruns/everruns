@@ -351,6 +351,7 @@ pub struct McpEventTriggers {
     encryption: Option<Arc<EncryptionService>>,
     egress: Arc<dyn EgressService>,
     api_base_url: String,
+    refresh_wake: tokio::sync::Notify,
 }
 
 impl McpEventTriggers {
@@ -365,6 +366,7 @@ impl McpEventTriggers {
             encryption,
             egress,
             api_base_url: api_base_url.into().trim_end_matches('/').to_string(),
+            refresh_wake: tokio::sync::Notify::new(),
         }
     }
 
@@ -409,12 +411,15 @@ impl McpEventTriggers {
                     .into_iter()
                     .flatten()
                     .filter_map(|row| row.refresh_before)
-                    .filter_map(|expiry| (expiry - Utc::now()).to_std().ok())
+                    .map(|expiry| (expiry - Utc::now()).to_std().unwrap_or(Duration::ZERO))
                     .map(|remaining| (remaining / 2).max(Duration::from_millis(100)))
                     .min()
                     .unwrap_or(interval)
                     .min(interval);
-                tokio::time::sleep(pause).await;
+                tokio::select! {
+                    _ = tokio::time::sleep(pause) => {},
+                    _ = service.refresh_wake.notified() => {},
+                }
             }
         })
     }
@@ -508,6 +513,7 @@ impl McpEventTriggers {
         };
         match result {
             Ok(result) => {
+                let wake_refresher = fresh_secret || state.status == MCP_SUBSCRIPTION_PENDING;
                 state.remote_subscription_id = result
                     .get("id")
                     .and_then(Value::as_str)
@@ -525,10 +531,16 @@ impl McpEventTriggers {
                 }
                 state.status = MCP_SUBSCRIPTION_ACTIVE.to_string();
                 state.last_error = None;
-                self.db
+                let stored = self
+                    .db
                     .upsert_agent_trigger_mcp_subscription(state)
                     .await
-                    .map_err(classify_anyhow)
+                    .map_err(classify_anyhow)?;
+                // A newly created short grant cannot wait for an idle sweep.
+                if wake_refresher {
+                    self.refresh_wake.notify_one();
+                }
+                Ok(stored)
             }
             Err(error) => {
                 if state.status != MCP_SUBSCRIPTION_PENDING {

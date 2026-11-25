@@ -7,6 +7,7 @@ struct EventsEgress {
     legacy: bool,
     extension: bool,
     schema: Value,
+    paged: bool,
 }
 impl EventsEgress {
     fn new(legacy: bool) -> Self {
@@ -15,6 +16,7 @@ impl EventsEgress {
             legacy,
             extension: true,
             schema: serde_json::json!({}),
+            paged: false,
         }
     }
 }
@@ -45,7 +47,7 @@ impl EgressService for EventsEgress {
             }
             "server/discover" => serde_json::json!({"capabilities":caps}),
             "events/list" => {
-                serde_json::json!({"events":[{"name":"issue.created", "delivery":["webhook"], "inputSchema":self.schema},{"name":"пошта.received", "delivery":["webhook"], "inputSchema":self.schema}]})
+                serde_json::json!({"nextCursor":self.paged.then_some("next"), "events":[{"name":"issue.created", "delivery":["webhook"], "inputSchema":self.schema},{"name":"пошта.received", "delivery":["webhook"], "inputSchema":self.schema}]})
             }
             _ => serde_json::json!({}),
         };
@@ -202,5 +204,28 @@ async fn static_connection_headers_cannot_override_event_routing() {
         request.headers.keys().all(|name| {
             !name.eq_ignore_ascii_case("mcp-name") && !name.eq_ignore_ascii_case("Mcp-Param-Region")
         })
+    }));
+}
+
+#[tokio::test]
+async fn event_catalog_has_a_total_byte_budget_across_pages() {
+    let mut egress = EventsEgress::new(false);
+    egress.paged = true;
+    egress.schema = serde_json::json!({"description":"x".repeat(4 * 1024 * 1024)});
+    let error = request(
+        &egress,
+        "events/subscribe",
+        serde_json::json!({"name":"issue.created"}),
+    )
+    .await
+    .unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("Events catalog exceeds byte limit"),
+        "{error}"
+    );
+    assert!(egress.requests.lock().unwrap().iter().all(|r| {
+        serde_json::from_slice::<Value>(&r.body).unwrap()["method"] != "events/subscribe"
     }));
 }

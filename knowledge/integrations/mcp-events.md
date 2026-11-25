@@ -102,7 +102,8 @@ event pipeline: filter, dedupe, session routing, delivery log.
   rejects deletes the new trigger and returns the server's error; a failed
   re-subscribe on update restores the previous config, disabled.
 - **Refresh follows the server grant.** The background sweep uses the same
-  secret and last cursor, and short grants shorten its pause before expiry.
+  secret and last cursor; new subscriptions wake an idle sweep, and short
+  grants shorten its pause before expiry. Expired backlogs drain promptly.
   An explicit null cursor clears an earlier position; a missing optional
   cursor leaves it intact. Signed gap envelopes advance the position without
   starting a run. Signed permission termination stops renewal; missing or
@@ -137,8 +138,9 @@ The [dedicated workflow](../../.github/workflows/mcp-conformance.yml) keeps the
 base protocol on released conformance `0.1.16`. Events uses an immutable,
 reviewed upstream revision while the Events PRs remain unreleased, with no
 application secrets or write permissions. Its fixtures use `/mcp` for server
-discovery and the production trigger client for webhook refresh and the
-no-extension fallback. Raw results retain every skipped or untestable row.
+discovery, actual signed webhook delivery, and the production trigger client
+for refresh and the no-extension fallback. Only the outbound test egress hop
+maps a synthetic public IP to the official loopback receiver. Raw results retain every skipped or untestable row.
 
 The upstream discovery scenario also probes core `subscriptions/listen`, which
 Everruns does not implement. That prerequisite is reported separately and is

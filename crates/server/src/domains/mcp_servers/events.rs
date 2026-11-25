@@ -106,20 +106,28 @@ impl SubscriptionTarget {
         let delivery = params
             .get("delivery")
             .ok_or_else(|| EventsError::invalid("delivery is required"))?;
-        if delivery
-            .get("mode")
-            .is_some_and(|mode| mode.as_str() != Some("webhook"))
-        {
-            return Err(EventsError {
-                code: -32026,
-                message: "Only webhook delivery is supported".into(),
-                data: Some(json!({"feature":"deliveryMode", "value": delivery.get("mode")})),
-            });
+        if let Some(mode) = delivery.get("mode") {
+            let mode = mode
+                .as_str()
+                .ok_or_else(|| EventsError::invalid("delivery.mode must be a string"))?;
+            if !matches!(mode, "webhook" | "poll" | "push") {
+                return Err(EventsError::invalid("invalid delivery.mode"));
+            }
+            if mode != "webhook" {
+                return Err(EventsError {
+                    code: -32026,
+                    message: "Only webhook delivery is supported".into(),
+                    data: Some(json!({"feature":"deliveryMode", "value":mode})),
+                });
+            }
         }
         let url = delivery
             .get("url")
             .and_then(Value::as_str)
             .ok_or_else(|| EventsError::invalid("delivery.url is required"))?;
+        if !url::Url::parse(url).is_ok_and(|parsed| parsed.scheme() == "https") {
+            return Err(EventsError::invalid("delivery.url must be an https URL"));
+        }
         Ok(Self {
             name: name.to_string(),
             arguments,
@@ -593,7 +601,7 @@ impl McpEventsService {
         // resolved and pinned so a name cannot rebind to a private address
         // between the check and the connect (TM-TOOL-018); the egress client
         // follows no redirects.
-        if !url.starts_with("https://") {
+        if !url::Url::parse(url).is_ok_and(|parsed| parsed.scheme() == "https") {
             return Err(PostError::Blocked(
                 "callback URL must use https".to_string(),
             ));
@@ -836,6 +844,21 @@ mod tests {
         let mut bad = ok.clone();
         bad["arguments"] = json!({ "org_id": "o" });
         assert!(SubscriptionTarget::from_params(&bad).is_err());
+        let mut unsubscribe = ok.clone();
+        unsubscribe["delivery"]
+            .as_object_mut()
+            .unwrap()
+            .remove("mode");
+        assert!(SubscriptionTarget::from_params(&unsubscribe).is_ok());
+        for url in ["http://8.8.8.8/hook", "not-a-url"] {
+            unsubscribe["delivery"]["url"] = json!(url);
+            assert_eq!(
+                SubscriptionTarget::from_params(&unsubscribe)
+                    .unwrap_err()
+                    .code,
+                -32602
+            );
+        }
         let mut bad = ok;
         bad["delivery"]["mode"] = json!("stream");
         assert!(SubscriptionTarget::from_params(&bad).is_err());

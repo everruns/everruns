@@ -75,6 +75,7 @@ pub(super) async fn request(
         .into());
     }
     let mut listed = Vec::new();
+    let mut response_bytes = 0;
     let mut cursor: Option<String> = None;
     let mut seen = std::collections::HashSet::new();
     loop {
@@ -98,6 +99,10 @@ pub(super) async fn request(
             false,
         )
         .await?;
+        response_bytes += text.len();
+        if response_bytes > crate::mcp::MCP_DISCOVERY_MAX_BYTES {
+            return Err(anyhow!("MCP Events catalog exceeds byte limit"));
+        }
         let page = parse_rpc_result(&text)?;
         for descriptor in page
             .get("events")

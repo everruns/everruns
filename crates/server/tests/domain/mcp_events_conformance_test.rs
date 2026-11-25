@@ -52,9 +52,10 @@ impl EgressService for RunnerEgress {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-#[ignore = "subprocess driver for the official Events client scenarios"]
 async fn client_driver() {
-    let url = std::env::var("EVERRUNS_EVENTS_URL").unwrap();
+    let Ok(url) = std::env::var("EVERRUNS_EVENTS_URL") else {
+        return;
+    };
     let mut parsed = url::Url::parse(&url).unwrap();
     assert!(matches!(parsed.host_str(), Some("localhost" | "127.0.0.1")));
     assert_eq!(parsed.scheme(), "http");
@@ -76,6 +77,9 @@ async fn client_driver() {
         return;
     }
     let list = list.unwrap();
+    // Production starts the refresher before any trigger exists.
+    let refresher = server.mcp_event_triggers.spawn_refresher();
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     let agent: Value = server.post("/v1/platform/agents", json!({
         "name":"events-conformance", "system_prompt":"unused", "harness_id":server.seed_generic_harness_id,
         "mcpServers":{"events":{"url":REMOTE}}
@@ -87,7 +91,6 @@ async fn client_driver() {
             "mcp_event_arguments":{}, "session_mode":"session_per_invocation", "message":"test", "enabled":true
         })).await.assert_status(axum::http::StatusCode::CREATED);
     }
-    let refresher = server.mcp_event_triggers.spawn_refresher();
     let context: Value =
         serde_json::from_str(&std::env::var("MCP_CONFORMANCE_CONTEXT").unwrap()).unwrap();
     tokio::time::sleep(std::time::Duration::from_millis(
@@ -98,13 +101,16 @@ async fn client_driver() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-#[ignore = "requires the pinned upstream Events runner; dedicated conformance workflow"]
 async fn official_events_checks() {
-    let dir = std::env::var("MCP_EVENTS_CONFORMANCE_DIR").expect("set MCP_EVENTS_CONFORMANCE_DIR");
+    let Ok(dir) = std::env::var("MCP_EVENTS_CONFORMANCE_DIR") else {
+        eprintln!("Official Events checks require the dedicated conformance workflow/setup.");
+        return;
+    };
     let receiver = tempfile::tempdir().unwrap();
     let receiver_port = receiver.path().join("port");
     let (_server, base, pump) = outbound::fixture(receiver_port.clone()).await;
     let output = tokio::process::Command::new("node")
+        .current_dir(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../.."))
         .args([
             "scripts/mcp-events-conformance/run.mjs",
             &dir,
@@ -145,11 +151,14 @@ async fn official_events_checks() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-#[ignore = "requires the released official runner; dedicated conformance workflow"]
 async fn official_mcp_baseline() {
-    let dir = std::env::var("MCP_CONFORMANCE_DIR").expect("set MCP_CONFORMANCE_DIR");
+    let Ok(dir) = std::env::var("MCP_CONFORMANCE_DIR") else {
+        eprintln!("Released MCP baseline requires its pinned runner installation.");
+        return;
+    };
     let (_server, base) = TestServer::serving_in_memory().await;
     let output = tokio::process::Command::new("node")
+        .current_dir(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../.."))
         .args([
             &format!("{dir}/dist/index.js"),
             "server",
