@@ -1,6 +1,6 @@
 "use client";
 
-import { InlineStreamdownMessage } from "@/components/chat/streamdown-message";
+import { InlineMarkdownMessage } from "@/components/markdown/markdown-message";
 
 interface WorkLogNarrationProps {
   children: string;
@@ -9,11 +9,11 @@ interface WorkLogNarrationProps {
 /** Renders human-readable work-log narration with the shared safe Markdown semantics. */
 export function WorkLogNarration({ children }: WorkLogNarrationProps) {
   return (
-    <InlineStreamdownMessage
-      className="streamdown-work-log min-w-0 flex-1 whitespace-pre-wrap text-[15px] leading-6 text-muted-foreground"
+    <InlineMarkdownMessage
+      className="markdown-work-log min-w-0 flex-1 whitespace-pre-wrap text-[15px] leading-6 text-muted-foreground"
       skipHtml
     >
       {children}
-    </InlineStreamdownMessage>
+    </InlineMarkdownMessage>
   );
 }

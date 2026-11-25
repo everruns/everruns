@@ -137,14 +137,13 @@ export const messages: Readonly<Record<string, string>> = {
   "How many provider resources this Sandbox has had. Above 1 means it was lost and rebuilt.":
     "该沙盒拥有多少个提供商资源。以上1表示已丢失并重建。",
   "How SessionCards appear in a list layout": "会话卡如何显示在列表布局中",
-  "How Streamdown gracefully handles unterminated markdown syntax":
-    "Streamdown 如何优雅地处理未终止的 Markdown 语法",
+  "How Words handles unterminated markdown syntax": "Words 如何优雅地处理未终止的 Markdown 语法",
   "How the agent is named and how it presents itself in chat.":
     "智能体的命名方式以及它在聊天中的呈现方式。",
   "How the harness is named and how it presents itself when the bound agent leaves a field empty.":
     "执行框架如何命名以及当绑定智能体将字段留空时它如何呈现自己。",
   "How to use the ModelPicker in your components": "如何在组件中使用 ModelPicker",
-  "How to use the StreamdownMessage components": "如何使用 StreamdownMessage 组件",
+  "How to use the MarkdownMessage components": "如何使用 MarkdownMessage 组件",
   "HTML preview": "HTML 预览",
   "HTML Preview": "HTML 预览",
   "HTTP service": "HTTP 服务",

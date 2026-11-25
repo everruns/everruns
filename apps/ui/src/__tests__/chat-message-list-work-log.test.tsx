@@ -7,13 +7,6 @@ import type { Event, SessionTask } from "@/lib/api/types";
 
 jest.mock("@/hooks/use-turn-work-report", () => ({ useTurnWorkReport: () => null }));
 
-jest.mock("streamdown", () => ({
-  Streamdown: ({ children }: { children: string }) => <div>{children}</div>,
-}));
-jest.mock("@streamdown/code", () => ({ code: {} }));
-jest.mock("remark-gfm", () => jest.fn());
-jest.mock("remark-github-blockquote-alert", () => jest.fn());
-
 jest.mock("@/hooks", () => ({
   useAgents: () => ({ data: [] }),
   useProviders: () => ({ data: [] }),

@@ -3,9 +3,7 @@
 import { Globe2, type LucideIcon } from "lucide-react";
 import { GithubIcon as Github } from "@/components/icons/github-icon";
 import { TwitterIcon as Twitter } from "@/components/icons/twitter-icon";
-import { type AnchorHTMLAttributes, type ComponentType } from "react";
 import { navigationItemForPath } from "@/lib/navigation";
-import { cn } from "@/lib/utils";
 
 export type MarkdownLinkKind = "everruns" | "github" | "twitter" | "web";
 
@@ -91,7 +89,7 @@ function everrunsAppPath(href: string): string | null {
   }
 }
 
-function LinkIcon({ kind, href }: { kind: MarkdownLinkKind; href: string }) {
+export function LinkIcon({ kind, href }: { kind: MarkdownLinkKind; href: string }) {
   if (kind === "everruns") {
     // Links into the app carry the icon of the page they open (an agent link shows the
     // agent icon, a harness link the harness icon); the rings mark only the rest.
@@ -104,28 +102,3 @@ function LinkIcon({ kind, href }: { kind: MarkdownLinkKind; href: string }) {
   const Icon: LucideIcon = kind === "github" ? Github : kind === "twitter" ? Twitter : Globe2;
   return <Icon aria-hidden="true" className="markdown-link-icon" />;
 }
-
-/** Opens markdown links in a new tab and prefixes external links with source icons. */
-export const MarkdownLink: ComponentType<AnchorHTMLAttributes<HTMLAnchorElement>> = ({
-  children,
-  className,
-  href,
-  ...props
-}) => {
-  if (!isSafeMarkdownHref(href)) return <span className={className}>{children}</span>;
-
-  const kind = getMarkdownLinkKind(href);
-
-  return (
-    <a
-      {...props}
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      className={cn(kind && "markdown-link-with-icon", className)}
-    >
-      {kind && href && <LinkIcon kind={kind} href={href} />}
-      {children}
-    </a>
-  );
-};

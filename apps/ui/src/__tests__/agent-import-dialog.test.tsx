@@ -4,8 +4,8 @@ import { AgentImportDialog } from "@/components/agents/agent-import-dialog";
 import { inspectAgentPackage } from "@/lib/api/agents";
 import type { Agent, Capability } from "@/lib/api/types";
 
-jest.mock("@/components/chat/streamdown-message", () => ({
-  StreamdownMessage: ({ children }: { children: string }) => <div>{children}</div>,
+jest.mock("@/components/markdown/markdown-message", () => ({
+  MarkdownMessage: ({ children }: { children: string }) => <div>{children}</div>,
 }));
 
 const mutateAsync = jest.fn();

@@ -2,16 +2,6 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { InitialFilesPreview } from "@/components/files/initial-files-preview";
 import type { InitialFile } from "@/lib/api/types";
 
-jest.mock("streamdown", () => ({
-  Streamdown: ({ children }: { children: string }) => (
-    <pre data-testid="streamdown-mock">{children}</pre>
-  ),
-}));
-
-jest.mock("@streamdown/code", () => ({
-  code: {},
-}));
-
 describe("InitialFilesPreview", () => {
   it("renders empty state when no files are configured", () => {
     render(<InitialFilesPreview files={[]} />);

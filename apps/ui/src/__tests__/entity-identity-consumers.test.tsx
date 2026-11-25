@@ -14,8 +14,8 @@ jest.mock("@/providers/org-provider", () => ({
   useOrg: () => ({ currentOrg: { public_id: "org-1" }, isLoading: false }),
 }));
 
-jest.mock("@/components/chat/streamdown-message", () => ({
-  InlineStreamdownMessage: ({ children }: { children: string }) => <>{children}</>,
+jest.mock("@/components/markdown/markdown-message", () => ({
+  InlineMarkdownMessage: ({ children }: { children: string }) => <>{children}</>,
 }));
 
 const agent: Agent = {

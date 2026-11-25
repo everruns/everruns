@@ -5,7 +5,7 @@
  *
  * Splits message text on both ```openui and ```a2ui fenced code blocks and
  * renders each segment with its matching renderer. Markdown segments render
- * via StreamdownMessage. Falls back to pure markdown when no UI blocks are
+ * via MarkdownMessage. Falls back to pure markdown when no UI blocks are
  * present.
  *
  * @see knowledge/ui/openui.md
@@ -13,7 +13,7 @@
  */
 
 import { hasA2UIBlocks } from "@/lib/a2ui-utils";
-import { StreamdownMessage } from "@/components/chat/streamdown-message";
+import { MarkdownMessage } from "@/components/markdown/markdown-message";
 import { WidgetContent } from "./widget-content";
 import type { TextAnnotation } from "@/lib/api/schema-types";
 import {
@@ -47,9 +47,9 @@ export function MessageContent({ text, isStreaming = false, annotations }: Messa
     const citations = new Map<number, CitationSource>(sources.map((s) => [s.n, s]));
     return (
       <div>
-        <StreamdownMessage variant="inline" className="text-foreground" citations={citations}>
+        <MarkdownMessage variant="inline" className="text-foreground" citations={citations}>
           {injectCitationMarkers(text, annotations)}
-        </StreamdownMessage>
+        </MarkdownMessage>
         <MessageSources sources={sources} />
       </div>
     );
@@ -58,9 +58,9 @@ export function MessageContent({ text, isStreaming = false, annotations }: Messa
   // Fast path: no generative-UI blocks → pure markdown.
   if (!hasA2UIBlocks(text)) {
     return (
-      <StreamdownMessage variant="inline" className="text-foreground">
+      <MarkdownMessage variant="inline" className="text-foreground">
         {text}
-      </StreamdownMessage>
+      </MarkdownMessage>
     );
   }
 

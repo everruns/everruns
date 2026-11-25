@@ -1,44 +1,30 @@
 import { render, screen } from "@testing-library/react";
-
-let capturedStreamdownProps: Record<string, unknown> = {};
-
-jest.mock("streamdown", () => ({
-  Streamdown: (props: Record<string, unknown>) => {
-    capturedStreamdownProps = props;
-    return <div data-testid="streamdown-mock">{props.children as string}</div>;
-  },
-}));
-jest.mock("@streamdown/code", () => ({ code: { name: "mock-code-plugin" } }));
-jest.mock("remark-gfm", () => jest.fn());
-jest.mock("remark-github-blockquote-alert", () => jest.fn());
+import * as words from "@pierre/words/react";
 
 import { WorkLogNarration } from "@/components/chat/work-log-narration";
 
-describe("WorkLogNarration", () => {
-  beforeEach(() => {
-    capturedStreamdownProps = {};
-  });
+// jest maps @pierre/words to src/test-mocks/pierre-words.tsx, which records its props.
+const markdownProps = () =>
+  (words as unknown as { lastMarkdownProps: Record<string, unknown> }).lastMarkdownProps;
 
+describe("WorkLogNarration", () => {
   it("passes links, emphasis, and line breaks through the shared Markdown pipeline", () => {
     const narration = "Created [Hourly Dad Jokes](/agents/agent_123).\nRuns every hour in **UTC**.";
     const { container } = render(<WorkLogNarration>{narration}</WorkLogNarration>);
 
-    expect(screen.getByTestId("streamdown-mock")).toBeInTheDocument();
-    expect(capturedStreamdownProps.children).toBe(narration);
-    expect(container.querySelector(".streamdown-work-log")).toHaveClass("whitespace-pre-wrap");
-
-    const components = capturedStreamdownProps.components as Record<string, unknown>;
-    expect(components.a).toBeDefined();
+    expect(screen.getByTestId("words-markdown")).toBeInTheDocument();
+    expect(markdownProps().children).toBe(narration);
+    expect(container.querySelector(".markdown-work-log")).toHaveClass("whitespace-pre-wrap");
+    expect((markdownProps().components as Record<string, unknown>).a).toEqual(expect.any(Function));
   });
 
-  it("disables raw HTML parsing while retaining Streamdown URL sanitization", () => {
-    render(
-      <WorkLogNarration>
-        {'Avoid [unsafe](javascript:alert("x")) and <img src=x onerror="alert(1)">.'}
-      </WorkLogNarration>,
-    );
+  it("renders unsafe links as plain text and allows no raw HTML", () => {
+    render(<WorkLogNarration>{'Avoid [unsafe](javascript:alert("x")).'}</WorkLogNarration>);
 
-    expect(capturedStreamdownProps.skipHtml).toBe(true);
-    expect(capturedStreamdownProps.urlTransform).toBeUndefined();
+    const link = (markdownProps().components as Record<string, (html: string) => string>).a;
+    expect(link('<a href="javascript:alert(&quot;x&quot;)">unsafe</a>')).toBe(
+      "<span>unsafe</span>",
+    );
+    expect(markdownProps().allowedHtml).toBeUndefined();
   });
 });

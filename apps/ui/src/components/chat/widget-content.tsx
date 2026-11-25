@@ -4,7 +4,7 @@ import { useUiTranslations } from "@/providers/locale-provider";
 import { useContext, useId } from "react";
 import { useParams } from "next/navigation";
 import { SessionContext } from "@/app/(main)/sessions/[sessionId]/session-context";
-import { StreamdownMessage } from "./streamdown-message";
+import { MarkdownMessage } from "@/components/markdown/markdown-message";
 import "@everruns/generative-ui/styles.css";
 
 const Widgets = dynamic(
@@ -41,14 +41,14 @@ export function WidgetContent({
             : undefined)
         }
         renderMarkdown={(content, key) => (
-          <StreamdownMessage
+          <MarkdownMessage
             key={key}
             variant="inline"
             className="text-foreground"
             isAnimating={isStreaming}
           >
             {content}
-          </StreamdownMessage>
+          </MarkdownMessage>
         )}
       />
     </div>

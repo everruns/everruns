@@ -3,8 +3,8 @@
 /**
  * File Preview Components
  *
- * Uses Streamdown with @streamdown/code for Shiki-based syntax highlighting,
- * matching the styling used in chat messages.
+ * Markdown and code render through MarkdownMessage (Words + Highlights), matching
+ * the styling used in chat messages.
  *
  * SVG TRUST BOUNDARY (see also `knowledge/security/threat-model.md` TM-WEB-009):
  * SVG files are user-supplied bytes. Rendering attacker-controlled SVG via
@@ -73,8 +73,6 @@
 
 import { useUiTranslations } from "@/providers/locale-provider";
 import { useMemo } from "react";
-import { Streamdown } from "streamdown";
-import { code } from "@streamdown/code";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Table,
@@ -85,8 +83,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { AlertCircle } from "lucide-react";
-import { MarkdownLink } from "@/components/markdown/markdown-link";
-import { peleDiagram } from "@/lib/pele-diagram";
+import { MarkdownMessage } from "@/components/markdown/markdown-message";
 import "./file-previews.css";
 
 // File extension categorization
@@ -129,7 +126,6 @@ const VIDEO_MIME_TYPES: Record<string, string> = {
   mov: "video/quicktime",
   mkv: "video/x-matroska",
 };
-const markdownComponents = { a: MarkdownLink };
 
 // Map file extensions to Shiki language identifiers
 const EXTENSION_TO_LANG: Record<string, string> = {
@@ -237,9 +233,9 @@ export function CodePreview({ content, extension }: { content: string; extension
 
   return (
     <ScrollArea className="h-full">
-      <div className="file-preview-streamdown text-sm">
-        <Streamdown plugins={{ code }}>{markdown}</Streamdown>
-      </div>
+      <MarkdownMessage variant="compact" className="file-preview-markdown file-preview-code">
+        {markdown}
+      </MarkdownMessage>
     </ScrollArea>
   );
 }
@@ -363,9 +359,9 @@ export function JSONPreview({ content }: { content: string }) {
 
   return (
     <ScrollArea className="h-full">
-      <div className="file-preview-streamdown text-sm">
-        <Streamdown plugins={{ code }}>{markdown}</Streamdown>
-      </div>
+      <MarkdownMessage variant="compact" className="file-preview-markdown file-preview-code">
+        {markdown}
+      </MarkdownMessage>
     </ScrollArea>
   );
 }
@@ -453,11 +449,11 @@ export function MarkdownPreview({ content }: { content: string }) {
 
   return (
     <ScrollArea className="h-full">
-      <div className="file-preview-streamdown text-sm p-4">
+      <div className="p-4 text-sm">
         {entries.length > 0 && <FrontmatterBlock entries={entries} />}
-        <Streamdown plugins={{ code, mermaid: peleDiagram }} components={markdownComponents}>
+        <MarkdownMessage variant="compact" className="file-preview-markdown">
           {body}
-        </Streamdown>
+        </MarkdownMessage>
       </div>
     </ScrollArea>
   );

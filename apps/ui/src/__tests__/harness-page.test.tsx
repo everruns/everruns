@@ -24,11 +24,11 @@ jest.mock("next/link", () => ({
   ),
 }));
 
-jest.mock("@/components/chat/streamdown-message", () => ({
-  StreamdownMessage: ({ children }: { children: React.ReactNode }) => (
+jest.mock("@/components/markdown/markdown-message", () => ({
+  MarkdownMessage: ({ children }: { children: React.ReactNode }) => (
     <div data-testid="markdown">{children}</div>
   ),
-  InlineStreamdownMessage: ({ children }: { children: React.ReactNode }) => <span>{children}</span>,
+  InlineMarkdownMessage: ({ children }: { children: React.ReactNode }) => <span>{children}</span>,
 }));
 
 jest.mock("@/components/harnesses/harness-preview", () => ({

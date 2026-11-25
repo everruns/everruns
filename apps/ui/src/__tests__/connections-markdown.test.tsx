@@ -3,15 +3,15 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ReactNode } from "react";
 import { ConnectionsPanel } from "@/components/connections/connections-panel";
 
-// Mock streamdown-message to capture rendered markdown content
-jest.mock("@/components/chat/streamdown-message", () => ({
-  StreamdownMessage: ({ children, className }: { children: string; className?: string }) => (
-    <div data-testid="streamdown-message" className={className}>
+// Mock MarkdownMessage to capture rendered markdown content
+jest.mock("@/components/markdown/markdown-message", () => ({
+  MarkdownMessage: ({ children, className }: { children: string; className?: string }) => (
+    <div data-testid="markdown-message" className={className}>
       {children}
     </div>
   ),
-  InlineStreamdownMessage: ({ children, className }: { children: string; className?: string }) => (
-    <div data-testid="inline-streamdown-message" className={className}>
+  InlineMarkdownMessage: ({ children, className }: { children: string; className?: string }) => (
+    <div data-testid="inline-markdown-message" className={className}>
       {children}
     </div>
   ),
@@ -98,7 +98,7 @@ describe("ConnectionsPanel - Markdown Instructions", () => {
     });
   });
 
-  it("renders instructions_markdown via InlineStreamdownMessage when dialog opens", async () => {
+  it("renders instructions_markdown via InlineMarkdownMessage when dialog opens", async () => {
     render(<ConnectionsPanel />, { wrapper });
 
     // Click Connect button to open the API key dialog
@@ -109,8 +109,8 @@ describe("ConnectionsPanel - Markdown Instructions", () => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
     });
 
-    // Verify InlineStreamdownMessage is used with the raw markdown instructions
-    const markdownEl = screen.getByTestId("inline-streamdown-message");
+    // Verify InlineMarkdownMessage is used with the raw markdown instructions
+    const markdownEl = screen.getByTestId("inline-markdown-message");
     expect(markdownEl).toBeInTheDocument();
     // Raw markdown is passed as children (component handles rendering)
     expect(markdownEl).toHaveTextContent("[Daytona Dashboard](https://app.daytona.io)");

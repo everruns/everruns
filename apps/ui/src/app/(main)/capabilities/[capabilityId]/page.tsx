@@ -15,7 +15,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MarkdownDisplay } from "@/components/ui/prompt-editor";
-import { InlineStreamdownMessage } from "@/components/chat/streamdown-message";
+import { InlineMarkdownMessage } from "@/components/markdown/markdown-message";
 import {
   CircleOff,
   Wrench,
@@ -219,9 +219,9 @@ export default function CapabilityDetailPage({
               <CardTitle>{ui("Description")}</CardTitle>
             </CardHeader>
             <CardContent>
-              <InlineStreamdownMessage className="text-muted-foreground">
+              <InlineMarkdownMessage className="text-muted-foreground">
                 {localizedCapabilityDescription(capability, locale)}
-              </InlineStreamdownMessage>
+              </InlineMarkdownMessage>
               {capabilityTurnedOff(
                 capability,
                 featureFlags && !featureFlags.isLoading ? rolloutFlagMap(featureFlags.flags) : null,

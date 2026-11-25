@@ -225,14 +225,14 @@ export const messages: Readonly<Record<string, string>> = {
   Clear: "清除",
   "Clear filters": "清除筛选器",
   "Clear holder": "透明支架",
-  'Click "Start Streaming Demo" to see Streamdown handle incomplete markdown':
-    "点击“开始流式演示”查看Streamdown处理不完整的markdown",
+  'Click "Start Streaming Demo" to see Words handle incomplete markdown':
+    "点击“开始流式演示”查看Words处理不完整的markdown",
   "Click a button on the card to see messages routed via postMessage.":
     "单击卡片上的按钮可查看通过 postMessage 路由的消息。",
   Client: "客户端",
   Close: "关闭",
   "Close Chat mode": "关闭聊天模式",
-  "Code Block (with Shiki highlighting)": "代码块（Shiki 突出显示）",
+  "Code Block (with syntax highlighting)": "代码块（Shiki 突出显示）",
   "Code Example": "代码示例",
   "Code language": "代码语言",
   "Code languages with Shiki syntax highlighting": "带有 Shiki 语法高亮的代码语言",

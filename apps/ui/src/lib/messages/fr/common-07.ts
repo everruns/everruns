@@ -213,11 +213,11 @@ export const messages: Readonly<Record<string, string>> = {
   "Stop and report the failure": "Arrêtez et signalez la panne",
   Stopped: "Arrêté",
   stored: "stocké",
-  "Streamdown Message Component": "Composant de message de diffusion",
+  "Markdown Message Component": "Composant de message de diffusion",
   "Streaming Message": "Message en continu",
   "Streaming Thinking": "Réflexion en continu",
-  "Streaming-optimized markdown renderer using Vercel's Streamdown":
-    "Moteur de rendu de démarques optimisé pour le streaming utilisant Streamdown de Vercel",
+  "Streaming Markdown renderer using Words (WebAssembly)":
+    "Moteur de rendu de démarques optimisé pour le streaming utilisant Words",
   "Streaming...": "Diffusion...",
   Subchats: "Sous-chats",
   Success: "Succès",

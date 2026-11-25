@@ -1,6 +1,6 @@
 import { HarnessIcon } from "@/lib/harness-icons";
 import type { ConversationStarter } from "@/lib/api/legacy-api-types";
-import { StreamdownMessage } from "./streamdown-message";
+import { MarkdownMessage } from "@/components/markdown/markdown-message";
 
 interface PlatformChatIntroBoxProps {
   /** Harness icon shown next to the intro line. */
@@ -29,9 +29,9 @@ export function PlatformChatIntroBox({
           <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-primary/10">
             <HarnessIcon icon={icon} className="size-4 text-primary" />
           </span>
-          <StreamdownMessage variant="compact" className="min-w-0 flex-1">
+          <MarkdownMessage variant="compact" className="min-w-0 flex-1">
             {intro}
-          </StreamdownMessage>
+          </MarkdownMessage>
         </div>
       ) : null}
       {starters.length > 0 ? (

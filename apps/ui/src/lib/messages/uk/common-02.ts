@@ -234,14 +234,14 @@ export const messages: Readonly<Record<string, string>> = {
   Clear: "Очистити",
   "Clear filters": "Скинути фільтри",
   "Clear holder": "Прозорий тримач",
-  'Click "Start Streaming Demo" to see Streamdown handle incomplete markdown':
-    "Натисніть «Почати демонстрацію трансляції», щоб побачити, що Streamdown обробляє неповну розмітку",
+  'Click "Start Streaming Demo" to see Words handle incomplete markdown':
+    "Натисніть «Почати демонстрацію трансляції», щоб побачити, що Words обробляє неповну розмітку",
   "Click a button on the card to see messages routed via postMessage.":
     "Натисніть кнопку на картці, щоб переглянути повідомлення, спрямовані через postMessage.",
   Client: "Клієнт",
   Close: "Закрити",
   "Close Chat mode": "Закрити режим чату",
-  "Code Block (with Shiki highlighting)": "Блок коду (з підсвічуванням Шикі)",
+  "Code Block (with syntax highlighting)": "Блок коду (з підсвічуванням Шикі)",
   "Code Example": "Приклад коду",
   "Code language": "Мова коду",
   "Code languages with Shiki syntax highlighting":

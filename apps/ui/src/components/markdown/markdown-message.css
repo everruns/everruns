@@ -1,0 +1,257 @@
+/* Markdown rendering styles for MarkdownMessage (Words renderer).
+ * Scoped under `.markdown-message` to avoid leaking into other components. */
+
+.markdown-message h1 {
+  font-size: 1.5em;
+  font-weight: 700;
+  margin: 1em 0 0.5em;
+}
+.markdown-message h2 {
+  font-size: 1.25em;
+  font-weight: 600;
+  margin: 1em 0 0.5em;
+}
+.markdown-message h3 {
+  font-size: 1.1em;
+  font-weight: 600;
+  margin: 1em 0 0.5em;
+}
+.markdown-message p {
+  margin: 0.5em 0;
+}
+.markdown-work-log p {
+  margin: 0;
+}
+.markdown-work-log p + p {
+  margin-top: 0.5em;
+}
+.markdown-work-log > div {
+  white-space: pre-wrap;
+}
+.markdown-message ul,
+.markdown-message ol {
+  margin: 0.5em 0;
+  padding-left: 1.5em;
+}
+.markdown-message li {
+  margin: 0.25em 0;
+}
+.markdown-message code:not(pre code) {
+  font-family: var(--font-mono);
+  border-radius: 0;
+  background: var(--color-muted);
+  padding: 0.2em 0.4em;
+  font-size: 0.9em;
+}
+.markdown-message pre {
+  background: var(--color-muted);
+  padding: 1em;
+  overflow-x: auto;
+  margin: 0.5em 0;
+}
+.markdown-message pre code {
+  background: none;
+  padding: 0;
+}
+.markdown-message blockquote {
+  border-left: 3px solid var(--color-border);
+  padding-left: 1em;
+  margin: 0.5em 0;
+  color: var(--color-muted-foreground);
+}
+.markdown-message hr {
+  border: none;
+  border-top: 1px solid var(--color-border);
+  margin: 1em 0;
+}
+.markdown-message a {
+  color: var(--color-primary);
+  text-decoration: underline;
+}
+.markdown-message a.markdown-link-with-icon {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.3em;
+}
+.markdown-message .markdown-link-icon {
+  width: 1em;
+  height: 1em;
+  flex: 0 0 auto;
+  position: relative;
+  top: 0.125em;
+  stroke-width: 2.25;
+}
+.markdown-message .markdown-link-everruns-icon {
+  background: url("/logo.svg") center / contain no-repeat;
+}
+.markdown-message strong {
+  font-weight: 600;
+}
+.markdown-message em {
+  font-style: italic;
+}
+.markdown-message table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0.5em 0;
+}
+.markdown-message th,
+.markdown-message td {
+  border: 1px solid var(--color-border);
+  padding: 0.5em;
+  text-align: left;
+}
+.markdown-message th {
+  background: var(--color-muted);
+  font-weight: 600;
+}
+.markdown-message img {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Words' own stylesheet sets document-like rhythm (1.25em block gaps, 2em h1). Chat keeps
+   the tighter scale above; these override it inside the console's renderer. */
+.markdown-message [data-markdown="root"] {
+  line-height: inherit;
+}
+.markdown-message [data-markdown="root"] :is(p, ul, ol, blockquote, table) {
+  margin-block: 0.5em;
+}
+.markdown-message [data-markdown="root"] :is(h1, h2, h3, h4, h5, h6) {
+  margin-block: 1em 0.5em;
+  line-height: 1.3;
+  letter-spacing: normal;
+}
+.markdown-message [data-markdown="h1"] {
+  font-size: 1.5em;
+}
+.markdown-message [data-markdown="h2"] {
+  font-size: 1.25em;
+}
+.markdown-message [data-markdown="h3"] {
+  font-size: 1.1em;
+}
+.markdown-message [data-markdown="blockquote"] {
+  opacity: 1;
+}
+.markdown-message [data-markdown="table"] {
+  display: table;
+  font-size: inherit;
+}
+.markdown-message [data-markdown="a"] {
+  text-underline-offset: auto;
+}
+.markdown-message [data-md-slot] {
+  display: contents;
+}
+
+/* Code blocks: sharp corners and one border, as in the rest of the console. */
+.markdown-message [data-markdown="code-block"] {
+  margin-block: 0.5em;
+  border: 1px solid var(--color-border);
+  border-radius: 0;
+  background: var(--color-sidebar);
+}
+.markdown-message [data-markdown="code-header"] {
+  padding: 0.35rem 0.75rem;
+  font: 12px var(--font-mono);
+  color: var(--color-muted-foreground);
+  border-bottom: 1px solid var(--color-border);
+}
+.markdown-message [data-markdown="code-header"] button:hover:not(:disabled) {
+  color: var(--color-foreground);
+}
+.markdown-message [data-markdown="code-block"] pre {
+  margin: 0;
+  padding: 0.75rem 1rem;
+  background: none;
+  font: 13px/1.6 var(--font-mono);
+}
+.markdown-message [data-markdown="code-block"] pre code {
+  background: none;
+  padding: 0;
+  font: inherit;
+}
+
+/* GitHub-style alerts */
+.markdown-message .markdown-alert {
+  padding: 0.5em 1em;
+  margin: 0.5em 0;
+  border-left: 4px solid;
+}
+.markdown-message .markdown-alert-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  font-weight: 600;
+  margin-bottom: 0.25em;
+}
+.markdown-message .markdown-alert-title svg {
+  width: 1em;
+  height: 1em;
+}
+
+.markdown-message .markdown-alert-note {
+  border-color: #0969da;
+  background: rgba(9, 105, 218, 0.1);
+}
+.markdown-message .markdown-alert-note .markdown-alert-title {
+  color: #0969da;
+}
+
+.markdown-message .markdown-alert-tip {
+  border-color: #1a7f37;
+  background: rgba(26, 127, 55, 0.1);
+}
+.markdown-message .markdown-alert-tip .markdown-alert-title {
+  color: #1a7f37;
+}
+
+.markdown-message .markdown-alert-important {
+  border-color: #8250df;
+  background: rgba(130, 80, 223, 0.1);
+}
+.markdown-message .markdown-alert-important .markdown-alert-title {
+  color: #8250df;
+}
+
+.markdown-message .markdown-alert-warning {
+  border-color: #9a6700;
+  background: rgba(154, 103, 0, 0.1);
+}
+.markdown-message .markdown-alert-warning .markdown-alert-title {
+  color: #9a6700;
+}
+
+.markdown-message .markdown-alert-caution {
+  border-color: #cf222e;
+  background: rgba(207, 34, 46, 0.1);
+}
+.markdown-message .markdown-alert-caution .markdown-alert-title {
+  color: #cf222e;
+}
+
+/* Pele draws diagrams with its own light palette unless these are set; mapping them to
+ * the design tokens makes Mermaid diagrams follow the light and dark themes. */
+.markdown-message svg.pele {
+  --pele-bg: var(--color-background);
+  --pele-fg: var(--color-foreground);
+  --pele-muted: var(--color-muted-foreground);
+  --pele-line: var(--color-muted-foreground);
+  --pele-surface: var(--color-card);
+  --pele-surface-alt: var(--color-muted);
+  --pele-border: var(--color-border);
+  --pele-accent: var(--color-primary);
+  --pele-font: var(--font-sans);
+  --pele-font-mono: var(--font-mono);
+  --pele-radius: 0;
+}
+
+/* Diagrams scroll when zoomed past their column (DiagramZoom in markdown-slots.tsx). */
+.markdown-message [data-markdown="mermaid"] {
+  overflow: auto;
+}
+.markdown-message [data-markdown="code-header"] button:disabled {
+  opacity: 0.4;
+}

@@ -198,8 +198,8 @@ export const messages: Readonly<Record<string, string>> = {
   "Waiting on tools": "等待工具",
   warning: "警告",
   "was invited as": "被邀请为",
-  "Watch how Streamdown handles incomplete markdown during streaming":
-    "观看 Streamdown 如何处理流媒体期间不完整的降价",
+  "Watch how Words handles incomplete markdown during streaming":
+    "观看 Words 如何处理流媒体期间不完整的降价",
   "Wave bar thinking indicator": "波条思维指标",
   "We couldn't verify your authentication state. Protected routes stay blocked until auth bootstrap succeeds.":
     "我们无法验证您的身份验证状态。受保护的路由将保持阻塞状态，直到身份验证引导成功。",
@@ -286,5 +286,7 @@ export const messages: Readonly<Record<string, string>> = {
   "Your workspace": "您的工作空间",
   "your-api-key": "你的 API 密钥",
   "ZIP Archive": "ZIP 存档",
+  "Zoom in": "放大",
+  "Zoom out": "缩小",
   "Zulu (South Africa)": "祖鲁语（南非）",
 };
