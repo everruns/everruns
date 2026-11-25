@@ -180,6 +180,18 @@ class Adapters(unittest.TestCase):
         v = {e["point"]: e["value"] for e in local.drill(res).entries}
         self.assertEqual((v["U7"], v["U8"], v["U9"], v["U10"]), (3.7, 7.4, 0.1, 0.006))
 
+    def test_drill_resends_pass_e2_only_when_every_session_finishes(self):
+        res = {"sessions": 75000, "shards": 2, "inflight": 3000, "rebuilt": {"ok": True}, "rebuild_s": 3.7,
+               "kill_to_leader_s": 7.4, "second_messages_lost": 177,
+               "check": {"first": {"ok": True}, "second": {"ok": True}}}
+        v = {e["point"]: e["value"] for e in local.drill(res).entries}
+        self.assertTrue(v["E2"])  # resends allowed: losses are U10's to judge
+        self.assertEqual(v["U10"], 0.059)
+        res["check"]["second"] = {"ok": False, "failed_sessions": 1}
+        self.assertFalse({e["point"]: e["value"] for e in local.drill(res).entries}["E2"])
+        res["check"]["second"], res["rebuilt"] = {"ok": True}, None
+        self.assertFalse({e["point"]: e["value"] for e in local.drill(res).entries}["E2"])
+
     def test_scale_efficiency(self):
         rows = [{"shards": 1, "turns_per_sec": 400.0, "errors": 0},
                 {"shards": 2, "turns_per_sec": 790.0, "errors": 0},

@@ -114,7 +114,10 @@ def bench(result):
 def drill(res):
     out = Output(density=res["sessions"] / res["shards"])
     ok = all((c or {}).get("ok") for c in res["check"].values())
-    out.add("E2", "L2", bool(ok and res["second_messages_lost"] == 0) and bool(res.get("rebuilt")),
+    # E2 passes when the shard is rebuilt and every session finishes, resends
+    # included; messages lost in the shipping window are judged only by U10
+    # (owner, 2026-11-25), so one loss is not counted twice.
+    out.add("E2", "L2", bool(ok) and bool(res.get("rebuilt")),
             note=f"rebuild {res['rebuild_s']} s, leader back {res['kill_to_leader_s']} s, {res['second_messages_lost']} second messages resent")
     if res.get("ship_lag_s", {}).get("p99") is not None:
         out.add("F3", "L2", res["ship_lag_s"]["p99"])
