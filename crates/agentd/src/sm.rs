@@ -35,8 +35,6 @@ use everruns_contracts::typed_id::SessionId;
 use everruns_core::events::Event;
 use futures::stream::{self, StreamExt};
 
-/// Bytes in memory per two encoded bytes of an event (`Shared::resident`).
-const IN_MEMORY_PER_ENCODED: u64 = 3;
 /// The shard state shared between the Raft state machine and the node's
 /// executor, scheduler and API.
 pub struct Shared {
@@ -394,7 +392,7 @@ impl Shared {
             .map(|s| s.events.len())
             .sum();
         (
-            events as u64 * self.event_bytes.load(Ordering::Relaxed) * IN_MEMORY_PER_ENCODED / 2,
+            events as u64 * self.event_bytes.load(Ordering::Relaxed),
             events,
         )
     }
@@ -776,7 +774,15 @@ pub struct StateMachine {
 /// Decision: the memory budget is in real bytes, so the resident estimate
 /// scales the events' JSON size by what parsing them costs. Measured on the
 /// llmsim mix: 2.6 to 3.4 (strings, maps and `Value` trees carry headers and
-/// slack the JSON does not).
+/// slack the JSON does not); 2.78 over 18,753 events of a shard soak's store
+/// (Mac mini, 2026-11-25).
+///
+/// Decision: the resident estimate is events times this, once. It also
+/// multiplied by 1.5, so it counted events at 1.6 times their measured heap
+/// and the memory ledger's remainder (C3) read low by the difference. The
+/// estimate only splits the budget: the allowance is the budget less the
+/// rest of the process (`event_allowance`), so counting events lower makes
+/// a node unload sooner, never later.
 const HEAP_PER_JSON_BYTE: u64 = 3;
 
 /// Bytes of events a node may keep resident: its memory budget less what
