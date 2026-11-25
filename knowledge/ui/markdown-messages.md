@@ -40,7 +40,7 @@ Specification for rendering markdown content in chat messages with streaming sup
 
 ```bash
 cd apps/ui
-pnpm add streamdown @streamdown/code @streamdown/mermaid
+pnpm add streamdown @streamdown/code pele
 ```
 
 ### Dependencies
@@ -49,7 +49,7 @@ pnpm add streamdown @streamdown/code @streamdown/mermaid
 |---------|---------|
 | `streamdown` | Core streaming markdown renderer |
 | `@streamdown/code` | Syntax highlighting via Shiki |
-| `@streamdown/mermaid` | Mermaid diagram rendering |
+| `pele` | Mermaid diagram rendering through the shared Streamdown adapter, including file previews |
 
 Optional plugins (add when needed):
 - `@streamdown/math`, KaTeX math rendering

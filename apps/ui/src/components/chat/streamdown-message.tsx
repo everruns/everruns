@@ -14,8 +14,7 @@ import { code as baseCodePlugin } from "@streamdown/code";
 import remarkGfm from "remark-gfm";
 import remarkGithubAlerts from "remark-github-blockquote-alert";
 import { cn } from "@/lib/utils";
-import { useState, useEffect } from "react";
-import type { DiagramPlugin } from "@streamdown/mermaid";
+import { peleDiagram } from "@/lib/pele-diagram";
 import { MarkdownLink } from "@/components/markdown/markdown-link";
 import {
   type CitationSource,
@@ -30,34 +29,6 @@ import "./streamdown-message.css";
 const githubAlertsPlugin = remarkGithubAlerts as NonNullable<
   StreamdownProps["remarkPlugins"]
 >[number];
-
-// Lazy-load the mermaid plugin to avoid pulling the full mermaid dependency
-// (~2 MB) into the initial client bundle. The plugin loads once and is cached.
-let mermaidCache: DiagramPlugin | null = null;
-let mermaidLoading: Promise<DiagramPlugin> | null = null;
-function loadMermaidPlugin(): Promise<DiagramPlugin> {
-  if (!mermaidLoading) {
-    mermaidLoading = import("@streamdown/mermaid").then((m) => {
-      mermaidCache = m.createMermaidPlugin({
-        config: {
-          securityLevel: "strict",
-        },
-      });
-      return mermaidCache;
-    });
-  }
-  return mermaidLoading;
-}
-
-function useMermaidPlugin(): DiagramPlugin | undefined {
-  const [plugin, setPlugin] = useState<DiagramPlugin | null>(mermaidCache);
-  useEffect(() => {
-    if (!mermaidCache) {
-      loadMermaidPlugin().then(setPlugin);
-    }
-  }, []);
-  return plugin ?? undefined;
-}
 
 // Wrap the default code plugin to skip "openui" language — OpenUI blocks are
 // rendered by OpenUIBlock, but during streaming incomplete fences may reach Streamdown.
@@ -129,10 +100,8 @@ export function StreamdownMessage({
   citations,
   skipHtml = false,
 }: StreamdownMessageProps) {
-  const mermaid = useMermaidPlugin();
-
   // Build plugins
-  const plugins: StreamdownProps["plugins"] = { mermaid };
+  const plugins: StreamdownProps["plugins"] = { mermaid: peleDiagram };
   if (enableCodeHighlighting) {
     plugins.code = code;
   }

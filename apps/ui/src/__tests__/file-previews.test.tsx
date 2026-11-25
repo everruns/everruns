@@ -352,6 +352,9 @@ describe("MarkdownPreview", () => {
     );
     expect(capturedStreamdownProps.children).toBe(body);
     expect((capturedStreamdownProps.components as Record<string, unknown>).a).toBe(MarkdownLink);
+    expect((capturedStreamdownProps.plugins as { mermaid: { name: string } }).mermaid.name).toBe(
+      "mermaid",
+    );
     expect(
       Array.from(container.querySelectorAll("tr"), (row) =>
         Array.from(row.querySelectorAll("td"), (cell) => cell.textContent),

@@ -10,7 +10,6 @@ jest.mock("streamdown", () => ({
   Streamdown: ({ children }: { children: string }) => <div>{children}</div>,
 }));
 jest.mock("@streamdown/code", () => ({ code: {} }));
-jest.mock("@streamdown/mermaid", () => ({ createMermaidPlugin: jest.fn(() => ({})) }));
 jest.mock("remark-gfm", () => jest.fn());
 jest.mock("remark-github-blockquote-alert", () => jest.fn());
 jest.mock("@/hooks", () => ({

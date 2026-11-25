@@ -9,9 +9,6 @@ jest.mock("streamdown", () => ({
   },
 }));
 jest.mock("@streamdown/code", () => ({ code: { name: "mock-code-plugin" } }));
-jest.mock("@streamdown/mermaid", () => ({
-  createMermaidPlugin: jest.fn(() => ({ name: "mermaid", type: "diagram" })),
-}));
 jest.mock("remark-gfm", () => jest.fn());
 jest.mock("remark-github-blockquote-alert", () => jest.fn());
 

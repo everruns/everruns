@@ -1,4 +1,4 @@
-import { render, screen, act } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 
 // Capture props passed to Streamdown to verify components/plugins
 let capturedStreamdownProps: Record<string, unknown> = {};
@@ -15,17 +15,7 @@ jest.mock("@streamdown/code", () => ({
   code: { name: "mock-code-plugin" },
 }));
 
-const mockCreateMermaidPlugin = jest.fn(() => ({
-  name: "mermaid",
-  type: "diagram",
-  language: "mermaid",
-  getMermaid: jest.fn(),
-}));
-
-jest.mock("@streamdown/mermaid", () => ({
-  createMermaidPlugin: mockCreateMermaidPlugin,
-  mermaid: { name: "mermaid", type: "diagram", language: "mermaid", getMermaid: jest.fn() },
-}));
+jest.mock("pele", () => ({ render: () => ({ svg: "<svg></svg>" }) }));
 
 jest.mock("remark-gfm", () => jest.fn());
 jest.mock("remark-github-blockquote-alert", () => jest.fn());
@@ -126,20 +116,16 @@ describe("StreamdownMessage", () => {
     );
   });
 
-  it("enables mermaid plugin after lazy load", async () => {
-    await act(async () => {
-      render(<StreamdownMessage>code block</StreamdownMessage>);
-      // Wait for the lazy-loaded mermaid plugin to resolve
-      await import("@streamdown/mermaid");
-    });
+  it("renders diagrams through Pele", async () => {
+    render(<StreamdownMessage>code block</StreamdownMessage>);
 
-    const plugins = capturedStreamdownProps.plugins as Record<string, unknown>;
+    const plugins = capturedStreamdownProps.plugins as Record<
+      string,
+      { getMermaid: () => { render: (id: string, source: string) => Promise<{ svg: string }> } }
+    >;
     expect(plugins.mermaid).toMatchObject({ name: "mermaid", type: "diagram" });
-    expect(mockCreateMermaidPlugin).toHaveBeenCalledWith({
-      config: {
-        securityLevel: "strict",
-      },
-    });
+    const result = await plugins.mermaid.getMermaid().render("test", "flowchart LR\nA --> B");
+    expect(result.svg).toContain("<svg");
   });
 
   it("disables code highlighting when prop is false", () => {
