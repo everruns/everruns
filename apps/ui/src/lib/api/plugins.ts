@@ -139,7 +139,7 @@ export async function setMyPlugin(id: string, enabled: boolean): Promise<PluginO
 }
 
 /** The harness level that provides an environment, as people see it. */
-export function pluginEnvironmentLabel(environment: PluginEnvironment | undefined): string {
+export function pluginEnvironmentLabel(environment: string | undefined): string {
   switch (environment) {
     case "conversation":
       return "Conversation";
