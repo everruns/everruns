@@ -630,9 +630,7 @@ async fn handle_mcp_authenticated(
         }
         // SEP-3415: every modern Events result is a complete Result.
         "events/list" | "events/subscribe" | "events/unsubscribe" | "events/poll"
-        | "events/stream" => {
-            events::handle_method(req, &org, &state, negotiated_version).await
-        }
+        | "events/stream" => events::handle_method(req, &org, &state, negotiated_version).await,
         "ping" => JsonRpcResponse::success(req.id, json!({})),
         _ => JsonRpcResponse::method_not_found(req.id),
     };
