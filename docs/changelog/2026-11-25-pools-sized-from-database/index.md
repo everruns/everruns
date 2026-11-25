@@ -5,7 +5,7 @@ date: 2026-11-25
 kind: feature
 significance: minor
 products: [platform]
-surfaces: [ops]
+surfaces: [operations]
 links:
   docs: [/sre/environment-variables/]
 ---
