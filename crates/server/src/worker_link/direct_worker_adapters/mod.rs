@@ -11,6 +11,7 @@ pub(crate) mod mcp;
 mod message_projection;
 mod provider_config;
 mod scheduled_triggers;
+mod slack;
 mod user_mcp;
 
 // Direct implementation of WorkerAdapters for in-process worker
@@ -1138,13 +1139,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
         org_id: i64,
         session_id: everruns_contracts::typed_id::SessionId,
     ) -> Option<Arc<dyn everruns_capabilities::slack_action::SlackActionInvoker>> {
-        Some(crate::channels::slack::actions::in_process_invoker(
-            &self.db,
-            self.encryption.as_ref(),
-            self.egress_service.clone(),
-            org_id,
-            session_id,
-        ))
+        Some(self.slack_invoker_for(org_id, session_id))
     }
 
     fn user_mcp_invoker(
