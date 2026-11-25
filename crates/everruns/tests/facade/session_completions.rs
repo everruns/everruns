@@ -52,6 +52,10 @@ struct Log {
     calls: Mutex<Vec<Call>>,
     /// Review completions never answer while set.
     hang: AtomicBool,
+    usage: AtomicBool,
+    automatic_review: AtomicBool,
+    oversized_usage_metadata: AtomicBool,
+    review_response: Mutex<Option<String>>,
 }
 
 impl Log {
@@ -110,13 +114,32 @@ impl ChatDriver for Recorder {
                 arguments: json!({}),
             }])
         } else if review {
-            LlmStreamEvent::TextDelta(format!("COMPLETE via {}", self.provider))
+            LlmStreamEvent::TextDelta(
+                self.log
+                    .review_response
+                    .lock()
+                    .unwrap()
+                    .clone()
+                    .unwrap_or_else(|| format!("COMPLETE via {}", self.provider)),
+            )
         } else {
             LlmStreamEvent::TextDelta("done".into())
         };
+        let mut metadata = everruns::LlmCompletionMetadata::default();
+        if self.log.usage.load(Ordering::SeqCst) {
+            metadata.prompt_tokens = Some(if review { 900 } else { 100 });
+            metadata.completion_tokens = Some(if review { 100 } else { 20 });
+            metadata.provider_cost_usd = Some(if review { 0.01 } else { 0.001 });
+        }
+        if review && self.log.oversized_usage_metadata.load(Ordering::SeqCst) {
+            metadata.response_id = Some("x".repeat(8192));
+            metadata.response_model = Some("\0".repeat(256));
+            metadata.finish_reason = Some("x".repeat(8192));
+            metadata.provider_finish_reason = Some("\0".repeat(256));
+        }
         Ok(Box::pin(futures::stream::iter([
             Ok(event),
-            Ok(LlmStreamEvent::Done(Box::default())),
+            Ok(LlmStreamEvent::Done(Box::new(metadata))),
         ])))
     }
 }
@@ -211,6 +234,9 @@ impl Fixture {
         if let Lane::Legacy = lane {
             builder = builder.backends(HostBackends::in_memory());
         }
+        if self.log.automatic_review.load(Ordering::SeqCst) {
+            builder = builder.completion_check(everruns::completion_check::CompletionCheck::Always);
+        }
         builder.build().expect("valid agent")
     }
 }
@@ -224,7 +250,16 @@ fn review() -> CompletionRequest {
 
 async fn canonical(session: &Session) -> (usize, usize) {
     (
-        session.events_after(0).await.expect("events").len(),
+        session
+            .events_after(0)
+            .await
+            .expect("events")
+            .iter()
+            .filter(|event| {
+                event.event_type() != "llm.generation"
+                    || !event.canonical_json()["metadata"]["completion_operation_id"].is_string()
+            })
+            .count(),
         session
             .history()
             .page()
@@ -258,6 +293,181 @@ fn assert_exact_review(call: &Call, session: &Session, provider: &str, model: &s
 // ---------------------------------------------------------------------------
 // The explicit envelope and the convenience form
 // ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn out_of_band_usage_is_metered_without_conversation_events() {
+    for lane in LANES {
+        let fixture = Fixture::new();
+        fixture.log.usage.store(true, Ordering::SeqCst);
+        let session = Engine::new().create(fixture.agent(lane, vec![]));
+        assert!(session.run("original request").await.unwrap().success);
+        let history = session.history().page().await.unwrap().messages;
+        session.complete(review()).await.unwrap();
+
+        let generations: Vec<_> = session
+            .events_after(0)
+            .await
+            .unwrap()
+            .into_iter()
+            .filter(|event| event.event_type() == "llm.generation")
+            .map(|event| event.canonical_json().clone())
+            .collect();
+        assert_eq!(
+            generations.len(),
+            2,
+            "{lane:?}: every completed call is metered"
+        );
+        let total: u64 = generations
+            .iter()
+            .map(|event| {
+                let usage = &event["data"]["metadata"]["usage"];
+                usage["input_tokens"].as_u64().unwrap() + usage["output_tokens"].as_u64().unwrap()
+            })
+            .sum();
+        assert_eq!(total, 1120, "{lane:?}");
+        let auxiliary = &generations[1]["data"];
+        assert_eq!(auxiliary["metadata"]["usage"]["actual_cost_usd"], 0.01);
+        assert_eq!(
+            auxiliary["metadata"]["request_options"]["metadata"]["purpose"],
+            "completion_review"
+        );
+        assert_eq!(auxiliary["messages"], json!([]));
+        assert!(auxiliary["output"]["text"].is_null());
+        assert!(auxiliary["request_body"].is_null());
+        assert_eq!(
+            session.history().page().await.unwrap().messages.len(),
+            history.len()
+        );
+    }
+}
+
+#[tokio::test]
+async fn automatic_review_accounts_for_successful_and_unreadable_verdicts() {
+    for verdict in [r#"{"state":"achieved","reason":"done"}"#, "not JSON"] {
+        let fixture = Fixture::new();
+        fixture.log.usage.store(true, Ordering::SeqCst);
+        fixture.log.automatic_review.store(true, Ordering::SeqCst);
+        *fixture.log.review_response.lock().unwrap() = Some(verdict.into());
+        let session = Engine::new().create(fixture.agent(Lane::Coherent, vec![]));
+        assert!(session.run("finish").await.unwrap().success);
+        let events = session.events_after(0).await.unwrap();
+        let generations: Vec<_> = events
+            .iter()
+            .filter(|event| event.event_type() == "llm.generation")
+            .map(|event| event.canonical_json())
+            .collect();
+        assert_eq!(generations.len(), 2);
+        let turn = generations[0]["context"]["turn_id"].as_str().unwrap();
+        assert_eq!(generations[1]["context"]["turn_id"], turn);
+        assert_eq!(
+            generations[1]["data"]["metadata"]["usage"]["input_tokens"],
+            900
+        );
+        let check = events
+            .iter()
+            .find(|event| event.event_type() == "turn.completion_checked")
+            .unwrap();
+        assert_eq!(
+            check.canonical_json()["data"]["action"],
+            if verdict == "not JSON" {
+                "review_failed"
+            } else {
+                "finished"
+            }
+        );
+        assert_eq!(session.history().page().await.unwrap().messages.len(), 2);
+    }
+}
+
+#[tokio::test]
+async fn oversized_provider_tracing_does_not_lose_a_paid_completion() {
+    let fixture = Fixture::new();
+    fixture.log.usage.store(true, Ordering::SeqCst);
+    fixture
+        .log
+        .oversized_usage_metadata
+        .store(true, Ordering::SeqCst);
+    let session = Engine::new().create(fixture.agent(Lane::Coherent, vec![]));
+    assert!(
+        session
+            .complete(review())
+            .await
+            .unwrap()
+            .contains("COMPLETE")
+    );
+    let events = session.events_after(0).await.unwrap();
+    let generation = events
+        .iter()
+        .find(|event| event.event_type() == "llm.generation")
+        .unwrap();
+    let data = generation.canonical_json();
+    assert_eq!(data["data"]["metadata"]["usage"]["input_tokens"], 900);
+    assert_eq!(data["data"]["metadata"]["usage"]["actual_cost_usd"], 0.01);
+    assert!(serde_json::to_vec(data).unwrap().len() <= 4096);
+}
+
+#[tokio::test]
+async fn paid_empty_answers_keep_their_usage() {
+    for lane in LANES {
+        let fixture = Fixture::new();
+        fixture.log.usage.store(true, Ordering::SeqCst);
+        *fixture.log.review_response.lock().unwrap() = Some(String::new());
+        let session = Engine::new().create(fixture.agent(lane, vec![]));
+        assert!(session.complete(review()).await.is_err());
+        let events = session.events_after(0).await.unwrap();
+        let generations: Vec<_> = events
+            .iter()
+            .filter(|event| event.event_type() == "llm.generation")
+            .collect();
+        assert_eq!(generations.len(), 1, "{lane:?}");
+        assert_eq!(
+            generations[0].canonical_json()["data"]["metadata"]["usage"]["input_tokens"],
+            900
+        );
+        assert!(session.history().page().await.unwrap().messages.is_empty());
+    }
+}
+
+#[cfg(feature = "local")]
+#[tokio::test]
+async fn auxiliary_usage_survives_sqlite_reopen() {
+    use everruns::hosting::{AgentBuild, SqliteHosting};
+    let directory = tempfile::tempdir().unwrap();
+    let fixture = Fixture::new();
+    fixture.log.usage.store(true, Ordering::SeqCst);
+    let build = AgentBuild::new("usage", "v1");
+    let profile = SqliteHosting::open(directory.path().join("authority.sqlite")).unwrap();
+    let engine = Engine::builder()
+        .hosting(profile)
+        .register(build.clone(), fixture.agent(Lane::Coherent, vec![]))
+        .build();
+    let id = SessionId::new();
+    let session = engine.create_registered(id, &build).await.unwrap();
+    assert!(session.run("finish").await.unwrap().success);
+    session.complete(review()).await.unwrap();
+    drop(session);
+    drop(engine);
+    let profile = SqliteHosting::open(directory.path().join("authority.sqlite")).unwrap();
+    let engine = Engine::builder()
+        .hosting(profile)
+        .register(build, fixture.agent(Lane::Coherent, vec![]))
+        .build();
+    let session = engine.resume(id).await.unwrap();
+    let generations: Vec<_> = session
+        .events_after(0)
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|event| event.event_type() == "llm.generation")
+        .map(|event| event.canonical_json().clone())
+        .collect();
+    assert_eq!(generations.len(), 2);
+    assert_eq!(
+        generations[1]["data"]["metadata"]["usage"]["input_tokens"],
+        900
+    );
+    assert_eq!(session.history().page().await.unwrap().messages.len(), 2);
+}
 
 #[tokio::test]
 async fn a_curated_completion_sends_exactly_the_host_envelope_on_both_lanes() {

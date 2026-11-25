@@ -330,7 +330,7 @@ impl EventLog for Ports {
         self.scope(request.session_id).map_err(log_error)?;
         self.hosting
             .transaction(self.session, |tx, state| {
-                if !request.is_dreaming_metadata() {
+                if !request.is_background_metadata() {
                     self.check(state)?;
                 } else {
                     state.binding(self.session)?;

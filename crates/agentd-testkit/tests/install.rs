@@ -247,6 +247,14 @@ async fn a_pushed_agent_runs_with_a_pushed_key_and_the_stream_reports_it() {
             assert_eq!(record["labels"]["org"], "o1", "{record}");
             assert_eq!(record["group"], "o1", "{record}");
             kinds.push(record["type"].as_str().unwrap().to_owned());
+            // A pointer to tapped events comes with the events it names.
+            if record["type"] == "Events" {
+                let events = record["events"]
+                    .as_array()
+                    .expect("events read from the session");
+                assert!(!events.is_empty(), "{record}");
+                kinds.extend(events.iter().map(|_| "Event".to_owned()));
+            }
             assert!(positions.insert(position(record)), "read twice: {record}");
         }
         cursor = page["cursor"].as_str().unwrap().to_owned();
@@ -280,8 +288,16 @@ async fn a_pushed_agent_runs_with_a_pushed_key_and_the_stream_reports_it() {
         .call(Method::GET, "/v1/stream?type=turn.completed", None)
         .await;
     let turns = turns["data"].as_array().unwrap();
+    // A pointer comes with only the events of the asked type.
+    let types: Vec<&Value> = turns
+        .iter()
+        .flat_map(|r| match r["events"].as_array() {
+            Some(events) => events.iter().map(|e| &e["type"]).collect::<Vec<_>>(),
+            None => vec![&r["event"]["type"]],
+        })
+        .collect();
     assert!(
-        !turns.is_empty() && turns.iter().all(|r| r["event"]["type"] == "turn.completed"),
+        !types.is_empty() && types.iter().all(|t| *t == "turn.completed"),
         "{turns:?}"
     );
 

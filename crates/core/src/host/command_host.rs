@@ -6,6 +6,9 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use uuid::Uuid;
 
+use crate::command_completion_usage::CompletionUsage;
+use crate::{event_emitter::EventEmitter, events::EventContext};
+
 use crate::capabilities::CapabilityRegistry;
 use crate::command_host::{
     CommandHost, CommandTurnContext, SessionCompletion, SessionCompletionError,
@@ -47,6 +50,8 @@ pub struct StoreCommandHost {
     file_resolver: Option<Arc<dyn FileResolver>>,
     file_store: Option<Arc<dyn SessionFileSystem>>,
     assembled: tokio::sync::OnceCell<AssembledTurnContext>,
+    usage_emitter: Option<Arc<dyn EventEmitter>>,
+    usage_context: EventContext,
 }
 
 impl StoreCommandHost {
@@ -76,6 +81,8 @@ impl StoreCommandHost {
             file_resolver: None,
             file_store: None,
             assembled: tokio::sync::OnceCell::new(),
+            usage_emitter: None,
+            usage_context: EventContext::empty(),
         }
     }
 
@@ -105,6 +112,39 @@ impl StoreCommandHost {
     pub fn with_assembled_context(mut self, assembled: AssembledTurnContext) -> Self {
         self.assembled = tokio::sync::OnceCell::new_with(Some(assembled));
         self
+    }
+
+    /// Meter completions through the host's canonical usage event path.
+    /// The context comes from the executing host, never caller metadata.
+    /// Engine and server hosts install this sink; separately constructed hosts
+    /// must opt in to retain completion usage.
+    pub fn with_usage_emitter(
+        mut self,
+        emitter: Arc<dyn EventEmitter>,
+        context: EventContext,
+    ) -> Self {
+        self.usage_emitter = Some(emitter);
+        self.usage_context = context;
+        self
+    }
+
+    fn usage_recorder(&self, prepared: &PreparedCompletion) -> Option<CompletionUsage> {
+        Some(CompletionUsage {
+            emitter: self.usage_emitter.clone()?,
+            session: self.session_id,
+            context: self.usage_context.clone(),
+            model: prepared.llm_config.model.clone(),
+            provider: prepared.provider_type.clone(),
+            provider_id: prepared.provider_id.clone(),
+            purpose: prepared
+                .llm_config
+                .metadata
+                .get("purpose")
+                .cloned()
+                .unwrap_or_else(|| "session_completion".into()),
+            started: everruns_contracts::rt::Instant::now(),
+            operation: Uuid::now_v7(),
+        })
     }
 
     async fn assembled(&self) -> Result<&AssembledTurnContext> {
@@ -265,6 +305,8 @@ impl StoreCommandHost {
             llm_config: builder.build(),
             driver: model.driver,
             context,
+            provider_type: model.provider_type,
+            provider_id: model.provider.to_string(),
         })
     }
 }
@@ -274,6 +316,8 @@ struct PreparedCompletion {
     llm_config: LlmCallConfig,
     driver: Arc<dyn ChatDriver>,
     context: UserFacingErrorContext,
+    provider_type: everruns_contracts::DriverId,
+    provider_id: String,
 }
 
 #[async_trait]
@@ -312,6 +356,7 @@ impl CommandHost for StoreCommandHost {
         request: SessionCompletionRequest,
     ) -> std::result::Result<SessionCompletion, SessionCompletionError> {
         let prepared = self.prepare_completion(request).await?;
+        let usage = self.usage_recorder(&prepared);
         let completion_error = |error: String| SessionCompletionError::Completion {
             error,
             context: prepared.context.clone(),
@@ -323,8 +368,17 @@ impl CommandHost for StoreCommandHost {
                 prepared.llm_messages,
                 &prepared.llm_config,
             )
-            .await
-            .map_err(|error| completion_error(error.to_string()))?;
+            .await;
+        if let Some(usage) = usage {
+            usage
+                .record(
+                    response.as_ref().ok().map(|response| &response.metadata),
+                    false,
+                )
+                .await
+                .map_err(SessionCompletionError::InvalidRequest)?;
+        }
+        let response = response.map_err(|error| completion_error(error.to_string()))?;
         let text = response.text.trim().to_string();
         if text.is_empty() {
             return Err(completion_error(
@@ -339,6 +393,7 @@ impl CommandHost for StoreCommandHost {
         request: SessionCompletionRequest,
     ) -> std::result::Result<SessionCompletionStream, SessionCompletionError> {
         let prepared = self.prepare_completion(request).await?;
+        let usage = self.usage_recorder(&prepared);
         let events = prepared
             .driver
             .chat_completion_stream(
@@ -346,11 +401,23 @@ impl CommandHost for StoreCommandHost {
                 prepared.llm_messages,
                 &prepared.llm_config,
             )
-            .await
-            .map_err(|error| SessionCompletionError::Completion {
-                error: error.to_string(),
-                context: prepared.context.clone(),
-            })?;
+            .await;
+        if events.is_err()
+            && let Some(usage) = &usage
+        {
+            usage
+                .record(None, true)
+                .await
+                .map_err(SessionCompletionError::InvalidRequest)?;
+        }
+        let events = events.map_err(|error| SessionCompletionError::Completion {
+            error: error.to_string(),
+            context: prepared.context.clone(),
+        })?;
+        let events = match usage {
+            Some(usage) => usage.stream(events),
+            None => events,
+        };
         Ok(SessionCompletionStream {
             events,
             context: prepared.context,

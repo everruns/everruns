@@ -38,6 +38,9 @@ use super::{ControlPlane, org_internal};
 use crate::domains::budgets::{BudgetService, DataPlaneUsage};
 use crate::storage::{DpSessionSummary, ShardBatchCounters, ShardMinuteReport};
 
+/// How long one batch is stored for at most (see [`ingest`]).
+const INGEST_BUDGET: std::time::Duration = std::time::Duration::from_secs(3);
+
 /// Store `batch`; the position through which it is stored.
 pub async fn ingest(
     cp: &ControlPlane,
@@ -62,11 +65,20 @@ pub async fn ingest(
         .await?
         .map_or((0, 0), |(i, o)| (i as u64, o as u32));
     let start = through;
-    super::warehouse::export(cp, &batch, start).await?;
     let mut counters = ShardBatchCounters::default();
+    // Decision: a batch is stored for at most `INGEST_BUDGET`, then the
+    // position through what was stored is answered and the shard sends the
+    // rest next. Tapped events are read back from the shard's history
+    // (`Record::Events`), which takes a round trip each; the shard gives a
+    // batch 5 s, and a request it drops mid-batch would hand the events it
+    // had delivered to the listeners again.
+    let deadline = std::time::Instant::now() + INGEST_BUDGET;
     for record in &batch.records {
         if (record.index, record.ordinal) <= start {
             continue;
+        }
+        if std::time::Instant::now() >= deadline {
+            break;
         }
         if let Err(error) = store(cp, budgets, listeners, &batch, record, &mut counters).await {
             tracing::warn!(source = %batch.source, index = record.index, %error, "feed record not stored");
@@ -81,6 +93,7 @@ pub async fn ingest(
     {
         tracing::warn!(source = %batch.source, %error, "feed counters not added to monitoring");
     }
+    super::warehouse::export(cp, &batch, start, through).await?;
     if through > start {
         cp.db
             .dp_set_feed_position(
@@ -251,6 +264,15 @@ async fn store(
         }
         Record::Event { session_id, event } => {
             super::event_tap::deliver(cp, listeners, org_id, session_id, event).await?;
+        }
+        Record::Events {
+            session_id,
+            from,
+            to,
+            types,
+        } => {
+            super::event_tap::deliver_range(cp, listeners, org_id, session_id, *from, *to, types)
+                .await?;
         }
         Record::TaskTransition {
             session_id,

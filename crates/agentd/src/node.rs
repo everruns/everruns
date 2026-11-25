@@ -1012,6 +1012,7 @@ impl Node {
             let candidates: Vec<SessionId> = tokio::select! {
                 change = changes.recv() => match change {
                     Ok(Change::Session(session)) => vec![session],
+                    // Not sent on this channel (`Shared::publish`).
                     Ok(Change::Event(..)) => continue,
                     Err(broadcast::error::RecvError::Lagged(_)) => self.all_sessions(),
                     Err(broadcast::error::RecvError::Closed) => return,

@@ -379,3 +379,33 @@ test("background usage metering rejects captured prompts and generated output", 
   await assert.rejects(f.call("append", { event: { ...generation, metadata: { dreaming_operation_id: "-".repeat(36) } } }), /lease lost/);
   assert.deepEqual(await f.call("events"), before);
 });
+
+
+test("auxiliary completion usage is bounded and cannot impersonate execution", async () => {
+  const f = await fixture();
+  const generation = event("llm.generation", null, {
+    messages: [], tools: [], output: { tool_calls: [] },
+    metadata: { model: "model", success: true, usage: { input_tokens: 900, output_tokens: 100 } },
+  });
+  generation.context = {};
+  generation.metadata = { completion_operation_id: "11111111-1111-4111-8111-111111111111" };
+  await f.call("append", { event: generation });
+  const before = await f.call("events");
+  for (const change of [
+    (e) => { e.data.messages = [{ role: "user", content: [] }]; },
+    (e) => { e.data.tools = [{ name: "tool" }]; },
+    (e) => { e.data.output.text = "private answer"; },
+    (e) => { e.data.output.tool_calls = [{ name: "tool" }]; },
+    (e) => { e.data.request_body = { prompt: "private" }; },
+    (e) => { e.context.turn_id = "turn_unowned"; },
+    (e) => { e.context.exec_id = "exec_unowned"; },
+    (e) => { e.context.input_message_id = "input_unowned"; },
+    (e) => { e.metadata.completion_operation_id = "invalid"; },
+    (e) => { e.data.metadata.model = "x".repeat(4096); },
+  ]) {
+    const invalid = structuredClone(generation);
+    change(invalid);
+    await assert.rejects(f.call("append", { event: invalid }), /lease lost/);
+  }
+  assert.deepEqual(await f.call("events"), before);
+});

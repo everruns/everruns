@@ -41,7 +41,8 @@ const IN_MEMORY_PER_ENCODED: u64 = 3;
 /// executor, scheduler and API.
 pub struct Shared {
     pub state: RwLock<ShardState>,
-    /// Every applied change, for the node's executor and scheduler loops.
+    /// Every applied session change (never an event: `publish`), for the
+    /// node's scheduler.
     pub changes: broadcast::Sender<Change>,
     /// Per-session changes, for API waiters and streams.
     ///
@@ -517,7 +518,16 @@ impl Shared {
         if let Some(hook) = self.on_change.get() {
             hook(&change);
         }
-        let _ = self.changes.send(change);
+        // Decision: only session changes go on the shard-wide channel. A
+        // broadcast channel keeps every value in its ring until the slot is
+        // written over, read or not: with event changes on it, each node
+        // held its last 65,536 events alive, past their unload and outside
+        // the memory ledger (75k verifier C3). Its one reader, the
+        // scheduler, wants sessions; readers of a session's events watch
+        // that session (`watch`, a small ring dropped with its last reader).
+        if matches!(change, Change::Session(_)) {
+            let _ = self.changes.send(change);
+        }
     }
 
     /// The index `session` last changed at (0: not since this node
@@ -1149,10 +1159,40 @@ mod tests {
         assert_eq!(staggered(20_000, 1_000), 38_000);
     }
 
+    /// An applied event is not kept alive by the shard-wide change channel:
+    /// once its session lets it go, its memory is free (C3). Session
+    /// changes still reach the scheduler.
+    #[test]
+    fn the_shard_wide_channel_holds_no_events() {
+        use crate::state::Change;
+        use crate::store::Store;
+        use everruns_contracts::typed_id::SessionId;
+        use everruns_core::events::{Event, EventContext, SessionActivatedData};
+        let shared = super::Shared::new(Store::open("memory://").unwrap(), 0);
+        let mut scheduler = shared.changes.subscribe();
+        let session = SessionId::new();
+        let event = std::sync::Arc::new(Event::new(
+            session,
+            EventContext::default(),
+            SessionActivatedData {
+                turn_id: everruns_contracts::typed_id::TurnId::new(),
+                input_message_id: everruns_contracts::typed_id::MessageId::new(),
+            },
+        ));
+        shared.publish(Change::Event(session, event.clone()));
+        assert_eq!(
+            std::sync::Arc::strong_count(&event),
+            1,
+            "nothing else holds the event"
+        );
+        shared.publish(Change::Session(session));
+        assert!(matches!(scheduler.try_recv(), Ok(Change::Session(s)) if s == session));
+        assert!(scheduler.try_recv().is_err());
+    }
+
     /// Before a snapshot install: everything the store holds goes, an
     /// unstored tail stays (no other copy exists), and a busy session keeps
     /// what its next turn reads.
-
     #[test]
     fn shedding_drops_only_stored_events() {
         use crate::state::{SessionState, ShardState};
