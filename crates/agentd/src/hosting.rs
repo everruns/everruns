@@ -1496,3 +1496,5 @@ mod org_tests {
         assert_eq!(super::org_id(None), 1);
     }
 }
+#[path = "hosting_leases.rs"]
+mod leases;

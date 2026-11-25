@@ -17,6 +17,8 @@ pub mod host_extension;
 #[cfg(feature = "hosted-integration-catalog")]
 pub mod integrations_catalog;
 pub mod knowledge_store;
+#[cfg(feature = "hosted-integration-catalog")]
+pub mod leased_cleanup;
 pub mod memory;
 pub mod platform_store;
 pub mod sandbox_checkpoint;

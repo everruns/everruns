@@ -172,6 +172,7 @@ impl Executor {
     pub fn spawn(self: &Arc<Self>) {
         tokio::spawn(self.clone().tenants_loop());
         tokio::spawn(self.clone().dreams_loop());
+        tokio::spawn(self.clone().leases_loop());
         tokio::spawn(self.clone().memory_loop());
         let executor = self.clone();
         tokio::spawn(async move {
@@ -495,6 +496,48 @@ impl Executor {
                     Err(error) => {
                         tracing::warn!(%session, %error, "a due dream did not run");
                     }
+                }
+            }
+        }
+    }
+
+    /// Release the leased provider resources of the sessions this executor
+    /// mirrors once their leases are due (`lease_sweep.rs`).
+    async fn leases_loop(self: Arc<Self>) {
+        let mut tick = tokio::time::interval(crate::lease_sweep::EVERY);
+        tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        loop {
+            tick.tick().await;
+            if self.draining.load(Ordering::SeqCst) {
+                return;
+            }
+            let now = everruns_contracts::rt::utc_now();
+            let due: Vec<_> = self
+                .remote
+                .shared
+                .state
+                .read()
+                .sessions
+                .iter()
+                .flat_map(|(id, s)| {
+                    s.platform
+                        .records
+                        .due_leases(now, crate::lease_sweep::STALE_AFTER)
+                        .map(|lease| (*id, lease.clone()))
+                        .collect::<Vec<_>>()
+                })
+                .take(crate::lease_sweep::BATCH)
+                .collect();
+            if due.is_empty() {
+                continue;
+            }
+            let pass = crate::lease_sweep::sweep(&self.hosting, due).await;
+            for (event, n) in [
+                ("lease_released", pass.released),
+                ("lease_failed", pass.failed),
+            ] {
+                for _ in 0..n {
+                    self.stats.inc(&[("event", event)]);
                 }
             }
         }
