@@ -132,7 +132,15 @@ pub(crate) fn play(
         .collect();
 
     // Plan every event with the wait before it, then play the plan.
-    let pacing = Pacing::new(resolution.timing, latency);
+    let pacing = if instant() {
+        let mut timing = resolution.timing;
+        timing.ttft = Some(Duration::ZERO);
+        timing.inter_token = Some(Duration::ZERO);
+        timing.stall = None;
+        Pacing::new(timing, LatencyProfile::instant())
+    } else {
+        Pacing::new(resolution.timing, latency)
+    };
     let reasoning = resolution.reasoning.unwrap_or_default();
     let reasoning_tokens = word_tokens(&reasoning);
     let answer_tokens = word_tokens(&text);
@@ -306,6 +314,18 @@ fn sim_error(err: &SimError, retry_after_secs: Option<u64>) -> AgentLoopError {
         Some(secs) => error.with_retry_after_secs(secs),
         None => error,
     }
+}
+
+/// Whether scenarios play without their timing (`LLMSIM_INSTANT`): their
+/// text, tool calls and outputs unchanged, no waits.
+///
+/// Decision: for memory benches only. The coding scenarios replay a real
+/// model's pace (about 80 s a turn), so 25,000 coding sessions took about
+/// 35 hours at the executors' concurrency; what a shard holds depends on
+/// the history, not on how long it took to write (75k verifier G1).
+fn instant() -> bool {
+    static INSTANT: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *INSTANT.get_or_init(|| std::env::var("LLMSIM_INSTANT").is_ok_and(|v| v == "1"))
 }
 
 #[cfg(test)]
