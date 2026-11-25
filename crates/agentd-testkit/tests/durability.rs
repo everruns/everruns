@@ -1,8 +1,8 @@
 //! Fault injection for the shard's durability promise (design.md, "Disaster
-//! recovery"): the object store is slowed (`AGENTD_STORE_THROTTLE_MS`) so
-//! it is provably behind, and a write answered as safe must still survive
-//! two lost zones. The direct check is the one a slowed store makes
-//! possible: the bucket does not have the write yet, and the rebuild does.
+//! recovery"): the object store is slowed (`AGENTD_STORE_THROTTLE_MS`), and
+//! a write answered as safe must still be in it: a tool that must not run
+//! twice starts only once the bucket has its start, however slow the store
+//! is, so a rebuild from the bucket alone knows the call started.
 
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
@@ -57,12 +57,10 @@ async fn ship_first(fleet: &Fleet, path: &str) -> u64 {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_started_call_outlives_two_lost_zones_before_the_bucket_has_it() {
+async fn a_started_call_is_in_the_slowed_bucket_before_it_runs() {
     let ledger = setup();
     let mut fleet = Fleet::start().await;
     fleet.executor(1);
-    let leader = fleet.leader(0).await;
-    let survivor = (1..=3).find(|n| *n != leader).unwrap();
     let session = fleet.create_in("worker", 0).await;
     fleet.say(&session, "go").await;
     fleet
@@ -70,11 +68,8 @@ async fn a_started_call_outlives_two_lost_zones_before_the_bucket_has_it() {
             executions(ledger, &session) >= 1
         })
         .await;
-    // Every voter held the start before the call ran, without waiting for
-    // the slowed store.
-    assert!(ship_first(&fleet, "replicas").await >= 1);
-
-    // The store is behind: its newest state has not seen the call start.
+    // The start waited for the slowed store before the call ran.
+    assert!(ship_first(&fleet, "store").await >= 1);
     let store = fleet.store();
     let bucket = everruns_agentd::restore::state_at(&store, 0, None)
         .await
@@ -85,13 +80,10 @@ async fn a_started_call_outlives_two_lost_zones_before_the_bucket_has_it() {
         .iter()
         .find(|(id, _)| id.to_string() == session)
         .is_some_and(|(_, s)| s.events.iter().any(|e| e.event_type == "tool.started"));
-    assert!(
-        !in_bucket,
-        "the shipped log already had the start; the test proves nothing"
-    );
+    assert!(in_bucket, "the call ran before the bucket had its start");
 
-    let rebuilt = fleet.rebuild_with_survivor(0, survivor).await;
-    assert!(rebuilt.from_survivor > 0, "{rebuilt:?}");
+    // Every disk of the shard goes: the bucket alone brings the start back.
+    fleet.rebuild(0, None).await;
     fleet.turns(&session, 1).await;
     let events = fleet.events(&session).await;
     let kinds = types(&events);

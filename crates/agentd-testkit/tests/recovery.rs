@@ -138,6 +138,43 @@ async fn two_zones_lost_while_the_survivor_lagged_still_keeps_every_started_call
     two_zones_lost_mid_tool(&mut fleet, ledger, lagging).await;
 }
 
+/// Every disk of shard 0 is lost seconds after a session was created and a
+/// tool that must not run twice started, well inside the 10 s shipping
+/// window: both were in the object store before they were answered, so the
+/// rebuild from the store alone has them (the disaster drill at 50,000
+/// sessions lost them while they waited only for every voter's disk).
+#[tokio::test(flavor = "multi_thread")]
+async fn every_disk_lost_keeps_answered_creates_and_started_calls() {
+    let ledger = ledger();
+    let mut fleet = Fleet::start().await;
+    fleet.executor(1);
+    let quiet = fleet.create_in("worker", 0).await;
+    let session = fleet.create_in("worker", 0).await;
+    fleet.say(&session, "go").await;
+    fleet
+        .until("the tool started", || async {
+            executions(ledger, &session) >= 1
+        })
+        .await;
+    let rebuilt = fleet.rebuild(0, None).await;
+    assert_eq!(rebuilt.incarnation, 2, "{rebuilt:?}");
+
+    // The session created and never used is still there (a lost one is a
+    // 404 until the read gives up).
+    let record = fleet.get(&format!("/v1/sessions/{quiet}")).await;
+    assert_eq!(record["id"].as_str(), Some(quiet.as_str()), "{record}");
+    // The turn finishes, and the tool that had started did not run again.
+    fleet.turns(&session, 1).await;
+    let events = fleet.events(&session).await;
+    let kinds = types(&events);
+    assert!(kinds.contains(&"tool.started"), "{kinds:?}");
+    assert_eq!(
+        executions(ledger, &session),
+        kinds.iter().filter(|t| **t == "tool.started").count(),
+        "every effect is a durable tool.started, and none ran twice: {kinds:?}"
+    );
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn a_point_in_time_restore_drops_what_came_after() {
     ledger();
