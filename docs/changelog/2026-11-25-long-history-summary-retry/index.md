@@ -11,18 +11,13 @@ links:
 ---
 
 A session that keeps one conversation for weeks, such as a daily scheduled
-agent, could pay for a history summary every few model calls, and on models
-without built-in compaction a summary cut off at its output limit failed the
-turn with a generic error.
+agent, could pay for a history summary every few model calls. On models without
+built-in compaction, a summary cut off at its output limit failed the turn.
 
-Now, once the model has answered a tool result over 24 KiB, the result is
-replaced by a short excerpt, and `query_history` with its `tool_call_id` reads
-the original back page by page. A summary runs only when that is not enough, and
-a cut-off summary retries once with a larger limit, up to 32k tokens. If it still
-fails, the turn reports `context_summary_failed`, and sending the message again
-retries. Results over the 64 KiB hard limit keep their last part too. See
+Now a tool result over 24 KiB that the model already answered is replaced by a
+short excerpt, and `query_history` with its `tool_call_id` reads the original
+back. A summary runs only when that is not enough, and a cut-off summary retries
+once with a larger limit, up to 32k tokens; if it still fails, the turn reports
+`context_summary_failed`. A turn stopped mid tool call, such as a long
+`wait_task`, no longer blocks every later summary either. See
 [Compaction](/advanced/compaction/).
-
-A turn that was stopped while a tool call was still running, such as a long
-`wait_task`, also no longer blocks every later summary. Before, the session
-kept growing until each turn failed with "The conversation has become too long".
