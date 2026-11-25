@@ -62,4 +62,40 @@ impl Database {
             tokio::time::sleep_until(deadline.min(now + ADVISORY_LOCK_RETRY_INTERVAL)).await;
         }
     }
+
+    /// Add `namespace:key` to a lock transaction this task already holds.
+    ///
+    /// A holder that needs two locks (an agent and one of its channels) takes
+    /// both on one connection. Two guards would pin two connections, and a
+    /// holder that then reads through the pool needs a third: production's
+    /// request pool has two, so the read waited out the acquire timeout and
+    /// every Slack install failed with a 500. Waiting here keeps the first lock
+    /// and its connection, exactly as holding the first guard while polling for
+    /// the second did.
+    pub async fn advisory_xact_lock_also(
+        &self,
+        tx: &mut Transaction<'static, Postgres>,
+        namespace: &str,
+        key: &str,
+        wait: Duration,
+    ) -> Result<()> {
+        let deadline = tokio::time::Instant::now() + wait;
+        loop {
+            let acquired: bool = sqlx::query_scalar(
+                "SELECT pg_try_advisory_xact_lock(hashtextextended($1 || ':' || $2, 0))",
+            )
+            .bind(namespace)
+            .bind(key)
+            .fetch_one(&mut **tx)
+            .await?;
+            if acquired {
+                return Ok(());
+            }
+            let now = tokio::time::Instant::now();
+            if now >= deadline {
+                anyhow::bail!("timed out waiting for advisory lock {namespace}:{key}");
+            }
+            tokio::time::sleep_until(deadline.min(now + ADVISORY_LOCK_RETRY_INTERVAL)).await;
+        }
+    }
 }

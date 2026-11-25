@@ -6,10 +6,11 @@ use crate::storage::{UpdateAgentChannelRow, UpdateField};
 use uuid::Uuid;
 
 pub(crate) async fn remove_agent_apps(ctx: &Ctx, agent_id: Uuid) -> Result<(), CommandError> {
-    let guard = ctx.db.lock_slack_install(agent_id).await?;
+    let mut guard = ctx.db.lock_slack_install(agent_id).await?;
     for channel in ctx.db.list_agent_channels(ctx.org_id(), agent_id).await? {
         if channel.channel_type == "slack" {
-            remove_channel_app_locked(ctx, agent_id, &channel.channel_public_id).await?;
+            remove_channel_app_locked(ctx, &mut guard, agent_id, &channel.channel_public_id)
+                .await?;
         }
     }
     release_after_commit(guard).await;
@@ -29,8 +30,8 @@ pub(crate) async fn remove_channel_app(
     if row.channel_type != "slack" {
         return Ok(());
     }
-    let guard = ctx.db.lock_slack_install(agent_id).await?;
-    remove_channel_app_locked(ctx, agent_id, channel_id).await?;
+    let mut guard = ctx.db.lock_slack_install(agent_id).await?;
+    remove_channel_app_locked(ctx, &mut guard, agent_id, channel_id).await?;
     release_after_commit(guard).await;
     Ok(())
 }
@@ -46,6 +47,7 @@ pub(crate) async fn release_after_commit(guard: crate::storage::backend::SlackIn
 
 async fn remove_channel_app_locked(
     ctx: &Ctx,
+    agent_lock: &mut crate::storage::backend::SlackInstallLock,
     agent_id: Uuid,
     channel_id: &str,
 ) -> Result<(), CommandError> {
@@ -56,7 +58,11 @@ async fn remove_channel_app_locked(
         .ok_or_else(|| CommandError::not_found("Channel"))?;
     // THREAT[TM-SLACK-010]: only server-owned install metadata, resolved through
     // the caller's org and agent, may select a Slack app for removal.
-    let _channel_guard = ctx.db.lock_slack_install(row.channel_id).await?;
+    // The channel lock joins the agent lock's connection rather than pinning
+    // a second one (see `advisory_xact_lock_also`).
+    ctx.db
+        .extend_slack_install_lock(agent_lock, row.channel_id)
+        .await?;
     let row = ctx
         .db
         .get_agent_channel(ctx.org_id(), agent_id, channel_id)
