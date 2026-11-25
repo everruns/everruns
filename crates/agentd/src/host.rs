@@ -214,11 +214,12 @@ impl Host for StandardHost {
                 services.register(everruns_capabilities::capabilities::SessionScheduleCapability);
         }
         // Spawned agents run as sessions of their own through the
-        // activation's platform store (`subagents.rs`).
-        if manifest
-            .capabilities
-            .iter()
-            .any(|c| c.id() == everruns_capabilities::capabilities::SPAWN_AGENTS_CAPABILITY_ID)
+        // activation's platform store (`subagents.rs`). A Framework built with
+        // `local` already carries the capability (feature unification), and
+        // registering it twice refuses the agent as a duplicate.
+        let spawn_id = everruns_capabilities::capabilities::SPAWN_AGENTS_CAPABILITY_ID;
+        if manifest.capabilities.iter().any(|c| c.id() == spawn_id)
+            && !everruns::hosting::services::is_framework_capability(spawn_id)
         {
             services =
                 services.register(everruns_capabilities::capabilities::SpawnAgentsCapability);
