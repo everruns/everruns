@@ -10,12 +10,11 @@ links:
   docs: [/framework/slack-services/]
 ---
 
-Slack delivery now records accepted message parts and stream handles before
-continuing. An interrupted or partially accepted reply stays available for
-reconciliation instead of being resent in full. Provider operations use Channelkit;
-existing Slack apps, conversations and session bindings keep their identities.
+Slack delivery records accepted message parts and stream handles for reconciliation
+after interruptions. Channelkit handles provider operations; existing Slack apps,
+conversations and session bindings retain their identities.
 
-**In Framework applications**, configure a stable installation and signing secret:
+**[Framework applications](/framework/slack-services/)** configure a stable installation and signing secret:
 
 ```rust
 let slack = Slack::new(bot_token, signing_secret)
@@ -23,18 +22,14 @@ let slack = Slack::new(bot_token, signing_secret)
     .workspace(team_id);
 ```
 
-Custom `ChannelStore` implementations must support delivery checkpoints. The supplied
-Memory, SQLite and PostgreSQL stores do. Host egress governs provider requests and
-file downloads. Channel-wide and user-group notifications are neutralized in agent
-output.
-Slack file attachments also reach agents using Responses models.
-Approval clicks work on data plane v2, with single-use decisions retained across
-shard restarts.
+Custom `ChannelStore` implementations must support checkpoints. The supplied Memory,
+SQLite and PostgreSQL stores do. Host egress governs provider requests and file
+downloads. Agent output neutralizes channel-wide and user-group notifications.
+Slack files reach Responses models. Data plane v2 approval decisions remain
+single-use across shard restarts.
 
-**For operators**, first deploy the protocol-aware compatibility baseline to every
-delivery host and drain older owners, then roll out the Channelkit adapter.
-For data plane v2, pause writes and upgrade the control plane and shards together.
-Reconcile legacy pending rows and keep that compatibility baseline as the rollback
-floor. See
-[Slack services](/framework/slack-services/) and the
-[delivery cutover runbook](/sre/runbooks/channel-delivery-cutover/).
+**Operators** deploy the protocol-aware baseline to every delivery host and drain
+older owners before enabling the adapter. Reconcile legacy pending rows and retain
+the rollback floor. On v2, pause writes and upgrade the control plane and shards
+together; rollback requires a pre-upgrade restore point. See the
+[cutover runbook](/sre/runbooks/channel-delivery-cutover/).
