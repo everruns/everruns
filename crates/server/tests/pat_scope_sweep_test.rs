@@ -611,6 +611,8 @@ const READ_ONLY_MCP_TOOLS: &[&str] = &[
     "me",
     "query",
     "room_file_history",
+    "room_recall",
+    "room_facts",
     "room_list",
     "room_list_files",
     "room_read",
