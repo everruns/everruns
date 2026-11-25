@@ -134,6 +134,25 @@ pub fn default_other_clients(limits: DatabaseLimits) -> u32 {
     (limits.max_connections / 10).max(5)
 }
 
+/// The reserve for other clients: `DATABASE_RESERVED_CONNECTIONS` as a count
+/// (`20`) or a share of the limit (`35%`), so a reserve that covers a pooler
+/// sized from the same limit grows with it. Unset or unreadable values use
+/// [`default_other_clients`].
+pub fn other_clients(limits: DatabaseLimits, setting: Option<&str>) -> u32 {
+    let parsed = setting
+        .map(str::trim)
+        .and_then(|value| match value.strip_suffix('%') {
+            Some(percent) => percent
+                .trim()
+                .parse::<u32>()
+                .ok()
+                .filter(|percent| *percent <= 100)
+                .map(|percent| limits.max_connections * percent / 100),
+            None => value.parse().ok(),
+        });
+    parsed.unwrap_or_else(|| default_other_clients(limits))
+}
+
 /// Fill in every size the environment left unset from `share`. Returns whether
 /// the share was big enough for the floors.
 pub fn fit(config: &mut DatabasePoolConfig, explicit: ExplicitSizes, share: u32) -> bool {
@@ -221,6 +240,20 @@ mod tests {
         assert_eq!(config.max_connections, 2);
         assert_eq!(config.background_max_connections, 4);
         assert_eq!(config.min_connections, 2, "min never exceeds max");
+    }
+
+    #[test]
+    fn the_reserve_is_a_count_or_a_share() {
+        let limits = limits(200);
+        assert_eq!(other_clients(limits, None), 20);
+        assert_eq!(other_clients(limits, Some("30")), 30);
+        assert_eq!(other_clients(limits, Some("35%")), 70);
+        assert_eq!(
+            other_clients(limits, Some("150%")),
+            20,
+            "out of range falls back"
+        );
+        assert_eq!(other_clients(limits, Some("lots")), 20);
     }
 
     #[test]

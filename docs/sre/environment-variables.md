@@ -735,7 +735,7 @@ background work and the rest (3 to 50) serves requests. The log line
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `EXPECTED_INSTANCES` | `1` | Server processes that can run at once. Count the extra processes a rolling deploy starts. |
-| `DATABASE_RESERVED_CONNECTIONS` | A tenth of `max_connections`, at least 5 | Connections left for clients that are not server processes: migrations, operators, a pooler. |
+| `DATABASE_RESERVED_CONNECTIONS` | A tenth of `max_connections`, at least 5 | Connections left for clients that are not server processes: migrations, operators, a pooler. A count (`20`) or a share of `max_connections` (`35%`). |
 | `DATABASE_POOL_MAX`, `DATABASE_BACKGROUND_POOL_MAX`, `DATABASE_LIVENESS_POOL_MAX` | Derived | Set any of them to fix that pool's size; the others are still derived. |
 
 The request pool never drops below 3, because one request can hold a lock and

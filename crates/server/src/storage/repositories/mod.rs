@@ -444,9 +444,11 @@ impl Database {
             match pool_sizing::read_limits(probe_url).await {
                 Ok(limits) => {
                     let instances = env_or("EXPECTED_INSTANCES", 1u32).max(1);
-                    let other_clients = env_or(
-                        "DATABASE_RESERVED_CONNECTIONS",
-                        pool_sizing::default_other_clients(limits),
+                    let other_clients = pool_sizing::other_clients(
+                        limits,
+                        std::env::var("DATABASE_RESERVED_CONNECTIONS")
+                            .ok()
+                            .as_deref(),
                     );
                     let share = pool_sizing::process_share(limits, instances, other_clients);
                     let fits = pool_sizing::fit(&mut config, explicit, share);
