@@ -1,5 +1,9 @@
 # Everruns Knowledge Update Log
 
+## 2026-11-25
+
+- [Markdown Messages Rendering](ui/markdown-messages.md): Pele renders Mermaid diagrams across the shared UI renderer and Markdown file previews.
+
 ## 2026-11-24
 
 - [Channels](integrations/channels.md#output-delivery-checkpoints): protocol-marked pending rows survive the pre-intent crash window under legacy adapters; missing channels retain reconciliation evidence. Deploy the shared-host compatibility baseline before rolling the Channelkit bridge.

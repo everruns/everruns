@@ -86,6 +86,7 @@ import {
 } from "@/components/ui/table";
 import { AlertCircle } from "lucide-react";
 import { MarkdownLink } from "@/components/markdown/markdown-link";
+import { peleDiagram } from "@/lib/pele-diagram";
 import "./file-previews.css";
 
 // File extension categorization
@@ -454,7 +455,7 @@ export function MarkdownPreview({ content }: { content: string }) {
     <ScrollArea className="h-full">
       <div className="file-preview-streamdown text-sm p-4">
         {entries.length > 0 && <FrontmatterBlock entries={entries} />}
-        <Streamdown plugins={{ code }} components={markdownComponents}>
+        <Streamdown plugins={{ code, mermaid: peleDiagram }} components={markdownComponents}>
           {body}
         </Streamdown>
       </div>
