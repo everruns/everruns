@@ -536,7 +536,7 @@ pub async fn data_plane_call(
         .ok_or_else(|| {
             refused(
                 CommandErrorKind::Forbidden,
-                "Management-authorized invocation required",
+                crate::worker_link::NO_PERSON_REFUSAL,
             )
         })?;
     let caller = crate::auth::caller_resolution::caller_for_user(&db, org_id, user)

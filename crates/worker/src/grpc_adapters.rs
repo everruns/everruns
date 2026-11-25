@@ -66,7 +66,8 @@ pub(crate) fn grpc_missing_field(field: &str) -> AgentLoopError {
 fn grpc_command_error_to_error(error: proto::CommandError) -> AgentLoopError {
     match error.kind {
         1 => AgentLoopError::config(error.message),
-        2 => AgentLoopError::config(format!("Permission denied: {}", error.message)),
+        // A refusal stays one, so the agent reads it (tool error contract).
+        2 => AgentLoopError::refused(error.message),
         3 => AgentLoopError::store(format!("Not found: {}", error.message)),
         4 => AgentLoopError::store(format!("Conflict: {}", error.message)),
         _ => AgentLoopError::store(error.message),

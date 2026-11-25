@@ -171,9 +171,24 @@ impl ToolExecutionResult {
         ToolExecutionResult::ToolError(message.into())
     }
 
-    /// Create an internal error (will be hidden from LLM)
+    /// Create an internal error (will be hidden from LLM).
+    ///
+    /// Decision (2026-11-25): a host refusal ([`crate::error::AgentLoopError::Refused`]) is
+    /// a normal result, not a fault, so it becomes a tool error the agent can
+    /// read and act on. Before this, a scheduled coordinator refused by the
+    /// permission check saw only "internal error", and so did we. Doing it
+    /// here covers every capability that forwards host errors this way.
     pub fn internal_error(error: impl std::error::Error + Send + Sync + 'static) -> Self {
-        ToolExecutionResult::InternalError(ToolInternalError::new(error))
+        let error: Box<dyn std::error::Error + Send + Sync> = Box::new(error);
+        if let Some(crate::error::AgentLoopError::Refused(message)) =
+            error.downcast_ref::<crate::error::AgentLoopError>()
+        {
+            return ToolExecutionResult::ToolError(message.clone());
+        }
+        ToolExecutionResult::InternalError(ToolInternalError {
+            message: error.to_string(),
+            source: Some(error),
+        })
     }
 
     /// Create an internal error from a string message
