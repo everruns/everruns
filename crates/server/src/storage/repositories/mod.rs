@@ -580,45 +580,6 @@ impl Database {
             "Database connection pool initialized"
         );
 
-        // Multi-instance pool sizing check
-        let instances: u32 = std::env::var("EXPECTED_INSTANCES")
-            .ok()
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(1)
-            .max(1);
-        if instances > 1 {
-            // Both pools count against the server's connection budget.
-            let per_instance = config.total_max_connections();
-            let estimated_total = per_instance.saturating_mul(instances);
-            // PostgreSQL default max_connections is 100; warn if we'd exceed 80% of it
-            let pg_max: u32 = std::env::var("PG_MAX_CONNECTIONS")
-                .ok()
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(100);
-            if estimated_total > pg_max * 80 / 100 {
-                tracing::warn!(
-                    pool_max = config.max_connections,
-                    background_pool_max = config.background_max_connections,
-                    per_instance,
-                    instances,
-                    estimated_total,
-                    pg_max,
-                    "Pool size × instances ({estimated_total}) exceeds 80% of PG_MAX_CONNECTIONS ({pg_max}). \
-                     Reduce DATABASE_POOL_MAX / DATABASE_BACKGROUND_POOL_MAX or increase PostgreSQL max_connections."
-                );
-            } else {
-                tracing::info!(
-                    pool_max = config.max_connections,
-                    background_pool_max = config.background_max_connections,
-                    per_instance,
-                    instances,
-                    estimated_total,
-                    pg_max,
-                    "Database pool sizing OK for multi-instance deployment"
-                );
-            }
-        }
-
         Ok(Self {
             pool: crate::storage::transaction::TxPool::new(pool),
             background_pool,
