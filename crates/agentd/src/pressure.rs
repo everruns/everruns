@@ -236,6 +236,8 @@ pub struct Pressure {
     stalled: AtomicBool,
     /// Refusals since start, by what was refused.
     pub shed_sessions: AtomicU64,
+    /// New work refused because the feed was full (`Node::feed_full`).
+    pub feed_refused: AtomicU64,
     pub shed_inputs: AtomicU64,
     /// Since when this node's own reading has been at Emergency.
     hot_since: Mutex<Option<Instant>>,
@@ -264,6 +266,7 @@ impl Pressure {
             stalled: AtomicBool::new(false),
             shed_sessions: AtomicU64::new(0),
             shed_inputs: AtomicU64::new(0),
+            feed_refused: AtomicU64::new(0),
             hot_since: Mutex::new(None),
             restarting: AtomicBool::new(false),
             fenced: AtomicBool::new(false),
@@ -444,9 +447,29 @@ impl Node {
         if self.shipper.behind() {
             return Some(Response::Frozen);
         }
+        if self.feed_full() {
+            self.pressure.feed_refused.fetch_add(1, Ordering::Relaxed);
+            return Some(Response::Busy {
+                retry_after_ms: RETRY_AFTER_MS,
+            });
+        }
         self.pressure.refuses(work).then_some(Response::Busy {
             retry_after_ms: RETRY_AFTER_MS,
         })
+    }
+
+    /// Whether the records waiting for the control plane fill their cap.
+    ///
+    /// Decision: the feed (usage, summaries, org events, health) is
+    /// replicated state the control plane drains (`deliver_feed`); while it
+    /// cannot (down, slow, unreachable) the feed grew without bound on every
+    /// node. A record is never dropped: it is what bills a model call. So
+    /// the feed has a cap in the memory ledger, like the Raft log's, and a
+    /// full feed refuses new sessions and input with a retry hint until the
+    /// control plane catches up. Turns already admitted finish; the records
+    /// they add are bounded by the work already queued.
+    pub(crate) fn feed_full(&self) -> bool {
+        self.shared.state.read().feed.held_bytes() > feed_cap(self.cfg.memory_budget)
     }
 
     /// Whether the shard, short of memory, starts no more turns now.
@@ -631,6 +654,11 @@ pub fn write_metrics(p: &Pressure, w: &mut crate::prom::Writer) {
         "New input refused while shedding load.",
         p.shed_inputs.load(Ordering::Relaxed) as f64,
     );
+    w.counter(
+        "agentd_shard_feed_refused_total",
+        "New sessions and input refused while the feed waiting for the control plane was full.",
+        p.feed_refused.load(Ordering::Relaxed) as f64,
+    );
     w.gauge(
         "agentd_memory_level",
         "What memory makes this node do: 0 ok, 1 full, 2 shedding, 3 emergency, 4 restarting.",
@@ -659,12 +687,13 @@ pub fn write_metrics(p: &Pressure, w: &mut crate::prom::Writer) {
 pub(crate) fn write_ledger(node: &Node, w: &mut crate::prom::Writer) {
     let events = node.shared.resident().0;
     let log = node.wal.held_bytes();
+    let feed = node.shared.state.read().feed.held_bytes();
     let heap = crate::heap::heap();
     let allocated = heap.allocated_mb << 20;
-    let unaccounted = allocated.saturating_sub(events + log);
+    let unaccounted = allocated.saturating_sub(events + log + feed);
     w.gauge(
         "agentd_memory_unaccounted_bytes",
-        "Live heap bytes beyond resident events and the Raft log.",
+        "Live heap bytes beyond resident events, the Raft log and the feed.",
         unaccounted as f64,
     );
     let base = crate::prom::render(&[
@@ -675,11 +704,12 @@ pub(crate) fn write_ledger(node: &Node, w: &mut crate::prom::Writer) {
     w.family(
         "agentd_memory_bytes",
         "gauge",
-        "The node's memory by source (events and raft_log counted, unaccounted live heap, allocator fragmentation).",
+        "The node's memory by source (events, raft_log and feed counted, unaccounted live heap, allocator fragmentation).",
         &base,
         [
             row("events", events),
             row("raft_log", log),
+            row("feed", feed),
             row("unaccounted", unaccounted),
             row(
                 "fragmentation",
@@ -690,13 +720,21 @@ pub(crate) fn write_ledger(node: &Node, w: &mut crate::prom::Writer) {
     w.family(
         "agentd_memory_cap_bytes",
         "gauge",
-        "Where each capped source is held down: events unload past the budget, the log snapshots past a sixteenth of it.",
+        "Where each capped source is held down: events unload past the budget, the log snapshots past a sixteenth of it, a feed past its cap refuses new work.",
         &base,
         [
             row("events", node.cfg.memory_budget),
             row("raft_log", node.cfg.memory_budget / 16),
+            row("feed", feed_cap(node.cfg.memory_budget)),
         ],
     );
+}
+
+/// The most the feed may hold: a sixteenth of the memory budget, as the
+/// Raft log, and never under 4 MiB (8,192 records), so a small node still
+/// rides out a short control plane outage.
+pub(crate) fn feed_cap(budget: u64) -> u64 {
+    (budget / 16).max(4 << 20)
 }
 
 /// The memory limit of the container this process runs in, if it has one
@@ -769,6 +807,17 @@ mod tests {
         assert_eq!(Emergency.next(930), Emergency, "stays until 92%");
         assert_eq!(Emergency.next(919), Shedding, "then still shedding");
         assert_eq!(Emergency.next(100), Ok);
+    }
+
+    #[test]
+    fn the_feed_cap_is_a_sixteenth_of_the_budget_with_a_floor() {
+        assert_eq!(feed_cap(9 << 30), (9 << 30) / 16);
+        assert_eq!(
+            feed_cap(16 << 20),
+            4 << 20,
+            "a small node still holds 8,192 records"
+        );
+        assert_eq!(feed_cap(16 << 20) / crate::control::FEED_RECORD_BYTES, 8192);
     }
 
     #[test]
