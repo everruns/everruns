@@ -44,5 +44,4 @@ NOT_BUILT = {
     "G3": ("L1", "idle unload and reload test (memory design)"),
     "G4": ("L1", "blob reference test for payloads over 256 KB (memory design)"),
     "G5": ("L2", "llmsim compaction scenario at shard scale"),
-    "U13": ("L2", "memory at 98%: controlled restart hands leadership over, no turn lost"),
 }
