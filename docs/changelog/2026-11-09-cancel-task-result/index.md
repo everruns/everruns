@@ -43,4 +43,4 @@ existing fields stay, and `state` now reports the task's current state:
 ```
 
 A task whose remote peer is still winding down reads `running` until it
-finishes. See [Sub Agents](/capabilities/spawn-agents/#managing-subagents-after-spawn).
+finishes. See [Spawn agents](/capabilities/spawn-agents/#spawn_agent).
