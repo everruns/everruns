@@ -72,9 +72,6 @@ def shard_soak(summary, samples):
     if shares:
         out.add("C3", "L2", round(max(shares), 3),
                 note="memory ledger remainder" if summary.get("peak_remainder_mb") else "resident set less events and Raft log")
-    if restarts:
-        out.add("U13", "L2", (summary.get("turns_missing") or 0) == 0 and (summary.get("errors") or 0) == 0 and not crashes,
-                note=f"{len(restarts)} controlled restarts, {summary.get('turns_missing', '?')} turns missing, {summary.get('errors')} errors")
     killed = {k.split()[-1] for c in summary.get("chaos", []) for k in c["killed"] if k.startswith("node")}
     if summary.get("chaos"):
         out.add("E1", "L2", (summary.get("errors") or 0) == 0, note=f"killed {summary['chaos'][0]['killed']}, {summary.get('errors')} errors")
@@ -323,7 +320,9 @@ CHECKS = [
           command="scripts/agentd/memory_bench.py --sessions 25000 --turns 4 --no-baseline"),
     Check("coding-memory", "L2", ["G1"], minutes=60, needs=CARGO, run=run_coding_memory,
           command="scripts/agentd/memory_bench.py --sessions 25000 --turns 4 --coding"),
-    Check("shard-soak", "L2", ["A4", "C3", "E1", "F1", "U13"], minutes=75, needs=CARGO, run=run_shard_soak,
+    # U13 comes from its own proof (`prove_memory_restart.py`): asking for
+    # it must not start a full-size soak, which no node of a local run holds.
+    Check("shard-soak", "L2", ["A4", "C3", "E1", "F1"], minutes=75, needs=CARGO, run=run_shard_soak,
           command="scripts/agentd/shard_soak.py --scale 1.0"),
     Check("bench", "L2", ["C4"], minutes=10, needs=CARGO, run=run_bench,
           command="scripts/agentd/bench.py --sessions 200 --turns 10 --agent chat --no-baseline"),
