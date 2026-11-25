@@ -179,6 +179,13 @@
             "kind": {
               "$ref": "#/$defs/RoomMemberKind"
             },
+            "memory_recall": {
+              "description": "For an Everruns agent: when a message wakes it, also send what the\nroom remembers about that message (its current facts and earlier\nexcerpts). Default off: it adds to every turn's context.",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
             "role": {
               "oneOf": [
                 {
@@ -8532,6 +8539,13 @@
             "kind": {
               "$ref": "#/$defs/RoomMemberKind"
             },
+            "memory_recall": {
+              "description": "For an Everruns agent: when a message wakes it, also send what the\nroom remembers about that message (its current facts and earlier\nexcerpts). Default off: it adds to every turn's context.",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
             "role": {
               "oneOf": [
                 {
@@ -12316,6 +12330,39 @@
     "read_only": true
   },
   {
+    "category": "rooms",
+    "cli": "rooms memory forget",
+    "description": "Hide a fact or note from recall. A forgotten fact gives its place back to the fact it replaced. The member it came from, room owners and org admins only; nothing is deleted.",
+    "input_schema": {
+      "properties": {
+        "as_member": {
+          "description": "Forget as this member (org admins).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "entry_id": {
+          "type": "string"
+        },
+        "room_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "room_id",
+        "entry_id"
+      ],
+      "type": "object"
+    },
+    "method": "POST",
+    "name": "forget_room_memory_entry",
+    "output_shape": "unknown",
+    "path": "/v1/platform/rooms/{room_id}/memory/entries/{entry_id}/forget",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
     "category": "sessions",
     "cli": "sessions fork",
     "description": "Fork a session into a new, independent session that copies its conversation history and workspace files.",
@@ -13827,6 +13874,32 @@
     "output_shape": "unknown",
     "path": "/v1/platform/rooms/{room_id}",
     "positional_arg": "room_id",
+    "read_only": true
+  },
+  {
+    "category": "rooms",
+    "cli": "rooms memory get",
+    "description": "Get one fact or note with the message it rests on and, for a fact, every fact on its subject in time order.",
+    "input_schema": {
+      "properties": {
+        "entry_id": {
+          "type": "string"
+        },
+        "room_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "room_id",
+        "entry_id"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "get_room_memory_entry",
+    "output_shape": "unknown",
+    "path": "/v1/platform/rooms/{room_id}/memory/entries/{entry_id}",
+    "positional_arg": null,
     "read_only": true
   },
   {
@@ -15615,6 +15688,65 @@
     "name": "import_eval_samples",
     "output_shape": "unknown",
     "path": "/v1/platform/evals/{eval_id}/samples",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
+    "category": "rooms",
+    "cli": "rooms memory ingest",
+    "description": "Add a note to a room's memory, such as meeting notes or a summary from another tool, so recall finds it next to the room's messages. A caller id makes re-sending safe.",
+    "input_schema": {
+      "properties": {
+        "as_member": {
+          "description": "Add as this member (org admins).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "label": {
+          "description": "A short name for it.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "metadata": {
+          "description": "Anything else to keep with it."
+        },
+        "occurred_at": {
+          "description": "When it happened; now when absent.",
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "room_id": {
+          "type": "string"
+        },
+        "source_ref": {
+          "description": "Your own id for it. Sending the same id again with new text replaces\nthe note; with the same text it changes nothing.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "text": {
+          "description": "The text to remember: meeting notes, a summary, a document.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "room_id",
+        "text"
+      ],
+      "type": "object"
+    },
+    "method": "POST",
+    "name": "ingest_room_note",
+    "output_shape": "unknown",
+    "path": "/v1/platform/rooms/{room_id}/memory/notes",
     "positional_arg": null,
     "read_only": false
   },
@@ -17715,6 +17847,62 @@
     "output_shape": "unknown",
     "path": "/v1/platform/rooms/{room_id}/events",
     "positional_arg": null,
+    "read_only": true
+  },
+  {
+    "category": "rooms",
+    "cli": "rooms facts list",
+    "description": "List a room's current facts (decisions, rules, claims, deadlines, open questions, observations), newest first, or as they stood at an earlier time.",
+    "input_schema": {
+      "properties": {
+        "as_of": {
+          "description": "The facts as they stood at this time.",
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "include_replaced": {
+          "description": "Also list facts that were replaced.",
+          "type": "boolean"
+        },
+        "kind": {
+          "description": "Only facts of this kind: decision, rule, claim, deadline, question or observation.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "limit": {
+          "description": "Most facts, 50 by default, 200 at most.",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "room_id": {
+          "type": "string"
+        },
+        "subject": {
+          "description": "Only facts on this subject.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "room_id"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "list_room_facts",
+    "output_shape": "unknown",
+    "path": "/v1/platform/rooms/{room_id}/memory/facts",
+    "positional_arg": "room_id",
     "read_only": true
   },
   {
@@ -21030,6 +21218,40 @@
   },
   {
     "category": "rooms",
+    "cli": "rooms memory publish-session",
+    "description": "Publish a session's conversation into a room's memory as notes: the person's messages and the agent's answers, without tool calls, with secrets scrubbed. Publishing again updates what changed.",
+    "input_schema": {
+      "properties": {
+        "as_member": {
+          "description": "Publish as this member (org admins).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "room_id": {
+          "type": "string"
+        },
+        "session_id": {
+          "description": "The session whose conversation to publish. You must be able to see it.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "room_id",
+        "session_id"
+      ],
+      "type": "object"
+    },
+    "method": "POST",
+    "name": "publish_session_to_room",
+    "output_shape": "unknown",
+    "path": "/v1/platform/rooms/{room_id}/memory/sessions",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
+    "category": "rooms",
     "cli": "rooms messages react",
     "description": "Add a reaction to a message, or remove it with add=false. Reactions never wake agents.",
     "input_schema": {
@@ -21144,6 +21366,49 @@
     "read_only": false
   },
   {
+    "category": "rooms",
+    "cli": "rooms recall",
+    "description": "Search a room's messages and memory (facts and notes) together by their words, best match first. Current facts lead; a replaced fact says what replaced it.",
+    "input_schema": {
+      "properties": {
+        "as_of": {
+          "description": "Recall as of this time: later messages and facts are left out, and a\nfact replaced after it still counts as current.",
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "limit": {
+          "description": "Most results, 10 by default, 50 at most.",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "q": {
+          "description": "What to look for, in plain words: any of them may match.",
+          "type": "string"
+        },
+        "room_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "room_id",
+        "q"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "recall_room",
+    "output_shape": "unknown",
+    "path": "/v1/platform/rooms/{room_id}/recall",
+    "positional_arg": "room_id",
+    "read_only": true
+  },
+  {
     "category": "evals",
     "cli": "evals fixes reject",
     "description": "Turn down a suggested fix, saying why. The agent is not changed.",
@@ -21185,6 +21450,79 @@
     "name": "reject_finding_fix",
     "output_shape": "unknown",
     "path": "/v1/platform/evals/fixes/{fix_id}/reject",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
+    "category": "rooms",
+    "cli": "rooms facts remember",
+    "description": "Record a decision, rule, claim, deadline, question or observation in a room's memory. A newer fact on the same subject replaces the older one; both stay.",
+    "input_schema": {
+      "properties": {
+        "as_member": {
+          "description": "Record as this member (org admins).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "kind": {
+          "description": "decision, rule, claim, deadline, question or observation.",
+          "type": "string"
+        },
+        "message_id": {
+          "description": "The message it rests on; the quote must be in it.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "occurred_at": {
+          "description": "When it happened; the message's time, or now.",
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "quote": {
+          "description": "The exact words it rests on.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "room_id": {
+          "type": "string"
+        },
+        "statement": {
+          "description": "The fact in one sentence.",
+          "type": "string"
+        },
+        "status": {
+          "description": "stated (default), proposed, hypothetical or retracted.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "subject": {
+          "description": "What it is about, in a few words. A newer decision, rule, claim or\ndeadline on the same subject replaces the older one.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "room_id",
+        "kind",
+        "subject",
+        "statement"
+      ],
+      "type": "object"
+    },
+    "method": "POST",
+    "name": "remember_room_fact",
+    "output_shape": "unknown",
+    "path": "/v1/platform/rooms/{room_id}/memory/facts",
     "positional_arg": null,
     "read_only": false
   },
@@ -29803,7 +30141,7 @@
   {
     "category": "rooms",
     "cli": "rooms update",
-    "description": "Change a room's name, topic, metadata, link template or loop limits. Owners and org admins only.",
+    "description": "Change a room's name, topic, metadata, link template, loop limits or whether it records facts on its own. Owners and org admins only.",
     "input_schema": {
       "$defs": {
         "LoopLimits": {
@@ -29835,6 +30173,13 @@
       },
       "description": "Change a room. Only provided fields change; send `\"\"` to clear the topic\nor the link template.",
       "properties": {
+        "auto_facts": {
+          "description": "Whether the room records facts from its messages on its own.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
         "link_template": {
           "type": [
             "string",
@@ -29883,7 +30228,7 @@
   {
     "category": "rooms",
     "cli": "rooms members update",
-    "description": "Change a room member's settings. Name, role, wake setting, session scope or instructions; owners and org admins only.",
+    "description": "Change a room member's settings. Name, role, wake setting, session scope, instructions or memory recall; owners and org admins only.",
     "input_schema": {
       "$defs": {
         "RoomMemberRole": {
@@ -29929,6 +30274,13 @@
         },
         "member_id": {
           "type": "string"
+        },
+        "memory_recall": {
+          "description": "For an agent member: send what the room remembers about a message\nalong with the message that wakes it.",
+          "type": [
+            "boolean",
+            "null"
+          ]
         },
         "role": {
           "oneOf": [

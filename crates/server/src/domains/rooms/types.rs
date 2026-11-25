@@ -33,6 +33,10 @@ pub struct Room {
     pub link_template: Option<String>,
     /// Loop limits in force.
     pub loop_limits: LoopLimits,
+    /// Whether the room records facts from its messages on its own (room
+    /// memory). On unless turned off.
+    #[schema(example = true)]
+    pub auto_facts: bool,
     /// Whether the room is archived: it keeps everything but takes no posts and wakes no agents.
     #[schema(example = false)]
     pub archived: bool,
@@ -143,6 +147,10 @@ pub struct RoomMember {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = "Answer billing questions only.")]
     pub instructions: Option<String>,
+    /// For an agent member: whether a wake also carries what the room
+    /// remembers about the message.
+    #[schema(example = false)]
+    pub memory_recall: bool,
     /// Whether the member left. Left members still name their old messages.
     #[schema(example = false)]
     pub left: bool,
@@ -262,7 +270,9 @@ pub struct RoomEvent {
     /// `room.created`, `room.updated`, `room.archived`, `room.unarchived`,
     /// `member.joined`, `member.left`, `message.posted`, `message.edited`,
     /// `message.deleted`, `message.pinned`, `message.unpinned`,
-    /// `reaction.added`, `reaction.removed`, `agent.woken`, `agent.limited`.
+    /// `reaction.added`, `reaction.removed`, `agent.woken`, `agent.limited`,
+    /// `agent.considered`, `file.written`, `file.moved`, `file.deleted`,
+    /// `memory.recorded`, `memory.forgotten`, `memory.extraction`.
     #[serde(rename = "type")]
     #[schema(example = "message.posted")]
     pub event_type: String,

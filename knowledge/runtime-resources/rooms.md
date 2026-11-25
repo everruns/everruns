@@ -1,7 +1,7 @@
 ---
 type: Specification
 title: "Rooms"
-description: "Org-owned conversation spaces where people, Everruns agents, outside agents and guests talk with mentions, threads, reactions, pins and read marks, and keep versioned shared files; a message an agent is addressed in wakes it, and it answers only through send_message."
+description: "Org-owned conversation spaces where people, Everruns agents, outside agents and guests talk with mentions, threads, reactions, pins and read marks, keep versioned shared files and remember what they settled; a message an agent is addressed in wakes it, and it answers only through send_message."
 tags:
   - everruns
   - runtime
@@ -14,7 +14,7 @@ tags:
 > model, the `/v1/platform/rooms` API, read tracking, the change feed, and agents woken by
 > what they are addressed in. Step 3, the console, shipped: the Rooms list,
 > the room recording and Playground rooms. From step 5, shared room files and
-> the MCP room tools shipped. The facilitator, live push and SDKs are next. Owner decisions are under [Decisions](#decisions).
+> the MCP room tools shipped. [Room memory](#room-memory) shipped. The facilitator, live push and SDKs are next. Owner decisions are under [Decisions](#decisions).
 
 ## Abstract
 
@@ -74,6 +74,15 @@ Settled with the owner, 2026-11-02 to 2026-11-10:
     messages, the way a Slack channel set to "Relevant messages" answers. The
     same relevance check decides both, and with no decision model it falls
     back to the agent's own model and tells the org through Health.
+11. **Room memory (2026-11-25):** a room remembers what it settled, after an
+    analysis of hosted agent memory services (past.dev). All six options of
+    that analysis were taken as recommended: memory lives in rooms first and
+    sessions feed it; it is built natively, with no outside memory service;
+    agent members get recall at wake only when turned on, inside the message;
+    facts are recorded automatically and anyone can correct them; a session
+    joins only when someone publishes it, conversation only, secrets
+    scrubbed; nothing is purged, a wrong entry is hidden from recall. See
+    [Room memory](#room-memory).
 
 ## Model
 
@@ -110,6 +119,65 @@ and the domain [`domains/rooms/`](../../crates/server/src/domains/rooms/).
   nothing changes a room file without a version.
 
 Nothing is purged: archive, leave and delete set timestamps.
+
+## Room memory
+
+Source of truth: the migration
+[`20261125035932_room_memory.sql`](../../crates/server/migrations/20261125035932_room_memory.sql),
+the storage
+[`rooms/memory.rs`](../../crates/server/src/storage/repositories/rooms/memory.rs)
+and the domain [`memory.rs`](../../crates/server/src/domains/rooms/memory.rs).
+
+A board holds the exact state; memory answers "did we already try this?" and
+"what is the rule now?". It has three parts:
+
+- **Recall** searches a room's messages and memory entries together by their
+  words (Postgres full text search, stemmed), best match first, with the
+  matching excerpt. It needs no model call and no vector store; meaning-based
+  search was left out on purpose until word search proves too narrow.
+  `as_of` recalls what the room knew on a date.
+- **Facts**: a typed statement (decision, rule, claim, deadline, question,
+  observation) on a subject, with the exact words it rests on and a status
+  (stated, proposed, hypothetical, retracted). A newer stated or retracted
+  decision, rule, claim or deadline on the same subject replaces the older one;
+  both stay, the older one records what replaced it and when. Replacement is
+  recomputed per subject on every write, so a fact recorded late lands in the
+  right place. Subjects are normalized (case, spacing, trailing punctuation).
+- **Notes**: text published into the room's memory, either through the ingest
+  command (a caller id makes re-sending safe; new text under the same id
+  replaces the note) or by publishing a session.
+
+Where facts come from:
+
+- **Automatically**, from a posted message, when the room's `auto_facts`
+  setting is on (the default). The org's default model reads the message once,
+  in the background, with the room's known subjects so it reuses them. A fact
+  whose quote is not in the message word for word is dropped. Short messages
+  and agent posts are not read, and a room reads at most 60 messages an hour;
+  each read records a `memory.extraction` event.
+- **By a member**, who records a fact (optionally pointing at a message,
+  whose words the quote must match).
+
+Correcting: record a newer fact on the subject, or forget the wrong one.
+Forgetting hides the entry from recall and gives its place back to the fact it
+replaced. The member it came from, room owners and org admins may forget.
+Every write records `memory.recorded` or `memory.forgotten` in the change feed.
+
+**Sessions** publish into a room on request: the person's messages and the
+agent's answers (not tool calls or intermediate commentary), secrets scrubbed,
+cut into pieces at message boundaries. Publishing again updates the pieces
+that changed.
+
+**Agents** get memory two ways. Every room session's instructions say the room
+remembers and how to recall and record. An agent member with `memory_recall`
+on also gets a `<room_memory>` block with up to five matching entries and
+messages (not the message's own thread) inside the message it is woken with,
+never in its instructions, so the prompt cache holds. It is off by default
+because it adds to every turn.
+
+Not in this step: the same engine for an agent's or a person's own memory,
+memory in the console (it waits for mockups), and agent posts as a source of
+automatic facts.
 
 ## Who may do what
 
@@ -203,7 +271,10 @@ them read), who-read, and the change feed per room and per org (`after` cursor).
 Posting returns the message and the agents it woke. Room
 [files](../../crates/server/src/domains/rooms/files.rs): list, read (any
 version), write (`if_version` guards a stale read), edit by exact replacement,
-move, delete, history and restore. Shapes:
+move, delete, history and restore. Room memory: recall, list facts (current,
+with replaced ones, or as of a date), remember a fact, open an entry with its
+source and its subject's history, forget, ingest a note, and publish a session.
+Shapes:
 [`types.rs`](../../crates/server/src/domains/rooms/types.rs) and the OpenAPI
 document.
 
@@ -213,7 +284,8 @@ The Everruns MCP server has room tools
 ([`room_tools.rs`](../../crates/server/src/api/mcp_endpoint/room_tools.rs)), each
 one room command run as the caller: `room_list`, `room_read_unread`,
 `room_read`, `room_post`, `room_who_read`, `room_mark_read`, `room_list_files`,
-`room_read_file`, `room_write_file`, `room_edit_file` and `room_file_history`.
+`room_read_file`, `room_write_file`, `room_edit_file`, `room_file_history`,
+`room_recall`, `room_facts` and `room_remember`.
 A person acts as themselves; an org admin's product passes `as_member`. Rarer
 changes (rooms, members, moving, deleting and restoring files) stay on
 `execute`. The read tools are in the read-only token set; `room_read_unread`

@@ -121,6 +121,11 @@ pub struct RoomMemberInput {
     pub session_scope: Option<SessionScope>,
     /// Extra instructions an agent member gets in this room.
     pub instructions: Option<String>,
+    /// For an Everruns agent: when a message wakes it, also send what the
+    /// room remembers about that message (its current facts and earlier
+    /// excerpts). Default off: it adds to every turn's context.
+    #[serde(default)]
+    pub memory_recall: Option<bool>,
 }
 
 async fn add_member(
@@ -194,6 +199,7 @@ async fn add_member(
                     wake: input.wake.unwrap_or_default().as_str().into(),
                     session_scope: input.session_scope.unwrap_or_default().as_str().into(),
                     instructions,
+                    memory_recall: input.memory_recall.unwrap_or(false),
                 },
                 derived,
             )
@@ -224,6 +230,7 @@ async fn add_member(
                     wake: WakeMode::Never.as_str().into(),
                     session_scope: SessionScope::Thread.as_str().into(),
                     instructions: None,
+                    memory_recall: false,
                 },
                 derived,
             )
@@ -405,13 +412,15 @@ pub struct UpdateRoom {
     pub metadata: Option<serde_json::Value>,
     pub link_template: Option<String>,
     pub loop_limits: Option<LoopLimits>,
+    /// Whether the room records facts from its messages on its own.
+    pub auto_facts: Option<bool>,
 }
 
 #[command(
     name = "update_room",
     summary = "Change a room's name, topic or settings",
     category = "rooms",
-    description = "Change a room's name, topic, metadata, link template or loop limits. Owners and org admins only.",
+    description = "Change a room's name, topic, metadata, link template, loop limits or whether it records facts on its own. Owners and org admins only.",
     method = "PATCH",
     path = "/v1/platform/rooms/{room_id}",
     policy = super::ROOM_ACCESS,
@@ -434,9 +443,15 @@ impl Command for UpdateRoom {
         if let Some(Some(template)) = &link_template {
             check_link_template(&Some(template.clone()))?;
         }
-        let settings = self
+        let mut settings = self
             .loop_limits
             .map(|limits| settings_with_limits(room.settings.clone(), Some(limits)));
+        if let Some(on) = self.auto_facts {
+            settings = Some(super::memory::settings_with_auto_facts(
+                settings.unwrap_or_else(|| room.settings.clone()),
+                on,
+            ));
+        }
         let row = ctx
             .db
             .update_room(
@@ -578,13 +593,17 @@ pub struct UpdateRoomMember {
     pub session_scope: Option<SessionScope>,
     /// Send `""` to clear.
     pub instructions: Option<String>,
+    /// For an agent member: send what the room remembers about a message
+    /// along with the message that wakes it.
+    #[serde(default)]
+    pub memory_recall: Option<bool>,
 }
 
 #[command(
     name = "update_room_member",
     summary = "Change a room member's settings",
     category = "rooms",
-    description = "Change a room member's settings. Name, role, wake setting, session scope or instructions; owners and org admins only.",
+    description = "Change a room member's settings. Name, role, wake setting, session scope, instructions or memory recall; owners and org admins only.",
     method = "PATCH",
     path = "/v1/platform/rooms/{room_id}/members/{member_id}",
     policy = super::ROOM_ACCESS,
@@ -621,6 +640,7 @@ impl Command for UpdateRoomMember {
                     wake: self.wake.map(|wake| wake.as_str().to_string()),
                     session_scope: self.session_scope.map(|scope| scope.as_str().to_string()),
                     instructions,
+                    memory_recall: self.memory_recall,
                 },
             )
             .await?
@@ -743,6 +763,13 @@ impl Command for PostRoomMessage {
                 row.created_at,
             )
             .await?;
+        if let Some(models) = ctx
+            .relevance
+            .as_ref()
+            .and_then(|checker| checker.fallback.clone())
+        {
+            super::memory::spawn_extraction(ctx.db.clone(), models, view.room.clone(), row.clone());
+        }
         let woke = match (&ctx.session_service, &ctx.message_service) {
             (Some(sessions), Some(messages)) => {
                 wake_agents(

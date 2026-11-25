@@ -64,6 +64,8 @@ pub struct RoomMemberRow {
     pub left_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    /// Whether a wake carries what the room remembers about the message.
+    pub memory_recall: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -79,6 +81,7 @@ pub struct CreateRoomMemberRow {
     pub wake: String,
     pub session_scope: String,
     pub instructions: Option<String>,
+    pub memory_recall: bool,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -88,6 +91,7 @@ pub struct UpdateRoomMemberRow {
     pub wake: Option<String>,
     pub session_scope: Option<String>,
     pub instructions: Option<Option<String>>,
+    pub memory_recall: Option<bool>,
 }
 
 #[derive(Debug, Clone, FromRow, everruns_server_macros::Columns)]

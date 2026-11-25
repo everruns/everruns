@@ -1,6 +1,6 @@
 ---
 title: Rooms
-description: Put people, Everruns agents and your own users in one conversation with threads and shared files. Agents wake when addressed and answer with send_message.
+description: Put people, Everruns agents and your users in one conversation with threads, files and memory. Agents wake when addressed and answer with send_message.
 sidebar:
   label: Rooms
 appliesTo: [platform, cloud]
@@ -142,13 +142,77 @@ everruns rooms files history room_01h9... --path /plans/launch.md
   tools on them. Each change they make is a version under their own handle.
 - The change feed reports `file.written`, `file.moved` and `file.deleted`.
 
+## Room memory
+
+A room remembers what it settled, so nobody has to scroll back or ask again.
+
+**Recall** searches the room's messages and its memory together by their
+words, best match first, with the matching words highlighted. Add `as_of` to
+see what the room knew on a given date.
+
+```bash
+everruns rooms recall room_01h9... --q 'deploy window'
+```
+
+**Facts** are short typed statements the room keeps: a `decision`, `rule`,
+`claim`, `deadline`, open `question` or `observation`, each on a subject and
+with the exact words it came from. When a newer decision, rule, claim or
+deadline on the same subject arrives, it replaces the older one. Both stay,
+so you can still see what the rule was last month and who changed it.
+
+```bash
+# What the room has decided, as it stands now.
+everruns rooms facts list room_01h9... --kind decision
+
+# Record one yourself, pointing at the message it came from.
+everruns rooms facts remember --room-id room_01h9... --kind decision \
+  --subject 'deploy window' --statement 'Deploys happen Tuesdays at 15:00 CT.' \
+  --message-id rmsg_01h9... --quote "let's move deploys to Tuesdays, 3pm"
+```
+
+By default the room also records facts on its own: your organization's
+default model reads each new message once and files the facts it states. A
+fact only counts when it quotes the message word for word, so the model cannot
+file something nobody said. Turn this off per room with
+`everruns rooms update --room-id room_01h9... --auto-facts false`.
+
+If memory gets something wrong, record the newer fact, or forget the wrong one
+with `everruns rooms memory forget`. Forgetting takes it out of recall and puts
+back the fact it had replaced. Nothing is deleted.
+
+**Notes** bring outside text into the same memory: meeting notes, a summary
+from another tool, a document. Give each one your own `--source-ref`, and
+sending it again with new text replaces it.
+
+```bash
+everruns rooms memory ingest --room-id room_01h9... --label 'Standup 2026-11-24' \
+  --source-ref standup-2026-11-24 --text 'Agreed to ship the importer behind a flag.'
+```
+
+**Sessions** can join a room's memory when you publish them. Only the
+conversation goes in (the person's messages and the agent's answers, not tool
+calls), with secrets scrubbed.
+
+```bash
+everruns rooms memory publish-session --room-id room_01h9... --session-id session_01h9...
+```
+
+**Agents** in the room are told that it remembers and how to recall and record.
+Turn on `memory_recall` for an agent member and each message that wakes it
+arrives with what the room remembers about it. It is off by default because it
+adds to every turn.
+
+The change feed reports `memory.recorded`, `memory.forgotten` and
+`memory.extraction`.
+
 ## From an MCP client
 
 The Everruns MCP server has room tools, so Claude, Cursor or your own agent can
 take part in a room: `room_read_unread` to catch up, `room_read`, `room_post`,
 `room_who_read`, `room_mark_read`, and `room_list_files`, `room_read_file`,
 `room_write_file`, `room_edit_file` and `room_file_history` for the shared
-files. A person acts as themselves; an admin's product passes `as_member` to act
+files, and `room_recall`, `room_facts` and `room_remember` for the room's
+memory. A person acts as themselves; an admin's product passes `as_member` to act
 for a guest or an outside agent.
 
 ## In the console
