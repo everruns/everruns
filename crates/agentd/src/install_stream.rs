@@ -176,7 +176,12 @@ pub struct StreamRecord {
 /// Fill each `Events` pointer of `records` with the events it names, read
 /// from its session. A session that cannot be read now leaves the pointer
 /// without them; its events stay in the session's history.
-async fn expand(gateway: &Arc<Gateway>, records: &mut [StreamRecord]) {
+/// With a type filter that names session event types (not the `Events`
+/// record itself), only events of those types come with a pointer.
+async fn expand(gateway: &Arc<Gateway>, records: &mut [StreamRecord], filter: &Filter) {
+    let only: Option<&[String]> = (!filter.types.is_empty()
+        && !filter.types.iter().any(|t| t == "Events"))
+    .then_some(&filter.types);
     for record in records.iter_mut() {
         let crate::dp::Record::Events {
             session_id,
@@ -198,6 +203,7 @@ async fn expand(gateway: &Arc<Gateway>, records: &mut [StreamRecord]) {
                 .into_iter()
                 .filter(|e| e.sequence.is_some_and(|s| s <= *to))
                 .filter(|e| types.contains(&e.event_type))
+                .filter(|e| only.is_none_or(|only| only.contains(&e.event_type)))
                 .map(|e| serde_json::to_value(e.into_public()).unwrap_or(Value::Null))
                 .collect(),
         );
@@ -427,7 +433,7 @@ async fn stream_inner(
     if sse {
         // First read here, so a bad cursor answers with its status.
         let (mut first, next) = read(&store, &sources()?, &cursor, &filter, limit).await?;
-        expand(&gateway, &mut first).await;
+        expand(&gateway, &mut first, &filter).await;
         // Each event's id is the cursor just past it, so a client that
         // reconnects with `Last-Event-ID` resumes there. Records filtered out
         // after the last one sent are read again then, and skipped again.
@@ -463,7 +469,7 @@ async fn stream_inner(
                     };
                     match read(&store, &sources, &next, &filter, 500).await {
                         Ok((mut page, after)) => {
-                            expand(&gateway, &mut page).await;
+                            expand(&gateway, &mut page, &filter).await;
                             pending = page;
                             next = after;
                         }
@@ -480,7 +486,7 @@ async fn stream_inner(
     loop {
         let (mut records, next) = read(&store, &sources()?, &cursor, &filter, limit).await?;
         if !records.is_empty() || tokio::time::Instant::now() >= deadline {
-            expand(&gateway, &mut records).await;
+            expand(&gateway, &mut records, &filter).await;
             return Ok(Json(json!({ "data": records, "cursor": next.encode() })).into_response());
         }
         // Nothing yet: what was scanned past (filtered out) stays skipped.
