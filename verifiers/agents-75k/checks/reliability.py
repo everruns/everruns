@@ -117,4 +117,9 @@ CHECKS = [
           also=("A1",)),
     proof("U12", "prove_disk_full.py", ["--node", "leader"],
           "the leader's disk filled under load: it fenced itself, the shard carried on", 15),
+    # Decision: a separate proof, not only the shard soak's restarts. Real
+    # load does not reach 98% on cue (the scaled soak peaks near 73%: the
+    # shard sheds work first), so the soak alone left U13 without evidence.
+    proof("U13", "prove_memory_restart.py", [],
+          "leader and a follower driven to 98% of their limit under load: each restarted itself, one at a time", 20),
 ]

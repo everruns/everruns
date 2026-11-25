@@ -49,16 +49,17 @@ class SoakMemorySignals(unittest.TestCase):
         v = points(out)
         self.assertEqual(v["A4"], 0)
         self.assertEqual(v["C3"], round(633 / 1273, 3))
-        self.assertNotIn("U13", v)  # no controlled restart happened, so no evidence either way
+        self.assertNotIn("U13", v)  # U13 is its own proof's (prove_memory_restart.py)
 
-    def test_a_crash_fails_the_gate_and_a_controlled_restart_is_u13(self):
+    def test_a_crash_fails_the_gate_and_a_controlled_restart_does_not(self):
         s = copy.deepcopy(soak("tip_be9521d3"))
         s["restarts"] = [{"t": 900.0, "node": 2}]
         v = points(local.shard_soak(s, []))
-        self.assertEqual((v["A4"], v["U13"]), (0, True))
+        self.assertEqual(v["A4"], 0)
+        self.assertNotIn("U13", v)
         s["crashes"] = [{"t": 950.0, "node": 3, "code": 101}]
         v = points(local.shard_soak(s, []))
-        self.assertEqual((v["A4"], v["U13"]), (1, False))
+        self.assertEqual(v["A4"], 1)
 
     def test_below_full_density_the_soak_uses_the_calibrated_spacing(self):
         self.assertEqual(local.snapshot_every(1.0), 20_000)
@@ -180,6 +181,18 @@ class Adapters(unittest.TestCase):
         v = {e["point"]: e["value"] for e in local.drill(res).entries}
         self.assertEqual((v["U7"], v["U8"], v["U9"], v["U10"]), (3.7, 7.4, 0.1, 0.006))
 
+    def test_drill_resends_pass_e2_only_when_every_session_finishes(self):
+        res = {"sessions": 75000, "shards": 2, "inflight": 3000, "rebuilt": {"ok": True}, "rebuild_s": 3.7,
+               "kill_to_leader_s": 7.4, "second_messages_lost": 177,
+               "check": {"first": {"ok": True}, "second": {"ok": True}}}
+        v = {e["point"]: e["value"] for e in local.drill(res).entries}
+        self.assertTrue(v["E2"])  # resends allowed: losses are U10's to judge
+        self.assertEqual(v["U10"], 0.059)
+        res["check"]["second"] = {"ok": False, "failed_sessions": 1}
+        self.assertFalse({e["point"]: e["value"] for e in local.drill(res).entries}["E2"])
+        res["check"]["second"], res["rebuilt"] = {"ok": True}, None
+        self.assertFalse({e["point"]: e["value"] for e in local.drill(res).entries}["E2"])
+
     def test_scale_efficiency(self):
         rows = [{"shards": 1, "turns_per_sec": 400.0, "errors": 0},
                 {"shards": 2, "turns_per_sec": 790.0, "errors": 0},
@@ -190,6 +203,21 @@ class Adapters(unittest.TestCase):
         rows[2]["errors"] = 4
         self.assertEqual(local.scale(rows).entries[0]["value"], 0.0)  # dropped turns are not scaling
         self.assertEqual(local.scale(rows[:1]).entries, [])
+
+    def test_ramp_and_peak(self):
+        out = local.ramp({"created_per_sec": 41.2, "offered_per_sec": 41.67, "errors": 0, "shed": 3})
+        self.assertEqual([(e["point"], e["value"]) for e in out.entries], [("B3", 41.2)])
+        self.assertEqual(local.ramp({"created_per_sec": 41.2, "errors": 2}).entries[0]["value"], 0)
+        served = {"turns_per_sec": 180.0, "offered_turns_per_sec": 625.0, "shed_share": 0.0005, "errors": 0}
+        self.assertEqual(local.peak(served).entries[0]["value"], 180.0)
+        # A peak served by shedding more than 0.1% of requests is not served.
+        self.assertEqual(local.peak({**served, "shed_share": 0.02}).entries[0]["value"], 0)
+
+    def test_coding_memory(self):
+        out = local.coding_memory({"sessions": 25000, "turns_per_session": 4,
+                                   "gated": {"node_rss_mb_per_1k_sessions": 210.5}})
+        self.assertEqual([(e["point"], e["value"]) for e in out.entries], [("G1", 210.5)])
+        self.assertEqual(out.density, 25000)
 
     def test_proof_verdicts(self):
         self.assertEqual(reliability.verdict({"ok": True, "errors": 0}), (True, 0))

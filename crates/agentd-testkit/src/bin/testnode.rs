@@ -20,5 +20,35 @@ pub static malloc_conf: Option<&u8> =
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    ballast();
     everruns_agentd::cli::run(everruns_agentd_testkit::host()).await
+}
+
+/// Memory a proof can make this process hold (`prove_memory_restart.py`).
+///
+/// Decision: the controlled restart at 98% of a node's limit (`pressure`,
+/// level 4) is the last step before a kill, and real load does not reach it
+/// on cue: the scaled soak peaks near 73%, since the shard sheds work first.
+/// With `AGENTD_BALLAST_DIR` set, the process holds as many MiB as the file
+/// named after its pid says, touched so they count in its resident set,
+/// which is what a node with a configured limit reads. Test binary only.
+fn ballast() {
+    let Some(dir) = std::env::var_os("AGENTD_BALLAST_DIR") else {
+        return;
+    };
+    let path = std::path::Path::new(&dir).join(std::process::id().to_string());
+    std::thread::spawn(move || {
+        let mut held: Vec<Vec<u8>> = Vec::new();
+        loop {
+            let want: usize = std::fs::read_to_string(&path)
+                .ok()
+                .and_then(|s| s.trim().parse().ok())
+                .unwrap_or(0);
+            while held.len() < want {
+                held.push(vec![1u8; 1 << 20]);
+            }
+            held.truncate(want);
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+    });
 }

@@ -38,6 +38,7 @@ import fleet  # noqa: E402
 
 DRIVE = os.environ.get("AGENTD_DRIVE_BIN", os.path.join(BIN_DIR, "agentd-drive"))
 BASELINE = os.path.join(ROOT, "scripts", "agentd", "memory_bench_baseline.json")
+CODING = [f"coding-p{p:02d}" for p in (1, 10, 20, 30, 40, 50, 60, 70, 80, 90, 99)]
 NODES = (1, 2, 3)
 EXECUTORS = 2
 TOLERANCE = 0.10
@@ -113,6 +114,8 @@ def snapshot_peak(n):
 
 
 def run(a):
+    if a.coding:
+        os.environ["LLMSIM_INSTANT"] = "1"
     subprocess.run([sys.executable, os.path.join(ROOT, "scripts/agentd/fleet.py"), "down"])
     time.sleep(0.5)
     subprocess.run(["rm", "-rf", fleet.STATE])
@@ -121,10 +124,18 @@ def run(a):
     idle = {n: rss_mb(node_pid(n)) for n in NODES}
     puts_before = all_puts()
     started = time.time()
+    # The coding workload (75k verifier G1): llmsim's coding scenarios, built
+    # from the recorded coding profile, played with equal weight so their
+    # mixture has the profile's model calls and tool output sizes
+    # (verifiers/agents-75k/workload/generate.py).
+    workload = ["--agent", "sim", "--scenarios", ",".join(CODING)] if a.coding else ["--agent", "mix", "--stream", "0.2"]
+    # The coding scenarios replay a real model's pace (about 80 s a turn);
+    # memory follows the history, not the time it took (LLMSIM_INSTANT, the
+    # simulated provider's switch, read by every fleet process started next).
     out = subprocess.run(
         [DRIVE, "load", "--gateways", ",".join(f"http://{fleet.addr(0, n)}" for n in NODES),
-         "--agent", "mix", "--sessions", str(a.sessions), "--turns", str(a.turns),
-         "--concurrency", str(a.concurrency), "--think", str(a.think), "--stream", "0.2"],
+         *workload, "--sessions", str(a.sessions), "--turns", str(a.turns),
+         "--concurrency", str(a.concurrency), "--think", str(a.think)],
         capture_output=True, text=True)
     if out.returncode != 0:
         sys.exit(f"the load failed:\n{out.stderr[-4000:]}")
@@ -144,6 +155,7 @@ def run(a):
              for k in sorted(set(puts_after) | set(puts_before))}
     return {
         "profile": os.path.basename(os.path.normpath(BIN_DIR)),
+        "workload": "coding" if a.coding else "mix",
         "sessions": a.sessions,
         "turns": turns,
         "errors": report["errors"],
@@ -197,6 +209,8 @@ def main():
     p.add_argument("--turns", type=int, default=4)
     p.add_argument("--concurrency", type=int, default=400)
     p.add_argument("--think", type=float, default=0.5, help="mean pause between a session's turns, seconds")
+    p.add_argument("--coding", action="store_true",
+                   help="play the coding scenarios instead of the feature mix (no baseline compare)")
     p.add_argument("--record", action="store_true", help="write the result as the baseline")
     p.add_argument("--no-baseline", action="store_true",
                    help="print the result without comparing it (another load, e.g. the 1M verifier's)")
@@ -218,7 +232,7 @@ def main():
             f.write("\n")
         print(json.dumps(result, indent=2))
         return
-    if a.no_baseline:
+    if a.no_baseline or a.coding:
         print(json.dumps(result, indent=2))
         return
     with open(BASELINE) as f:

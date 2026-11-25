@@ -72,9 +72,6 @@ def shard_soak(summary, samples):
     if shares:
         out.add("C3", "L2", round(max(shares), 3),
                 note="memory ledger remainder" if summary.get("peak_remainder_mb") else "resident set less events and Raft log")
-    if restarts:
-        out.add("U13", "L2", (summary.get("turns_missing") or 0) == 0 and (summary.get("errors") or 0) == 0 and not crashes,
-                note=f"{len(restarts)} controlled restarts, {summary.get('turns_missing', '?')} turns missing, {summary.get('errors')} errors")
     killed = {k.split()[-1] for c in summary.get("chaos", []) for k in c["killed"] if k.startswith("node")}
     if summary.get("chaos"):
         out.add("E1", "L2", (summary.get("errors") or 0) == 0, note=f"killed {summary['chaos'][0]['killed']}, {summary.get('errors')} errors")
@@ -114,7 +111,10 @@ def bench(result):
 def drill(res):
     out = Output(density=res["sessions"] / res["shards"])
     ok = all((c or {}).get("ok") for c in res["check"].values())
-    out.add("E2", "L2", bool(ok and res["second_messages_lost"] == 0) and bool(res.get("rebuilt")),
+    # E2 passes when the shard is rebuilt and every session finishes, resends
+    # included; messages lost in the shipping window are judged only by U10
+    # (owner, 2026-11-25), so one loss is not counted twice.
+    out.add("E2", "L2", bool(ok) and bool(res.get("rebuilt")),
             note=f"rebuild {res['rebuild_s']} s, leader back {res['kill_to_leader_s']} s, {res['second_messages_lost']} second messages resent")
     if res.get("ship_lag_s", {}).get("p99") is not None:
         out.add("F3", "L2", res["ship_lag_s"]["p99"])
@@ -148,6 +148,29 @@ def scale(results):
     return out
 
 
+def ramp(res):
+    """B3: sessions created a second at the goal's ramp rate. A run with
+    errors scores 0: creates that failed are not a ramp."""
+    out = Output()
+    ok = (res.get("errors") or 0) == 0
+    out.add("B3", "L2", round(res.get("created_per_sec") or 0, 2) if ok else 0,
+            note=f"{res.get('offered_per_sec')}/s offered, create p99 {res.get('create_p99_ms')} ms, "
+                 f"{res.get('shed')} refused and retried, {res.get('errors')} errors")
+    return out
+
+
+def peak(res):
+    """B2: turns served a second at three times the pace. It counts only
+    when under 0.1% of requests were shed and none failed (the point's
+    title): a peak served by refusing work is not served."""
+    out = Output()
+    ok = (res.get("errors") or 0) == 0 and (res.get("shed_share") or 0) <= 0.001
+    out.add("B2", "L2", res.get("turns_per_sec") or 0 if ok else 0,
+            note=f"{res.get('offered_turns_per_sec')} turns/s offered, {res.get('turns_per_sec')} served, "
+                 f"{res.get('shed_share', 0):.3%} shed, {res.get('errors')} errors")
+    return out
+
+
 def rejoin(result):
     held = result.get("sessions_per_shard") or {}
     out = Output(density=min(held.values()) if held else 0)
@@ -178,6 +201,22 @@ def harness(ctx, script, args, name):
 
 def density_sessions(ctx):
     return max(200, int(ctx.cfg.goal["density"]["sessions_per_shard"] * ctx.size))
+
+
+def coding_memory(result):
+    """G1: node memory per thousand coding sessions, the worst node."""
+    out = Output(density=result["sessions"])
+    out.add("G1", "L2", result["gated"]["node_rss_mb_per_1k_sessions"],
+            note=f"{result['sessions']:,} coding sessions on one shard, {result.get('turns_per_session')} turns each")
+    return out
+
+
+def run_coding_memory(ctx):
+    text, cmd = harness(ctx, "memory_bench.py", ["--sessions", density_sessions(ctx), "--turns", 4, "--coding"], "coding_memory")
+    out = coding_memory(last_json(text))
+    for e in out.entries:
+        e["evidence"] = cmd
+    return out
 
 
 def run_memory_bench(ctx):
@@ -233,6 +272,37 @@ def run_scale(ctx):
     return out
 
 
+def goal_rates(ctx):
+    """The goal's full-size ramp (sessions a second) and peak (turns a
+    second, minutes): shared points count only from full-size traffic."""
+    g = ctx.cfg.goal
+    n, pace = g["agents"]["total"], g["pace"]
+    return n / (pace["ramp_minutes"] * 60), n / pace["turn_every_s"] * pace["peak_multiplier"], pace["peak_minutes"]
+
+
+PEAK_THINK_S = 10
+
+
+def run_ramp(ctx):
+    rate, _, _ = goal_rates(ctx)
+    text, cmd = harness(ctx, "load_profile.py", ["ramp", "--rate", round(rate, 2), "--duration", 300], "ramp")
+    out = ramp(last_json(text))
+    for e in out.entries:
+        e["evidence"] = cmd
+    return out
+
+
+def run_peak(ctx):
+    _, turns, minutes = goal_rates(ctx)
+    sessions = int(turns * PEAK_THINK_S)
+    text, cmd = harness(ctx, "load_profile.py", ["peak", "--sessions", sessions, "--think", PEAK_THINK_S,
+                                                 "--minutes", minutes], "peak")
+    out = peak(last_json(text))
+    for e in out.entries:
+        e["evidence"] = cmd
+    return out
+
+
 def run_rejoin(ctx):
     text, cmd = harness(ctx, "prove_rejoin_under_load.py", ["--seed-per-shard", density_sessions(ctx)], "rejoin")
     return rejoin(last_json(text))
@@ -248,7 +318,11 @@ CARGO = ("cargo",)
 CHECKS = [
     Check("memory-bench", "L2", ["C1", "C5"], minutes=60, needs=CARGO, run=run_memory_bench,
           command="scripts/agentd/memory_bench.py --sessions 25000 --turns 4 --no-baseline"),
-    Check("shard-soak", "L2", ["A4", "C3", "E1", "F1", "U13"], minutes=75, needs=CARGO, run=run_shard_soak,
+    Check("coding-memory", "L2", ["G1"], minutes=60, needs=CARGO, run=run_coding_memory,
+          command="scripts/agentd/memory_bench.py --sessions 25000 --turns 4 --coding"),
+    # U13 comes from its own proof (`prove_memory_restart.py`): asking for
+    # it must not start a full-size soak, which no node of a local run holds.
+    Check("shard-soak", "L2", ["A4", "C3", "E1", "F1"], minutes=75, needs=CARGO, run=run_shard_soak,
           command="scripts/agentd/shard_soak.py --scale 1.0"),
     Check("bench", "L2", ["C4"], minutes=10, needs=CARGO, run=run_bench,
           command="scripts/agentd/bench.py --sessions 200 --turns 10 --agent chat --no-baseline"),
@@ -256,6 +330,10 @@ CHECKS = [
           command="scripts/agentd/drill.py --sessions 50000 --shards 2 --inflight 3000"),
     Check("scale", "L2", ["B6"], minutes=30, needs=CARGO, run=run_scale,
           command="scripts/agentd/scale.py --shards 1,2,3 --sessions 20000 --turns 2"),
+    Check("ramp", "L2", ["B3"], minutes=10, needs=CARGO, run=run_ramp,
+          command="scripts/agentd/load_profile.py ramp --rate 41.67 --duration 300"),
+    Check("peak", "L2", ["B2"], minutes=15, needs=CARGO, run=run_peak,
+          command="scripts/agentd/load_profile.py peak --sessions 6250 --think 10 --minutes 10"),
     Check("rejoin", "L2", ["E1", "R3"], minutes=5, needs=CARGO, run=run_rejoin,
           command="scripts/agentd/prove_rejoin_under_load.py"),
     Check("many-sessions", "L2", ["A1"], minutes=40, needs=CARGO, run=run_many_sessions,

@@ -685,6 +685,9 @@ struct Progress {
     stream_error_kinds: parking_lot::Mutex<BTreeMap<String, usize>>,
     /// Turns sent and not yet finished: session -> (turn, sent at).
     waiting: parking_lot::Mutex<HashMap<String, (u64, Instant)>>,
+    /// How long each open-loop session create took, microseconds: the
+    /// ramp's latency (75k verifier B3).
+    creates: parking_lot::Mutex<Vec<u128>>,
 }
 
 impl Progress {
@@ -811,7 +814,11 @@ async fn load(
                 let (tx, rx) = tokio::sync::oneshot::channel();
                 created.push(rx);
                 tasks.spawn(async move {
+                    let asked = Instant::now();
                     let id = create(&client, &agent).await;
+                    if id.is_ok() {
+                        progress.creates.lock().push(asked.elapsed().as_micros());
+                    }
                     let _ = tx.send(id.as_ref().ok().cloned());
                     progress.sessions.fetch_add(1, Ordering::Relaxed);
                     let streaming = streams(i, stream_share);
@@ -916,6 +923,10 @@ async fn load(
         "errors": errors.len(),
         "first_errors": errors.iter().take(5).collect::<Vec<_>>(),
         "create_secs": create_secs,
+        // Open loop: sessions created a second over the arrival window, and
+        // how long a create took (75k verifier B3).
+        "created_per_sec": if rate > 0.0 { ids.len() as f64 / create_secs.max(f64::EPSILON) } else { 0.0 },
+        "create": summary(std::mem::take(&mut *progress.creates.lock())),
         "wall_secs": wall,
         "turns_per_sec": latencies.len() as f64 / wall,
         "admit": summary(admits),
