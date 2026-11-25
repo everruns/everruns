@@ -304,7 +304,10 @@ mod tests {
             approval_snapshot(&[request.clone(), tail], "turn-a"),
             Some((10, 12))
         );
-        assert_eq!(approval_snapshot(&[request.clone()], "turn-b"), None);
+        assert_eq!(
+            approval_snapshot(std::slice::from_ref(&request), "turn-b"),
+            None
+        );
         assert_eq!(approval_snapshot(&[], "turn-a"), None);
         for later in [
             approval_row(13, INPUT_MESSAGE, Some("turn-b"), None),
