@@ -10908,6 +10908,7 @@
           "applications"
         ],
         "summary": "Create Application",
+        "description": "Create an Application with a permanently reserved stable name.",
         "operationId": "create_application",
         "responses": {
           "201": {
@@ -10971,6 +10972,7 @@
           "applications"
         ],
         "summary": "Update Application",
+        "description": "Update an Application and its resource bindings, checking its version.",
         "operationId": "update_application",
         "parameters": [
           {
@@ -11009,6 +11011,7 @@
           "applications"
         ],
         "summary": "Create Application resource",
+        "description": "Create and attach a Chat, Room or Memory atomically to an Application.",
         "operationId": "create_application_resource",
         "parameters": [
           {

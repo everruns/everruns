@@ -2742,7 +2742,10 @@ export interface paths {
     /** List Applications in the current organization */
     get: operations["list_applications"];
     put?: never;
-    /** Create Application */
+    /**
+     * Create Application
+     * @description Create an Application with a permanently reserved stable name.
+     */
     post: operations["create_application"];
     delete?: never;
     options?: never;
@@ -2764,7 +2767,10 @@ export interface paths {
     delete?: never;
     options?: never;
     head?: never;
-    /** Update Application */
+    /**
+     * Update Application
+     * @description Update an Application and its resource bindings, checking its version.
+     */
     patch: operations["update_application"];
     trace?: never;
   };
@@ -2777,7 +2783,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Create Application resource */
+    /**
+     * Create Application resource
+     * @description Create and attach a Chat, Room or Memory atomically to an Application.
+     */
     post: operations["create_application_resource"];
     delete?: never;
     options?: never;
