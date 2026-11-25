@@ -158,8 +158,7 @@ async fn test_disabled_feature_is_hidden_from_api_platform_and_mcp_catalog() {
         "/v1/platform/knowledge-indexers",
         "/v1/platform/capabilities/knowledge",
         "/v1/platform/capabilities/agent_handoff",
-        // Plugins have no flag any more; an old `plugins: false` row hides nothing.
-        "/v1/platform/plugins",
+        "/v1/platform/plugins", // no flag any more
     ] {
         server.get(path).await.assert_status(StatusCode::OK);
     }
