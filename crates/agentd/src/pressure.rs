@@ -109,6 +109,16 @@ pub const EMERGENCY_FOR: Duration = Duration::from_secs(30);
 /// How long a due restart is announced before it happens: two rounds of
 /// asking peers (1 s each) plus a read's timeout, so every peer has read it.
 pub const ANNOUNCE: Duration = Duration::from_secs(3);
+/// How long a node at its restart threshold waits for its peers before it
+/// restarts without them.
+///
+/// Decision: waiting for every peer is right while the wait is short, but a
+/// node still at 98% after a minute is about to be killed by the kernel,
+/// which takes it down just the same, without stopping Raft first. In the
+/// U13 proof on the Mac mini (2026-11-25) a leader sat at 98-100% for 12
+/// minutes, its peers slow to answer under the load, and was killed at
+/// 105%; meanwhile it started no turns and 980 of 1,000 sessions failed.
+pub const FORCE_AFTER: Duration = Duration::from_secs(60);
 
 /// Set by the `node` binary: a node that wants a restart may exit.
 static RESTART_ENABLED: AtomicBool = AtomicBool::new(false);
@@ -358,8 +368,9 @@ impl Pressure {
             }
             *pending.get_or_insert(now)
         };
-        if !peers_answer || now.duration_since(since) < ANNOUNCE || self.peer_holds_restart(me, now)
-        {
+        let waited = now.duration_since(since);
+        let forced = waited >= FORCE_AFTER && own >= RESTART_AT;
+        if !forced && (!peers_answer || waited < ANNOUNCE || self.peer_holds_restart(me, now)) {
             return false;
         }
         !self.restarting.swap(true, Ordering::Relaxed)
@@ -845,6 +856,27 @@ mod tests {
         assert!(!p.restart_due_at(true, 1, t0), "at 98%, announced first");
         assert!(p.restart_due_at(true, 1, t0 + ANNOUNCE), "then restarts");
         assert_eq!(p.actions.get(&[("action", "emergency")]), 1);
+    }
+
+    /// A node at its threshold whose peers keep it waiting restarts on its
+    /// own after a minute rather than wait for the kernel's kill; one only
+    /// in Emergency (below 98%) keeps waiting.
+    #[test]
+    fn a_node_held_at_98_percent_restarts_without_its_peers_after_a_minute() {
+        let t0 = Instant::now();
+        let at = |secs| t0 + Duration::from_secs(secs);
+        let p = Pressure::new(1000);
+        p.record_own(985);
+        assert!(!p.restart_due_at(false, 3, at(0)));
+        assert!(!p.restart_due_at(false, 3, at(59)), "peers silent: waits");
+        assert!(p.restart_due_at(false, 3, at(60)), "then restarts anyway");
+        let p = Pressure::new(1000);
+        p.record_own(960);
+        assert!(!p.restart_due_at(false, 3, at(0)));
+        assert!(
+            !p.restart_due_at(false, 3, at(200)),
+            "Emergency alone waits for its peers"
+        );
     }
 
     #[test]
