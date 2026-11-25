@@ -147,6 +147,11 @@ down = {}        # node -> t it went down; cleared once it answers and caught up
 intervals = []   # (node, down t, back t)
 overlap = 0
 leader = first_leader
+# When each node last led: a leader restarting for memory hands leadership
+# over first (#5668), so at its exit it no longer leads. It counts as the
+# leader if it led within LED_WITHIN_S of exiting.
+LED_WITHIN_S = 15
+led_at = {first_leader: 0.0}
 peak_share = {n: 0.0 for n in NODES}
 timeline = []
 step = max(1, int(a.limit_mb * a.step_share))
@@ -156,6 +161,7 @@ while time.time() < deadline:
     lead = fleet.leader(0)
     if lead is not None:
         leader = lead
+        led_at[lead] = t
     row = {"t": t, "leader": lead, "nodes": {}}
     for n in NODES:
         if n in down:
@@ -178,7 +184,7 @@ while time.time() < deadline:
             if any(m for m in down if m != n):
                 overlap += 1
             (restarts if controlled else crashes).append(
-                {"t": t, "node": n, "was_leader": n == leader, "code": code})
+                {"t": t, "node": n, "was_leader": t - led_at.get(n, -1e9) <= LED_WITHIN_S, "code": code})
             print(f"t={t}: node {n} exited ({code}{', controlled' if controlled else ''}); starting it again", flush=True)
             down[n] = t
             pressing.discard(n)  # its new process holds no ballast
