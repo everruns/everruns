@@ -488,6 +488,13 @@ async fn unsubscribe_and_leaving_the_org_stop_delivery() {
         .unsubscribe(&subscriber, &target)
         .await
         .unwrap();
+    let missing = server
+        .mcp_events
+        .unsubscribe(&subscriber, &target)
+        .await
+        .unwrap_err();
+    assert_eq!(missing.code, -32023);
+    assert_eq!(missing.data, Some(json!({"kind":"subscription"})));
     assert_eq!(
         server
             .mcp_events
@@ -559,6 +566,17 @@ async fn unsubscribe_and_leaving_the_org_stop_delivery() {
 #[tokio::test]
 async fn final_routing_headers_are_required_and_legacy_requests_remain_accepted() {
     let server = TestServer::in_memory().await;
+    // Upstream discovery only runs these probes when poll is advertised.
+    // Exercise the real endpoint's refusal paths without advertising a mode
+    // this server does not implement.
+    for method in ["events/poll", "events/stream"] {
+        let missing = rpc(&server, method, json!({"name":"unknown.event"})).await;
+        assert_eq!(missing["error"]["code"], -32023);
+        assert_eq!(missing["error"]["data"]["kind"], "event");
+        let unsupported = rpc(&server, method, json!({"name":"session.completed"})).await;
+        assert_eq!(unsupported["error"]["code"], -32026);
+        assert_eq!(unsupported["error"]["data"]["feature"], "deliveryMode");
+    }
     for method in [
         "events/subscribe",
         "events/unsubscribe",

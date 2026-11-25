@@ -840,7 +840,10 @@ mod tests {
         assert!(SubscriptionTarget::from_params(&ok).is_ok());
         let mut bad = ok.clone();
         bad["name"] = json!("session.deleted");
-        assert!(SubscriptionTarget::from_params(&bad).is_err());
+        assert_eq!(
+            SubscriptionTarget::from_params(&bad).unwrap_err().code,
+            -32023
+        );
         let mut bad = ok.clone();
         bad["arguments"] = json!({ "org_id": "o" });
         assert!(SubscriptionTarget::from_params(&bad).is_err());
@@ -859,9 +862,14 @@ mod tests {
                 -32602
             );
         }
-        let mut bad = ok;
-        bad["delivery"]["mode"] = json!("stream");
-        assert!(SubscriptionTarget::from_params(&bad).is_err());
+        for (mode, code) in [("stream", -32602), ("poll", -32026), ("push", -32026)] {
+            let mut bad = ok.clone();
+            bad["delivery"]["mode"] = json!(mode);
+            assert_eq!(
+                SubscriptionTarget::from_params(&bad).unwrap_err().code,
+                code
+            );
+        }
     }
 
     #[test]
