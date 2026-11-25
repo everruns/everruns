@@ -80,8 +80,11 @@ Source user requirements are passed to the summarizer in full, within the source
 
 Summary generation is a separate, paid model call recorded in the trace and
 usage totals. Input and requested output share the summary model's reported
-context window; smaller models receive a smaller output allowance. Empty,
-truncated and tool-calling responses are rejected. Completed
+context window; smaller models receive a smaller output allowance. A summary
+cut off at its output limit, including one whose hidden reasoning used the whole
+limit, is retried once with a larger limit: the source page always leaves room
+for it. Empty, truncated and tool-calling responses are rejected, and the turn
+fails with `context_summary_failed`. Completed
 candidates are saved before installation, so retrying the same source after an
 installation failure can reuse the candidate. Messages arriving during a summary
 remain in the raw suffix. The first compaction of an existing large session can
@@ -159,7 +162,9 @@ Two summary formats:
 | `one_line` (default) | `[read_file → 47 lines, 2340 bytes]` | Most cases, minimal footprint |
 | `head_tail` | First 3 lines + `... (14 lines omitted) ...` + last 3 lines | When partial output context helps |
 
-The most recent N tool outputs are kept verbatim (default: 2). Runtime masking advances in batches, skips small outputs and only reports effective reductions. Reapplying a masked view is not an additional model call.
+The most recent N tool outputs are kept verbatim (default: 2), unless an output is larger than 24 KiB and the model has already answered it. Runtime masking advances in batches, skips small outputs and only reports effective reductions. Reapplying a masked view is not an additional model call.
+
+A masked output is hidden, not deleted. Its placeholder keeps the first few hundred characters and the tool call ID, and `query_history` with that `tool_call_id` returns the original from the session record, 16,000 characters at a time (pass `offset` for the next part). When masking alone brings the history under budget, no summary is generated.
 
 ### Native Provider Compaction
 

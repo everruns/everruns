@@ -507,6 +507,7 @@ const ERROR_CODE_LABEL: Record<string, string> = {
   budget_paused: "Usage policy asked",
   dependency_unavailable: "Dependency unavailable",
   invalid_tool_schema: "Invalid tool schema",
+  context_summary_failed: "History summary failed",
   max_iterations: "Step limit reached",
   soft_limit_reached: "Soft limit reached",
   blocked_by_hook: "Blocked by hook",

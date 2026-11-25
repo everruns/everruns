@@ -29,7 +29,10 @@ mod summarization;
 use crate::compaction_policy::CompactionPolicy;
 #[path = "compaction/policy.rs"]
 mod policy;
+#[path = "compaction/recovery.rs"]
+mod recovery;
 use policy::ConfiguredCompactionPolicy;
+use recovery::{answered_oversized_results, mask_tool_result_message, with_recovery_hint};
 pub use summarization::{
     build_summarization_prompt, build_summary_message, compose_summary_with_recent,
     format_messages_for_summarization,
@@ -1033,8 +1036,12 @@ fn apply_cost_control_masking_owned(
         .map(|index| message_tool_result_len(&messages[*index]))
         .sum();
 
+    // An oversized result the model already answered is masked even among
+    // the recent ones (see `answered_oversized`).
+    let answered_oversized = answered_oversized_results(&messages, &tool_indices, cost_config);
     if !cost_config.enabled
-        || tool_indices.len() <= cost_config.keep_recent_tool_results
+        || (tool_indices.len() <= cost_config.keep_recent_tool_results
+            && answered_oversized.is_empty())
         || !should_apply_cost_control_masking(
             tool_indices.len(),
             tool_result_bytes_before,
@@ -1062,6 +1069,7 @@ fn apply_cost_control_masking_owned(
         .iter()
         .copied()
         .filter(|index| !related_recent_reads.contains(index))
+        .chain(answered_oversized)
         .filter(|index| {
             message_tool_result_len(&messages[*index]) >= cost_config.min_masked_tool_result_bytes
         })
@@ -1249,31 +1257,6 @@ pub fn total_tool_result_bytes(messages: &[RuntimeMessage]) -> usize {
         .fold(0usize, |total, message| {
             total.saturating_add(message_tool_result_len(message))
         })
-}
-
-fn mask_tool_result_message(message: &RuntimeMessage, tool_name: &str) -> RuntimeMessage {
-    let Some(result) = message.tool_result_content() else {
-        return message.clone();
-    };
-    let summary = summarize_tool_result(tool_name, result.result.as_ref(), result.error.as_ref());
-    let was_error = result.error.is_some();
-    let mut masked = message.clone();
-    for part in &mut masked.content {
-        if let ContentPart::ToolResult(tool_result) = part {
-            if was_error {
-                tool_result.result = None;
-                tool_result.error = Some(summary);
-            } else {
-                tool_result.result = Some(serde_json::json!({
-                    "masked": true,
-                    "summary": summary,
-                }));
-                tool_result.error = None;
-            }
-            break;
-        }
-    }
-    masked
 }
 
 fn summarize_tool_result(

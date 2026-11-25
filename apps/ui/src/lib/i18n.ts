@@ -234,6 +234,8 @@ const messages = {
       "Execution stopped because a required dependency is unavailable.",
     runtime_error_invalid_tool_schema:
       "A connected tool uses an input schema that this model provider does not support. Update the integration or choose a different model provider, then try again.",
+    runtime_error_context_summary_failed:
+      "The conversation history had to be summarized before this turn, but the model's summary came back cut off or empty, even after a retry with more room. Nothing was lost. Send the message again to retry, or use a model with a larger output limit for summaries.",
     binary_file: "binary file{value}",
     image_count_one: "{count} image",
     image_count_few: "{count} images",
@@ -573,6 +575,8 @@ const messages = {
     runtime_error_dependency_unavailable: "Виконання зупинено, бо потрібна залежність недоступна.",
     runtime_error_invalid_tool_schema:
       "Підключений інструмент використовує схему вводу, яку цей провайдер моделі не підтримує. Оновіть інтеграцію або виберіть іншого провайдера моделі й повторіть спробу.",
+    runtime_error_context_summary_failed:
+      "Перед цим ходом історію розмови треба було підсумувати, але підсумок моделі обірвався або був порожнім навіть після повторної спроби з більшим лімітом. Нічого не втрачено. Надішліть повідомлення ще раз або використайте для підсумків модель із більшим лімітом виводу.",
     binary_file: "бінарний файл{value}",
     image_count_one: "{count} зображення",
     image_count_few: "{count} зображення",

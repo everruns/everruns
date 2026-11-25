@@ -131,6 +131,7 @@ async def send_with_retry(client, session_id, content, attempts=2, timeout=120):
 | `model_unavailable` / `model_not_configured` | Model missing, or none set for the agent or session | Pick a configured model |
 | `request_too_large` | Context overflowed even after compaction | Trim the conversation, start a fresh session |
 | `invalid_tool_schema` | A tool definition was rejected by the provider | Fix the tool's schema |
+| `context_summary_failed` | Compaction could not summarize earlier history: the summary was cut off or empty even after its retry with more output room | Send the message again, or use a model with a larger output limit for summaries |
 | `budget_exhausted` / `budget_paused` | The budget has no room left, or is paused | Raise or resume the budget, see [Enforce a budget](/how-to/enforce-a-budget/) |
 | `blocked_by_hook` | A `user_prompt_submit` hook rejected the message | Change the message or the hook |
 | `processing_error` | Unclassified failure, or details hidden by disclosure mode | Check server logs |

@@ -559,6 +559,11 @@ impl AgentLoopError {
                     None => classify_runtime_error_message(&err.message, &context),
                 }
             }
+            AgentLoopError::Configuration(message)
+                if message.contains(crate::user_facing_error::CONTEXT_SUMMARY_FAILED_PREFIX) =>
+            {
+                classify_runtime_error_message(message, &context)
+            }
             _ => UserFacingError::new(user_facing_error_codes::PROCESSING_ERROR)
                 .with_optional_field("provider", context.provider)
                 .with_optional_field("model_id", context.model_id),
