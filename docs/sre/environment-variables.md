@@ -742,6 +742,17 @@ The request pool never drops below 3, because one request can hold a lock and
 still read. If the database is too small for that, startup logs a warning:
 raise `max_connections` or lower `EXPECTED_INSTANCES`.
 
+### Behind a connection pooler
+
+Set `DATABASE_POOLER_ADDR` (`host:port`, port 6432 by default) to send the
+request and turn-renewal pools through a transaction pooler such as PgBouncer.
+They use the credentials and database from `DATABASE_URL`; listeners,
+background work, session locks and migrations keep connecting to the database
+directly (`DATABASE_UNPOOLED_URL`, else `DATABASE_URL`). The pooler presents
+its own certificate, so `verify-ca` and `verify-full` become `require` on that
+leg only. PgBouncer needs transaction mode and `max_prepared_statements` above
+zero.
+
 ## Throughput tuning
 
 These change how much database work each agent turn costs. The defaults suit

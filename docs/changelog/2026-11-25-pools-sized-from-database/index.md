@@ -21,4 +21,5 @@ database too small for that gets a startup warning.
 Pools you size explicitly stay as you set them. With a transaction pooler such
 as PgBouncer on `DATABASE_URL`, point `DATABASE_UNPOOLED_URL` at PostgreSQL
 directly: listeners, session locks, migrations and background work now all use
-it. See [environment variables](/sre/environment-variables/).
+it. `DATABASE_POOLER_ADDR` sends request traffic through such a pooler with
+the same credentials. See [environment variables](/sre/environment-variables/).
