@@ -41,6 +41,10 @@ async function mockAppApi(page: Page, layout: Layout) {
         email_verified: true,
         organizations: [{ public_id: DEFAULT_ORG_ID, name: "Default", role: "owner" }],
       };
+    } else if (pathname === "/api/v1/platform/application-launchers") {
+      json = [
+        { id: "application_1", name: "Content Studio", url: "https://studio.work.example.com" },
+      ];
     } else if (pathname.endsWith("/feature-flags")) {
       json = {
         evals: false,
@@ -138,6 +142,9 @@ const STARTUP_API_ALLOWLIST = new Set([
   // Shared navigation gates the Extractions destination on model management.
   // The small policy map is required by the shell; extraction data is never prefetched.
   "/api/v1/platform/models/config",
+  // Published Application launchers are visible shell navigation. This small
+  // projection does not fetch Application configuration or resource content.
+  "/api/v1/platform/application-launchers",
 ]);
 
 function isStartupApi(pathname: string) {
@@ -173,7 +180,17 @@ for (const layout of ["chat_first", "classic"] as const)
 
       await page.goto("/chats");
       await expect(page.getByRole("link", { name: "Sessions" })).toBeVisible();
+      await expect(page.getByRole("link", { name: "Content Studio" })).toHaveAttribute(
+        "href",
+        "https://studio.work.example.com",
+      );
       await page.waitForLoadState("networkidle");
+
+      expect(
+        requests.filter(
+          (request) => new URL(request.url()).pathname === "/api/v1/platform/application-launchers",
+        ),
+      ).toHaveLength(1);
 
       const unrelatedRscRequests = requests.filter((request) => {
         const pathname = new URL(request.url()).pathname;

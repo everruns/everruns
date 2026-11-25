@@ -25,6 +25,10 @@ and publish. A separate browser host serves the Application at its stable name u
 the deployment's configured publication domain. Existing standalone Work Chat hosts
 continue to use their assigned random labels.
 
+The optional launcher is available in both the compact navigation rail and the
+expanded sidebar. Navigation loads only the admitted launcher projection, without
+prefetching Application configuration or resource content.
+
 ```mermaid
 flowchart LR
     A[Author · Everruns console] --> P[Application\nName · publication · audience · navigation]
