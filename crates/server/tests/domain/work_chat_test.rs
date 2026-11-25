@@ -743,6 +743,11 @@ async fn work_chat_org_members_require_full_scope_on_both_url_spellings() {
             (Method::POST, format!("{base}/chat/main"), Some(json!({}))),
             (Method::PUT, format!("{base}/chat/view"), Some(json!({}))),
             (
+                Method::PUT,
+                format!("{base}/chat/plugins/any-plugin"),
+                Some(json!({"enabled": true})),
+            ),
+            (
                 Method::POST,
                 format!("{base}/sessions/{id}/settings"),
                 Some(json!({"title":"Denied"})),

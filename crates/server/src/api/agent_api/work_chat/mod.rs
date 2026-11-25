@@ -7,6 +7,7 @@ use crate::domains::agent_channels::record::work_chat::{
 };
 use crate::domains::session_files::service::{CreateFileInput, WorkspaceFileService};
 use axum::extract::Query;
+use axum::extract::rejection::JsonRejection;
 use sha2::{Digest, Sha256};
 
 fn file_revision(file: &everruns_core::SessionFile) -> String {
@@ -316,11 +317,13 @@ pub(crate) async fn set_work_chat_plugin(
     State(state): State<ChannelApiState>,
     Path((id, plugin_id)): Path<(String, String)>,
     headers: HeaderMap,
-    Json(body): Json<crate::domains::plugins::choices::SetPluginChoice>,
+    body: Result<Json<crate::domains::plugins::choices::SetPluginChoice>, JsonRejection>,
 ) -> Response {
     use crate::domains::plugins::choices;
     let result = async {
+        // Authorize before reading the body, so a narrow token is refused as such.
         let (owner, settings, list, org) = work_chat_plugins(&state, &id, &headers).await?;
+        let Json(body) = body.map_err(IntoResponse::into_response)?;
         let command_error =
             |e| super::super::channel_api::command_error_response(e).into_response();
         choices::check_channel_choice(&list, settings, &plugin_id, body.enabled)
