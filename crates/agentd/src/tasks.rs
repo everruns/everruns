@@ -240,15 +240,6 @@ fn stored(task: &SessionTask) -> Value {
     value
 }
 
-/// Whether `error` says the session lives on another shard (or moved
-/// there), so its tasks are reached through the gateway.
-fn elsewhere(error: &AgentLoopError) -> bool {
-    match error {
-        AgentLoopError::SessionNotFound(_) => true,
-        other => other.to_string().contains(crate::hosting::MOVED),
-    }
-}
-
 fn gateway_err((status, reason): (axum::http::StatusCode, String)) -> AgentLoopError {
     if status == axum::http::StatusCode::NOT_FOUND {
         AgentLoopError::store(format!("not found: {reason}"))
@@ -621,10 +612,12 @@ impl ShardTasks {
         self
     }
 
-    /// Whether `session`'s tasks, missing here because of `error`, are
-    /// reached through the gateway.
-    fn elsewhere(&self, session: SessionId, error: &AgentLoopError) -> bool {
-        self.parent == Some(session) && elsewhere(error)
+    /// Whether `session`'s tasks are reached through the gateway: the
+    /// parent's always are. An executor's mirror holds only the sessions it
+    /// runs, and a node holds the parent only when it shares its shard, so
+    /// the gateway is the one way that works from everywhere.
+    fn remote(&self, session: SessionId) -> bool {
+        self.parent == Some(session)
     }
 
     async fn propose(&self, session: SessionId, op: TaskOp) -> Result<Value> {
@@ -634,12 +627,10 @@ impl ShardTasks {
             now_ms: crate::node::now_ms(),
             seed: EventId::new(),
         };
-        match self.port.propose(session, command(op.clone())).await {
-            Err(error) if self.elsewhere(session, &error) => {
-                self.propose_elsewhere(session, command(op)).await
-            }
-            answered => answered,
+        if self.remote(session) {
+            return self.propose_elsewhere(session, command(op)).await;
         }
+        self.port.propose(session, command(op)).await
     }
 
     /// Propose `command` on the shard that holds `session`, through the
@@ -728,22 +719,18 @@ impl SessionTaskRegistry for ShardTasks {
     }
 
     async fn get(&self, session_id: SessionId, task_id: &str) -> Result<Option<SessionTask>> {
-        let wanted = task_id.to_owned();
-        match self
-            .port
+        if self.remote(session_id) {
+            let detail = self
+                .read_elsewhere(session_id, json!({ "task": task_id }))
+                .await?;
+            return Ok(load(&detail["task"]));
+        }
+        let task_id = task_id.to_owned();
+        self.port
             .read(session_id, move |s| {
-                s.platform.tasks.get(&wanted).and_then(load)
+                s.platform.tasks.get(&task_id).and_then(load)
             })
             .await
-        {
-            Err(error) if self.elsewhere(session_id, &error) => {
-                let detail = self
-                    .read_elsewhere(session_id, json!({ "task": task_id }))
-                    .await?;
-                Ok(load(&detail["task"]))
-            }
-            answered => answered,
-        }
     }
 
     async fn list(
@@ -756,37 +743,31 @@ impl SessionTaskRegistry for ShardTasks {
             filter.kind.as_ref().is_none_or(|k| &t.kind == k)
                 && filter.state.is_none_or(|state| t.state == state)
         };
-        let local = {
-            let keep = keep.clone();
-            self.port
-                .read(session_id, move |s| {
-                    let mut tasks: Vec<SessionTask> = s
-                        .platform
-                        .tasks
-                        .values()
-                        .filter_map(load)
-                        .filter(|t| keep(t))
-                        .collect();
-                    tasks.sort_by(|a, b| a.created_at.cmp(&b.created_at).then(a.id.cmp(&b.id)));
-                    tasks
-                })
-                .await
-        };
-        match local {
-            Err(error) if self.elsewhere(session_id, &error) => {
-                // Already in the shard's order (`listed`).
-                let listed = self.read_elsewhere(session_id, json!({})).await?;
-                Ok(listed
-                    .as_array()
-                    .map(Vec::as_slice)
-                    .unwrap_or_default()
-                    .iter()
+        if self.remote(session_id) {
+            // Already in the shard's order (`listed`).
+            let listed = self.read_elsewhere(session_id, json!({})).await?;
+            return Ok(listed
+                .as_array()
+                .map(Vec::as_slice)
+                .unwrap_or_default()
+                .iter()
+                .filter_map(load)
+                .filter(|t| keep(t))
+                .collect());
+        }
+        self.port
+            .read(session_id, move |s| {
+                let mut tasks: Vec<SessionTask> = s
+                    .platform
+                    .tasks
+                    .values()
                     .filter_map(load)
                     .filter(|t| keep(t))
-                    .collect())
-            }
-            answered => answered,
-        }
+                    .collect();
+                tasks.sort_by(|a, b| a.created_at.cmp(&b.created_at).then(a.id.cmp(&b.id)));
+                tasks
+            })
+            .await
     }
 
     async fn request_cancel(
@@ -835,15 +816,23 @@ impl SessionTaskRegistry for ShardTasks {
         limit: Option<u32>,
         after_id: Option<&str>,
     ) -> Result<Vec<TaskMessage>> {
-        let wanted = task_id.to_owned();
+        if self.remote(session_id) {
+            let body = json!({
+                "task": task_id,
+                "after_id": after_id,
+                "limit": limit.map_or(500, |l| l.clamp(1, 500)),
+            });
+            let detail = self.read_elsewhere(session_id, body).await?;
+            return Ok(serde_json::from_value(detail["messages"].clone()).unwrap_or_default());
+        }
+        let task_id = task_id.to_owned();
         let after = after_id.map(str::to_owned);
-        let local = self
-            .port
+        self.port
             .read(session_id, move |s| {
                 let all = s
                     .platform
                     .task_messages
-                    .get(&wanted)
+                    .get(&task_id)
                     .cloned()
                     .unwrap_or_default();
                 let start = after
@@ -852,19 +841,7 @@ impl SessionTaskRegistry for ShardTasks {
                 let end = limit.map_or(all.len(), |limit| (start + limit as usize).min(all.len()));
                 all[start.min(all.len())..end].to_vec()
             })
-            .await;
-        match local {
-            Err(error) if self.elsewhere(session_id, &error) => {
-                let body = json!({
-                    "task": task_id,
-                    "after_id": after_id,
-                    "limit": limit.map_or(500, |l| l.clamp(1, 500)),
-                });
-                let detail = self.read_elsewhere(session_id, body).await?;
-                serde_json::from_value(detail["messages"].clone()).or_else(|_| Ok(Vec::new()))
-            }
-            answered => answered,
-        }
+            .await
     }
 }
 
