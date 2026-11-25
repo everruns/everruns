@@ -31,6 +31,11 @@ overrides:
   source-map-js: 1.2.2
   postcss-selector-parser: 7.1.6
   yaml: 2.8.4
+  # @astrojs/astro2tsx 0.1.3 pins @emnapi/core 1.11.3 but not
+  # @emnapi/runtime, so pnpm paired it with the 2.0.0-beta.2 that
+  # rolldown's wasm binding pulls in and `astro check` died with
+  # "this.bridge.setLastError is not a function". 0.1.4 pins both halves.
+  '@astrojs/astro2tsx': ^0.1.4
 onlyBuiltDependencies:
   - esbuild
   - sharp
