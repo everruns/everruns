@@ -248,6 +248,55 @@ impl Database {
         Ok(query.fetch_all(&self.pool).await?)
     }
 
+    // ========================================================================
+    // Plugin choices (a person's own)
+    // ========================================================================
+
+    /// The plugins `principal_id` added for themselves or turned off.
+    pub async fn list_plugin_choices(
+        &self,
+        org_id: i64,
+        principal_id: Uuid,
+    ) -> Result<Vec<PluginChoiceRow>> {
+        Ok(sqlx::query_as::<_, PluginChoiceRow>(sql!(
+            r#"
+            SELECT {PluginChoiceRow}
+            FROM plugin_choices
+            WHERE org_id = $1 AND principal_id = $2
+            ORDER BY created_at
+            "#
+        ))
+        .bind(org_id)
+        .bind(principal_id)
+        .fetch_all(&self.pool)
+        .await?)
+    }
+
+    /// Record a person's choice about one install, replacing an earlier one.
+    pub async fn set_plugin_choice(
+        &self,
+        org_id: i64,
+        principal_id: Uuid,
+        plugin_install_id: Uuid,
+        enabled: bool,
+    ) -> Result<PluginChoiceRow> {
+        Ok(sqlx::query_as::<_, PluginChoiceRow>(sql!(
+            r#"
+            INSERT INTO plugin_choices (org_id, principal_id, plugin_install_id, enabled)
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT (org_id, principal_id, plugin_install_id)
+            DO UPDATE SET enabled = EXCLUDED.enabled, updated_at = NOW()
+            RETURNING {PluginChoiceRow}
+            "#
+        ))
+        .bind(org_id)
+        .bind(principal_id)
+        .bind(plugin_install_id)
+        .bind(enabled)
+        .fetch_one(&self.pool)
+        .await?)
+    }
+
     pub async fn list_active_plugin_installs(&self, org_id: i64) -> Result<Vec<PluginInstallRow>> {
         Ok(sqlx::query_as::<_, PluginInstallRow>(sql!(
             r#"

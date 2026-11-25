@@ -76,9 +76,37 @@ pub struct WorkChatConfig {
     /// Extra verified emails allowed on an invites chat.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub invites: Vec<String>,
+    /// What people may change about the agent's plugins for themselves.
+    #[serde(default, skip_serializing_if = "WorkChatPlugins::is_locked")]
+    pub plugins: WorkChatPlugins,
     /// Existing execution auth, approval and spending policies.
     #[serde(default = "default_execution")]
     pub execution: AgentApiChannelConfig,
+}
+
+/// A Work Chat channel's plugin options, both off by default.
+///
+/// Decision (knowledge/integrations/plugins.md, "Work Chat"): the publisher
+/// decides per channel, so a public chat can stay exactly as published while
+/// an internal one lets people add what they need. A person only ever picks
+/// from the plugins the organization approved; approving stays an admin's.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct WorkChatPlugins {
+    /// People may add approved plugins the agent does not come with.
+    #[serde(default)]
+    #[schema(example = false)]
+    pub allow_adding: bool,
+    /// People may turn off plugins the agent comes with, for themselves.
+    #[serde(default)]
+    #[schema(example = false)]
+    pub allow_turning_off: bool,
+}
+
+impl WorkChatPlugins {
+    pub fn is_locked(&self) -> bool {
+        !self.allow_adding && !self.allow_turning_off
+    }
 }
 
 /// This contract is shared by publication and runtime bootstrap. A worker-role
@@ -208,6 +236,7 @@ impl Default for WorkChatConfig {
             membership: WorkChatMembership::Open,
             member_email: None,
             invites: Vec::new(),
+            plugins: WorkChatPlugins::default(),
             execution: default_execution(),
         }
     }

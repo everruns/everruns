@@ -630,6 +630,7 @@ export default defineConfig({
                         { label: "Repositories", slug: "capabilities/repositories" },
                         { label: "Slack actions", slug: "capabilities/slack" },
                         { label: "User MCP Servers", slug: "capabilities/user-mcp-servers" },
+                        { label: "Plugins", slug: "capabilities/plugins" },
                         { label: "Poppy Personal Agent", slug: "capabilities/poppy-personal-agent" },
                       ],
                     },

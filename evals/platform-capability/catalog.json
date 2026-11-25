@@ -17364,6 +17364,21 @@
     "read_only": true
   },
   {
+    "category": "plugins",
+    "cli": "plugins mine list",
+    "description": "List the organization's approved plugins with your own choices: added for yourself, or not.",
+    "input_schema": {
+      "description": "List the organization's approved plugins with your own choices.",
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "list_my_plugins",
+    "output_shape": "unknown",
+    "path": "/v1/platform/users/me/plugins",
+    "positional_arg": null,
+    "read_only": true
+  },
+  {
     "category": "notifications",
     "cli": "notifications list",
     "description": "List notifications for the current user.",
@@ -22830,6 +22845,35 @@
     "output_shape": "unknown",
     "path": "/v1/platform/sessions/{session_id}/messages/{message_id}/feedback",
     "positional_arg": "session_id",
+    "read_only": false
+  },
+  {
+    "category": "plugins",
+    "cli": "plugins mine set",
+    "description": "Add an approved plugin to your own conversations, or take it out.",
+    "input_schema": {
+      "description": "Add an approved plugin for yourself, or remove it.",
+      "properties": {
+        "enabled": {
+          "description": "In your new conversations, or not.",
+          "type": "boolean"
+        },
+        "id": {
+          "description": "Installed plugin id (`plugin_…`).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "enabled"
+      ],
+      "type": "object"
+    },
+    "method": "PUT",
+    "name": "set_my_plugin_choice",
+    "output_shape": "unknown",
+    "path": "/v1/platform/users/me/plugins/{id}",
+    "positional_arg": "id",
     "read_only": false
   },
   {

@@ -4,13 +4,12 @@ import {
   FeaturesIcon,
   HealthIcon,
   OrganizationIcon,
-  PluginsIcon,
   ProviderIcon,
   TeamIcon,
   TokenIcon,
   VirtualUserIcon,
 } from "@/components/icons/facet-icons";
-import { ChartGantt, Gauge, Receipt, ShieldCheck, ShieldUser } from "lucide-react";
+import { AppWindow, ChartGantt, Gauge, Receipt, ShieldCheck, ShieldUser } from "lucide-react";
 import { SlackIcon } from "@/components/icons/slack-icon";
 import type { NavigationSection } from "@/lib/navigation";
 import { registryDomainIcons } from "@/lib/registry-navigation";
@@ -60,6 +59,15 @@ export const settingsNavigationSections: NavigationSection[] = [
         icon: registryDomainIcons.mcpServers,
         policy: "mcp_server.manage",
         description: "Manage the MCP presets agents and people can add",
+      },
+      {
+        // Approved plugins; replaced the main-navigation Plugins page.
+        name: "Plugins",
+        href: "/settings/plugins",
+        keywords: ["plugins", "marketplace", "directory", "skills", "approve", "sources"],
+        icon: registryDomainIcons.plugins,
+        policy: "plugin.view",
+        description: "Approve the plugins agents and people may use",
       },
       {
         name: "Slack workspaces",
@@ -150,10 +158,17 @@ export const settingsNavigationSections: NavigationSection[] = [
         description: "MCP servers you add and sign in to for yourself",
       },
       {
+        name: "Plugins",
+        href: "/settings/my-plugins",
+        keywords: ["plugins", "my plugins"],
+        icon: registryDomainIcons.plugins,
+        description: "Approved plugins you add to your own conversations",
+      },
+      {
         name: "AI clients",
         href: "/settings/ai-clients",
         keywords: ["coding agent", "codex", "claude", "cursor", "chatgpt", "connected clients"],
-        icon: PluginsIcon,
+        icon: AppWindow,
         description: "AI apps you approved to use Everruns as you",
       },
       {

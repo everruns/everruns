@@ -377,7 +377,6 @@ impl CommandMeta {
             "evals" => Some("evals"),
             "skills" => Some("skills"),
             "memories" => Some("memory"),
-            "plugins" => Some("plugins"),
             "observers" => Some("observers"),
             "agent_views" => Some("agent_views"),
             _ => None,

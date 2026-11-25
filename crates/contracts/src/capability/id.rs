@@ -177,6 +177,21 @@ pub fn plugin_capability_id(identity: &str) -> String {
     format!("{PLUGIN_CAPABILITY_PREFIX}{identity}")
 }
 
+/// The agent ref that means "every plugin the organization approved".
+///
+/// Decision: an agent
+/// either takes all approved plugins or the ones it names. "All" is one stored
+/// ref that the control plane expands when it builds the agent, so a plugin an
+/// admin approves later reaches the agent without editing it. `_all` cannot
+/// collide: install ids start `plugin_` and Agent Plugins names start with a
+/// letter or digit.
+pub const ALL_APPROVED_PLUGINS_REF: &str = "plugin:_all";
+
+/// Return `true` if `capability_id` is [`ALL_APPROVED_PLUGINS_REF`].
+pub fn is_all_approved_plugins(capability_id: &str) -> bool {
+    capability_id == ALL_APPROVED_PLUGINS_REF
+}
+
 /// Return `true` if `capability_id` is a `plugin:…` reference.
 pub fn is_plugin_capability(capability_id: &str) -> bool {
     capability_id.starts_with(PLUGIN_CAPABILITY_PREFIX)
@@ -239,6 +254,14 @@ mod tests {
             );
             assert_eq!(err.id(), id);
         }
+    }
+
+    #[test]
+    fn all_approved_plugins_is_a_valid_plugin_ref() {
+        validate_capability_id(ALL_APPROVED_PLUGINS_REF).unwrap();
+        assert!(is_plugin_capability(ALL_APPROVED_PLUGINS_REF));
+        assert!(is_all_approved_plugins(ALL_APPROVED_PLUGINS_REF));
+        assert!(!is_all_approved_plugins("plugin:plg_01"));
     }
 
     #[test]

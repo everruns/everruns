@@ -772,6 +772,128 @@
         }
       }
     },
+    "/v1/channels/{channel_id}/chat/plugins": {
+      "get": {
+        "tags": [
+          "agent-execution"
+        ],
+        "summary": "List work chat plugins",
+        "description": "The signed-in person's plugins in this Work Chat: the agent's, the ones they added, and approved ones they could add. Choices apply to new conversations.",
+        "operationId": "list_work_chat_plugins",
+        "parameters": [
+          {
+            "name": "channel_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkChatPluginList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Consumer sign-in required"
+          },
+          "404": {
+            "description": "Channel or resource unavailable"
+          }
+        },
+        "security": [
+          {
+            "AgentCredential": []
+          }
+        ],
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agent-api",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/channels/{channel_id}/chat/plugins/{plugin_id}": {
+      "put": {
+        "tags": [
+          "agent-execution"
+        ],
+        "summary": "Set work chat plugin",
+        "description": "Add an approved plugin to your conversations in this Work Chat, or turn one off, as the channel allows.",
+        "operationId": "set_work_chat_plugin",
+        "parameters": [
+          {
+            "name": "channel_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "plugin_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetPluginChoice"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Saved; the updated list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkChatPluginList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The agent cannot run this plugin"
+          },
+          "401": {
+            "description": "Consumer sign-in required"
+          },
+          "403": {
+            "description": "The channel does not allow this choice"
+          },
+          "404": {
+            "description": "Channel or plugin unavailable"
+          }
+        },
+        "security": [
+          {
+            "AgentCredential": []
+          }
+        ],
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agent-api",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/channels/{channel_id}/chat/shared/{token}": {
       "get": {
         "tags": [
@@ -3029,6 +3151,138 @@
           "support": "preview"
         },
         "x-superseded-by": "resolve_work_chat_main"
+      }
+    },
+    "/v1/e/{channel_id}/chat/plugins": {
+      "get": {
+        "tags": [
+          "agent-execution"
+        ],
+        "summary": "List work chat plugins legacy",
+        "description": "The signed-in person's plugins in this Work Chat: the agent's, the ones they added, and approved ones they could add. Choices apply to new conversations.",
+        "operationId": "list_work_chat_plugins_legacy",
+        "parameters": [
+          {
+            "name": "channel_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkChatPluginList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Consumer sign-in required"
+          },
+          "404": {
+            "description": "Channel or resource unavailable"
+          }
+        },
+        "deprecated": true,
+        "security": [
+          {
+            "AgentCredential": []
+          }
+        ],
+        "x-deprecation": {
+          "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agent-api",
+          "support": "preview"
+        },
+        "x-superseded-by": "list_work_chat_plugins"
+      }
+    },
+    "/v1/e/{channel_id}/chat/plugins/{plugin_id}": {
+      "put": {
+        "tags": [
+          "agent-execution"
+        ],
+        "summary": "Set work chat plugin legacy",
+        "description": "Add an approved plugin to your conversations in this Work Chat, or turn one off, as the channel allows.",
+        "operationId": "set_work_chat_plugin_legacy",
+        "parameters": [
+          {
+            "name": "channel_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "plugin_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetPluginChoice"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Saved; the updated list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkChatPluginList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The agent cannot run this plugin"
+          },
+          "401": {
+            "description": "Consumer sign-in required"
+          },
+          "403": {
+            "description": "The channel does not allow this choice"
+          },
+          "404": {
+            "description": "Channel or plugin unavailable"
+          }
+        },
+        "deprecated": true,
+        "security": [
+          {
+            "AgentCredential": []
+          }
+        ],
+        "x-deprecation": {
+          "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agent-api",
+          "support": "preview"
+        },
+        "x-superseded-by": "set_work_chat_plugin"
       }
     },
     "/v1/e/{channel_id}/chat/shared/{token}": {
@@ -24770,6 +25024,33 @@
         }
       }
     },
+    "/v1/platform/plugins/config": {
+      "get": {
+        "tags": [
+          "plugins"
+        ],
+        "summary": "Plugin config",
+        "operationId": "plugin_config",
+        "responses": {
+          "200": {
+            "description": "Resource config for plugins",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResourceConfigResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "models-integrations",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/platform/plugins/{id}": {
       "get": {
         "tags": [
@@ -35616,6 +35897,117 @@
           "audience": "public",
           "availability": "Everruns Cloud and self-hosted Platform",
           "group": "identity-access",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/platform/users/me/plugins": {
+      "get": {
+        "tags": [
+          "plugins"
+        ],
+        "summary": "List my plugins",
+        "operationId": "list_my_plugins",
+        "responses": {
+          "200": {
+            "description": "Approved plugins with your own choices",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PluginOption"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "models-integrations",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/platform/users/me/plugins/{id}": {
+      "put": {
+        "tags": [
+          "plugins"
+        ],
+        "summary": "Set my plugin choice",
+        "operationId": "set_my_plugin_choice",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Plugin install ID (plugin_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetPluginChoice"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Choice saved; the updated list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PluginOption"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No approved plugin with that ID",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "models-integrations",
           "support": "preview"
         }
       }
@@ -69359,6 +69751,85 @@
           }
         }
       },
+      "PluginOption": {
+        "type": "object",
+        "description": "One approved plugin as a person sees it.",
+        "required": [
+          "id",
+          "name",
+          "description",
+          "environment",
+          "origin",
+          "enabled",
+          "fits",
+          "needs_admin_setup"
+        ],
+        "properties": {
+          "description": {
+            "type": "string",
+            "description": "What the plugin does.",
+            "example": "Publish web pages from the conversation"
+          },
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Name to show people, when the manifest gives one.",
+            "example": "Stend"
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "Whether it is in this person's new conversations.",
+            "example": true
+          },
+          "environment": {
+            "type": "string",
+            "description": "What the plugin needs from the agent.",
+            "example": "workspace"
+          },
+          "fits": {
+            "type": "boolean",
+            "description": "Whether the agent provides what the plugin needs. Always true outside\nan agent (Settings > Personal > Plugins).",
+            "example": true
+          },
+          "id": {
+            "type": "string",
+            "description": "Installed plugin id (`plugin_…`).",
+            "example": "plugin_01933b5a00007000800000000000001"
+          },
+          "name": {
+            "type": "string",
+            "description": "Name from the plugin manifest.",
+            "example": "stend"
+          },
+          "needs_admin_setup": {
+            "type": "boolean",
+            "description": "An admin still has to choose how one of its MCP servers signs in.",
+            "example": false
+          },
+          "origin": {
+            "$ref": "#/components/schemas/PluginOrigin"
+          },
+          "version": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Installed version.",
+            "example": "1.2.0"
+          }
+        }
+      },
+      "PluginOrigin": {
+        "type": "string",
+        "description": "Where a plugin in a person's list comes from.",
+        "enum": [
+          "agent",
+          "added",
+          "available"
+        ]
+      },
       "PolicySource": {
         "type": "string",
         "description": "Which usage a policy counts. Absent counts everything.",
@@ -78830,6 +79301,20 @@
             ],
             "format": "int64",
             "description": "The revision this edit was based on (0 when none exists yet); refused\nwith `manager_context_changed` when the stored one differs."
+          }
+        }
+      },
+      "SetPluginChoice": {
+        "type": "object",
+        "description": "Request body for a person's choice about one plugin.",
+        "required": [
+          "enabled"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "description": "In this person's new conversations, or not.",
+            "example": true
           }
         }
       },
@@ -90161,6 +90646,34 @@
           "question",
           "action"
         ]
+      },
+      "WorkChatPluginList": {
+        "type": "object",
+        "description": "A person's plugins in one Work Chat channel.",
+        "required": [
+          "allow_adding",
+          "allow_turning_off",
+          "plugins"
+        ],
+        "properties": {
+          "allow_adding": {
+            "type": "boolean",
+            "description": "The channel lets people add approved plugins.",
+            "example": true
+          },
+          "allow_turning_off": {
+            "type": "boolean",
+            "description": "The channel lets people turn off the agent's plugins.",
+            "example": false
+          },
+          "plugins": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PluginOption"
+            },
+            "description": "The agent's plugins, the ones this person added, and ones they could add."
+          }
+        }
       },
       "WorkFact": {
         "type": "object",

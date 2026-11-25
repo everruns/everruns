@@ -45,7 +45,10 @@ use crate::services::{EventService, ProviderResolverService};
 use crate::storage::{AgentCapabilityRow, AgentRow, UpdateSession};
 use crate::storage::{EncryptionService, StorageBackend};
 use async_trait::async_trait;
-use everruns_capabilities::capabilities::PoppyInvoker;
+use everruns_capabilities::capabilities::{
+    PluginsInvoker, PoppyInvoker, UserMcpCallInvoker as UserMcpInvoker,
+};
+use everruns_capabilities::slack_action::SlackActionInvoker as SlackAction;
 use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
 use everruns_contracts::error::{AgentLoopError, Result};
 use everruns_contracts::typed_id::{AgentId, BudgetId, HarnessId, SessionId};
@@ -1133,29 +1136,23 @@ impl WorkerAdapters for DirectWorkerAdapters {
         self.sqldb_store.clone()
     }
 
-    fn slack_action_invoker(
-        &self,
-        org_id: i64,
-        session_id: everruns_contracts::typed_id::SessionId,
-    ) -> Option<Arc<dyn everruns_capabilities::slack_action::SlackActionInvoker>> {
+    fn slack_action_invoker(&self, org: i64, session: SessionId) -> Option<Arc<dyn SlackAction>> {
+        let encryption = self.encryption.as_ref();
         Some(crate::channels::slack::actions::in_process_invoker(
-            &self.db,
-            self.encryption.as_ref(),
-            org_id,
-            session_id,
+            &self.db, encryption, org, session,
         ))
     }
 
-    fn user_mcp_invoker(
-        &self,
-        org_id: i64,
-        session_id: everruns_contracts::typed_id::SessionId,
-    ) -> Option<Arc<dyn everruns_capabilities::capabilities::UserMcpCallInvoker>> {
-        Some(self.user_mcp_invoker_for(org_id, session_id))
+    fn user_mcp_invoker(&self, org: i64, session: SessionId) -> Option<Arc<dyn UserMcpInvoker>> {
+        Some(self.user_mcp_invoker_for(org, session))
     }
 
     fn poppy_invoker(&self, org: i64, session: SessionId) -> Option<Arc<dyn PoppyInvoker>> {
         Some(self.command_poppy_invoker(org, session))
+    }
+
+    fn plugins_invoker(&self, org: i64, session: SessionId) -> Option<Arc<dyn PluginsInvoker>> {
+        Some(self.command_plugins_invoker(org, session))
     }
 
     fn sandbox_persistence_store(

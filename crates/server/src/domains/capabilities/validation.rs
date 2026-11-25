@@ -228,6 +228,9 @@ pub(crate) async fn validate_resolved_capability_refs(
             if !matches!(row.status.as_str(), "active" | "disabled") {
                 return Err(ResourceNotFoundError::new("Declarative capability").into());
             }
+        } else if everruns_contracts::is_all_approved_plugins(cap_id) {
+            // Expanded at build time to the approved plugins that fit; nothing
+            // to check here.
         } else if is_plugin_capability(cap_id) {
             let public_id = parse_plugin_capability_id(cap_id).ok_or_else(|| {
                 BadRequestError::new(format!("Invalid plugin capability reference: {cap_id}"))

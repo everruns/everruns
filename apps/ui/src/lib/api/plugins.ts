@@ -15,6 +15,8 @@ import type {
   MarketplaceCatalogEntry,
   InstalledPlugin,
   InstallPluginRequest,
+  PluginEnvironment,
+  PluginOption,
   UpdateInstalledPluginRequest,
   ListResponse,
 } from "./types";
@@ -116,4 +118,74 @@ export function inferMarketplaceSourceType(source: string): MarketplaceSourceTyp
     return "local_path";
   }
   return "url";
+}
+
+// ============================================
+// A person's own plugins (Settings > Personal > Plugins)
+// ============================================
+
+export const MY_PLUGINS_BASE = "/v1/platform/users/me/plugins";
+
+/** GET /v1/platform/users/me/plugins — approved plugins with your own choices */
+export async function getMyPlugins(): Promise<PluginOption[]> {
+  const response = await api.get<PluginOption[]>(MY_PLUGINS_BASE);
+  return response.data;
+}
+
+/** PUT /v1/platform/users/me/plugins/{id} — add a plugin for yourself, or take it out */
+export async function setMyPlugin(id: string, enabled: boolean): Promise<PluginOption[]> {
+  const response = await api.put<PluginOption[]>(`${MY_PLUGINS_BASE}/${id}`, { enabled });
+  return response.data;
+}
+
+/** The harness level that provides an environment, as people see it. */
+export function pluginEnvironmentLabel(environment: string | undefined): string {
+  switch (environment) {
+    case "conversation":
+      return "Conversation";
+    case "workspace":
+      return "Worker";
+    case "virtual-shell":
+      return "Bashkit Worker";
+    default:
+      return "Sandbox Worker";
+  }
+}
+
+/** The ref an agent stores to take every plugin the organization approved. */
+export const ALL_APPROVED_PLUGINS_REF = "plugin:_all";
+
+const ENVIRONMENT_ORDER: PluginEnvironment[] = [
+  "conversation",
+  "workspace",
+  "virtual-shell",
+  "sandbox",
+];
+
+/**
+ * What an agent with these capability refs provides, mirroring the server's
+ * `PluginEnvironment::provided_by`. Advisory in the UI: the server decides.
+ */
+export function providedEnvironment(refs: readonly string[]): PluginEnvironment {
+  let level = 0;
+  for (const ref of refs) {
+    const next =
+      ref === "session_sandbox"
+        ? 3
+        : ref === "bashkit_shell" || ref === "virtual_bash"
+          ? 2
+          : ref === "session_file_system"
+            ? 1
+            : 0;
+    level = Math.max(level, next);
+  }
+  return ENVIRONMENT_ORDER[level];
+}
+
+/** Whether an agent providing `provided` can run a plugin that needs `needed`. */
+export function environmentSatisfied(
+  needed: PluginEnvironment | undefined,
+  provided: PluginEnvironment,
+): boolean {
+  return ENVIRONMENT_ORDER.indexOf(provided) >= ENVIRONMENT_ORDER.indexOf(needed ?? "sandbox");
 }

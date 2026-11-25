@@ -303,6 +303,8 @@ plugin-marketplaces update	--context-revision --id --name --reason --status <id>
 plugins get	--context-revision --id --reason <id>
 plugins install	--context-revision --marketplace-id! --plugin-name! --reason
 plugins list	--context-revision --reason --search
+plugins mine list	--context-revision --reason
+plugins mine set	--context-revision --enabled! --id --reason <id>
 plugins patch	--context-revision --id --mcp-server-identities --reason --status <id>
 plugins uninstall	--context-revision --id --reason <id>
 plugins update	--context-revision --id --reason <id>

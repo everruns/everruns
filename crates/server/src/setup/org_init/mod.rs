@@ -9,7 +9,7 @@
 // Decision: Org settings keep separate default and base harness pointers
 //
 // Default marketplace seeding (see knowledge/integrations/plugins.md):
-// Decision: The default marketplace ("everruns", github source everruns/plugins) is seeded
+// Decision: The default marketplace ("everruns", github source everruns/plugin-directory) is seeded
 //   once at org creation and in the 058_backfill_default_marketplace.sql backfill migration.
 //   It is NEVER re-seeded on read or reconciliation; a user who deletes it loses it permanently.
 //   This ensures "default" means seeded, not privileged.
@@ -159,10 +159,11 @@ pub async fn run_org_initializers(
 /// Name of the default marketplace seeded for every org.
 pub const DEFAULT_MARKETPLACE_NAME: &str = "everruns";
 
-/// GitHub repository of the default marketplace. First-party plugins live in
-/// their own repository so they release on their own schedule and coding-agent
-/// hosts do not clone this monorepo to read the catalog.
-pub const DEFAULT_MARKETPLACE_REPO: &str = "everruns/plugins";
+/// GitHub repository of the default marketplace: the Everruns Plugin
+/// directory, reviewed plugins in the Agent Plugins format, each pinned to its
+/// source. Everruns writes its own plugins in everruns/plugins; the directory
+/// copies them pinned to a commit, beside third-party ones it has tested.
+pub const DEFAULT_MARKETPLACE_REPO: &str = "everruns/plugin-directory";
 
 /// Seed the default plugin marketplace for a newly created organization.
 ///

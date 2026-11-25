@@ -804,6 +804,12 @@ pub fn declared(name: &str) -> Change {
         "worker_poppy_call" => {
             Change::Exempt("the agent's own conversation with a company, not configuration")
         }
+        "set_my_plugin_choice" => Change::Exempt(
+            "a person's own plugin preference, like a profile setting, not shared configuration",
+        ),
+        "worker_plugins_call" => Change::Exempt(
+            "a plugin loaded into one chat is the session's working state, not configuration",
+        ),
         "create_session_database"
         | "delete_session_database"
         | "manage_session_sandbox"

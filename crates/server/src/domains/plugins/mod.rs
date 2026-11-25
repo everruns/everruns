@@ -3,16 +3,20 @@
 
 use everruns_core::{Permission, Policy, Rule};
 
+pub mod choices;
 pub mod commands;
 pub mod fetcher;
 mod lookup;
 pub mod oauth_anchor;
 mod patch;
 pub mod queries;
+pub mod session_load;
 pub mod types;
 
+pub use choices::{ListMyPlugins, SetMyPluginChoice};
 pub use commands::*;
 pub use patch::*;
+pub use session_load::WorkerPluginsCall;
 
 /// View marketplaces and installed plugins.
 pub const PLUGIN_VIEW: Policy = Policy {

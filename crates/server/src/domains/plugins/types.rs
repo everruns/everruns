@@ -118,6 +118,13 @@ pub struct InstalledPlugin {
     pub identity_required: Vec<String>,
     /// True when the marketplace catalog has a newer version or SHA.
     pub update_available: bool,
+    /// What the agent must provide to run it: `conversation`, `workspace`,
+    /// `virtual-shell` or `sandbox` (`extensions["com.everruns"].environment`,
+    /// raised to what its contents need; `sandbox` when undeclared).
+    #[schema(value_type = String, example = "workspace")]
+    pub environment: everruns_contracts::runtime::capabilities::PluginEnvironment,
+    /// Whether the plugin declared its environment.
+    pub environment_declared: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

@@ -242,6 +242,7 @@ pub fn builtin_capability_docs_slug(id: &str) -> Option<&'static str> {
         "usage_limit_auto_continue" => Some("usage-limit-auto-continue"),
         "user_hooks" => Some("user-hooks"),
         "user_mcp" => Some("user-mcp-servers"),
+        "plugins" => Some("plugins"),
         "poppy_client" => Some("poppy-personal-agent"),
         "memory" => Some("memory"),
         "knowledge" => Some("knowledge"),

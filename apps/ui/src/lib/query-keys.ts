@@ -372,4 +372,7 @@ export const queryKeys = {
     list: () => ["installed-plugins", "list"] as const,
     detail: (id: string) => ["installed-plugins", id] as const,
   },
+  myPlugins: {
+    all: ["my-plugins"] as const,
+  },
 };

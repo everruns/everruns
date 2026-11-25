@@ -30,8 +30,6 @@ pub struct FeatureFlags {
     pub skills: bool,
     /// Workspace memory management UI. Experimental.
     pub memory: bool,
-    /// Plugin marketplace and installed-plugin management UI. Experimental.
-    pub plugins: bool,
     /// Voice channels and the chat microphone (Adoption).
     pub voice: bool,
     /// Observers (online scoring of production sessions). Organization adoption opt-in.
@@ -126,13 +124,6 @@ pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
         label: "Memory",
         description: "Manage knowledge stores agents can read, including manual notes and \
              synchronized files.",
-        grade: FeatureFlagGrade::Dev,
-    },
-    FeatureFlagDefinition {
-        name: "plugins",
-        label: "Plugins",
-        description: "Install and manage extensions that add integrations, skills, and other \
-             capabilities.",
         grade: FeatureFlagGrade::Dev,
     },
     FeatureFlagDefinition {
@@ -258,7 +249,6 @@ impl FeatureFlags {
             ("extractions".to_string(), self.extractions),
             ("skills".to_string(), self.skills),
             ("memory".to_string(), self.memory),
-            ("plugins".to_string(), self.plugins),
             ("voice".to_string(), self.voice),
             ("observers".to_string(), self.observers),
             ("public_chat".to_string(), self.public_chat),
@@ -282,7 +272,6 @@ impl FeatureFlags {
             "extractions" => self.extractions,
             "skills" => self.skills,
             "memory" => self.memory,
-            "plugins" => self.plugins,
             "voice" => self.voice,
             "observers" => self.observers,
             "public_chat" => self.public_chat,
@@ -298,7 +287,6 @@ impl FeatureFlags {
             "extractions" => self.extractions = enabled,
             "skills" => self.skills = enabled,
             "memory" => self.memory = enabled,
-            "plugins" => self.plugins = enabled,
             "voice" => self.voice = enabled,
             "observers" => self.observers = enabled,
             "public_chat" => self.public_chat = enabled,
@@ -332,7 +320,6 @@ impl FeatureFlags {
             "skills" => Some("skills"),
             "memory" => Some("memory"),
             _ if capability_id.starts_with("skill:") => Some("skills"),
-            _ if capability_id.starts_with("plugin:") => Some("plugins"),
             _ => {
                 everruns_capabilities::integrations_catalog::capability_feature_flag(capability_id)
             }
@@ -356,7 +343,6 @@ impl FeatureFlags {
             extractions: true,
             skills: true,
             memory: true,
-            plugins: true,
             voice: true,
             observers: true,
             public_chat: true,
@@ -498,13 +484,16 @@ mod tests {
             "agent_change_reasons_required",
             "reports",
             "mistral",
+            // Plugins are in Settings for everyone; approval is the gate
+            // (knowledge/integrations/plugins.md).
+            "plugins",
             "machine_payments",
             "docker_capability",
         ] {
             assert!(!is_known_feature_flag(removed), "{removed}");
         }
         assert!(!FeatureFlagGrade::Internal.org_configurable(DeploymentGrade::Prod));
-        for name in ["skills", "memory", "plugins", "public_chat"] {
+        for name in ["skills", "memory", "public_chat"] {
             assert_eq!(policy.grade(name), FeatureFlagGrade::Dev, "{name}");
             assert!(!policy.deployment_flags().is_enabled(name), "{name}");
         }
@@ -572,7 +561,6 @@ mod tests {
             "skills",
             "skill:example",
             "memory",
-            "plugin:example",
             "container_sandbox",
             "lua",
             "lua_code_mode",

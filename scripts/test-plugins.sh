@@ -44,8 +44,8 @@ for gone in plugins/everruns .claude-plugin .agents/plugins .cursor-plugin; do
   if [ -e "$ROOT/$gone" ]; then echo "FAIL - $gone is back; first-party plugins live in everruns/plugins"; fail=1
   else echo "ok   - no $gone"; fi
 done
-check_contains "default marketplace points at everruns/plugins" \
-  "$ROOT/crates/server/src/setup/org_init/mod.rs" 'DEFAULT_MARKETPLACE_REPO: &str = "everruns/plugins"'
+check_contains "default marketplace points at everruns/plugin-directory" \
+  "$ROOT/crates/server/src/setup/org_init/mod.rs" 'DEFAULT_MARKETPLACE_REPO: &str = "everruns/plugin-directory"'
 
 echo "== MCP endpoints =="
 check_contains "resend MCP URL" "$ROOT/plugins/resend/mcp.json" 'https://mcp.resend.com/mcp'

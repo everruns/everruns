@@ -139,7 +139,6 @@ async fn test_disabled_feature_is_hidden_from_api_platform_and_mcp_catalog() {
         ("/v1/platform/skills/config", "skills"),
         ("/v1/platform/memories", "memory"),
         ("/v1/platform/memories/memory_missing/fs", "memory"),
-        ("/v1/platform/plugins", "plugins"),
     ] {
         let response = server.get(path).await;
         assert_eq!(
@@ -159,6 +158,7 @@ async fn test_disabled_feature_is_hidden_from_api_platform_and_mcp_catalog() {
         "/v1/platform/knowledge-indexers",
         "/v1/platform/capabilities/knowledge",
         "/v1/platform/capabilities/agent_handoff",
+        "/v1/platform/plugins", // no flag any more
     ] {
         server.get(path).await.assert_status(StatusCode::OK);
     }
@@ -177,7 +177,7 @@ async fn test_disabled_feature_is_hidden_from_api_platform_and_mcp_catalog() {
         .filter_map(|category| category["category"].as_str())
         .collect();
     assert!(categories.contains(&"knowledge"));
-    for gated in ["evals", "skills", "memories", "plugins"] {
+    for gated in ["evals", "skills", "memories"] {
         assert!(!categories.contains(&gated), "{gated}");
     }
 

@@ -717,3 +717,77 @@ mod tests {
         assert!(validate_github_repo_slug("owner/repo;drop").is_err());
     }
 }
+
+/// Timeout for asking an MCP server whether it wants OAuth.
+const AUTH_PROBE_TIMEOUT_MS: u64 = 10_000;
+
+/// Whether the MCP server at `url` wants OAuth, as it answers an
+/// unauthenticated `initialize`.
+///
+/// Decision: a plain Agent Plugins `mcp.json` says nothing about sign-in, and
+/// guessing from a URL is unreliable, so the installer asks the server. The
+/// MCP authorization spec has a protected server answer `401` with a
+/// `WWW-Authenticate: Bearer` challenge (RFC 9728); anything else, including
+/// an unreachable server, counts as public. A wrong "public" shows up the
+/// first time the agent calls it (the server refuses), while a wrong "OAuth"
+/// would ask every person to sign in for nothing.
+pub(crate) async fn mcp_server_wants_oauth(url: &str, egress: &Arc<dyn EgressService>) -> bool {
+    let body = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "protocolVersion": "2025-06-18",
+            "capabilities": {},
+            "clientInfo": {"name": "everruns-plugin-install", "version": "1.0"}
+        }
+    });
+    let request = EgressRequest::new(
+        "POST",
+        url,
+        EgressRequestKind::Other("plugin_auth_probe".into()),
+    )
+    .timeout_ms(AUTH_PROBE_TIMEOUT_MS)
+    .require_dns_pinning()
+    .header("Content-Type", "application/json")
+    .header("Accept", "application/json, text/event-stream")
+    .body(body.to_string().into_bytes());
+    match egress.send_stream(request).await {
+        Ok(response) => wants_oauth(response.status, &response.headers),
+        Err(error) => {
+            tracing::info!(url, %error, "MCP auth probe failed; treating the server as public");
+            false
+        }
+    }
+}
+
+fn wants_oauth(status: u16, headers: &std::collections::BTreeMap<String, String>) -> bool {
+    status == 401
+        && headers.iter().any(|(name, value)| {
+            name.eq_ignore_ascii_case("www-authenticate")
+                && value
+                    .trim_start()
+                    .to_ascii_lowercase()
+                    .starts_with("bearer")
+        })
+}
+
+#[cfg(test)]
+mod auth_probe_tests {
+    use super::wants_oauth;
+    use std::collections::BTreeMap;
+
+    #[test]
+    fn only_a_bearer_challenge_means_oauth() {
+        let challenge = BTreeMap::from([(
+            "WWW-Authenticate".to_string(),
+            r#"Bearer resource_metadata="https://visti.sh/.well-known/oauth-protected-resource""#
+                .to_string(),
+        )]);
+        assert!(wants_oauth(401, &challenge));
+        assert!(!wants_oauth(200, &challenge));
+        assert!(!wants_oauth(401, &BTreeMap::new()));
+        let basic = BTreeMap::from([("www-authenticate".to_string(), "Basic".to_string())]);
+        assert!(!wants_oauth(401, &basic));
+    }
+}

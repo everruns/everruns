@@ -77,6 +77,12 @@ pub const ROUTES: &[(&str, &str, RouteAccess)] = &[
     ("GET", "/v1/channels/{channel_id}/chat/view", Read),
     ("PUT", "/v1/channels/{channel_id}/chat/view", Write),
     ("POST", "/v1/channels/{channel_id}/chat/main", Write),
+    ("GET", "/v1/channels/{channel_id}/chat/plugins", Read),
+    (
+        "PUT",
+        "/v1/channels/{channel_id}/chat/plugins/{plugin_id}",
+        Write,
+    ),
     (
         "GET",
         "/v1/channels/{channel_id}/sessions/{session_id}/work",
@@ -101,6 +107,8 @@ pub const ROUTES: &[(&str, &str, RouteAccess)] = &[
     ("GET", "/v1/e/{channel_id}/chat/view", Read),
     ("PUT", "/v1/e/{channel_id}/chat/view", Write),
     ("POST", "/v1/e/{channel_id}/chat/main", Write),
+    ("GET", "/v1/e/{channel_id}/chat/plugins", Read),
+    ("PUT", "/v1/e/{channel_id}/chat/plugins/{plugin_id}", Write),
     ("GET", "/v1/e/{channel_id}/sessions/{session_id}/work", Read),
     (
         "GET",
@@ -831,6 +839,7 @@ pub const ROUTES: &[(&str, &str, RouteAccess)] = &[
     ("GET", "/v1/platform/plugin_marketplaces/{id}/plugins", Read),
     ("POST", "/v1/platform/plugin_marketplaces/{id}/sync", Write),
     ("GET", "/v1/platform/plugins", Read),
+    ("GET", "/v1/platform/plugins/config", Read),
     ("POST", "/v1/platform/plugins", Write),
     ("DELETE", "/v1/platform/plugins/{id}", Write),
     ("GET", "/v1/platform/plugins/{id}", Read),
@@ -1130,6 +1139,8 @@ pub const ROUTES: &[(&str, &str, RouteAccess)] = &[
     ("DELETE", "/v1/platform/users/me", Never),
     ("PATCH", "/v1/platform/users/me", Write),
     ("GET", "/v1/platform/users/me/export", Never),
+    ("GET", "/v1/platform/users/me/plugins", Read),
+    ("PUT", "/v1/platform/users/me/plugins/{id}", Write),
     ("POST", "/v1/platform/users/me/switch-org", Never),
     ("GET", "/v1/platform/virtual-users", Read),
     ("POST", "/v1/platform/virtual-users", Write),

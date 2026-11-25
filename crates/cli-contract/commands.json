@@ -11303,6 +11303,58 @@
     ]
   },
   {
+    "wire_name": "list_my_plugins",
+    "path": [
+      "plugins",
+      "mine"
+    ],
+    "verb": "list",
+    "description": "List the organization's approved plugins with your own choices: added for yourself, or not.",
+    "method": "GET",
+    "http_path": "/v1/platform/users/me/plugins",
+    "args": [],
+    "examples": [
+      {
+        "intent": "See which approved plugins you added for yourself",
+        "command": "everruns plugins mine list"
+      }
+    ]
+  },
+  {
+    "wire_name": "set_my_plugin_choice",
+    "path": [
+      "plugins",
+      "mine"
+    ],
+    "verb": "set",
+    "description": "Add an approved plugin to your own conversations, or take it out.",
+    "method": "PUT",
+    "http_path": "/v1/platform/users/me/plugins/{id}",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Installed plugin id (`plugin_…`)."
+      },
+      {
+        "field": "enabled",
+        "long": "enabled",
+        "kind": "boolean",
+        "required": true,
+        "help": "In your new conversations, or not."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Add Visti to your own conversations",
+        "command": "everruns plugins mine set plugin_01h9 --enabled true"
+      }
+    ]
+  },
+  {
     "wire_name": "patch_installed_plugin",
     "path": [
       "plugins"

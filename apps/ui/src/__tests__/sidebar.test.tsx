@@ -135,7 +135,6 @@ const mockFeatureFlags = {
   extractions: true,
   skills: true,
   memory: true,
-  plugins: true,
   voice: true,
   observers: true,
   public_chat: true,
@@ -175,7 +174,6 @@ describe("Sidebar", () => {
       extractions: true,
       skills: true,
       memory: true,
-      plugins: true,
       voice: true,
       observers: true,
       public_chat: true,
@@ -398,7 +396,6 @@ describe("Sidebar", () => {
       evals: false,
       skills: false,
       memory: false,
-      plugins: false,
       observers: false,
     });
 
@@ -408,7 +405,6 @@ describe("Sidebar", () => {
     expect(screen.queryByText("Skills")).not.toBeInTheDocument();
     expect(screen.queryByText("Memory")).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Knowledge" })).toHaveAttribute("href", "/knowledge");
-    expect(screen.queryByText("Plugins")).not.toBeInTheDocument();
     expect(screen.queryByText("Quality")).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Approvals" })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Main chat" })).toHaveAttribute("href", "/chats");

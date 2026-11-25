@@ -14,6 +14,7 @@ import {
 } from "./reactions";
 import { SharedChat } from "./shared-chat";
 import { Account } from "./account";
+import { Customizations } from "./customizations";
 import { PublishedLanding, PublishedView, useWorkChatView } from "./published-view";
 import { consumeSse, streamFailure } from "../client/sse";
 import { presentViewer, type Viewer } from "../profile";
@@ -220,7 +221,8 @@ function WorkChat({ config }: { config: Config }) {
     [file, setFile] = useState<FileContent | null>(null),
     [edit, setEdit] = useState("");
   const [upload, setUpload] = useState<File[]>([]),
-    [sidebar, setSidebar] = useState(false);
+    [sidebar, setSidebar] = useState(false),
+    [customizing, setCustomizing] = useState(false);
   const [search, setSearch] = useState(""),
     [archived, setArchived] = useState(false),
     [nextPage, setNextPage] = useState<string | null>(null);
@@ -672,6 +674,7 @@ function WorkChat({ config }: { config: Config }) {
     setUpload([]);
     setNotice("");
     setSidebar(false);
+    setCustomizing(false);
     setWork([]);
   };
   return (
@@ -774,6 +777,17 @@ function WorkChat({ config }: { config: Config }) {
             </button>
           )}
         </nav>
+        {signedIn && (
+          <button
+            className={customizing ? "row customize selected" : "row customize"}
+            onClick={() => {
+              setCustomizing(true);
+              setSidebar(false);
+            }}
+          >
+            Customizations
+          </button>
+        )}
         <footer>
           {viewer ? <Account viewer={viewer} /> : <span>Work Chat</span>}
           {signedIn ? (
@@ -804,7 +818,8 @@ function WorkChat({ config }: { config: Config }) {
           )}
         </footer>
       </aside>
-      <main>
+      {customizing && <Customizations onBack={() => setCustomizing(false)} />}
+      <main hidden={customizing}>
         <header>
           <button
             className="mobile-menu"

@@ -61,7 +61,6 @@ describe("navigationGroupForPath", () => {
       "Harnesses",
       "Capabilities",
       "Skills",
-      "Plugins",
       "Knowledge",
       "Memory",
       "Virtual Users",

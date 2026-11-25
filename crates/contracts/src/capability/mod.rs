@@ -60,7 +60,8 @@ pub mod definition;
 
 pub use error::CapabilityError;
 pub use id::{
-    CapabilityId, PLUGIN_CAPABILITY_PREFIX, RESERVED_CAPABILITY_ID_NAMESPACE, is_plugin_capability,
+    ALL_APPROVED_PLUGINS_REF, CapabilityId, PLUGIN_CAPABILITY_PREFIX,
+    RESERVED_CAPABILITY_ID_NAMESPACE, is_all_approved_plugins, is_plugin_capability,
     parse_plugin_capability_id, plugin_capability_id, validate_capability_id,
 };
 pub use presets::{

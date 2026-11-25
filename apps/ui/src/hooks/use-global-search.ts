@@ -125,9 +125,8 @@ const ID_PREFIX_MAP: Record<
   plugin_: {
     category: "plugin",
     label: "Plugin",
-    path: "/plugins",
+    path: "/settings/plugins",
     listOnly: true,
-    flag: "plugins",
   },
   observer_: {
     category: "observer",
@@ -167,7 +166,6 @@ export function useGlobalSearch(query: string) {
   const skillsEnabled = featureFlags.skills;
   const evalsEnabled = featureFlags.evals;
   const memoryEnabled = featureFlags.memory;
-  const pluginsEnabled = featureFlags.plugins;
   const observersEnabled = featureFlags.observers;
   const { can } = usePolicies("durable");
   const durableAllowed = can("durable.view");
@@ -246,7 +244,7 @@ export function useGlobalSearch(query: string) {
     enabled: entitySearchEnabled,
   });
   const { data: installedPluginsData } = useInstalledPlugins({
-    enabled: pluginsEnabled && entitySearchEnabled,
+    enabled: entitySearchEnabled,
   });
   const { data: observersData } = useObservers({
     enabled: observersEnabled && entitySearchEnabled,
@@ -266,7 +264,7 @@ export function useGlobalSearch(query: string) {
     () => knowledgeData?.pages.flatMap((page) => page.data) ?? EMPTY_ARRAY,
     [knowledgeData],
   );
-  const installedPlugins = pluginsEnabled ? (installedPluginsData ?? EMPTY_ARRAY) : EMPTY_ARRAY;
+  const installedPlugins = installedPluginsData ?? EMPTY_ARRAY;
   const observers = observersEnabled ? (observersData ?? EMPTY_ARRAY) : EMPTY_ARRAY;
 
   return useMemo(() => {
@@ -651,7 +649,7 @@ export function useGlobalSearch(query: string) {
           icon: registryDomainIcons.plugins,
           title,
           subtitle: `Plugins > ${title}`,
-          href: "/plugins",
+          href: "/settings/plugins",
         });
         pluginCount++;
       }

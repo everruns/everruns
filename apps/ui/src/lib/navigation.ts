@@ -169,7 +169,7 @@ export const defaultActivityNavigation: NavigationItem[] = [
 function registryItem(href: keyof typeof registryNavigationByHref): NavigationItem {
   const { name, icon, keywords, description }: RegistryNavigationItem =
     registryNavigationByHref[href];
-  const flag = href === "/skills" ? "skills" : href === "/plugins" ? "plugins" : undefined;
+  const flag = href === "/skills" ? "skills" : undefined;
   return { name, href, icon, keywords, description, flag, experimental: Boolean(flag) };
 }
 
@@ -186,7 +186,6 @@ export const defaultBlocksNavigation: NavigationItem[] = [
   },
   registryItem("/capabilities"),
   registryItem("/skills"),
-  registryItem("/plugins"),
   {
     name: "Knowledge",
     description: "Organize collections, sources and searchable knowledge for agents.",

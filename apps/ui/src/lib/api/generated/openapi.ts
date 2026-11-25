@@ -244,6 +244,46 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/channels/{channel_id}/chat/plugins": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List work chat plugins
+     * @description The signed-in person's plugins in this Work Chat: the agent's, the ones they added, and approved ones they could add. Choices apply to new conversations.
+     */
+    get: operations["list_work_chat_plugins"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/channels/{channel_id}/chat/plugins/{plugin_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /**
+     * Set work chat plugin
+     * @description Add an approved plugin to your conversations in this Work Chat, or turn one off, as the channel allows.
+     */
+    put: operations["set_work_chat_plugin"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/channels/{channel_id}/chat/shared/{token}": {
     parameters: {
       query?: never;
@@ -731,6 +771,48 @@ export interface paths {
      * @description Resolve the consumer’s permanent main conversation.
      */
     post: operations["resolve_work_chat_main_legacy"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/e/{channel_id}/chat/plugins": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List work chat plugins legacy
+     * @deprecated
+     * @description The signed-in person's plugins in this Work Chat: the agent's, the ones they added, and approved ones they could add. Choices apply to new conversations.
+     */
+    get: operations["list_work_chat_plugins_legacy"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/e/{channel_id}/chat/plugins/{plugin_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /**
+     * Set work chat plugin legacy
+     * @deprecated
+     * @description Add an approved plugin to your conversations in this Work Chat, or turn one off, as the channel allows.
+     */
+    put: operations["set_work_chat_plugin_legacy"];
+    post?: never;
     delete?: never;
     options?: never;
     head?: never;
@@ -6384,6 +6466,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/platform/plugins/config": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Plugin config */
+    get: operations["plugin_config"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/platform/plugins/{id}": {
     parameters: {
       query?: never;
@@ -9510,6 +9609,40 @@ export interface paths {
      */
     get: operations["export_user_data"];
     put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/users/me/plugins": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List my plugins */
+    get: operations["list_my_plugins"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/users/me/plugins/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Set my plugin choice */
+    put: operations["set_my_plugin_choice"];
     post?: never;
     delete?: never;
     options?: never;
@@ -27391,6 +27524,61 @@ export interface components {
        */
       total: number;
     };
+    /** @description One approved plugin as a person sees it. */
+    PluginOption: {
+      /**
+       * @description What the plugin does.
+       * @example Publish web pages from the conversation
+       */
+      description: string;
+      /**
+       * @description Name to show people, when the manifest gives one.
+       * @example Stend
+       */
+      display_name?: string | null;
+      /**
+       * @description Whether it is in this person's new conversations.
+       * @example true
+       */
+      enabled: boolean;
+      /**
+       * @description What the plugin needs from the agent.
+       * @example workspace
+       */
+      environment: string;
+      /**
+       * @description Whether the agent provides what the plugin needs. Always true outside
+       *     an agent (Settings > Personal > Plugins).
+       * @example true
+       */
+      fits: boolean;
+      /**
+       * @description Installed plugin id (`plugin_…`).
+       * @example plugin_01933b5a00007000800000000000001
+       */
+      id: string;
+      /**
+       * @description Name from the plugin manifest.
+       * @example stend
+       */
+      name: string;
+      /**
+       * @description An admin still has to choose how one of its MCP servers signs in.
+       * @example false
+       */
+      needs_admin_setup: boolean;
+      origin: components["schemas"]["PluginOrigin"];
+      /**
+       * @description Installed version.
+       * @example 1.2.0
+       */
+      version?: string | null;
+    };
+    /**
+     * @description Where a plugin in a person's list comes from.
+     * @enum {string}
+     */
+    PluginOrigin: "agent" | "added" | "available";
     /**
      * @description Which usage a policy counts. Absent counts everything.
      * @enum {string}
@@ -32410,6 +32598,14 @@ export interface components {
        *     with `manager_context_changed` when the stored one differs.
        */
       expected_revision?: number | null;
+    };
+    /** @description Request body for a person's choice about one plugin. */
+    SetPluginChoice: {
+      /**
+       * @description In this person's new conversations, or not.
+       * @example true
+       */
+      enabled: boolean;
     };
     /** @description Request body for setting a preference value. */
     SetPreferenceRequest: {
@@ -38714,6 +38910,21 @@ export interface components {
      * @enum {string}
      */
     WorkAttentionKind: "approval" | "question" | "action";
+    /** @description A person's plugins in one Work Chat channel. */
+    WorkChatPluginList: {
+      /**
+       * @description The channel lets people add approved plugins.
+       * @example true
+       */
+      allow_adding: boolean;
+      /**
+       * @description The channel lets people turn off the agent's plugins.
+       * @example false
+       */
+      allow_turning_off: boolean;
+      /** @description The agent's plugins, the ones this person added, and ones they could add. */
+      plugins: components["schemas"]["PluginOption"][];
+    };
     /** @description One measured fact. */
     WorkFact: {
       /** @description Which fact. */
@@ -39704,6 +39915,97 @@ export interface operations {
         content?: never;
       };
       /** @description Channel or resource unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  list_work_chat_plugins: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        channel_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["WorkChatPluginList"];
+        };
+      };
+      /** @description Consumer sign-in required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Channel or resource unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  set_work_chat_plugin: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        channel_id: string;
+        plugin_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SetPluginChoice"];
+      };
+    };
+    responses: {
+      /** @description Saved; the updated list */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["WorkChatPluginList"];
+        };
+      };
+      /** @description The agent cannot run this plugin */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Consumer sign-in required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description The channel does not allow this choice */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Channel or plugin unavailable */
       404: {
         headers: {
           [name: string]: unknown;
@@ -41139,6 +41441,97 @@ export interface operations {
         content?: never;
       };
       /** @description Channel or resource unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  list_work_chat_plugins_legacy: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        channel_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["WorkChatPluginList"];
+        };
+      };
+      /** @description Consumer sign-in required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Channel or resource unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  set_work_chat_plugin_legacy: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        channel_id: string;
+        plugin_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SetPluginChoice"];
+      };
+    };
+    responses: {
+      /** @description Saved; the updated list */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["WorkChatPluginList"];
+        };
+      };
+      /** @description The agent cannot run this plugin */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Consumer sign-in required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description The channel does not allow this choice */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Channel or plugin unavailable */
       404: {
         headers: {
           [name: string]: unknown;
@@ -55086,6 +55479,26 @@ export interface operations {
       };
     };
   };
+  plugin_config: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Resource config for plugins */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ResourceConfigResponse"];
+        };
+      };
+    };
+  };
   get_plugin: {
     parameters: {
       query?: never;
@@ -62187,6 +62600,80 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
+      };
+    };
+  };
+  list_my_plugins: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Approved plugins with your own choices */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PluginOption"][];
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  set_my_plugin_choice: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Plugin install ID (plugin_...) */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SetPluginChoice"];
+      };
+    };
+    responses: {
+      /** @description Choice saved; the updated list */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PluginOption"][];
+        };
+      };
+      /** @description No approved plugin with that ID */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
       };
     };
   };

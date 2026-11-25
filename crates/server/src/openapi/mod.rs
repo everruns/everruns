@@ -231,6 +231,8 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         api::agent_api::work_chat::experience::read_work_chat_share,
         api::agent_api::work_chat::resolve_work_chat_main,
         api::agent_api::work_chat::list_work_chat_tasks,
+        api::agent_api::work_chat::list_work_chat_plugins,
+        api::agent_api::work_chat::set_work_chat_plugin,
         api::agent_api::work_chat::get_work_chat_files,
         api::agent_api::work_chat::write_work_chat_file,
         api::agent_api::work_chat::delete_work_chat_file,
@@ -612,6 +614,9 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         api::plugins::delete_plugin_marketplace,
         api::plugins::sync_plugin_marketplace,
         api::plugins::get_marketplace_catalog,
+        api::plugins::plugin_config,
+        api::plugins::list_my_plugins,
+        api::plugins::set_my_plugin_choice,
     ),
     components(
         schemas(

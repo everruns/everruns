@@ -15550,6 +15550,15 @@
     "read_only": true
   },
   {
+    "description": "List the organization's approved plugins with your own choices: added for yourself, or not.",
+    "input_schema": {
+      "description": "List the organization's approved plugins with your own choices.",
+      "type": "object"
+    },
+    "name": "list_my_plugins",
+    "read_only": true
+  },
+  {
     "description": "List notifications for the current user.",
     "input_schema": {
       "properties": {
@@ -20232,6 +20241,29 @@
       "type": "object"
     },
     "name": "set_message_feedback",
+    "read_only": false
+  },
+  {
+    "description": "Add an approved plugin to your own conversations, or take it out.",
+    "input_schema": {
+      "description": "Add an approved plugin for yourself, or remove it.",
+      "properties": {
+        "enabled": {
+          "description": "In your new conversations, or not.",
+          "type": "boolean"
+        },
+        "id": {
+          "description": "Installed plugin id (`plugin_…`).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "enabled"
+      ],
+      "type": "object"
+    },
+    "name": "set_my_plugin_choice",
     "read_only": false
   },
   {

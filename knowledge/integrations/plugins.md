@@ -192,6 +192,104 @@ cannot hydrate into a runtime. An owner or admin must choose `user` or
 UI. The update changes only those selected server entries; it does not infer
 from organization presets or rewrite other installed definitions.
 
+## Plain Agent Plugins MCP servers
+
+A portable `mcp.json` server with no `com.everruns` `mcpServers` entry is
+compiled, not skipped: the format says nothing about sign-in, and the server is
+the one that knows. The compiler lists it in `CompiledPlugin::auth_probe`, and
+install (and update) sends it an unauthenticated `initialize`. A `401` with a
+`WWW-Authenticate: Bearer` challenge (RFC 9728) makes it an OAuth server that
+acts as the person using it (`actsAs: user`, each person signs in); anything
+else, including no answer, leaves it public (`actsAs: none`). An update keeps
+an identity an admin chose before. The rule: a wrong "public" shows itself on
+the first call (the server refuses), a wrong "OAuth" would ask every person to
+sign in for nothing.
+
+## Environment
+
+What a plugin needs from the agent that runs it is declared, never guessed:
+`extensions["com.everruns"].environment` in `plugin.json`, one of
+`conversation` (no workspace, no shell), `workspace` (files and skills, the
+Worker level), `virtual-shell` (Bashkit Worker) and `sandbox` (Sandbox
+Worker). Each includes the ones before it. Agent Plugins 1.0.0 has no field for
+it, and a plugin's files cannot tell a skill that reads docs from one that runs
+scripts. The Plugin directory sets it on every entry after review.
+
+`everruns_core::plugins::plugin_requirement` checks a declaration only for
+contradictions: skills need at least `workspace`, skill scripts at least
+`virtual-shell`. A contradiction raises the requirement and warns, so a wrong
+declaration can only make a plugin harder to load. No declaration means
+`sandbox` until someone says otherwise. What an agent provides comes from its
+resolved capabilities (`PluginEnvironment::provided_by`: `session_sandbox`,
+`bashkit_shell`, `session_file_system`). Installed plugins report
+`environment` and `environment_declared`.
+
+The shared collector enforces it on the merged capability list (harness, agent
+and session together), since the file system usually comes from the harness
+and the plugin from the agent: hydration stamps the requirement on the plugin's
+definition and collection skips a plugin the list cannot run. Explicitly picked
+plugins carry only a declared requirement, so installs from before
+declarations keep working where they already run; plugins that come from "all
+approved" carry the strict default.
+
+## Agent plugins
+
+An agent takes either every approved plugin or the ones it names. "All" is one
+stored ref, `plugin:_all` (`everruns_contracts::ALL_APPROVED_PLUGINS_REF`),
+expanded at build time to the org's active installs minus those whose MCP
+server still needs an acting identity, so a plugin an admin approves later
+reaches the agent without editing it. The agent's own read keeps the ref
+unexpanded, so saving the agent back never freezes "all" into a fixed list.
+
+## Personal plugins
+
+A person adds approved plugins to their own conversations in Settings >
+Personal > Plugins, and in Work Chat's Customizations page. A choice is one
+`plugin_choices` row per organization, principal and install: the person's
+user principal, or the Work Chat visitor's own principal when it resolves to
+no user. Choices are read when a conversation starts and written into its
+session capabilities, so they apply to new conversations and never change one
+already running.
+
+Each Work Chat channel decides what people may change
+(`WorkChatConfig.plugins`): `allow_adding` lists approved plugins the agent
+does not include, `allow_turning_off` lets a person switch off one it does.
+Both default off, so a channel keeps every conversation on exactly the agent's
+plugins until its owner opens it up. A turned-off plugin is a session-level
+`plugin:{id}` with config `{"enabled": false}`
+(`everruns_core::capabilities::is_plugin_turned_off`): hydration leaves it as is, it
+overrides the agent's ref when layers merge, and the collector drops it.
+
+A plugin is always one row. Its skills and MCP servers are never listed as
+separate items in the agent, Settings or Work Chat lists; the chat's MCP list
+shows only servers a person added.
+
+Plugins are no longer behind a feature flag: the `plugins` flag is retired and
+the management page moved from `/plugins` to Settings > Organization >
+Plugins.
+
+## Loading on request
+
+The `plugins` capability (`everruns_capabilities::capabilities::plugins`)
+gives an agent `search_plugins` and `load_plugin`, so a person can say "set up
+Visti" and the agent finds and loads it:
+
+- Search lists the org's approved plugins (installed and active), whether each
+  fits the agent and is already loaded, and catalog plugins nobody approved
+  (`needs_approval`). The agent names those for an admin; it never installs
+  one, since a model-chosen argument must not widen what the org allows.
+- Load refuses a plugin the agent's environment does not satisfy, or whose MCP
+  server still needs an admin's identity choice. Otherwise it writes the
+  chat's own records: skills under `/.agents/skills/{skill}/` (seeded where
+  absent), MCP servers as session MCP records with source `plugin`
+  (`everruns_core::session_mcp_servers`). Skills list at once; MCP tools join
+  from the next turn. A record never replaces a server someone else added
+  under the same name.
+- The call runs in the control plane (`worker_plugins_call`): over the worker
+  link on v1, through the injected server on a data plane (`plugins_call`).
+  Cells and agentd know nothing about plugins, and the session's definition is
+  unchanged, which is what lets a v2 session load mid-conversation.
+
 ## Marketplaces
 
 Org-scoped registry of plugin catalogs (`plugin_marketplaces`):
@@ -209,13 +307,21 @@ plugin entries with `name`, `source` (relative path, `github`, `url`,
 Unknown fields are preserved and ignored.
 
 The **default marketplace** is seeded for every organization. It is named
-`everruns`, uses `source_type: github`, and points at `everruns/plugins`
-(that repository's `.claude-plugin/marketplace.json`, the same catalog coding
-agents install from). Seeding happens at org creation via
+`everruns`, uses `source_type: github`, and points at the Everruns Plugin
+directory, [`everruns/plugin-directory`](https://github.com/everruns/plugin-directory):
+reviewed plugins in plain Agent Plugins 1.0.0 format, each pinned to its
+source, license-checked, and tested in Everruns. Its catalog is
+`directory.json` in the marketplace layout; sync reads `directory.json` first,
+then `.claude-plugin/marketplace.json`, then `marketplace.json`, for GitHub and
+local sources. `everruns/plugins` stays where Everruns writes its own plugins
+for every host; the directory copies them pinned to a commit, beside
+third-party ones. Seeding happens at org creation via
 `org_init::seed_default_plugin_marketplace`; existing orgs received it via the
-one-time backfill in `058_backfill_default_marketplace.sql`, and
-`196_default_marketplace_everruns_plugins.sql` repointed rows still at the old
-`everruns/everruns` source.
+one-time backfill in `058_backfill_default_marketplace.sql`,
+`196_default_marketplace_everruns_plugins.sql` repointed rows at the old
+`everruns/everruns` source, and
+`20261125015425_default_marketplace_plugin_directory.sql` repointed rows still
+at `everruns/plugins`.
 The marketplace is deletable/disableable like any other marketplace; "default"
 means seeded, not privileged. Deletion is permanent, the marketplace is
 never re-seeded lazily on read.
@@ -249,6 +355,11 @@ GET               /v1/platform/plugin_marketplaces/{id}/plugins     # catalog
 GET/POST          /v1/platform/plugins                              # installed; install
 GET/PATCH/DELETE  /v1/platform/plugins/{id}
 POST              /v1/platform/plugins/{id}/update
+GET               /v1/platform/plugins/config                       # caller's policies
+GET               /v1/platform/users/me/plugins                     # personal list
+PUT               /v1/platform/users/me/plugins/{id}                # add / remove
+GET               /v1/channels/{channel_id}/chat/plugins            # Work Chat list
+PUT               /v1/channels/{channel_id}/chat/plugins/{plugin_id}
 ```
 
 Resources follow the dual-ID pattern ([id-schema.md](../foundations/id-schema.md)).
@@ -268,9 +379,15 @@ API, full management parity with the API, not a read-only view:
   SHA) and install warnings; enable/disable; uninstall; **Update** action
   shown when the synced catalog resolves to a newer version or SHA than the
   installed pin. Update is always explicit user action in v1.
+- These live in Settings > Organization > Plugins: approved plugins as rows
+  with an on/off switch, the plugins available to approve below, and sources
+  (marketplaces) in a dialog. The default marketplace is titled "Plugin
+  directory".
+- The agent page has a Plugins setting: all approved or a pick, and "Load
+  others when asked" (the `plugins` capability). Rows show which plugins the
+  agent cannot run, judged from its harness chain plus its own capabilities.
 - Installed plugins also surface in the existing capability picker as
-  `plugin:{install_public_id}` entries, so assignment to agents/harnesses reuses the
-  capability UI unchanged.
+  `plugin:{install_public_id}` entries for harnesses.
 
 ## Runtime mode
 
