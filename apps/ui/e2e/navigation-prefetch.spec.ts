@@ -133,6 +133,8 @@ const STARTUP_API_ALLOWLIST = new Set([
   "/api/v1/platform/health-issues",
   "/api/v1/platform/sandboxes/stats",
   "/api/v1/platform/mcp-servers/config",
+  // Settings > Plugins is shown to people who hold `plugin.view`.
+  "/api/v1/platform/plugins/config",
   // Shared navigation gates the Extractions destination on model management.
   // The small policy map is required by the shell; extraction data is never prefetched.
   "/api/v1/platform/models/config",
