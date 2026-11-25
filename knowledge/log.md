@@ -6,6 +6,8 @@
 
 ## 2026-11-24
 
+- [Session Spend](execution/session-spend.md): tool-less completions retain bounded, payload-free usage on both hosting lanes, including streaming and unreadable reviews; [Application API](framework/application-api.md) preserves query isolation.
+
 - [Channels](integrations/channels.md#output-delivery-checkpoints): protocol-marked pending rows survive the pre-intent crash window under legacy adapters; missing channels retain reconciliation evidence. Deploy the shared-host compatibility baseline before rolling the Channelkit bridge.
 - [Agents using agents](runtime-resources/agents-using-agents.md): name the agent roster Team, link created children to their parent in breadcrumbs, and make ZIP exports bundle linked team agents for fresh-destination imports. Keep source links and credential isolation.
 

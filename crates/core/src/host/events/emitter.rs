@@ -105,6 +105,9 @@ impl CommitClass {
         if request.is_ephemeral() {
             return Self::Live;
         }
+        if request.is_session_completion_usage() {
+            return Self::Barrier;
+        }
         if let EventData::OutputMessageCompleted(data) = &request.data {
             return if data.message.has_tool_calls() {
                 Self::Barrier

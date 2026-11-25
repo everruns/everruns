@@ -166,8 +166,8 @@ impl InProcessRuntime {
     /// The same store-backed host that capability commands receive in
     /// [`Self::execute_command`]: credential-free turn context after message
     /// filters and prompt contributions, and tool-less out-of-band completions
-    /// against the session's resolved model and provider. Nothing it does
-    /// appends to canonical history or runs a turn.
+    /// against the session's resolved model and provider. Completions append only
+    /// usage observations, never conversation messages, and do not run a turn.
     pub async fn command_host(
         &self,
         session_id: SessionId,
@@ -194,6 +194,7 @@ impl InProcessRuntime {
             (*self.host_composition.capability_registry()).clone(),
             self.host_composition.driver_registry().clone(),
         )
+        .with_usage_emitter(self.event_emitter.clone(), Default::default())
         .with_file_store(self.file_store.clone())
         .with_dreaming(Arc::new(
             crate::host::dreaming::RuntimeDreamingCommand::new(self.clone(), org, session_id)

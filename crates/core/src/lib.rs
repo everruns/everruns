@@ -229,6 +229,8 @@ pub use everruns_contracts::runtime::llm_error_hook;
 // side to keep the crate dependency one-directional (core -> everruns-contracts).
 pub(crate) mod attachment_labels;
 pub mod llm_conversions;
+#[cfg(feature = "engine")]
+mod llm_usage;
 pub use everruns_contracts::runtime::message;
 pub use everruns_contracts::runtime::message_filter;
 pub use everruns_contracts::runtime::message_retriever;

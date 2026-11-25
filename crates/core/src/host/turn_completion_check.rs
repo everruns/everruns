@@ -189,7 +189,10 @@ pub(crate) async fn check_finishing_turn<A: RuntimeHostAdapter>(
         )),
         (None, None) => {
             review(
-                &command_host(adapter, org_id, session_id),
+                &command_host(adapter, org_id, session_id).with_usage_emitter(
+                    adapter.event_emitter(),
+                    EventContext::turn(turn_id, input_message_id),
+                ),
                 messages,
                 candidate,
             )

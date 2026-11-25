@@ -8,6 +8,7 @@ use utoipa::ToSchema;
 use crate::runtime::typed_id::{EventId, ExecId, MessageId, SessionId, TurnId};
 
 // Split out of one 5300-line file; every item keeps its visibility, so the module's public surface is unchanged.
+mod auxiliary_usage;
 mod compaction_data;
 mod file_voice_data;
 mod llm_data;

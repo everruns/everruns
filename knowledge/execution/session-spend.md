@@ -30,10 +30,16 @@ estimate otherwise.
 | Part | Source | Priced by |
 |---|---|---|
 | Model calls in turns | `llm_generations` (v1) or the shard's log (v2, `spend` read) | provider-reported cost, else the model price table |
-| Background calls (titles, compaction, dreaming) | the same rows with no turn | as above |
+| Auxiliary calls (titles, compaction, dreaming, completion reviews) | the same rows with no turn | as above |
 | Images (`generate_image`, `edit_image`) | the tool results' usage | the image model's price table |
 | Sandboxes | lifecycle spans (`sandbox_state_transitions`) | org price list (`sandbox.time`), else the provider list price |
 | Subagents | each child's own spend, two levels, 100 per session | as above |
+
+Tool-less session completions use the same generation ledger as turn calls. They
+retain provider-reported usage and actual cost (or the normal model-price estimate),
+without prompts, answers or conversation steps. Automatic reviews belong to the
+reviewed turn; independent host completions have no turn. Missing final provider
+usage stays unknown. Review spend does not consume the logical continuation budget.
 
 `wasted_usd` is the cost of calls in failed turns, `current_turn_usd` the asking
 turn's share. `basis` is the weakest basis of any part; `partial` says some part had no

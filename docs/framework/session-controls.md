@@ -127,6 +127,12 @@ let verdict = session
 # }
 ```
 
+These calls retain provider usage and cost as metadata-only generation events,
+without adding conversation messages or exposing their private prompts and answers.
+Reported usage is counted even when the returned answer fails review validation.
+Streaming completions commit usage before yielding the final chunk. A cancelled
+call without final provider metadata cannot report an unknown charge.
+
 When the host owns the review policy and its token budget, `complete` sends a
 request the host curates instead. The provider receives exactly its system
 prompts and messages, with no tools. The session adds none of its own
