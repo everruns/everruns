@@ -26,6 +26,51 @@ use super::RouteAccess::{self, Never, PerCommand, Read, Write};
 /// `(method, path, class)` for hand-written routes in the OpenAPI document,
 /// sorted by path.
 pub const ROUTES: &[(&str, &str, RouteAccess)] = &[
+    ("GET", "/v1/application-hosts/{slug}", Read),
+    ("GET", "/v1/applications/{application_id}/config", Read),
+    ("GET", "/v1/applications/{application_id}/manifest", Read),
+    (
+        "GET",
+        "/v1/applications/{application_id}/memory/{slug}",
+        Read,
+    ),
+    (
+        "PUT",
+        "/v1/applications/{application_id}/memory/{slug}",
+        Write,
+    ),
+    (
+        "DELETE",
+        "/v1/applications/{application_id}/memory/{slug}",
+        Write,
+    ),
+    // Reading a Room can enroll the admitted Application participant.
+    (
+        "GET",
+        "/v1/applications/{application_id}/rooms/{slug}",
+        Write,
+    ),
+    (
+        "GET",
+        "/v1/applications/{application_id}/rooms/{slug}/messages",
+        Read,
+    ),
+    (
+        "POST",
+        "/v1/applications/{application_id}/rooms/{slug}/messages",
+        Write,
+    ),
+    (
+        "GET",
+        "/v1/applications/{application_id}/rooms/{slug}/replies/{message_id}",
+        Read,
+    ),
+    (
+        "POST",
+        "/v1/applications/{application_id}/runtime-auth",
+        Never,
+    ),
+    ("GET", "/v1/platform/application-launchers", Read),
     ("GET", "/v1/channels/{channel_id}/chat/shared/{token}", Read),
     (
         "POST",
