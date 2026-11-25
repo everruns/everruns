@@ -32,6 +32,13 @@ Warnings and skipped checks also remain unverified in the summary. Domain tests
 separately cover unknown-name errors and production delivery URL validation;
 they do not certify the unexercised upstream probes.
 
+Additional Everruns checks use the same real `/mcp` fixture and a signed loopback
+receiver to verify independent message IDs across subscriptions and callback
+consent reuse across refreshes and arguments. They are recorded separately in
+`everruns-checks.json`; they are not upstream scenarios or official assertion
+counts. The identity check demonstrably fails against the preceding server even
+when its 36 supported upstream assertions pass.
+
 Poll and push scenarios (four total) are not run: Everruns offers webhook delivery.
 The separate server subscription-management scenario hardcodes an unresolvable
 `conformance.invalid` callback, incompatible with production callback verification;

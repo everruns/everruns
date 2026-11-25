@@ -167,6 +167,7 @@ pub struct McpEventsService {
     ui_base: Option<String>,
     retry_delays: Vec<Duration>,
     permission_resolver: Arc<dyn PermissionResolver>,
+    verified_callbacks: moka::future::Cache<(i64, Uuid, String), ()>,
 }
 
 impl McpEventsService {
@@ -186,6 +187,15 @@ impl McpEventsService {
                 Duration::from_secs(60),
             ],
             permission_resolver: Arc::new(everruns_core::DefaultPermissionResolver),
+            // Consent contains no secrets. Bound its lifetime and memory;
+            // concurrent subscriptions to one principal/URL share one handshake.
+            verified_callbacks: moka::future::Cache::builder()
+                .max_capacity(8 * 1024 * 1024)
+                .weigher(|key: &(i64, Uuid, String), _: &()| {
+                    key.2.len().saturating_add(256).min(u32::MAX as usize) as u32
+                })
+                .time_to_live(MAX_TTL)
+                .build(),
         }
     }
 
@@ -297,8 +307,23 @@ impl McpEventsService {
             EventsError::internal("MCP Events need secrets encryption configured")
         })?;
         let id = subscription_id(subscriber, target);
-        self.verify_callback(subscriber.org_id, &target.url, &id, &key)
-            .await?;
+        // Cached consent never waives URL validation or delivery-time pinning.
+        let (mut callback_url, _) =
+            everruns_contracts::url_validation::validate_url_dns_pinned(&target.url)
+                .await
+                .map_err(|error| PostError::from_url(&target.url, error).into_verification())?;
+        callback_url.set_fragment(None);
+        self.verified_callbacks
+            .try_get_with(
+                (
+                    subscriber.org_id,
+                    subscriber.user_id,
+                    callback_url.to_string(),
+                ),
+                self.verify_callback(subscriber.org_id, &target.url, &id, &key),
+            )
+            .await
+            .map_err(|error| error.as_ref().clone())?;
 
         let ttl = ttl_ms
             .map(Duration::from_millis)
@@ -366,17 +391,17 @@ impl McpEventsService {
         let challenge = format!("{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple());
         let body = serde_json::to_vec(&json!({ "type": "verification", "challenge": challenge }))
             .map_err(|e| EventsError::internal(e.to_string()))?;
-        let message_id = format!("msg_verification_{}", Uuid::now_v7().simple());
+        let message_id = format!("msg_verification_{}", Uuid::new_v4().simple());
         let response = self
             .post(org_id, url, id, &message_id, key, body)
             .await
-            .map_err(|error| match error {
-                PostError::Blocked(reason) => EventsError::invalid(reason),
-                PostError::Transport(detail) if detail.to_lowercase().contains("timed out") => {
-                    EventsError::verification("timeout")
-                }
-                PostError::Transport(_) => EventsError::verification("challenge_failed"),
-            })?;
+            .map_err(PostError::into_verification)?;
+        if (400..500).contains(&response.status) {
+            return Err(EventsError::verification("http_4xx"));
+        }
+        if (500..600).contains(&response.status) {
+            return Err(EventsError::verification("http_5xx"));
+        }
         let echoed = serde_json::from_slice::<Value>(&response.body)
             .ok()
             .and_then(|value| value.get("challenge")?.as_str().map(str::to_string));
@@ -455,10 +480,7 @@ impl McpEventsService {
                 "data": data,
                 "cursor": Value::Null,
             });
-            if self
-                .deliver(&subscription, &event.id.to_string(), &body)
-                .await
-            {
+            if self.deliver(&subscription, &body).await {
                 delivered += 1;
             }
         }
@@ -512,7 +534,6 @@ impl McpEventsService {
         {
             self.deliver(
                 subscription,
-                &Uuid::now_v7().to_string(),
                 &json!({
                     "type":"terminated",
                     "error":{"code":-32024,"message":"Forbidden","data":{"reason":"Access revoked"}}
@@ -525,12 +546,7 @@ impl McpEventsService {
 
     /// Sign and POST one event, retrying on failure. SEP-3415 makes `410`
     /// and `413` non-retryable for this delivery only, preserving the subscription.
-    async fn deliver(
-        &self,
-        subscription: &McpEventSubscriptionRow,
-        event_id: &str,
-        body: &Value,
-    ) -> bool {
+    async fn deliver(&self, subscription: &McpEventSubscriptionRow, body: &Value) -> bool {
         let Some(key) = self.subscription_key_bytes(subscription) else {
             return false;
         };
@@ -541,9 +557,12 @@ impl McpEventsService {
             tracing::warn!(subscription = %subscription.subscription_key, "MCP event body over the size cap");
             return false;
         }
+        // One message on one subscription, independent of the upstream event.
+        // Generate once outside the retry loop to preserve transport dedupe.
+        let nonce = Uuid::new_v4().simple();
         let message_id = match body.get("type").and_then(Value::as_str) {
-            Some(kind) => format!("msg_{kind}_{event_id}"),
-            None => format!("msg_{}", event_id.trim_start_matches("event_")),
+            Some(kind) => format!("msg_{kind}_{nonce}"),
+            None => format!("msg_{nonce}"),
         };
         let mut delays = self.retry_delays.iter();
         loop {
@@ -608,7 +627,7 @@ impl McpEventsService {
         }
         let (parsed, pinned) = everruns_contracts::url_validation::validate_url_dns_pinned(url)
             .await
-            .map_err(|e| PostError::Blocked(format!("callback URL is not allowed: {e}")))?;
+            .map_err(|error| PostError::from_url(url, error))?;
         let timestamp = Utc::now().timestamp().to_string();
         let signature = sign(key, message_id, &timestamp, &body);
         let mut request = EgressRequest::new("POST", url, EgressRequestKind::Mcp)
@@ -637,6 +656,42 @@ impl McpEventsService {
 enum PostError {
     Blocked(String),
     Transport(String),
+}
+
+impl PostError {
+    fn from_url(url: &str, error: everruns_contracts::url_validation::UrlValidationError) -> Self {
+        // The shared validator represents DNS failure/empty answers as the
+        // original host, and a private DNS answer with a distinct blocked-address
+        // detail. A syntactically valid but unreachable URL is an endpoint error;
+        // it is not an invalid parameter and delivery retries remain applicable.
+        if let everruns_contracts::url_validation::UrlValidationError::BlockedHost(host) = &error
+            && let Ok(parsed) = everruns_contracts::url_validation::validate_safe_url(url)
+            && parsed.host_str() == Some(host.as_str())
+        {
+            return Self::Transport("callback DNS resolution failed".into());
+        }
+        Self::Blocked("callback URL is not allowed".into())
+    }
+
+    fn into_verification(self) -> EventsError {
+        match self {
+            Self::Blocked(reason) => EventsError::invalid(reason),
+            Self::Transport(detail) => {
+                let detail = detail.to_ascii_lowercase();
+                let reason = if detail.contains("timed out") {
+                    "timeout"
+                } else if ["tls", "ssl", "certificate"]
+                    .iter()
+                    .any(|term| detail.contains(term))
+                {
+                    "tls_error"
+                } else {
+                    "connection_refused"
+                };
+                EventsError::verification(reason)
+            }
+        }
+    }
 }
 
 /// Runs delivery off the event path: listeners must not block event storage.
@@ -803,6 +858,32 @@ pub fn verify_signature(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn callback_dns_failure_is_an_endpoint_error_and_private_dns_stays_blocked() {
+        use everruns_contracts::url_validation::validate_url_with_resolver;
+        let url = "https://callback.example/hook";
+        let unresolved = validate_url_with_resolver(url, |_, _| async {
+            Err(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "synthetic DNS failure",
+            ))
+        })
+        .await
+        .unwrap_err();
+        let error = PostError::from_url(url, unresolved).into_verification();
+        assert_eq!(error.code, -32027);
+        assert_eq!(error.data, Some(json!({"reason":"connection_refused"})));
+
+        let private = validate_url_with_resolver(url, |_, port| async move {
+            Ok(vec![std::net::SocketAddr::from(([127, 0, 0, 1], port))])
+        })
+        .await
+        .unwrap_err();
+        let error = PostError::from_url(url, private).into_verification();
+        assert_eq!(error.code, -32602);
+        assert!(!error.message.contains("127.0.0.1"));
+    }
 
     #[test]
     fn subscription_id_ignores_argument_order_but_not_the_subscriber() {

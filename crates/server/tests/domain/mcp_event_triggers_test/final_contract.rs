@@ -94,45 +94,96 @@ async fn same_event_on_two_subscriptions_is_delivered_to_both() {
 }
 
 #[tokio::test]
-async fn refresh_with_null_cursor_forgets_previous_replay_position() {
+async fn refresh_with_null_or_omitted_cursor_forgets_previous_replay_position() {
+    for omitted in [false, true] {
+        let server = TestServer::in_memory().await;
+        let fake = FakeEventsServer::install(&server);
+        let agent_id = create_agent(&server).await;
+        let trigger = create_trigger(&server, &agent_id).await;
+        fake.subscription()
+            .post(&server, "msg_before_null", &event("x", "old-position"))
+            .await
+            .assert_status(StatusCode::OK);
+        fake.null_cursor.store(true, Ordering::SeqCst);
+        fake.omit_cursor.store(omitted, Ordering::SeqCst);
+        let row = server
+            .db
+            .get_agent_trigger(DEFAULT_ORG_ID, trigger_id(&trigger))
+            .await
+            .unwrap()
+            .unwrap();
+        server
+            .mcp_event_triggers
+            .subscribe(&row, false)
+            .await
+            .unwrap();
+        let state = server
+            .db
+            .get_agent_trigger_mcp_subscription(trigger_id(&trigger))
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(state.cursor.is_none());
+        server
+            .mcp_event_triggers
+            .subscribe(&row, false)
+            .await
+            .unwrap();
+        assert!(
+            fake.calls("events/subscribe")
+                .last()
+                .unwrap()
+                .params
+                .get("cursor")
+                .is_none()
+        );
+    }
+}
+
+#[tokio::test]
+async fn omitted_event_and_gap_cursor_clear_previous_replay_position() {
     let server = TestServer::in_memory().await;
     let fake = FakeEventsServer::install(&server);
     let agent_id = create_agent(&server).await;
     let trigger = create_trigger(&server, &agent_id).await;
-    fake.subscription()
-        .post(&server, "msg_before_null", &event("x", "old-position"))
-        .await
-        .assert_status(StatusCode::OK);
-    fake.null_cursor.store(true, Ordering::SeqCst);
-    let row = server
-        .db
-        .get_agent_trigger(DEFAULT_ORG_ID, trigger_id(&trigger))
-        .await
-        .unwrap()
-        .unwrap();
-    server
-        .mcp_event_triggers
-        .subscribe(&row, false)
-        .await
-        .unwrap();
-    let state = server
-        .db
-        .get_agent_trigger_mcp_subscription(trigger_id(&trigger))
-        .await
-        .unwrap()
-        .unwrap();
-    assert!(state.cursor.is_none());
-    server
-        .mcp_event_triggers
-        .subscribe(&row, false)
-        .await
-        .unwrap();
-    assert!(
-        fake.calls("events/subscribe")
-            .last()
+    let subscription = fake.subscription();
+    for gap in [false, true] {
+        subscription
+            .post(
+                &server,
+                if gap {
+                    "msg_before_gap"
+                } else {
+                    "msg_before_event"
+                },
+                &event("old", "old-position"),
+            )
+            .await
+            .assert_status(StatusCode::OK);
+        let mut body = if gap {
+            json!({"type":"gap"})
+        } else {
+            event("new", "unused")
+        };
+        body.as_object_mut().unwrap().remove("cursor");
+        subscription
+            .post(
+                &server,
+                if gap {
+                    "msg_no_gap_cursor"
+                } else {
+                    "msg_no_event_cursor"
+                },
+                &body,
+            )
+            .await
+            .assert_status(StatusCode::OK);
+        let state = server
+            .db
+            .get_agent_trigger_mcp_subscription(trigger_id(&trigger))
+            .await
             .unwrap()
-            .params
-            .get("cursor")
-            .is_none()
-    );
+            .unwrap();
+        assert!(state.cursor.is_none());
+    }
 }

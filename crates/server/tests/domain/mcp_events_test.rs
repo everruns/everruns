@@ -199,6 +199,88 @@ fn assert_signed(request: &everruns_core::EgressRequest) {
     );
 }
 
+struct CallbackFailure(Option<u16>, &'static str);
+
+struct DelayedCallbackConsent;
+
+#[async_trait::async_trait]
+impl everruns_core::EgressService for DelayedCallbackConsent {
+    async fn send(
+        &self,
+        request: everruns_core::EgressRequest,
+    ) -> everruns_core::EgressResult<everruns_core::EgressResponse> {
+        assert_signed(&request);
+        let body: Value = serde_json::from_slice(&request.body).unwrap();
+        // Make both concurrent subscribes reach the shared initialization.
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        Ok(everruns_core::EgressResponse {
+            status: 200,
+            headers: Default::default(),
+            body: serde_json::to_vec(&json!({"challenge":body["challenge"]})).unwrap(),
+        })
+    }
+    async fn send_stream(
+        &self,
+        _: everruns_core::EgressRequest,
+    ) -> everruns_core::EgressResult<everruns_core::EgressStreamResponse> {
+        Err(everruns_core::EgressError::invalid("unused test transport"))
+    }
+}
+
+#[async_trait::async_trait]
+impl everruns_core::EgressService for CallbackFailure {
+    async fn send(
+        &self,
+        _: everruns_core::EgressRequest,
+    ) -> everruns_core::EgressResult<everruns_core::EgressResponse> {
+        match self.0 {
+            Some(status) => Ok(everruns_core::EgressResponse {
+                status,
+                headers: Default::default(),
+                body: b"private callback response".to_vec(),
+            }),
+            None => Err(everruns_core::EgressError::Transport(self.1.to_string())),
+        }
+    }
+
+    async fn send_stream(
+        &self,
+        _: everruns_core::EgressRequest,
+    ) -> everruns_core::EgressResult<everruns_core::EgressStreamResponse> {
+        Err(everruns_core::EgressError::invalid("unused test transport"))
+    }
+}
+
+#[tokio::test]
+async fn callback_failures_use_categories_and_never_cache_failed_consent() {
+    let server = TestServer::in_memory().await;
+    let subscriber = member(&server).await;
+    let params = subscribe_params("session.completed", json!({}));
+    for (status, detail, reason) in [
+        (Some(400), "", "http_4xx"),
+        (Some(503), "", "http_5xx"),
+        (Some(200), "", "challenge_failed"),
+        (None, "timed out", "timeout"),
+        (None, "TLS certificate failure", "tls_error"),
+        (None, "connection refused", "connection_refused"),
+    ] {
+        *server.webhooks.forward.write() =
+            Some(std::sync::Arc::new(CallbackFailure(status, detail)));
+        let error = subscribe(&server, &subscriber, params.clone())
+            .await
+            .unwrap_err();
+        assert_eq!(error.code, -32027);
+        assert_eq!(error.data, Some(json!({"reason":reason})));
+    }
+    *server.webhooks.forward.write() = None;
+    subscribe(&server, &subscriber, params).await.unwrap();
+    assert_eq!(
+        server.webhooks.requests.lock().len(),
+        7,
+        "failed consent is retried"
+    );
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn events_are_available_despite_retired_org_override() {
     let server = TestServer::in_memory().await;
@@ -273,6 +355,11 @@ async fn subscribe_verifies_the_callback_and_is_idempotent() {
 
     let again = subscribe(&server, &subscriber, params).await.unwrap();
     assert_eq!(again.id, first.id);
+    assert_eq!(
+        server.webhooks.requests.lock().len(),
+        1,
+        "refresh reuses consent"
+    );
     let rows = server
         .db
         .list_active_mcp_event_subscriptions(
@@ -293,6 +380,67 @@ async fn subscribe_verifies_the_callback_and_is_idempotent() {
     .await
     .unwrap();
     assert_ne!(other.id, first.id, "subscriptions are per subscriber");
+    assert_eq!(
+        server.webhooks.requests.lock().len(),
+        2,
+        "another principal proves consent"
+    );
+}
+
+#[tokio::test]
+async fn callback_consent_covers_arguments_and_coalesces_concurrent_subscribes() {
+    let server = TestServer::in_memory().await;
+    *server.webhooks.forward.write() = Some(std::sync::Arc::new(DelayedCallbackConsent));
+    let subscriber = member(&server).await;
+    let (session_id, _) = session(&server).await;
+    let all = subscribe_params("session.completed", json!({}));
+    let filtered = subscribe_params("session.completed", json!({"session_id":session_id}));
+    let (first, second) = tokio::join!(
+        subscribe(&server, &subscriber, all.clone()),
+        subscribe(&server, &subscriber, filtered),
+    );
+    assert_ne!(first.unwrap().id, second.unwrap().id);
+    assert_eq!(server.webhooks.requests.lock().len(), 1);
+    subscribe(&server, &subscriber, all.clone()).await.unwrap();
+    assert_eq!(server.webhooks.requests.lock().len(), 1);
+    let mut other_url = all;
+    other_url["delivery"]["url"] = json!(format!("{HOOK}/other"));
+    subscribe(&server, &subscriber, other_url).await.unwrap();
+    assert_eq!(
+        server.webhooks.requests.lock().len(),
+        2,
+        "consent is URL scoped"
+    );
+}
+
+#[tokio::test]
+async fn one_event_has_distinct_signed_message_ids_on_two_subscriptions() {
+    let server = TestServer::in_memory().await;
+    let subscriber = member(&server).await;
+    let (session_id, _) = session(&server).await;
+    for arguments in [json!({}), json!({"session_id":session_id})] {
+        subscribe(
+            &server,
+            &subscriber,
+            subscribe_params("session.completed", arguments),
+        )
+        .await
+        .unwrap();
+    }
+    let event = turn_completed(&session_id);
+    assert_eq!(server.mcp_events.dispatch(&event).await, 2);
+    let messages = deliveries(&server);
+    assert_eq!(messages.len(), 2);
+    assert_ne!(
+        messages[0].0.headers["webhook-id"],
+        messages[1].0.headers["webhook-id"]
+    );
+    for (request, body) in messages {
+        assert_signed(&request);
+        assert_eq!(body["eventId"], event.id.to_string());
+        let nonce = request.headers["webhook-id"].strip_prefix("msg_").unwrap();
+        assert_eq!(uuid::Uuid::parse_str(nonce).unwrap().get_version_num(), 4);
+    }
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

@@ -68,8 +68,14 @@ the client can also open the session in place.
 - **Callbacks are verified and egress-safe.** HTTPS only, resolved and pinned
   against private ranges, no redirects, through the host egress service. The
   signing secret is stored encrypted.
+- **Callback consent is scoped to principal and URL.** A bounded, TTL-scoped
+  cache coalesces concurrent verification and covers refreshes and changed
+  arguments. Failed verification is not cached. Cache hits still validate
+  the callback URL; deliveries always revalidate and pin their destination.
 - **Retries.** Three retries with backoff, same `webhook-id`, fresh timestamp
-  and signature each attempt. Delivery runs off the event path.
+  and signature each attempt. The message ID is random for each event on
+  each subscription and independent of the upstream `eventId`. Delivery runs
+  off the event path.
 - **Subscriptions expire.** Default 24 hours, `ttlMs` clamps to one minute to
   seven days; the client refreshes by subscribing again before
   `refreshBefore`.
@@ -106,8 +112,8 @@ event pipeline: filter, dedupe, session routing, delivery log.
 - **Refresh follows the server grant.** The background sweep uses the same
   secret and last cursor; new subscriptions wake an idle sweep, and short
   grants shorten its pause before expiry. Expired backlogs drain promptly.
-  An explicit null cursor clears an earlier position; a missing optional
-  cursor leaves it intact. Signed gap envelopes advance the position without
+  An explicit null or omitted cursor clears an earlier position, including
+  refresh responses and signed gaps. Signed gap envelopes advance the position without
   starting a run. Signed permission termination stops renewal; missing or
   changed descriptors schedule rediscovery. Shared database state and
   idempotent subscribe keep replica races harmless.
