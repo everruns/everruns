@@ -617,5 +617,5 @@ weight = 2
 direction = "pass"
 cheapest = "L2"
 scales = "per_shard"
-built_from = "shard_soak.py restarts (exit 75), when a soak restarts a node"
+built_from = "prove_memory_restart.py (leader and a follower driven to 98% under load), and shard_soak.py restarts (exit 75) when a soak restarts a node"
 watches = ["crates/agentd/src/memwatch.rs", "crates/agentd/src/pressure.rs"]
