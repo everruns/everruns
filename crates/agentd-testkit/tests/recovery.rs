@@ -165,7 +165,8 @@ async fn every_disk_lost_keeps_answered_creates_and_started_calls() {
     assert_eq!(record["id"].as_str(), Some(quiet.as_str()), "{record}");
     // The turn finishes, and the tool that had started did not run again.
     fleet.turns(&session, 1).await;
-    let kinds = types(&fleet.events(&session).await);
+    let events = fleet.events(&session).await;
+    let kinds = types(&events);
     assert!(kinds.contains(&"tool.started"), "{kinds:?}");
     assert_eq!(
         executions(ledger, &session),

@@ -66,6 +66,29 @@ pub struct Shipper {
     wal: Wal,
     state: Mutex<Progress>,
     busy: tokio::sync::Mutex<()>,
+    /// The least time between two ship-first objects ([`flush`]).
+    ///
+    /// [`flush`]: Self::flush
+    flush_every: Duration,
+    /// When the last ship-first object was written.
+    last_flush: Mutex<Option<Instant>>,
+}
+
+/// Default least time between two ship-first objects of a shard
+/// (`AGENTD_SHIP_FIRST_EVERY_MS` overrides it).
+///
+/// Decision (owner, 2026-11-25): a store write per ship-first write would
+/// follow the tool rate into millions of billed requests a day. Writers
+/// that arrive within one interval share the next object, so a shard
+/// writes at most about ten a second for them, whatever the rate; each
+/// such write waits at most one interval longer.
+pub const FLUSH_EVERY: Duration = Duration::from_millis(100);
+
+fn flush_every() -> Duration {
+    std::env::var("AGENTD_SHIP_FIRST_EVERY_MS")
+        .ok()
+        .and_then(|ms| ms.parse().ok())
+        .map_or(FLUSH_EVERY, Duration::from_millis)
 }
 
 #[derive(Default)]
@@ -87,6 +110,8 @@ impl Shipper {
             wal,
             state: Mutex::default(),
             busy: tokio::sync::Mutex::new(()),
+            flush_every: flush_every(),
+            last_flush: Mutex::new(None),
         }
     }
 
@@ -205,7 +230,8 @@ impl Shipper {
     /// Ship through `index` now, unless it already is. `latest` reads the
     /// node's applied index once this writer's turn comes.
     ///
-    /// Decision: writers that ship first queue on one lock, so each ships
+    /// Decision: writers that ship first queue on one lock, at most one
+    /// object every [`FLUSH_EVERY`], so each ships
     /// everything applied when its turn comes, not only its own entry. The
     /// writers queued behind it then find their entries shipped and return
     /// without a write: one object per turn of the lock however many
@@ -223,7 +249,16 @@ impl Shipper {
         if self.covers(index, inc) {
             return Ok(());
         }
-        self.ship_locked(latest().max(index), inc).await.map(|_| ())
+        // Wait out the rest of the interval since the last object, holding
+        // the lock: writers arriving meanwhile queue behind it and find
+        // their entries in the object it writes.
+        let since = *self.last_flush.lock();
+        if let Some(wait) = since.and_then(|at| self.flush_every.checked_sub(at.elapsed())) {
+            tokio::time::sleep(wait).await;
+        }
+        let shipped = self.ship_locked(latest().max(index), inc).await.map(|_| ());
+        *self.last_flush.lock() = Some(Instant::now());
+        shipped
     }
 
     fn covers(&self, index: u64, inc: u64) -> bool {
@@ -270,6 +305,34 @@ mod tests {
 
     use super::*;
     use crate::wal::tests::{append_durable, entry};
+
+    /// Ship-first objects are at least `FLUSH_EVERY` apart: a writer right
+    /// after one waits out the interval, and its object carries whatever
+    /// was applied meanwhile.
+    #[tokio::test]
+    async fn ship_first_objects_are_an_interval_apart() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let wal = Wal::open(dir.path()).expect("wal");
+        append_durable(&wal, (1..=20).map(|index| entry(1, index)).collect()).await;
+        let store = Store::open("memory:///").expect("store");
+        let shipper = Shipper::new(store.clone(), 0, wal);
+        shipper.flush(5, 1, || 5).await.expect("first");
+        let started = Instant::now();
+        shipper.flush(6, 1, || 20).await.expect("second");
+        assert!(
+            started.elapsed() >= FLUSH_EVERY - Duration::from_millis(5),
+            "{:?}",
+            started.elapsed()
+        );
+        // Already covered: no wait, no object.
+        let started = Instant::now();
+        shipper.flush(18, 1, || 20).await.expect("covered");
+        assert!(started.elapsed() < FLUSH_EVERY / 2);
+        assert_eq!(
+            store.shipped(0, 1).await.expect("list"),
+            vec![(1, 5), (6, 20)]
+        );
+    }
 
     /// Writers that ship first and queue together cost one object, not one
     /// each: the first through the lock ships what every one of them needs.
