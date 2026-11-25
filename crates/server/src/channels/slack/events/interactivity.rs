@@ -122,9 +122,27 @@ impl InteractionPayload {
         binding: &ApprovalBinding,
     ) -> Option<super::SlackEvent> {
         if !binding.private {
-            return self.decision_event(clicker);
+            let event = self.decision_event(clicker)?;
+            // Keep legacy signed public cards usable, but bind every newly
+            // rendered card to its original conversation before claiming it.
+            if let Some((channel, thread)) = &binding.reply_destination {
+                // A scheduled, top-level card has no original thread yet;
+                // only that card's own root may become the resumed thread.
+                let expected_thread = if thread.is_empty() {
+                    event.ts.as_deref()?
+                } else {
+                    thread.as_str()
+                };
+                if channel.is_empty()
+                    || event.channel.as_ref() != Some(channel)
+                    || event.thread_ts.as_deref() != Some(expected_thread)
+                {
+                    return None;
+                }
+            }
+            return Some(event);
         }
-        let (channel, thread) = binding.private_destination.as_ref()?;
+        let (channel, thread) = binding.reply_destination.as_ref()?;
         if channel.is_empty() || thread.is_empty() || self.channel.as_ref()?.id != *channel {
             return None;
         }
@@ -765,7 +783,7 @@ mod tests {
             "private action".into(),
         );
         binding.private = true;
-        binding.private_destination = Some(("C1".into(), "1.0".into()));
+        binding.reply_destination = Some(("C1".into(), "1.0".into()));
         let mut body = click(APPROVE_ACTION_ID, "U2", "U1");
         body.as_object_mut().unwrap().remove("response_url");
         body.as_object_mut().unwrap().remove("message");
@@ -854,20 +872,66 @@ mod tests {
     }
 
     #[test]
+    fn public_approval_checks_original_conversation_and_legacy_format() {
+        let mut body = click(APPROVE_ACTION_ID, "U_R", "U_R");
+        body["message"]["thread_ts"] = serde_json::json!("1.0");
+        let mut binding: ApprovalBinding = serde_json::from_str(&binding_value("U_R")).unwrap();
+        binding.reply_destination = Some(("C1".into(), "1.0".into()));
+        let payload = parse_interaction(&form_body(&body)).unwrap();
+        assert!(payload.approval_event("U_R", &binding).is_some());
+        body["message"]["thread_ts"] = serde_json::json!("2.0");
+        let redirected = parse_interaction(&form_body(&body)).unwrap();
+        assert!(redirected.approval_event("U_R", &binding).is_none());
+        body["channel"]["id"] = serde_json::json!("C_OTHER");
+        assert!(
+            parse_interaction(&form_body(&body))
+                .unwrap()
+                .approval_event("U_R", &binding)
+                .is_none()
+        );
+        // The previous wire format is still accepted with its signed reference.
+        binding.reply_destination = None;
+        assert!(payload.approval_event("U_R", &binding).is_some());
+    }
+
+    #[test]
+    fn top_level_public_card_resumes_only_its_own_root() {
+        let mut body = click(APPROVE_ACTION_ID, "U_R", "U_R");
+        let mut binding: ApprovalBinding = serde_json::from_str(&binding_value("U_R")).unwrap();
+        binding.reply_destination = Some(("C1".into(), String::new()));
+        let payload = parse_interaction(&form_body(&body)).unwrap();
+        assert_eq!(
+            payload
+                .approval_event("U_R", &binding)
+                .unwrap()
+                .thread_ts
+                .as_deref(),
+            Some("1.2")
+        );
+        body["message"]["thread_ts"] = serde_json::json!("OTHER");
+        assert!(
+            parse_interaction(&form_body(&body))
+                .unwrap()
+                .approval_event("U_R", &binding)
+                .is_none()
+        );
+    }
+
+    #[test]
     fn ephemeral_click_resumes_original_thread_without_message_body() {
         let mut body = click(APPROVE_ACTION_ID, "U_R", "U_R");
         body.as_object_mut().unwrap().remove("message");
         body["container"] = serde_json::json!({"message_ts": "ephemeral-ts"});
         let mut binding: ApprovalBinding = serde_json::from_str(&binding_value("U_R")).unwrap();
         binding.private = true;
-        binding.private_destination = Some(("C1".into(), "1.0".into()));
+        binding.reply_destination = Some(("C1".into(), "1.0".into()));
         let payload = parse_interaction(&form_body(&body)).unwrap();
         let event = payload.approval_event("U_R", &binding).unwrap();
         assert_eq!(event.thread_ts.as_deref(), Some("1.0"));
         assert_eq!(event.channel.as_deref(), Some("C1"));
-        binding.private_destination = Some(("C_OTHER".into(), "1.0".into()));
+        binding.reply_destination = Some(("C_OTHER".into(), "1.0".into()));
         assert!(payload.approval_event("U_R", &binding).is_none());
-        binding.private_destination = None;
+        binding.reply_destination = None;
         assert!(payload.approval_event("U_R", &binding).is_none());
     }
 

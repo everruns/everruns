@@ -103,10 +103,11 @@ pub(crate) struct ApprovalBinding {
     /// Visibility is stamped into the signed card, not read from mutable config.
     #[serde(default, rename = "p", skip_serializing_if = "is_false")]
     pub private: bool,
-    /// Ephemeral message timestamps are not public thread roots. Carry the
-    /// original destination so a click can resume even without a message body.
+    /// Original reply destination for new public and private cards. Older public
+    /// cards omit it; private cards require it because ephemeral timestamps
+    /// cannot identify the original conversation.
     #[serde(default, rename = "d", skip_serializing_if = "Option::is_none")]
-    pub private_destination: Option<(String, String)>,
+    pub reply_destination: Option<(String, String)>,
 }
 
 fn is_false(value: &bool) -> bool {
@@ -134,7 +135,7 @@ impl ApprovalBinding {
             turn_id,
             action,
             private: false,
-            private_destination: None,
+            reply_destination: None,
         }
     }
 }
@@ -343,7 +344,7 @@ mod tests {
             turn_id: Some("turn_1".to_string()),
             action: "delete the staging database".to_string(),
             private: false,
-            private_destination: None,
+            reply_destination: None,
         }
     }
 

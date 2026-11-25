@@ -305,9 +305,7 @@ fn approval_blocks(
                 prompt.action.clone(),
             );
             binding.private = private;
-            if private {
-                binding.private_destination = Some((destination.0.into(), destination.1.into()));
-            }
+            binding.reply_destination = Some((destination.0.into(), destination.1.into()));
             build_approval_card(prompt, &binding)
         });
     if private && (blocks.is_none() || destination.0.is_empty() || destination.1.is_empty()) {
@@ -361,9 +359,32 @@ mod tests {
             .unwrap();
         let binding: ApprovalBinding =
             serde_json::from_str(blocks.actions[0].value.as_deref().unwrap()).unwrap();
+        assert_eq!(binding.reply_destination, Some(("C1".into(), "1.0".into())));
         assert!(binding.private);
         assert_eq!(binding.requester, "U1");
         assert_eq!(binding.turn_id.as_deref(), Some("turn"));
         assert_eq!(binding.session_id, session.to_string());
+    }
+    #[test]
+    fn public_card_carries_original_reply_destination() {
+        let prompt = ApprovalPrompt {
+            action: "public action".into(),
+            question: None,
+            turn_id: Some("turn".into()),
+        };
+        let card = approval_blocks(
+            SessionId::from_uuid(uuid::Uuid::now_v7()),
+            &prompt,
+            Some("U1"),
+            true,
+            false,
+            ("C1", "1.0"),
+        )
+        .unwrap()
+        .unwrap();
+        let binding: ApprovalBinding =
+            serde_json::from_str(card.actions[0].value.as_deref().unwrap()).unwrap();
+        assert!(!binding.private);
+        assert_eq!(binding.reply_destination, Some(("C1".into(), "1.0".into())));
     }
 }

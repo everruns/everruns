@@ -210,7 +210,7 @@ impl ChannelsBuilder {
     /// Download files messages link to (a Slack file) through this egress
     /// service. Defaults to the Framework's runtime egress
     /// ([`batteries::runtime_egress_service`](crate::batteries::runtime_egress_service)),
-    /// which stays offline unless a network feature is enabled.
+    /// enabled by the `channels` feature and subject to host network policy.
     pub fn egress(mut self, egress: Arc<dyn everruns_core::EgressService>) -> Self {
         self.egress = Some(egress);
         self

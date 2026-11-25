@@ -2,6 +2,10 @@
 
 ## 2026-11-24
 
+- [Channelkit migration](integrations/channelkit-migration.md): opt-in Framework channels enable policy-aware host egress by default; real-model qualification exposed replies blocked by an offline service despite completed generation.
+
+- [Channelkit migration](integrations/channelkit-migration.md): new public approval cards retain their original reply destination and reject redirected callbacks before consuming the durable decision; legacy signed cards remain compatible.
+
 - [Slack modernization](integrations/slack-modernization.md): Socket Mode follows host HTTP proxy/TLS settings through a validated upgrade, bounds provider frames and omits ticket-bearing URLs from connection diagnostics.
 
 - [Channels](integrations/channels.md#output-delivery-checkpoints): protocol-marked pending rows survive the pre-intent crash window under legacy adapters; missing channels retain reconciliation evidence. Deploy the shared-host compatibility baseline before rolling the Channelkit bridge.

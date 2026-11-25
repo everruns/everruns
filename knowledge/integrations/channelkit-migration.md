@@ -38,11 +38,18 @@ socket connection supervision and app provisioning/OAuth lifecycle. Privacy-scop
 user projection and reactions use Channelkit's trusted API escape hatch.
 
 The server retains response policy, durable approvals and explicit-action claims.
+New approval cards bind the original reply destination for both public and private
+placement, checked before the durable claim. Older signed public cards retain their
+previous wire format; private cards still require the original destination.
 Native history context preserves subtype filtering. Identity and thread reads use
 Slack GET query parameters; native files and standalone actions retain host-scoped egress. Explicit posts use the single
 message API, including full plain fallback only when it fits, and never retry an
 uncertain acceptance. Worker RPC preserves partial receipts and retry advice without
 transferring bot credentials.
+
+The Framework `channels` feature enables its default policy-aware host egress;
+otherwise the provider model can finish while Slack delivery remains offline.
+An application-supplied egress service remains authoritative for every provider hop.
 
 The output checkpoint foundation is merged. Opting drivers use a fenced write-ahead
 ledger in Memory, serve SQLite and server PostgreSQL; confirmed split parts and native

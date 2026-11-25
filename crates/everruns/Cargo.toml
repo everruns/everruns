@@ -216,6 +216,7 @@ channel-auth = ["everruns-core/channel-auth"]
 # delivery, recovery). Brings the webhook and Slack drivers; no HTTP server.
 channels = [
     "everruns-core/channels",
+    "everruns-core/direct-egress",
     "dep:futures",
     "dep:everruns-integrations",
     "everruns-integrations/webhook-channel",

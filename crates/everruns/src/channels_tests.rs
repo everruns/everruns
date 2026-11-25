@@ -493,3 +493,29 @@ async fn slack_installation_discovery_and_reply_use_the_framework_hosts_egress()
         1
     );
 }
+
+#[tokio::test]
+async fn channels_default_egress_applies_request_network_policy() {
+    let error = crate::batteries::runtime_egress_service()
+        .send(
+            everruns_core::EgressRequest::new(
+                "GET",
+                "https://blocked.example.invalid/",
+                everruns_core::EgressRequestKind::Integration,
+            )
+            .network_access(Some(
+                everruns_core::network_access::NetworkAccessList::allow_only([
+                    "allowed.example.invalid",
+                ]),
+            )),
+        )
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(
+            error,
+            everruns_core::EgressError::NetworkAccessDenied { .. }
+        ),
+        "{error:?}"
+    );
+}

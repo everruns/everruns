@@ -1,6 +1,6 @@
 ---
 title: "Slack channels use checkpointed delivery"
-description: "Slack delivery preserves accepted output across interruptions and uses Channelkit for provider operations."
+description: "Slack delivery preserves accepted output across interruptions, records confirmed message references, and uses Channelkit for provider operations."
 date: 2026-11-24
 kind: breaking
 significance: notable
