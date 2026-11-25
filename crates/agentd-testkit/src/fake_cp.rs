@@ -56,6 +56,8 @@ struct Ledger {
     org_events: Vec<(String, String)>,
     /// Tapped session events: `(org, session, event)`.
     events: Vec<(String, String, serde_json::Value)>,
+    /// Tapped event pointers (`Record::Events`): org, session, range, types.
+    event_ranges: Vec<(String, String, i32, i32, Vec<String>)>,
     /// Task transitions for webhooks: `(org, session, transition, task,
     /// target urls)`.
     task_transitions: Vec<TaskTransitionSeen>,
@@ -336,6 +338,13 @@ impl FakeCp {
     /// The session events the shards tapped onto the feed, in feed order.
     pub fn tapped_events(&self) -> Vec<(String, String, serde_json::Value)> {
         self.ledger.lock().events.clone()
+    }
+
+    /// The tapped event pointers the shards put on the feed, in feed order:
+    /// (org, session, from, to, types). A test reads the events they name
+    /// from the session, as the control plane does.
+    pub fn tapped_ranges(&self) -> Vec<(String, String, i32, i32, Vec<String>)> {
+        self.ledger.lock().event_ranges.clone()
     }
 
     pub fn refreshed(&self) -> Vec<(String, String, u64)> {
@@ -629,6 +638,16 @@ async fn feed(
                     ledger
                         .events
                         .push((record.org_id.clone(), session_id, event));
+                }
+                Record::Events {
+                    session_id,
+                    from,
+                    to,
+                    types,
+                } => {
+                    ledger
+                        .event_ranges
+                        .push((record.org_id.clone(), session_id, from, to, types));
                 }
                 Record::TaskTransition {
                     session_id,

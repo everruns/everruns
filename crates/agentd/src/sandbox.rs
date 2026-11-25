@@ -131,6 +131,19 @@ impl OrgSandboxes {
         backends
     }
 
+    /// `session`'s connection resolver with provider keys from here, for
+    /// work outside a turn (the lease sweep, `lease_sweep.rs`).
+    pub fn connections(
+        self: &Arc<Self>,
+        session: SessionId,
+    ) -> Arc<dyn everruns_core::UserConnectionResolver> {
+        crate::lookups::connections(
+            Arc::new(SandboxKeys(self.clone())),
+            self.material.get(),
+            session,
+        )
+    }
+
     /// The provider key the session's pinned sandbox names.
     async fn key(
         &self,

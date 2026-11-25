@@ -437,6 +437,49 @@ This is intentionally a rolling-window detector: hosts are not required to read 
 
 See `crates/core/src/builtins/loop_detection.rs`.
 
+### Tool error contract
+
+Every tool failure is one of three outcomes, and the outcome decides who sees
+what. This holds for built-in tools, capability tools, platform commands
+reached through `/mcp` and the Platform capability, and tools proxied from
+attached MCP servers. It is part of the definition of done for any new or
+changed tool ([Shipping](../project/shipping.md)).
+
+| Outcome | Example | Agent sees | Implementation |
+|---|---|---|---|
+| Refusal | no permission, run has no person behind it, target outside the run | the reason, as a tool error | `AgentLoopError::Refused`; gRPC `PermissionDenied`; `CommandErrorKind::Forbidden` |
+| Actionable error | bad argument, unknown worker name, missing connection | what failed **and** what to do next | `ToolExecutionResult::tool_error`, `connection_required`; MCP `hint` |
+| Fault | database down, decode failure, bug | a generic "internal error"; details go to logs and traces only | `ToolExecutionResult::internal_error` |
+
+Rules:
+
+1. **A refusal is a result, not a fault.** The agent must be able to tell it
+   was refused and change course (ask a person, pick another worker, stop).
+   `ToolExecutionResult::internal_error` turns an `AgentLoopError::Refused`
+   into a tool error itself, so a capability that forwards host errors
+   cannot hide one ([`tools.rs`](../../crates/contracts/src/tools.rs)). Hosts
+   keep refusals typed across the worker link: the gRPC worker maps
+   `PermissionDenied` to `Refused`
+   ([`status_error.rs`](../../crates/worker/src/grpc_adapters/status_error.rs)),
+   the in-process adapters map `Forbidden` the same way.
+2. **Say what to do next.** An error the agent can act on names the next
+   step in its own terms ("list_threads lists your team", "connect GitHub
+   first"), not only what went wrong. MCP results put it in `hint`
+   ([MCP error contract](../integrations/mcp.md#error-contract)).
+3. **Refusals and actionable errors carry no internal detail.** Their text is
+   written for a model in a multi-tenant system: no SQL, stack traces,
+   internal ids of other tenants, hostnames or raw upstream bodies
+   (TM-TRIGGER-006). A message built with `format!("...: {e}")` from an
+   internal error is a fault, not an actionable error.
+4. **Faults stay hidden.** Only a genuine fault becomes "internal error".
+   Turning a fault into a tool error to be helpful leaks; turning a refusal
+   into a fault to be safe blinds the agent. Both are bugs.
+5. **Test each outcome a tool can produce**, including the refusal paths for
+   every caller that may reach it: a person, a schedule or event (no person),
+   a channel end user, a subagent or thread. The 2026-11 scheduled
+   coordinator bug (everruns#5645) was a refusal reported as a fault, on a
+   caller nobody tested.
+
 ### Tool Policies
 
 - `auto`: Execute immediately without approval

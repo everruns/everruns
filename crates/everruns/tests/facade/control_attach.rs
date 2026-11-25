@@ -42,7 +42,12 @@ fn slow() -> Model {
 
 async fn raw(socket: &Path, line: &str) -> String {
     let mut stream = UnixStream::connect(socket).await.unwrap();
-    stream.write_all(line.as_bytes()).await.unwrap();
+    if let Err(error) = stream.write_all(line.as_bytes()).await {
+        // An oversized frame can be rejected before its write finishes.
+        // Still require the server's actual protocol response below.
+        assert!(line.len() > everruns::control::MAX_REQUEST_BYTES as usize);
+        assert_eq!(error.kind(), std::io::ErrorKind::BrokenPipe);
+    }
     let mut reply = String::new();
     BufReader::new(stream).read_line(&mut reply).await.unwrap();
     reply

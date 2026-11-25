@@ -5,16 +5,14 @@
 
 use std::collections::HashMap;
 
-use everruns_contracts::DriverId;
 use everruns_contracts::driver_registry::{HostedToolCall, HostedToolCallStatus};
 use everruns_contracts::openai_hosted_tools::{
-    HOSTED_TOOLS_DRIVER_IDS, OPENAI_HOSTED_TOOLS_OPTION, hosted_calls_cost_usd,
+    HOSTED_TOOLS_DRIVER_IDS, OPENAI_HOSTED_TOOLS_OPTION,
 };
 use serde_json::Value;
 
-use crate::engine::driver_registry::LlmCompletionMetadata;
 use crate::engine::error::{AgentLoopError, Result};
-use crate::engine::events::{EventContext, EventRequest, HostedToolCallData, TokenUsage};
+use crate::engine::events::{EventContext, EventRequest, HostedToolCallData};
 use crate::engine::typed_id::{SessionId, TurnId};
 
 /// The `tool.hosted_call` event for one hosted call state change.
@@ -42,64 +40,7 @@ pub(super) fn hosted_call_event(
     )
 }
 
-/// Usage for one generation. Cost is tracked as two values: the provider's
-/// authoritative inline cost when present (OpenRouter `usage.cost`), and a
-/// price-table estimate from the model profile, plus hosted tool calls, which
-/// bill per call on top of tokens. Keeping both lets consumers prefer the
-/// actual charge while reconciling estimate-vs-actual drift.
-pub(super) fn completion_usage(
-    meta: &LlmCompletionMetadata,
-    provider_type: &DriverId,
-    model: &str,
-) -> Option<TokenUsage> {
-    let (input, output) = (meta.prompt_tokens?, meta.completion_tokens?);
-    // Priced at the tier that served the call, not the one requested.
-    let tokens = crate::engine::model_profiles::estimate_cost_usd_for_speed(
-        provider_type,
-        model,
-        input,
-        output,
-        meta.cache_read_tokens.unwrap_or(0),
-        meta.cache_creation_tokens.unwrap_or(0),
-        meta.service_tier.as_deref(),
-    );
-    let prompt = input
-        .saturating_add(meta.cache_read_tokens.unwrap_or(0))
-        .saturating_add(meta.cache_creation_tokens.unwrap_or(0));
-    let tokens = match crate::engine::model_profiles::cache_write_1h_surcharge_usd(
-        provider_type,
-        model,
-        prompt,
-        meta.cache_creation_1h_tokens.unwrap_or(0),
-    ) {
-        Some(surcharge) => tokens.map(|tokens| tokens + surcharge),
-        None => tokens,
-    };
-    let tokens = match crate::engine::model_profiles::cache_write_12h_surcharge_usd(
-        provider_type,
-        model,
-        prompt,
-        meta.cache_creation_12h_tokens.unwrap_or(0),
-        meta.service_tier.as_deref(),
-    ) {
-        Some(surcharge) => tokens.map(|tokens| tokens + surcharge),
-        None => tokens,
-    };
-    let hosted = hosted_calls_cost_usd(&meta.hosted_tool_calls, model);
-    let estimated = match (tokens, hosted) {
-        (Some(tokens), Some(hosted)) => Some(tokens + hosted),
-        (tokens, hosted) => tokens.or(hosted),
-    };
-    Some(
-        TokenUsage::with_cache(
-            input,
-            output,
-            meta.cache_read_tokens,
-            meta.cache_creation_tokens,
-        )
-        .with_cost(meta.provider_cost_usd, estimated),
-    )
-}
+pub(super) use crate::llm_usage::completion_usage;
 
 /// Whether the provider runs tools inside this request. Those tools never
 /// surface as agent tool calls, so reissuing the request can duplicate their
@@ -134,6 +75,7 @@ pub(super) fn ensure_hosted_tools_supported(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use everruns_contracts::{DriverId, driver_registry::LlmCompletionMetadata};
     use serde_json::json;
 
     fn hosted() -> HashMap<String, Value> {

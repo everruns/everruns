@@ -94,7 +94,7 @@ async fn session_definition(
     let declaration = crate::domains::agent_definitions::compile(&layers)?;
     let mut package = declaration.agent;
     let binding_key = format!("{agent_key}:{session}");
-    super::mcp::prepare_layers(cp, org_id, &binding_key, agent_id, &layers, &mut package).await?;
+    super::mcp::prepare_layers(cp, org_id, &binding_key, &layers, &mut package).await?;
     super::sandboxes::strip(&mut package);
     crate::injected::attach(&mut package, &crate::injected::served());
     Ok(package)

@@ -551,6 +551,18 @@ pub enum Record {
         session_id: String,
         event: Value,
     },
+    /// A session's committed events in `from..=to` include some of the
+    /// types its org's policy asks for (`types`): the control plane reads
+    /// them from the session's history on its shard. Decision (2026-11-25):
+    /// a pointer rather than a copy ([`Record::Event`], kept for records
+    /// written before), so tapped events no longer sit in every replica's
+    /// feed state until the control plane drains it.
+    Events {
+        session_id: String,
+        from: i32,
+        to: i32,
+        types: Vec<String>,
+    },
     /// One of a session's tasks reached a state its webhooks name
     /// (parity, Phase B): a terminal state (always, for the org's task
     /// webhooks), or waiting for input or an outbound message when one of
@@ -661,6 +673,7 @@ impl Record {
             Record::Usage { session_id, .. }
             | Record::Session { session_id, .. }
             | Record::Event { session_id, .. }
+            | Record::Events { session_id, .. }
             | Record::TaskTransition { session_id, .. }
             | Record::SessionResource { session_id, .. }
             | Record::Lease { session_id, .. }
@@ -677,6 +690,7 @@ impl Record {
             Record::SecretRefreshed { .. } => "SecretRefreshed",
             Record::ConfigApplied { .. } => "ConfigApplied",
             Record::Event { .. } => "Event",
+            Record::Events { .. } => "Events",
             Record::TaskTransition { .. } => "TaskTransition",
             Record::SessionResource { .. } => "SessionResource",
             Record::Lease { .. } => "Lease",

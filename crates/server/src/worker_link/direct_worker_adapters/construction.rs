@@ -56,13 +56,13 @@ impl DirectPlatformStore {
     pub(super) async fn resolve_caller(&self) -> everruns_contracts::error::Result<Caller> {
         let message = self
             .input_message_id
-            .ok_or_else(|| store_error("Management-authorized invocation required"))?;
+            .ok_or_else(|| AgentLoopError::refused(crate::worker_link::NO_PERSON_REFUSAL))?;
         let user = self
             .db
             .runtime_invocation_management_user(self.session_id, message)
             .await
             .map_err(|e| store_error(e.to_string()))?
-            .ok_or_else(|| store_error("Management-authorized invocation required"))?;
+            .ok_or_else(|| AgentLoopError::refused(crate::worker_link::NO_PERSON_REFUSAL))?;
         crate::auth::caller_resolution::caller_for_user(&self.db, self.org_id, user)
             .await
             .map_err(|e| store_error(e.to_string()))
@@ -90,14 +90,14 @@ impl DirectPlatformStore {
                 &params,
             )
             .await
-            .map_err(|e| store_error(e.to_string()))?
+            .map_err(|e| command_error(name, e))?
         {
             return serde_json::from_str(&output).map_err(|e| store_error(e.to_string()));
         }
         let ctx = self.command_ctx().await?;
         let json = crate::domains::common::dispatch(name, params, &ctx)
             .await
-            .map_err(|e| store_error(format!("Command {name} failed: {e}")))?;
+            .map_err(|e| command_error(name, e))?;
         serde_json::from_str(&json)
             .map_err(|e| store_error(format!("Failed to decode {name} response: {e}")))
     }
@@ -123,7 +123,7 @@ impl DirectPlatformStore {
                 &params,
             )
             .await
-            .map_err(|e| store_error(e.to_string()))?
+            .map_err(|e| command_error(name, e))?
         {
             return serde_json::from_str(&output)
                 .map(Some)
@@ -138,7 +138,7 @@ impl DirectPlatformStore {
                 kind: crate::domains::common::CommandErrorKind::NotFound(_),
                 ..
             }) => Ok(None),
-            Err(error) => Err(store_error(format!("Command {name} failed: {error}"))),
+            Err(error) => Err(command_error(name, error)),
         }
     }
 
@@ -155,6 +155,17 @@ impl DirectPlatformStore {
         super::super::platform_command_surface::invoke(operation, &arguments, context)
             .await
             .map_err(AgentLoopError::tool)
+    }
+}
+
+/// A refused command stays a refusal the agent reads (`AgentLoopError::Refused`,
+/// the same as a gRPC worker gets); anything else is a fault kept internal.
+fn command_error(name: &str, error: crate::domains::common::CommandError) -> AgentLoopError {
+    match &error.kind {
+        crate::domains::common::CommandErrorKind::Forbidden(message) => {
+            AgentLoopError::refused(message.clone())
+        }
+        _ => store_error(format!("Command {name} failed: {error}")),
     }
 }
 

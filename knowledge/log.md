@@ -2,11 +2,13 @@
 
 ## 2026-11-25
 
-- [Channelkit migration](integrations/channelkit-migration.md): channel approval claims follow canonical session authority; v2 atomically consumes checked log positions and retains claims through offload and restart, using the existing matched control-plane/shard upgrade contract.
-
 - [Markdown Messages Rendering](ui/markdown-messages.md): Pele renders Mermaid diagrams across the shared UI renderer and Markdown file previews.
 
+- [Channelkit migration](integrations/channelkit-migration.md): channel approval claims follow canonical session authority; v2 atomically consumes checked log positions and retains claims through offload and restart, using the existing matched control-plane/shard upgrade contract.
+
 ## 2026-11-24
+
+- [Session Spend](execution/session-spend.md): tool-less completions retain bounded, payload-free usage on both hosting lanes, including portable authority profiles, streaming and unreadable reviews; [Application API](framework/application-api.md) preserves query isolation.
 
 - [LLM drivers](foundations/llm-drivers.md): real Slack file qualification exposed rejected Responses attachment encoding; share native file serialization across messages, tool results, compacted history and compatible providers.
 

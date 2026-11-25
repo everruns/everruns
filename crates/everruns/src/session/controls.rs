@@ -5,8 +5,8 @@
 //! session's next model call, without reaching for a runtime that could drive
 //! a second turn loop. Every operation here works on the session's own runtime
 //! (the one its turns run on) or, for coherent hosting, on the read-only query
-//! runtime its inspection uses. None of them starts a turn, appends to
-//! canonical history or takes execution ownership.
+//! runtime its inspection uses. None starts a turn, appends conversation
+//! messages or takes execution ownership. Completions retain only usage metadata.
 //!
 //! # Ordering and concurrency
 //!
@@ -1034,7 +1034,8 @@ impl Session {
     /// instructions, then `instructions` (if any) as a further system prompt,
     /// then `prompt` as a user message. It uses the session's resolved model,
     /// provider and live selections, exactly as the next model call would.
-    /// Nothing is appended to history, no tool runs and no turn starts.
+    /// No conversation message is appended, no tool runs and no turn starts.
+    /// Reported provider usage is retained as a metadata-only generation event.
     ///
     /// This is the convenience form of [`complete`](Self::complete), whose
     /// host chooses the whole envelope instead.
@@ -1071,7 +1072,7 @@ impl Session {
     ///
     /// Like [`complete_out_of_band`](Self::complete_out_of_band) it is
     /// answered during an active turn, including from a tool of that turn,
-    /// and never starts a turn, appends to history or takes execution
+    /// and never starts a turn, appends conversation messages or takes execution
     /// ownership. Dropping the future abandons the request.
     pub async fn complete(
         &self,
