@@ -41,7 +41,7 @@ async fn rpc(server: &TestServer, method: &str, params: Value) -> Value {
     if let Some(name) = params.get("name").and_then(Value::as_str) {
         headers.push(("Mcp-Name", name));
     }
-    server
+    let response: Value = server
         .request_raw(
             Method::POST,
             "/mcp",
@@ -53,7 +53,11 @@ async fn rpc(server: &TestServer, method: &str, params: Value) -> Value {
         )
         .await
         .assert_success()
-        .json()
+        .json();
+    if method.starts_with("events/") && response.get("result").is_some() {
+        assert_eq!(response["result"]["resultType"], "complete", "{method}");
+    }
+    response
 }
 
 async fn tool(server: &TestServer, name: &str, arguments: Value) -> Value {
@@ -579,6 +583,24 @@ async fn final_routing_headers_are_required_and_legacy_requests_remain_accepted(
         "legacy reached authentication without a routing header"
     );
     assert!(server.webhooks.requests.lock().is_empty());
+    let legacy: Value = server
+        .request_raw(
+            Method::POST,
+            "/mcp",
+            vec![
+                ("content-type", "application/json"),
+                ("MCP-Protocol-Version", "2025-11-25"),
+            ],
+            serde_json::to_vec(&json!({
+                "jsonrpc": "2.0", "id": 2, "method": "events/list", "params": {}
+            }))
+            .unwrap(),
+        )
+        .await
+        .assert_success()
+        .json();
+    assert!(legacy["result"]["events"].is_array());
+    assert!(legacy["result"].get("resultType").is_none());
     let discovery = rpc(&server, "server/discover", json!({})).await;
     assert!(discovery["result"]["capabilities"].get("events").is_none());
     assert_eq!(

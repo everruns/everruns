@@ -136,24 +136,43 @@ pub(super) async fn request(
     let name = params
         .get("name")
         .and_then(Value::as_str)
-        .ok_or_else(|| anyhow!("Events request requires name"))?;
+        .ok_or_else(|| McpRpcError {
+            code: -32602,
+            message: "Events request requires name".into(),
+            data: None,
+        })?;
     let descriptor = listed
         .iter()
         .find(|d| d["name"] == name)
-        .ok_or_else(|| anyhow!("Event is not available: {name}"))?;
+        .ok_or_else(|| McpRpcError {
+            code: -32023,
+            message: format!("Event is not available: {name}"),
+            data: Some(serde_json::json!({"kind":"event"})),
+        })?;
     if method == "events/subscribe"
         && !descriptor
             .get("delivery")
             .and_then(Value::as_array)
             .is_some_and(|modes| modes.iter().any(|mode| mode == "webhook"))
     {
-        return Err(anyhow!("Event does not offer webhook delivery: {name}"));
+        return Err(McpRpcError {
+            code: -32026,
+            message: format!("Event does not offer webhook delivery: {name}"),
+            data: Some(serde_json::json!({"feature":"deliveryMode","value":"webhook"})),
+        }
+        .into());
     }
     let annotations =
         param_headers::header_params(&descriptor["inputSchema"]).map_err(anyhow::Error::msg)?;
     let mut event_headers = headers.clone();
-    for (key, value) in param_headers::headers_for(&annotations, &params["arguments"])
-        .map_err(anyhow::Error::msg)?
+    for (key, value) in
+        param_headers::headers_for(&annotations, &params["arguments"]).map_err(|message| {
+            McpRpcError {
+                code: -32602,
+                message,
+                data: None,
+            }
+        })?
     {
         event_headers.insert(key, value);
     }

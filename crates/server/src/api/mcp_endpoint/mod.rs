@@ -628,10 +628,15 @@ async fn handle_mcp_authenticated(
                 tasks::missing_capability(req.id)
             }
         }
-        // MCP Events (draft): outbound session webhooks, org opt-in.
+        // SEP-3415: every modern Events result is a complete Result.
         "events/list" | "events/subscribe" | "events/unsubscribe" | "events/poll"
         | "events/stream" => {
-            events::handle_method(&req.method, req.id, req.params, &org, &state).await
+            let mut response =
+                events::handle_method(&req.method, req.id, req.params, &org, &state).await;
+            if let Some(result) = response.result.as_mut() {
+                caching::mark_complete(result, negotiated_version);
+            }
+            response
         }
         "ping" => JsonRpcResponse::success(req.id, json!({})),
         _ => JsonRpcResponse::method_not_found(req.id),

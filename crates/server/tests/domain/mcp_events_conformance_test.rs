@@ -126,7 +126,6 @@ async fn official_events_checks() {
             std::env::var("LD_LIBRARY_PATH").unwrap_or_default(),
         )
         .env("TMPDIR", "/tmp")
-        .env("HOME", "/tmp")
         .env(
             "EVERRUNS_PG_CACHE",
             std::env::var("EVERRUNS_PG_CACHE").unwrap_or_else(|_| {

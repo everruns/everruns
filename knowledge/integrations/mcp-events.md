@@ -29,6 +29,8 @@ on protocol `2026-07-28`. Discovery advertises the Events extension alongside
 other extensions. Named requests require the encoded event routing header;
 listing carries no event name. Error responses use the final general-purpose
 codes, including distinct missing-event, forbidden and callback-verification errors.
+Modern Events results carry the core complete-result marker; legacy responses
+keep their original metadata shape.
 See the [endpoint](../../crates/server/src/api/mcp_endpoint/events.rs) and
 [service](../../crates/server/src/domains/mcp_servers/events.rs) for wire shapes.
 
@@ -143,8 +145,10 @@ for refresh and the no-extension fallback. Only the outbound test egress hop
 maps a synthetic public IP to the official loopback receiver. Raw results retain every skipped or untestable row.
 
 The upstream discovery scenario also probes core `subscriptions/listen`, which
-Everruns does not implement. That prerequisite is reported separately and is
-never described as a passed full discovery scenario. Poll, push, replay and
-unexercised upstream controls are outside this webhook-only evidence. Local
+Everruns does not implement, and uses poll-only unknown-name probes. Its delivery
+scenario cannot control DNS rebinding. These exact upstream untestable diagnostics
+remain unverified; neither server scenario is reported as fully passed. All
+protocol failures still fail the job. Poll, push, replay and unexercised upstream
+controls are outside this webhook-only evidence. Local
 signed-delivery, SSRF, tenant/access, deduplication and termination coverage
 lives in the linked domain tests.

@@ -22,11 +22,15 @@ A receiver hook binds its listener to loopback and records its port; upstream
 scenario logic is unchanged. Delayed 503 responses make fresh retry signatures
 observable. No application credentials or provider calls are used.
 
-Every raw upstream check is retained. The discovery scenario's untestable
-`subscriptions/listen` prerequisite is recorded separately; its full scenario
-must not be reported as passing. All other failures fail the job, and named
-required checks must be present and successful. Warnings and skipped checks
-remain unverified in the summary.
+Every raw upstream check is retained. Discovery cannot exercise the core
+`subscriptions/listen` prerequisite or its two poll-based unknown-name probes.
+The delivery harness cannot change DNS between subscribe and delivery. These four
+exact upstream failure/untestable diagnostics are recorded as unverified; neither
+full server scenario is reported as passing. Changed diagnostics and all protocol
+failures fail the job, and named required checks must be present and successful.
+Warnings and skipped checks also remain unverified in the summary. Domain tests
+separately cover unknown-name errors and production delivery URL validation;
+they do not certify the unexercised upstream probes.
 
 Poll and push scenarios (four total) are not run: Everruns offers webhook delivery.
 The separate server subscription-management scenario hardcodes an unresolvable

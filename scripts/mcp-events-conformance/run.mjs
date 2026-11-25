@@ -81,17 +81,30 @@ for (const [role, scenario] of [
     });
     continue;
   }
-  // Everruns exposes no core subscriptions/listen stream. listChanged is false,
-  // and its notification rows are skipped. This prerequisite is reported by
-  // upstream as a failure/untestable; it is never counted as a passed scenario.
-  const outOfScope = new Set(
-    role === "server" ? ["sep-3415-capability-list-changed-gated"] : [],
-  );
+  // The pinned runner reports these fixture limitations as FAILURE/untestable.
+  // Match the exact check AND reason; retain each raw failure as unverified.
+  // No protocol failure or changed upstream diagnostic is exempted.
+  const untestableReasons =
+    {
+      "events-discovery": {
+        "sep-3415-capability-list-changed-gated":
+          "`subscriptions/listen` failed: -32601 Method not found",
+        "sep-3415-error-not-found":
+          "No event type advertises `poll` delivery, so `events/poll` could not be used to probe the unknown-name error path.",
+        "sep-3415-error-server-range":
+          "No event type advertises `poll` delivery, so `events/poll` could not be used to probe the unknown-name error path.",
+      },
+      "events-webhook-delivery": {
+        "sep-3415-ssrf-validate-at-delivery-time":
+          "Proving delivery-time revalidation needs a hostname whose DNS answer changes between subscribe and delivery, which the harness cannot serve.",
+      },
+    }[scenario] ?? {};
   const untestablePrerequisite = (c) =>
-    outOfScope.has(c.id) &&
+    c.status === "FAILURE" &&
     c.details?.untestable === true &&
-    c.errorMessage?.includes("subscriptions/listen") &&
-    c.errorMessage?.includes("-32601");
+    Object.hasOwn(untestableReasons, c.id) &&
+    c.details.reason === untestableReasons[c.id] &&
+    c.errorMessage === `Not testable: ${untestableReasons[c.id]}`;
   const failures = checks.filter(
     (c) => c.status === "FAILURE" && !untestablePrerequisite(c),
   );
@@ -101,8 +114,9 @@ for (const [role, scenario] of [
       "sep-3415-capability-events-object",
       "sep-3415-list-implemented",
       "sep-3415-descriptor-delivery-subset",
-      "sep-3415-error-not-found",
+      "sep-3415-result-type-complete",
       "sep-3415-mcp-name-list-exempt",
+      "wire-schema-valid",
     ],
     "events-client-no-extension": [
       "sep-3415-client-no-events-without-extension",
@@ -115,6 +129,7 @@ for (const [role, scenario] of [
       "sep-3415-delivery-413-non-retryable",
       "sep-3415-verification-challenge-echo",
       "sep-3415-ssrf-reject-non-routable",
+      "wire-schema-valid",
     ],
     "events-client-webhook": [
       "sep-3415-client-refresh-before-expiry",
@@ -124,10 +139,7 @@ for (const [role, scenario] of [
   }[scenario];
   const missing = required.filter((id) => !passed.some((c) => c.id === id));
   const scopedExit =
-    code === 0 ||
-    (scenario === "events-discovery" &&
-      code === 1 &&
-      checks.some(untestablePrerequisite));
+    code === 0 || (code === 1 && checks.some(untestablePrerequisite));
   const scopePassed =
     scopedExit &&
     passed.length > 0 &&
@@ -143,7 +155,7 @@ for (const [role, scenario] of [
     passed: passed.map((c) => c.id),
     unverified: checks.filter((c) => c.status !== "SUCCESS"),
     fullScenarioPassed:
-      code === 0 && !checks.some((c) => c.status === "FAILURE"),
+      code === 0 && checks.every((c) => c.status === "SUCCESS"),
     scopePassed,
   };
   summary.push(row);

@@ -57,7 +57,7 @@ jobs:
           # Read the canonical producer; both jobs use its exact linker flags.
           shared-key: integration-v2
           save-if: false
-      - uses: actions/cache@v6
+      - uses: actions/cache/restore@v6
         with:
           path: ~/.cache/everruns/postgres
           key: ${{ runner.os }}-pg-embedded-17
@@ -87,7 +87,7 @@ jobs:
           # Read the canonical producer; both jobs use its exact linker flags.
           shared-key: integration-v2
           save-if: false
-      - uses: actions/cache@v6
+      - uses: actions/cache/restore@v6
         with:
           path: ~/.cache/everruns/postgres
           key: ${{ runner.os }}-pg-embedded-17

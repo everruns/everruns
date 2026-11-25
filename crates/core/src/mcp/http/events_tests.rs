@@ -172,15 +172,14 @@ async fn events_arguments_mirror_safe_headers_and_exclude_invalid_annotations() 
         .await
         .unwrap();
     assert_eq!(list["events"], serde_json::json!([]));
-    assert!(
-        request(
-            &egress,
-            "events/subscribe",
-            serde_json::json!({"name":"issue.created"})
-        )
-        .await
-        .is_err()
-    );
+    let error = request(
+        &egress,
+        "events/subscribe",
+        serde_json::json!({"name":"issue.created"}),
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(error.downcast_ref::<McpRpcError>().unwrap().code, -32023);
 }
 
 #[tokio::test]
