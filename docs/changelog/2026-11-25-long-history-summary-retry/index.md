@@ -22,3 +22,7 @@ a cut-off summary retries once with a larger limit, up to 32k tokens. If it stil
 fails, the turn reports `context_summary_failed`, and sending the message again
 retries. Results over the 64 KiB hard limit keep their last part too. See
 [Compaction](/advanced/compaction/).
+
+A turn that was stopped while a tool call was still running, such as a long
+`wait_task`, also no longer blocks every later summary. Before, the session
+kept growing until each turn failed with "The conversation has become too long".

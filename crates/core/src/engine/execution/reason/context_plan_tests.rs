@@ -851,6 +851,38 @@ mod lifecycle_tests {
         assert_eq!(safe_cut(&messages, 2), 1);
         assert_eq!(safe_cut(&messages, 3), 1);
     }
+
+    #[test]
+    fn a_call_the_agent_moved_past_does_not_pin_every_later_cut() {
+        // A stopped turn leaves its call without a result forever; the agent
+        // then answers again. Every cut used to stop before that call.
+        let mut stopped = RuntimeMessage::assistant("");
+        stopped.content = vec![ContentPart::tool_call(
+            "wait",
+            "wait_task",
+            serde_json::json!({}),
+        )];
+        let mut call = RuntimeMessage::assistant("");
+        call.content = vec![ContentPart::tool_call(
+            "c",
+            "read_file",
+            serde_json::json!({}),
+        )];
+        let result = RuntimeMessage::tool_result("c", Some(serde_json::json!("ok")), None);
+        let messages = vec![
+            RuntimeMessage::user("task"),
+            stopped,
+            RuntimeMessage::assistant("This turn was stopped."),
+            RuntimeMessage::user("the task finished"),
+            call,
+            result,
+            RuntimeMessage::assistant("done"),
+        ];
+        assert_eq!(safe_cut(&messages, 6), 6);
+        assert_eq!(complete_cut_after(&messages, 2), Some(2));
+        // A call still in flight (no later agent message) stays open.
+        assert_eq!(safe_cut(&messages[..5], 5), 4);
+    }
     struct FailingInstall {
         inner: InMemoryCompactionCheckpointStore,
         fail: std::sync::atomic::AtomicBool,

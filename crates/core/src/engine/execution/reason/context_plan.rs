@@ -173,13 +173,49 @@ pub(super) struct Planner<'a> {
     pub fallback_summary_window: usize,
 }
 
+/// Calls that will never get a result: none is stored and the agent already
+/// answered again after them (a stopped or crashed turn). The request builder
+/// patches these (`repair_dangling_tool_calls`), so they are not open
+/// exchanges. Counting them as open pinned every later cut before the call,
+/// and one stopped `wait_task` left a coordinator unable to compact at all
+/// (Housekeeping, 2026-11-25).
+fn abandoned_calls(messages: &[RuntimeMessage]) -> std::collections::HashSet<&str> {
+    let results: std::collections::HashSet<_> = messages
+        .iter()
+        .flat_map(|m| &m.content)
+        .filter_map(|part| match part {
+            ContentPart::ToolResult(result) => Some(result.tool_call_id.as_str()),
+            _ => None,
+        })
+        .collect();
+    let Some(last_agent) = messages
+        .iter()
+        .rposition(|m| m.role == RuntimeMessageRole::Agent)
+    else {
+        return Default::default();
+    };
+    messages[..last_agent]
+        .iter()
+        .flat_map(|m| &m.content)
+        .filter_map(|part| match part {
+            ContentPart::ToolCall(call) if !results.contains(call.id.as_str()) => {
+                Some(call.id.as_str())
+            }
+            _ => None,
+        })
+        .collect()
+}
+
 /// A prefix boundary cannot split a tool exchange, including parallel calls.
 fn safe_cut(messages: &[RuntimeMessage], mut cut: usize) -> usize {
+    let abandoned = abandoned_calls(messages);
     loop {
         let mut calls = std::collections::HashMap::new();
         for (index, message) in messages[..cut].iter().enumerate() {
             for part in &message.content {
-                if let ContentPart::ToolCall(call) = part {
+                if let ContentPart::ToolCall(call) = part
+                    && !abandoned.contains(call.id.as_str())
+                {
                     calls.insert(call.id.as_str(), index);
                 }
             }
@@ -209,11 +245,12 @@ fn safe_cut(messages: &[RuntimeMessage], mut cut: usize) -> usize {
 }
 
 fn complete_cut_after(messages: &[RuntimeMessage], minimum: usize) -> Option<usize> {
+    let abandoned = abandoned_calls(messages);
     let mut pending = std::collections::HashSet::new();
     for (index, message) in messages.iter().enumerate() {
         for part in &message.content {
             match part {
-                ContentPart::ToolCall(call) => {
+                ContentPart::ToolCall(call) if !abandoned.contains(call.id.as_str()) => {
                     pending.insert(call.id.as_str());
                 }
                 ContentPart::ToolResult(result) => {
