@@ -719,10 +719,22 @@ pub async fn request(
     super::command_validation::validate_sandbox_template_sources(ctx, req.sandbox_policy.as_ref())
         .await?;
     super::managed::check_high_risk_caps(ctx, &req.capabilities).await?;
+    // An exported team lead keeps Spawn agents or Threads without its
+    // `agents` list (the package's `agents` and `members` carry them), which
+    // alone fails "needs at least one agent". Validate it as `apply` will
+    // write it: with one agent per team member attached.
+    let mut checked = req.capabilities.clone();
+    let team = m.agents.len() + m.members.as_ref().map_or(0, Vec::len);
+    if team > 0 {
+        let placeholders = (0..team)
+            .map(|_| json!({ "agent_id": AgentId::new() }))
+            .collect();
+        attach_members(&mut checked, placeholders);
+    }
     let caps = crate::domains::capabilities::validation::normalize_capability_refs(
         &ctx.db,
         ctx.org_id(),
-        req.capabilities.clone(),
+        checked,
     )
     .await?;
     crate::domains::capabilities::validation::validate_capability_refs(
