@@ -220,6 +220,8 @@ export const messages: Readonly<Record<string, string>> = {
     "Die Ausführung wurde gestoppt, da eine erforderliche Abhängigkeit nicht verfügbar ist.",
   "A connected tool uses an input schema that this model provider does not support. Update the integration or choose a different model provider, then try again.":
     "Ein verbundenes Tool verwendet ein Eingabeschema, das dieser Modellanbieter nicht unterstützt. Aktualisieren Sie die Integration oder wählen Sie einen anderen Modellanbieter und versuchen Sie es dann erneut.",
+  "The conversation history had to be summarized before this turn, but the model's summary came back cut off or empty, even after a retry with more room. Nothing was lost. Send the message again to retry, or use a model with a larger output limit for summaries.":
+    "Der Gesprächsverlauf musste vor diesem Schritt zusammengefasst werden, aber die Zusammenfassung des Modells war abgeschnitten oder leer, auch nach einem erneuten Versuch mit mehr Platz. Nichts ist verloren gegangen. Senden Sie die Nachricht erneut oder verwenden Sie für Zusammenfassungen ein Modell mit einem höheren Ausgabelimit.",
   "binary file{value}": "Binärdatei{value}",
   "{count} image": "{count}-Bild",
   "{count} images": "{count}-Bilder",
