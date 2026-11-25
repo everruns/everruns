@@ -307,7 +307,10 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
         "Plugins a marketplace offers.",
     ),
     ("plugins", "Plugins installed in this organization."),
-    ("plugins mine", "Approved plugins in your own new conversations."),
+    (
+        "plugins mine",
+        "Approved plugins in your own new conversations.",
+    ),
     ("providers", "LLM providers and their credentials."),
     (
         "providers check-credentials",
