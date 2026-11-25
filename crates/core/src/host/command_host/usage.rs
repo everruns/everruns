@@ -24,6 +24,17 @@ pub(super) struct CompletionUsage {
     pub operation: uuid::Uuid,
 }
 
+// Optional tracing must not consume the bounded billing record or turn a paid
+// completion into an accounting error. Bound JSON bytes, including escaping.
+fn metadata_string(value: &str) -> Option<String> {
+    (value.len() <= 256 && serde_json::to_string(value).is_ok_and(|encoded| encoded.len() <= 256))
+        .then(|| value.to_owned())
+}
+
+fn metadata_label(value: &str) -> String {
+    metadata_string(value).unwrap_or_else(|| "[oversized metadata omitted]".into())
+}
+
 impl CompletionUsage {
     pub async fn record(
         &self,
@@ -37,25 +48,30 @@ impl CompletionUsage {
                 vec![],
                 None,
                 vec![],
-                self.model.clone(),
-                Some(self.provider.to_string()),
+                metadata_label(&self.model),
+                Some(metadata_label(&self.provider.to_string())),
                 crate::llm_usage::completion_usage(meta, &self.provider, &self.model),
                 duration,
                 None,
-                meta.finish_reason.clone().map(|reason| vec![reason]),
-                meta.response_id.clone(),
+                meta.finish_reason
+                    .as_deref()
+                    .and_then(metadata_string)
+                    .map(|reason| vec![reason]),
+                meta.response_id.as_deref().and_then(metadata_string),
             )
-            .with_response_model(meta.response_model.clone())
+            .with_response_model(meta.response_model.as_deref().and_then(metadata_string))
             .with_stop_details(
-                meta.provider_finish_reason.clone(),
+                meta.provider_finish_reason
+                    .as_deref()
+                    .and_then(metadata_string),
                 meta.tool_calls_dropped,
                 meta.tool_calls_truncated_executed,
             ),
             None => LlmGenerationData::failure(
                 vec![],
                 vec![],
-                self.model.clone(),
-                Some(self.provider.to_string()),
+                metadata_label(&self.model),
+                Some(metadata_label(&self.provider.to_string())),
                 "Auxiliary completion failed before final usage was reported".into(),
                 duration,
                 None,
@@ -71,10 +87,10 @@ impl CompletionUsage {
             });
         }
         generation = generation
-            .with_provider_id(Some(self.provider_id.clone()))
+            .with_provider_id(Some(metadata_label(&self.provider_id)))
             .with_request_options(LlmRequestOptions {
                 stream: Some(stream),
-                metadata: [("purpose".into(), self.purpose.clone())].into(),
+                metadata: [("purpose".into(), metadata_label(&self.purpose))].into(),
                 ..Default::default()
             });
         self.emitter

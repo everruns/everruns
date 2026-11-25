@@ -37,7 +37,8 @@ estimate otherwise.
 
 Tool-less session completions use the same generation ledger as turn calls. They
 retain provider-reported usage and actual cost (or the normal model-price estimate),
-without prompts, answers or conversation steps. Automatic reviews belong to the
+without prompts, answers or conversation steps. Oversized tracing metadata is
+omitted without losing reported usage or rejecting the completion. Automatic reviews belong to the
 reviewed turn; independent host completions have no turn. Missing final provider
 usage stays unknown. Review spend does not consume the logical continuation budget.
 

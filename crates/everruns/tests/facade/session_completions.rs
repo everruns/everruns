@@ -54,6 +54,7 @@ struct Log {
     hang: AtomicBool,
     usage: AtomicBool,
     automatic_review: AtomicBool,
+    oversized_usage_metadata: AtomicBool,
     review_response: Mutex<Option<String>>,
 }
 
@@ -129,6 +130,12 @@ impl ChatDriver for Recorder {
             metadata.prompt_tokens = Some(if review { 900 } else { 100 });
             metadata.completion_tokens = Some(if review { 100 } else { 20 });
             metadata.provider_cost_usd = Some(if review { 0.01 } else { 0.001 });
+        }
+        if review && self.log.oversized_usage_metadata.load(Ordering::SeqCst) {
+            metadata.response_id = Some("x".repeat(8192));
+            metadata.response_model = Some("\0".repeat(256));
+            metadata.finish_reason = Some("x".repeat(8192));
+            metadata.provider_finish_reason = Some("\0".repeat(256));
         }
         Ok(Box::pin(futures::stream::iter([
             Ok(event),
@@ -370,6 +377,33 @@ async fn automatic_review_accounts_for_successful_and_unreadable_verdicts() {
         );
         assert_eq!(session.history().page().await.unwrap().messages.len(), 2);
     }
+}
+
+#[tokio::test]
+async fn oversized_provider_tracing_does_not_lose_a_paid_completion() {
+    let fixture = Fixture::new();
+    fixture.log.usage.store(true, Ordering::SeqCst);
+    fixture
+        .log
+        .oversized_usage_metadata
+        .store(true, Ordering::SeqCst);
+    let session = Engine::new().create(fixture.agent(Lane::Coherent, vec![]));
+    assert!(
+        session
+            .complete(review())
+            .await
+            .unwrap()
+            .contains("COMPLETE")
+    );
+    let events = session.events_after(0).await.unwrap();
+    let generation = events
+        .iter()
+        .find(|event| event.event_type() == "llm.generation")
+        .unwrap();
+    let data = generation.canonical_json();
+    assert_eq!(data["data"]["metadata"]["usage"]["input_tokens"], 900);
+    assert_eq!(data["data"]["metadata"]["usage"]["actual_cost_usd"], 0.01);
+    assert!(serde_json::to_vec(data).unwrap().len() <= 4096);
 }
 
 #[tokio::test]
