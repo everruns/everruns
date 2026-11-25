@@ -155,11 +155,10 @@ Gated by the `"citations"` feature. A component under
 `origin`: inline numbered chips at each annotated span, a hover popover
 (`title` / `snippet` / `uri`), a deduped source strip below the message, click
 -through to `uri`, and a "verified" badge when a `verified` verdict is present.
-Assistant text currently reaches the UI as a plain string
-(`streamdown-message.tsx`); rendering chips requires threading the structured
-`annotations` down (pre-splitting spans, mirroring the existing
-`splitA2UIBlocks` approach) rather than relying on markdown text. Streamdown
-continues to render the surrounding markdown.
+The message text carries `#cite-<n>` markers injected from the annotations;
+the Markdown renderer's link hook turns each known marker into a slot that a
+React `CitationChip` fills (`apps/ui/src/components/markdown/`), so the
+surrounding Markdown renders as usual.
 
 ### Persistence and export
 

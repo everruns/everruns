@@ -2,8 +2,8 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { CapabilitySelector } from "@/components/agents/capability-selector";
 import type { Capability } from "@/lib/api/types";
 
-jest.mock("@/components/chat/streamdown-message", () => ({
-  InlineStreamdownMessage: () => null,
+jest.mock("@/components/markdown/markdown-message", () => ({
+  InlineMarkdownMessage: () => null,
 }));
 
 function capability(overrides: Partial<Capability> = {}): Capability {

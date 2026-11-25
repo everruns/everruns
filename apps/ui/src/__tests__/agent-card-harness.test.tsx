@@ -13,8 +13,8 @@ jest.mock("next/link", () => ({
   ),
 }));
 
-jest.mock("@/components/chat/streamdown-message", () => ({
-  InlineStreamdownMessage: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+jest.mock("@/components/markdown/markdown-message", () => ({
+  InlineMarkdownMessage: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 
 function agent(overrides: Partial<Agent> = {}): Agent {

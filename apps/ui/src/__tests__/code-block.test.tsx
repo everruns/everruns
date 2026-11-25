@@ -1,32 +1,18 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
-const highlight = jest.fn(
-  (
-    options: { code: string; language: string },
-    callback?: (result: {
-      tokens: Array<Array<{ content: string; offset: number; htmlStyle: object }>>;
-    }) => void,
-  ) => {
-    const result = {
-      tokens: options.code.split("\n").map((line) => [
-        {
-          content: line,
-          offset: 0,
-          htmlStyle: { color: `highlight-${options.language}`, "--shiki-dark": "dark-highlight" },
-        },
-      ]),
-    };
-    callback?.(result);
-    return null;
-  },
-);
+const highlight = jest.fn((code: string, options: { lang: string }) => ({
+  tokens: code.split("\n").map((line) => [
+    {
+      content: line,
+      offset: 0,
+      htmlStyle: { color: `highlight-${options.lang}`, "--shiki-dark": "dark-highlight" },
+    },
+  ]),
+}));
 
-jest.mock("@streamdown/code", () => ({
-  code: {
-    getThemes: () => ["github-light", "github-dark"],
-    highlight,
-    supportsLanguage: () => true,
-  },
+jest.mock("@pierre/highlights", () => ({
+  codeToTokens: (code: string, options: { lang: string }) => highlight(code, options),
+  isSupportedLanguage: () => true,
 }));
 
 import { CodeBlock } from "@/components/ui/code-block";
@@ -47,24 +33,24 @@ describe("CodeBlock", () => {
 
     await waitFor(() =>
       expect(highlight).toHaveBeenCalledWith(
-        expect.objectContaining({ language: "python" }),
-        expect.any(Function),
+        expect.any(String),
+        expect.objectContaining({ lang: "python" }),
       ),
     );
 
     fireEvent.click(screen.getByRole("button", { name: "TypeScript" }));
     await waitFor(() =>
       expect(highlight).toHaveBeenCalledWith(
-        expect.objectContaining({ language: "ts" }),
-        expect.any(Function),
+        expect.any(String),
+        expect.objectContaining({ lang: "ts" }),
       ),
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Rust" }));
     await waitFor(() =>
       expect(highlight).toHaveBeenCalledWith(
-        expect.objectContaining({ language: "rust" }),
-        expect.any(Function),
+        expect.any(String),
+        expect.objectContaining({ lang: "rust" }),
       ),
     );
 

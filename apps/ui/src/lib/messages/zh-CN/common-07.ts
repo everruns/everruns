@@ -200,11 +200,11 @@ export const messages: Readonly<Record<string, string>> = {
   "Stop and report the failure": "停止并报告故障",
   Stopped: "已停止",
   stored: "已存储",
-  "Streamdown Message Component": "Streamdown 消息组件",
+  "Markdown Message Component": "Markdown 消息组件",
   "Streaming Message": "流媒体消息",
   "Streaming Thinking": "流式思维",
-  "Streaming-optimized markdown renderer using Vercel's Streamdown":
-    "使用 Vercel 的 Streamdown 进行流式优化的 Markdown 渲染器",
+  "Streaming Markdown renderer using Words (WebAssembly)":
+    "使用 Words 进行流式优化的 Markdown 渲染器",
   "Streaming...": "流媒体...",
   Subchats: "子聊天",
   Success: "成功",

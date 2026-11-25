@@ -12,7 +12,7 @@ import { useEffect, useRef, useState } from "react";
 import { Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { StreamdownMessage } from "@/components/chat/streamdown-message";
+import { MarkdownMessage } from "@/components/markdown/markdown-message";
 import { formatTokens, pluralize } from "@/lib/formatting";
 import { cn } from "@/lib/utils";
 
@@ -140,13 +140,13 @@ export function AgentPromptPane({
               {value}
             </pre>
           ) : (
-            <StreamdownMessage
+            <MarkdownMessage
               skipHtml={skipHtml}
               variant="compact"
               className="text-[15px] leading-relaxed"
             >
               {value}
-            </StreamdownMessage>
+            </MarkdownMessage>
           )}
         </div>
       )}

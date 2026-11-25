@@ -17,8 +17,8 @@ jest.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(mockSearch),
 }));
 
-jest.mock("@/components/chat/streamdown-message", () => ({
-  StreamdownMessage: ({ children }: { children: string }) => <div>{children}</div>,
+jest.mock("@/components/markdown/markdown-message", () => ({
+  MarkdownMessage: ({ children }: { children: string }) => <div>{children}</div>,
 }));
 
 jest.mock("@/hooks/use-members", () => ({

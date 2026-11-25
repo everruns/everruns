@@ -142,15 +142,15 @@ export const messages: Readonly<Record<string, string>> = {
   "How many provider resources this Sandbox has had. Above 1 means it was lost and rebuilt.":
     "Скільки ресурсів постачальників має ця пісочниця. Над 1 означає, що його було втрачено та відбудовано.",
   "How SessionCards appear in a list layout": "Як SessionCards відображаються в макеті списку",
-  "How Streamdown gracefully handles unterminated markdown syntax":
-    "Як Streamdown витончено обробляє незавершений синтаксис уцінки",
+  "How Words handles unterminated markdown syntax":
+    "Як Words витончено обробляє незавершений синтаксис уцінки",
   "How the agent is named and how it presents itself in chat.":
     "Як називається агент і як він представляє себе в чаті.",
   "How the harness is named and how it presents itself when the bound agent leaves a field empty.":
     "Як називається зв’язка та як вона себе представляє, коли пов’язаний агент залишає поле порожнім.",
   "How to use the ModelPicker in your components":
     "Як використовувати ModelPicker у ваших компонентах",
-  "How to use the StreamdownMessage components": "Як використовувати компоненти StreamdownMessage",
+  "How to use the MarkdownMessage components": "Як використовувати компоненти MarkdownMessage",
   "HTML preview": "Попередній перегляд HTML",
   "HTML Preview": "Попередній перегляд HTML",
   "HTTP service": "Сервіс HTTP",

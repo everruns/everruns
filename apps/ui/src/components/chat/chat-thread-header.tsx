@@ -24,7 +24,7 @@ import { LinkButton } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useUpdateSession } from "@/hooks/use-sessions";
 import { useSessionContext } from "@/app/(main)/sessions/[sessionId]/session-context";
-import { InlineStreamdownMessage } from "@/components/chat/streamdown-message";
+import { InlineMarkdownMessage } from "@/components/markdown/markdown-message";
 import {
   SessionApprovalModeSwitch,
   agentApprovalMode,
@@ -223,9 +223,9 @@ export function ChatThreadHeader({
         >
           <span className="min-h-0 overflow-hidden">
             {platformDescription ? (
-              <InlineStreamdownMessage className="truncate text-xs text-muted-foreground">
+              <InlineMarkdownMessage className="truncate text-xs text-muted-foreground">
                 {platformDescription}
-              </InlineStreamdownMessage>
+              </InlineMarkdownMessage>
             ) : null}
           </span>
         </span>

@@ -59,6 +59,12 @@ importers:
       '@pierre/diffs':
         specifier: 1.6.4
         version: 1.6.4(@shikijs/themes@4.5.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@pierre/highlights':
+        specifier: 0.5.1
+        version: 0.5.1
+      '@pierre/words':
+        specifier: 0.2.2
+        version: 0.2.2(@pierre/highlights@0.5.1)(react@19.3.1)
       '@rjsf/core':
         specifier: ^6.11.0
         version: 6.11.0(@rjsf/utils@6.11.0(react@19.3.1))(react@19.3.1)
@@ -68,9 +74,6 @@ importers:
       '@rjsf/validator-ajv8':
         specifier: ^6.11.0
         version: 6.11.0(@rjsf/utils@6.11.0(react@19.3.1))
-      '@streamdown/code':
-        specifier: ^2.0.0
-        version: 2.0.0(react@19.3.1)
       '@tanstack/react-query':
         specifier: ^5.104.5
         version: 5.104.5(@types/react@19.3.0)(react@19.3.1)
@@ -110,12 +113,6 @@ importers:
       recharts:
         specifier: ^3.10.1
         version: 3.10.1(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react-is@19.3.1)(react@19.3.1)(redux@5.0.1)
-      remark-gfm:
-        specifier: ^4.0.1
-        version: 4.0.1
-      remark-github-blockquote-alert:
-        specifier: ^2.1.0
-        version: 2.1.0
       streamdown:
         specifier: ^2.7.1
         version: 2.7.1(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
@@ -1454,6 +1451,9 @@ packages:
   '@pierre/highlights@0.4.0':
     resolution: {integrity: sha512-2a38H7ep3KweGi1fGQpJk+Krod2OMpDIXagKPlqBd1Y9P460T7zQmc66Wm2JAH1SpIG93wCyyhZVrkc5dnAJVQ==}
 
+  '@pierre/highlights@0.5.1':
+    resolution: {integrity: sha512-c2WF6sgwgKdxXU6FpWDLWUYHRca/cJy+3QJkWAqYqEAFxqlPf8eSH0ehHcFFjKBmT+9KBl9H7q6z7HMRU7+m6g==}
+
   '@pierre/theme@2.0.0':
     resolution: {integrity: sha512-yNDd9GYLQl1mEUJR8AneJ5e4ohLIHQd/wZLWr4fagt78vS2RwwZNW530vVgHqXFAyFVcFlRmGUD5ramXH46OXw==}
     engines: {vscode: ^1.0.0}
@@ -1476,6 +1476,17 @@ packages:
       react-dom:
         optional: true
       shiki:
+        optional: true
+
+  '@pierre/words@0.2.2':
+    resolution: {integrity: sha512-gOMolXeQzPK9IVNDimh8pronqzpFISFxp+rhobKT8NYQsTOpDLQKgr0rjwZn3I/kHLF+Sqoe2aIO/R7H71IzwQ==}
+    peerDependencies:
+      '@pierre/highlights': '>=0.5.1'
+      react: ^18.3.1 || ^19.0.0
+    peerDependenciesMeta:
+      '@pierre/highlights':
+        optional: true
+      react:
         optional: true
 
   '@pkgr/core@0.3.6':
@@ -2334,12 +2345,6 @@ packages:
 
   '@standard-schema/utils@0.3.0':
     resolution: {integrity: sha512-e7Mew686owMaPJVNNLs55PUvgz371nKgwsc4vxE49zsODpJEnxgxRo2y/OKrqueavXgZNMDVj3DdHFlaSAeU8g==}
-
-  '@streamdown/code@2.0.0':
-    resolution: {integrity: sha512-sSyX/9gOOcivbP7204+sfAam+gotxjUNV+T4EuN3aa6i5x1LaqtB6Ln/Mxzd1XGvm0vNApO4oKLZs+7gzFI1kQ==}
-    engines: {node: '>=20'}
-    peerDependencies:
-      react: ^18.0.0 || ^19.0.0
 
   '@swc/helpers@0.5.23':
     resolution: {integrity: sha512-5lSsMOTXURePglDfvuAQUqkGek9Hg2kksOYay2m0+XR++b2NWYL/4sWyuvVBIs8oKnJaxkdi9whaL/sqN13afw==}
@@ -5164,10 +5169,6 @@ packages:
   remark-gfm@4.0.1:
     resolution: {integrity: sha512-1quofZ2RQ9EWdeN34S79+KExV1764+wCUGop5CPL1WGdD0ocPpu91lzPGbwWMECpEpd42kJGQwzRfyov9j4yNg==}
 
-  remark-github-blockquote-alert@2.1.0:
-    resolution: {integrity: sha512-J392jmIP684d7iGsENN0uguL10IGbRdc8bTUSrd/jOLzdWkwg721Fj3JPQGN8tF6fTIrE5HHOIA3nBuwuaeuPQ==}
-    engines: {node: '>=16'}
-
   remark-math@6.0.0:
     resolution: {integrity: sha512-MMqgnP74Igy+S3WwnhQ7kqGlEerTETXMvJhrUzDikVZ2/uogJCb+WHUg97hK9/jcfc0dkD73s3LN8zU49cTEtA==}
 
@@ -7149,6 +7150,8 @@ snapshots:
 
   '@pierre/highlights@0.4.0': {}
 
+  '@pierre/highlights@0.5.1': {}
+
   '@pierre/theme@2.0.0': {}
 
   '@pierre/theming@1.0.2(@pierre/theme@2.0.0)(@shikijs/themes@4.5.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(shiki@4.5.0)':
@@ -7158,6 +7161,11 @@ snapshots:
       react: 19.3.1
       react-dom: 19.3.1(react@19.3.1)
       shiki: 4.5.0
+
+  '@pierre/words@0.2.2(@pierre/highlights@0.5.1)(react@19.3.1)':
+    optionalDependencies:
+      '@pierre/highlights': 0.5.1
+      react: 19.3.1
 
   '@pkgr/core@0.3.6': {}
 
@@ -8038,11 +8046,6 @@ snapshots:
   '@standard-schema/spec@1.1.0': {}
 
   '@standard-schema/utils@0.3.0': {}
-
-  '@streamdown/code@2.0.0(react@19.3.1)':
-    dependencies:
-      react: 19.3.1
-      shiki: 4.5.0
 
   '@swc/helpers@0.5.23':
     dependencies:
@@ -11473,10 +11476,6 @@ snapshots:
       unified: 11.0.5
     transitivePeerDependencies:
       - supports-color
-
-  remark-github-blockquote-alert@2.1.0:
-    dependencies:
-      unist-util-visit: 5.1.0
 
   remark-math@6.0.0:
     dependencies:

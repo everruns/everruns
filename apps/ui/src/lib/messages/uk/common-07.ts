@@ -208,11 +208,11 @@ export const messages: Readonly<Record<string, string>> = {
   "Stop and report the failure": "Зупиніться та повідомте про помилку",
   Stopped: "Зупинено",
   stored: "зберігається",
-  "Streamdown Message Component": "Компонент повідомлення Streamdown",
+  "Markdown Message Component": "Компонент повідомлення Markdown",
   "Streaming Message": "Потокове повідомлення",
   "Streaming Thinking": "Потокове мислення",
-  "Streaming-optimized markdown renderer using Vercel's Streamdown":
-    "Оптимізований для потокового передавання рендерер розмітки за допомогою Vercel Streamdown",
+  "Streaming Markdown renderer using Words (WebAssembly)":
+    "Оптимізований для потокового передавання рендерер розмітки за допомогою Words",
   "Streaming...": "Потокове...",
   Subchats: "Додаткові чати",
   Success: "Успіху",

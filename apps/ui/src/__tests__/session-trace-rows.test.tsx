@@ -2,8 +2,8 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { StepRow, TurnHeader } from "@/components/session/trace/trace-rows";
 import type { TraceStep, TraceTurn } from "@/lib/api/types";
 
-jest.mock("@/components/chat/streamdown-message", () => ({
-  StreamdownMessage: ({ children }: { children: string }) => (
+jest.mock("@/components/markdown/markdown-message", () => ({
+  MarkdownMessage: ({ children }: { children: string }) => (
     <div data-testid="markdown">
       <a href="https://example.com">{children}</a>
     </div>

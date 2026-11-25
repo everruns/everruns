@@ -81,7 +81,7 @@ jest.mock("@/components/session/session-transcript", () => ({
 jest.mock("@/components/session/session-workspace", () => ({
   SessionWorkspace: () => <div>Workspace files</div>,
 }));
-jest.mock("@/components/chat/streamdown-message", () => ({ InlineStreamdownMessage: () => null }));
+jest.mock("@/components/markdown/markdown-message", () => ({ InlineMarkdownMessage: () => null }));
 
 function renderLibrary() {
   return render(

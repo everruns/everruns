@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { InlineStreamdownMessage } from "@/components/chat/streamdown-message";
+import { InlineMarkdownMessage } from "@/components/markdown/markdown-message";
 import { InitialFilesPreview } from "@/components/files/initial-files-preview";
 import { SkillUsageRow } from "@/components/skills/skill-usage-row";
 import { getEntityStatusBadgeVariant } from "@/lib/entity-lifecycle";
@@ -128,7 +128,7 @@ export function SkillDetailView({
             {content && (
               <div className="min-h-[240px] overflow-x-auto bg-muted p-4 text-sm">
                 {split.body.trim() ? (
-                  <InlineStreamdownMessage>{split.body}</InlineStreamdownMessage>
+                  <InlineMarkdownMessage>{split.body}</InlineMarkdownMessage>
                 ) : (
                   <span className="text-muted-foreground">{ui("(empty)")}</span>
                 )}

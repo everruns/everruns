@@ -1,19 +1,9 @@
-import { MarkdownLink } from "@/components/markdown/markdown-link";
 import { act, render, screen } from "@testing-library/react";
+import * as words from "@pierre/words/react";
 
-let capturedStreamdownProps: Record<string, unknown> = {};
-
-// Mock streamdown to avoid ESM issues in Jest
-jest.mock("streamdown", () => ({
-  Streamdown: (props: Record<string, unknown>) => {
-    capturedStreamdownProps = props;
-    return <pre data-testid="streamdown-mock">{props.children as string}</pre>;
-  },
-}));
-
-jest.mock("@streamdown/code", () => ({
-  code: {},
-}));
+// jest maps @pierre/words to src/test-mocks/pierre-words.tsx, which records its props.
+const markdownProps = () =>
+  (words as unknown as { lastMarkdownProps: Record<string, unknown> }).lastMarkdownProps;
 
 import {
   getPreviewType,
@@ -345,16 +335,13 @@ describe("parseFrontmatter", () => {
 });
 
 describe("MarkdownPreview", () => {
-  it("passes only the body to Streamdown and renders complete metadata separately", async () => {
+  it("passes only the body to the renderer and renders complete metadata separately", async () => {
     const body = "# Hello\n\n[PR](https://github.com/everruns/everruns/pull/44)\n";
     const { container, rerender } = render(
       <MarkdownPreview content={`---\ntitle: My Page\nauthor: Jane\nempty:\n---\n\n${body}`} />,
     );
-    expect(capturedStreamdownProps.children).toBe(body);
-    expect((capturedStreamdownProps.components as Record<string, unknown>).a).toBe(MarkdownLink);
-    expect((capturedStreamdownProps.plugins as { mermaid: { name: string } }).mermaid.name).toBe(
-      "mermaid",
-    );
+    expect(markdownProps().children).toBe(body);
+    expect((markdownProps().components as Record<string, unknown>).a).toEqual(expect.any(Function));
     expect(
       Array.from(container.querySelectorAll("tr"), (row) =>
         Array.from(row.querySelectorAll("td"), (cell) => cell.textContent),
@@ -373,7 +360,7 @@ describe("MarkdownPreview", () => {
       await act(async () => {
         rerender(<MarkdownPreview content={content} />);
       });
-      expect(capturedStreamdownProps.children).toBe(
+      expect(markdownProps().children).toBe(
         content.startsWith("---\n---") ? "# Empty metadata" : content,
       );
       expect(container.querySelector("table")).toBeNull();

@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { EntityCard, EntityCardDescription } from "@/components/ui/entity-card";
 import { EntityStatus } from "@/components/ui/entity-status";
 import { IconTile } from "@/components/layout";
-import { InlineStreamdownMessage } from "@/components/chat/streamdown-message";
+import { InlineMarkdownMessage } from "@/components/markdown/markdown-message";
 import { CapabilityIcon } from "@/lib/capability-icons";
 import {
   localizedCapabilityCategory,
@@ -59,9 +59,9 @@ export function CapabilityCard({ capability }: { capability: Capability }) {
       headerActions={<EntityStatus status={getStatusLabel(capability.status)} />}
     >
       <EntityCardDescription>
-        <InlineStreamdownMessage>
+        <InlineMarkdownMessage>
           {localizedCapabilityDescription(capability, locale)}
-        </InlineStreamdownMessage>
+        </InlineMarkdownMessage>
       </EntityCardDescription>
       <div className="flex items-center justify-between gap-2 flex-wrap">
         {capability.category ? (

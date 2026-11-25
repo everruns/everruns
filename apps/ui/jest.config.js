@@ -11,7 +11,9 @@ const customJestConfig = {
   moduleNameMapper: {
     "^@/(.*)$": "<rootDir>/src/$1",
     "^streamdown$": "<rootDir>/node_modules/streamdown/dist/index.js",
-    "^@streamdown/code$": "<rootDir>/node_modules/@streamdown/code/dist/index.js",
+    "^@pierre/words/(react|highlights|mermaid)$": "<rootDir>/src/test-mocks/pierre-words.tsx",
+    "^@pierre/highlights/themes/.*$": "<rootDir>/src/test-mocks/pierre-theme.ts",
+    "^@pierre/words/styles\\.css$": "<rootDir>/src/test-mocks/empty.css",
   },
   testPathIgnorePatterns: ["<rootDir>/generative-ui/tests/", "<rootDir>/node_modules/", "<rootDir>/.next/", "<rootDir>/e2e/"],
   modulePathIgnorePatterns: ["<rootDir>/.next/"],
@@ -21,7 +23,7 @@ const customJestConfig = {
   // shared allowlist; the `(?!\\.pnpm/)` guard prevents the second pattern from
   // matching at the outer /node_modules/ of an isolated path.
   transformIgnorePatterns: (() => {
-    const allow = "(react-markdown|streamdown|@streamdown/code|pele|@rjsf/.*|@x0k/json-schema-merge|shiki|@shikijs/.*|rehype-harden|remark-gfm|unified|bail|is-plain-obj|trough|vfile|vfile-message|unist-util-stringify-position|mdast-util-from-markdown|mdast-util-to-string|micromark|decode-named-character-reference|character-entities|mdast-util-gfm|mdast-util-gfm-autolink-literal|mdast-util-gfm-footnote|mdast-util-gfm-strikethrough|mdast-util-gfm-table|mdast-util-gfm-task-list-item|micromark-extension-gfm|micromark-extension-gfm-autolink-literal|micromark-extension-gfm-footnote|micromark-extension-gfm-strikethrough|micromark-extension-gfm-table|micromark-extension-gfm-tagfilter|micromark-extension-gfm-task-list-item|ccount|escape-string-regexp|markdown-table|unist-util-visit|unist-util-visit-parents|unist-util-is|space-separated-tokens|comma-separated-tokens|property-information|hast-util-whitespace|remark-parse|remark-rehype|hast-util-to-jsx-runtime|estree-util-is-identifier-name|devlop|hast-util-from-parse5|hastscript|web-namespaces|zwitch|html-url-attributes|mdast-util-to-hast|unist-util-position|trim-lines|micromark-util-.*)/";
+    const allow = "(react-markdown|streamdown|pele|@rjsf/.*|@x0k/json-schema-merge|shiki|@shikijs/.*|rehype-harden|remark-gfm|unified|bail|is-plain-obj|trough|vfile|vfile-message|unist-util-stringify-position|mdast-util-from-markdown|mdast-util-to-string|micromark|decode-named-character-reference|character-entities|mdast-util-gfm|mdast-util-gfm-autolink-literal|mdast-util-gfm-footnote|mdast-util-gfm-strikethrough|mdast-util-gfm-table|mdast-util-gfm-task-list-item|micromark-extension-gfm|micromark-extension-gfm-autolink-literal|micromark-extension-gfm-footnote|micromark-extension-gfm-strikethrough|micromark-extension-gfm-table|micromark-extension-gfm-tagfilter|micromark-extension-gfm-task-list-item|ccount|escape-string-regexp|markdown-table|unist-util-visit|unist-util-visit-parents|unist-util-is|space-separated-tokens|comma-separated-tokens|property-information|hast-util-whitespace|remark-parse|remark-rehype|hast-util-to-jsx-runtime|estree-util-is-identifier-name|devlop|hast-util-from-parse5|hastscript|web-namespaces|zwitch|html-url-attributes|mdast-util-to-hast|unist-util-position|trim-lines|micromark-util-.*)/";
     return [
       `/node_modules/\\.pnpm/[^/]+/node_modules/(?!${allow})`,
       `/node_modules/(?!\\.pnpm/)(?!${allow})`,

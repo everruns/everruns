@@ -16,7 +16,7 @@ jest.mock(
 );
 jest.mock("next/navigation", () => ({ useParams: () => ({}) }));
 jest.mock("@/providers/locale-provider", () => ({ useUiTranslations: () => (key: string) => key }));
-jest.mock("@/components/chat/streamdown-message", () => ({ StreamdownMessage: () => null }));
+jest.mock("@/components/markdown/markdown-message", () => ({ MarkdownMessage: () => null }));
 jest.mock("@/app/(main)/sessions/[sessionId]/session-context", () => ({
   SessionContext: jest.requireActual<typeof import("react")>("react").createContext(null),
 }));

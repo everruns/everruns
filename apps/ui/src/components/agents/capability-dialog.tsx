@@ -25,7 +25,7 @@ import {
 } from "@/lib/capability-localization";
 
 import { cn } from "@/lib/utils";
-import { InlineStreamdownMessage } from "@/components/chat/streamdown-message";
+import { InlineMarkdownMessage } from "@/components/markdown/markdown-message";
 import { capabilitySelectable, rolloutFlagMap } from "@/lib/capability-availability";
 import { useOptionalFeatureFlags } from "@/providers/feature-flags-provider";
 
@@ -282,9 +282,9 @@ export function CapabilityDialog({
                                   )}
                                 </div>
                                 <div className="text-xs text-muted-foreground line-clamp-2">
-                                  <InlineStreamdownMessage>
+                                  <InlineMarkdownMessage>
                                     {localizedCapabilityDescription(cap, locale)}
-                                  </InlineStreamdownMessage>
+                                  </InlineMarkdownMessage>
                                 </div>
                               </div>
                             </label>

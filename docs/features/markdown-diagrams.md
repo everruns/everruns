@@ -13,4 +13,4 @@ flowchart LR
 ```
 ````
 
-The diagram appears when you view the Markdown. Use the controls on the diagram to zoom or reset the view. The original Mermaid source remains in the Markdown text for editing.
+The diagram appears when you view the Markdown and follows the console's light or dark theme. Use the + and − buttons in the diagram's header to zoom; a zoomed diagram scrolls. The original Mermaid source remains in the Markdown text for editing.

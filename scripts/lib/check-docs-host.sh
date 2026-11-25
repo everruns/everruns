@@ -30,7 +30,7 @@ ALLOWED=(
   ':!apps/docs/wrangler.jsonc'
   # The chat UI still treats links to the old host as first-party.
   ':!apps/ui/src/components/markdown/markdown-link.tsx'
-  ':!apps/ui/src/__tests__/streamdown-message.test.tsx'
+  ':!apps/ui/src/__tests__/markdown-message.test.tsx'
   ':!scripts/lib/check-docs-host.sh'
 )
 

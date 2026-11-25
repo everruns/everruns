@@ -2,16 +2,6 @@ import { act, render, screen, waitFor } from "@testing-library/react";
 import { AgentPreview } from "@/components/agents/agent-preview";
 import type { AgentPreviewResponse } from "@/lib/api/types";
 
-jest.mock("streamdown", () => ({
-  Streamdown: ({ children }: { children: string }) => (
-    <pre data-testid="streamdown-mock">{children}</pre>
-  ),
-}));
-
-jest.mock("@streamdown/code", () => ({
-  code: {},
-}));
-
 const mockUsePreviewAgent = jest.fn();
 jest.mock("@/hooks/use-agents", () => ({
   usePreviewAgent: () => mockUsePreviewAgent(),
