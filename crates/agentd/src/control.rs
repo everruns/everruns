@@ -542,7 +542,20 @@ pub fn admin(
     }
 }
 
+/// What one waiting feed record holds in memory, for the memory ledger.
+///
+/// Decision: an estimate per record, not a sum kept in replicated state. A
+/// usage record (the bulk of the feed) is a struct of ten fields with
+/// short strings; parsed, about 300 to 500 bytes. A count times a constant
+/// is the same on every replica and costs nothing to keep current.
+pub const FEED_RECORD_BYTES: u64 = 512;
+
 impl Feed {
+    /// Memory the records waiting for the control plane hold, estimated.
+    pub fn held_bytes(&self) -> u64 {
+        self.records.len() as u64 * FEED_RECORD_BYTES
+    }
+
     pub fn push(&mut self, index: u64, org: &str, at_unix_ms: i64, record: Record) {
         let ordinal = match self.records.back() {
             Some(last) if last.index == index => last.ordinal + 1,
@@ -976,6 +989,20 @@ mod tests {
         feed.ack((7, 0));
         assert_eq!(feed.records.len(), 1, "an older ack changes nothing");
         assert_eq!(feed.acked, (7, 1));
+    }
+
+    /// The ledger counts every waiting record, and an acknowledgement gives
+    /// the memory back; nothing is dropped to make room.
+    #[test]
+    fn feed_memory_follows_the_waiting_records() {
+        let mut feed = Feed::default();
+        for index in 1..=10 {
+            feed.push(index, "o", 0, Record::ConfigApplied { version: 1 });
+        }
+        assert_eq!(feed.held_bytes(), 10 * FEED_RECORD_BYTES);
+        feed.ack((4, 0));
+        assert_eq!(feed.held_bytes(), 6 * FEED_RECORD_BYTES);
+        assert_eq!(feed.records.front().map(|r| r.index), Some(5));
     }
 
     fn session(

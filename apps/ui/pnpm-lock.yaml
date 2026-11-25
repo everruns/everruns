@@ -21,7 +21,6 @@ overrides:
   body-parser: 2.4.0
   maplibre-gl: 6.4.1
   js-yaml: 4.3.2
-  mermaid: 11.16.1
   nanoid: 3.3.18
   postcss: 8.5.23
   prismjs: 1.30.0
@@ -72,9 +71,6 @@ importers:
       '@streamdown/code':
         specifier: ^2.0.0
         version: 2.0.0(react@19.3.1)
-      '@streamdown/mermaid':
-        specifier: ^1.0.3
-        version: 1.0.3(react@19.3.1)
       '@tanstack/react-query':
         specifier: ^5.104.5
         version: 5.104.5(@types/react@19.3.0)(react@19.3.1)
@@ -99,6 +95,9 @@ importers:
       next:
         specifier: 16.4.5
         version: 16.4.5(@babel/core@7.29.6)(@playwright/test@1.65.0)(@types/node@26.6.5)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      pele:
+        specifier: ^1.13.0
+        version: 1.13.0
       react:
         specifier: ^19.3.1
         version: 19.3.1
@@ -2332,11 +2331,6 @@ packages:
   '@streamdown/code@2.0.0':
     resolution: {integrity: sha512-sSyX/9gOOcivbP7204+sfAam+gotxjUNV+T4EuN3aa6i5x1LaqtB6Ln/Mxzd1XGvm0vNApO4oKLZs+7gzFI1kQ==}
     engines: {node: '>=20'}
-    peerDependencies:
-      react: ^18.0.0 || ^19.0.0
-
-  '@streamdown/mermaid@1.0.3':
-    resolution: {integrity: sha512-TgdL9Evm4CiaBaADjQVCaXe5eEZpJpTZ7JYw/OY1OO2JCmlc/6DN2DISXj+KUYAzRw+GgJioCoorpuCN/OIXyA==}
     peerDependencies:
       react: ^18.0.0 || ^19.0.0
 
@@ -4877,6 +4871,10 @@ packages:
   pbf@5.1.2:
     resolution: {integrity: sha512-mnvGdvOrIvJOBGUEdGkrVXjN8E/VkIJCkf2eS1DH2yv82ORUlLttmDt0rWY38yYZmVwciZwBUvHM20qxBZf40w==}
     hasBin: true
+
+  pele@1.13.0:
+    resolution: {integrity: sha512-Ie8UKY9x00MsuR3jO6AzUwzK2Z6MIV3Tf4EDdITiuk8Uaz8K7g0R082WqsqNaSU8DdgkrRvZThzhit83mi/uiw==}
+    engines: {node: '>=20'}
 
   phoenix@1.8.16:
     resolution: {integrity: sha512-bNNJkYBnES2MHo8XjBg6ROK7iU7FeYfkANpTnYzh2ecOipI+8ZF1wiiWdvqv2YfV4MVb9yFJBE2BPF+RXgXXuw==}
@@ -8036,11 +8034,6 @@ snapshots:
       react: 19.3.1
       shiki: 4.5.0
 
-  '@streamdown/mermaid@1.0.3(react@19.3.1)':
-    dependencies:
-      mermaid: 11.16.1
-      react: 19.3.1
-
   '@swc/helpers@0.5.23':
     dependencies:
       tslib: 2.9.1
@@ -11126,6 +11119,8 @@ snapshots:
   pbf@5.1.2:
     dependencies:
       resolve-protobuf-schema: 2.1.0
+
+  pele@1.13.0: {}
 
   phoenix@1.8.16: {}
 

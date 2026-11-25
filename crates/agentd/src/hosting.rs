@@ -459,6 +459,10 @@ impl SessionHosting for RaftHosting {
         Some(self)
     }
 
+    fn event_store_down(&self) -> bool {
+        crate::store::outage()
+    }
+
     async fn prepare_activation(
         &self,
         _engine: &everruns::Engine,

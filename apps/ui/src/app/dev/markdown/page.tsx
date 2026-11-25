@@ -94,6 +94,11 @@ Unordered list:
 | Streaming | Done | Via Streamdown |
 | Tables | Done | With styling |`,
 
+  diagram: `\`\`\`mermaid
+flowchart LR
+  Request --> Agent --> Reply
+\`\`\``,
+
   capabilityDescription: `Fetch content from URLs and convert HTML to markdown.
 
 **Features:**
@@ -348,6 +353,12 @@ export default function DevMarkdownPage() {
 
             <ShowcaseItem label={ui("Table")}>
               <InlineStreamdownMessage>{sampleMarkdownContent.table}</InlineStreamdownMessage>
+            </ShowcaseItem>
+
+            <ShowcaseItem label="Mermaid diagram">
+              <StreamdownMessage variant="inline">
+                {sampleMarkdownContent.diagram}
+              </StreamdownMessage>
             </ShowcaseItem>
           </ShowcaseSection>
 

@@ -1,5 +1,6 @@
 // Ukrainian product copy. Keep interpolation values separate from translated text.
 export const messages: Readonly<Record<string, string>> = {
+  Team: "Команда",
   "web_fetch and Bashkit send {placement} only to this URL.":
     "web_fetch і Bashkit надсилають {placement} лише на цю URL-адресу.",
   "Daytona, E2B, and Modal commands run without this credential.":

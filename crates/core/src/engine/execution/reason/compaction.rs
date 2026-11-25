@@ -225,10 +225,12 @@ pub(super) async fn apply_proactive_compaction(
     );
     // Astra explicit compaction reconstructs the complete durable input even
     // when generation uses a response handle; it must still compact proactively.
-    let local_pressure = (!context.stateful_response_continuation
-        || config.reasoning_state.is_some())
-        && checkpoint_rearmed
-        && (window_pressure || cost_pressure);
+    let local_history = !context.stateful_response_continuation || config.reasoning_state.is_some();
+    let local_pressure = local_history && checkpoint_rearmed && (window_pressure || cost_pressure);
+    // Masking is free and deterministic, so it does not wait for a fresh
+    // checkpoint to rearm: the portable planner skips a paid summary when the
+    // masked view fits, and relies on this request applying the same masking.
+    let masking_pressure = local_history && (window_pressure || cost_pressure);
     let should_attempt = native_strategy
         && context.chat_driver.supports_compact()
         && durable_source.is_some()
@@ -411,10 +413,13 @@ pub(super) async fn apply_proactive_compaction(
     // durable checkpoint. Track which strategy installed so the lifecycle
     // below closes with an install event instead of dangling.
     let mut fallback_installed_strategy: Option<&str> = None;
-    if local_pressure && applied.is_none() && config.provider_opaque_context.is_none() {
+    if (local_pressure || masking_pressure)
+        && applied.is_none()
+        && config.provider_opaque_context.is_none()
+    {
         // Historical schema changes are compactable too. Restart the declaration
         // epoch before trimming, so removed transitions cannot leave stale tools.
-        if config.tool_baseline.take().is_some() {
+        if local_pressure && config.tool_baseline.take().is_some() {
             config.system_prompt_baseline = None;
             if tool_tokens > current_tool_tokens {
                 fallback_installed_strategy = Some("tool_rebase");
@@ -444,7 +449,7 @@ pub(super) async fn apply_proactive_compaction(
             }
         }
         let budget_tokens = history_budget;
-        if context.policy.estimate_total_tokens(messages) > budget_tokens {
+        if local_pressure && context.policy.estimate_total_tokens(messages) > budget_tokens {
             fallback_installed_strategy = Some(match fallback_installed_strategy {
                 // Masking may have installed just above; report the full chain.
                 Some("masking") => "masking+trim",

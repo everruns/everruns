@@ -185,7 +185,7 @@ pub(super) async fn run_post_tool_exec_hooks(
 const MAX_TOOL_RESULT_BYTES: usize = 64 * 1024;
 
 const TRUNCATION_SUFFIX: &str =
-    "\n\n[Output truncated — exceeded 64 KiB limit. Try quiet flags, pipes, or redirect to file.]";
+    " — output exceeded the 64 KiB limit. Try quiet flags, pipes, or redirect to file.";
 
 /// Cumulative ceiling on native image payloads (base64 bytes) per tool result.
 ///
@@ -202,26 +202,49 @@ const MAX_TOOL_IMAGE_BYTES: usize = 5 * 1024 * 1024;
 /// by capabilities. Runs after all capability-contributed hooks so that
 /// persistence hooks (EVE-222) can capture full output before truncation.
 ///
-/// Head-truncation with UTF-8 safety: keeps the first N bytes (on a char
-/// boundary) and appends an LLM-actionable suffix.
+/// Head-and-tail truncation with UTF-8 safety, with an LLM-actionable marker
+/// where bytes were dropped.
 pub struct OutputHardLimitHook;
 
 impl OutputHardLimitHook {
-    /// Truncate `text` to `MAX_TOOL_RESULT_BYTES` with a UTF-8-safe cut.
+    /// Truncate `text` to `MAX_TOOL_RESULT_BYTES` with UTF-8-safe cuts,
+    /// keeping the head and the tail around an omission marker.
+    ///
+    /// Head-only truncation dropped what usually matters most at the end of
+    /// long output: a command's final lines and errors, a page's last
+    /// entries. Three quarters of the room goes to the head, the rest to the
+    /// tail.
     fn truncate(text: String) -> String {
         if text.len() <= MAX_TOOL_RESULT_BYTES {
             return text;
         }
-        let content_budget = MAX_TOOL_RESULT_BYTES.saturating_sub(TRUNCATION_SUFFIX.len());
-        let mut end = content_budget;
-        while end > 0 && !text.is_char_boundary(end) {
-            end -= 1;
+        // Room for the marker, whose byte count has at most 20 digits.
+        let content_budget = MAX_TOOL_RESULT_BYTES.saturating_sub(TRUNCATION_MARKER_MAX);
+        let mut head_end = content_budget / 4 * 3;
+        while head_end > 0 && !text.is_char_boundary(head_end) {
+            head_end -= 1;
         }
-        let mut truncated = text[..end].to_string();
-        truncated.push_str(TRUNCATION_SUFFIX);
-        truncated
+        let mut tail_start = text.len() - (content_budget - head_end);
+        while tail_start < text.len() && !text.is_char_boundary(tail_start) {
+            tail_start += 1;
+        }
+        let omitted = tail_start - head_end;
+        format!(
+            "{}{}{}",
+            &text[..head_end],
+            truncation_marker(omitted),
+            &text[tail_start..]
+        )
     }
 }
+
+/// Marker between the kept head and tail of a truncated result.
+fn truncation_marker(omitted_bytes: usize) -> String {
+    format!("\n\n[… {omitted_bytes} bytes omitted{TRUNCATION_SUFFIX}]\n\n")
+}
+
+/// Upper bound of `truncation_marker`'s length.
+const TRUNCATION_MARKER_MAX: usize = TRUNCATION_SUFFIX.len() + 64;
 
 #[async_trait]
 impl PostToolExecHook for OutputHardLimitHook {
@@ -1169,7 +1192,32 @@ mod tests {
         let text = result.result.unwrap();
         let s = text.as_str().unwrap();
         assert!(s.len() <= MAX_TOOL_RESULT_BYTES);
-        assert!(s.ends_with(TRUNCATION_SUFFIX));
+        assert!(s.contains(TRUNCATION_SUFFIX));
+    }
+
+    #[test]
+    fn hard_limit_keeps_the_head_and_the_tail() {
+        let text = format!(
+            "HEAD-START{}é{}TAIL-END",
+            "a".repeat(MAX_TOOL_RESULT_BYTES),
+            "b".repeat(MAX_TOOL_RESULT_BYTES)
+        );
+        let original = text.len();
+        let truncated = OutputHardLimitHook::truncate(text);
+        assert!(truncated.len() <= MAX_TOOL_RESULT_BYTES);
+        assert!(truncated.starts_with("HEAD-START"));
+        assert!(truncated.ends_with("TAIL-END"));
+        let marker = truncated
+            .split("[… ")
+            .nth(1)
+            .and_then(|rest| rest.split(" bytes omitted").next())
+            .and_then(|n| n.parse::<usize>().ok())
+            .unwrap();
+        // Kept text plus the omitted bytes is the whole original.
+        assert_eq!(
+            truncated.len() - truncation_marker(marker).len() + marker,
+            original
+        );
     }
 
     #[tokio::test]
@@ -1222,7 +1270,7 @@ mod tests {
         let text = result.result.unwrap();
         let s = text.as_str().unwrap();
         assert!(s.len() <= MAX_TOOL_RESULT_BYTES);
-        assert!(s.contains("[Output truncated"));
+        assert!(s.contains("bytes omitted"));
     }
 
     #[tokio::test]
@@ -1246,7 +1294,7 @@ mod tests {
 
         let err = result.error.unwrap();
         assert!(err.len() <= MAX_TOOL_RESULT_BYTES);
-        assert!(err.ends_with(TRUNCATION_SUFFIX));
+        assert!(err.contains(TRUNCATION_SUFFIX));
     }
 
     #[tokio::test]

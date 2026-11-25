@@ -217,6 +217,21 @@ class Adapters(unittest.TestCase):
         self.assertIn("L2", S.states(CFG, [run(25_000)], fresh())["R1"].cells)
         self.assertEqual(reliability.density({"sessions_per_shard": {"0": 25_010, "1": 24_990}}), 24_990)
 
+    def test_a_store_outage_that_drops_accepted_input_fails_a1(self):
+        from unittest import mock
+        ch = next(c for c in reliability.CHECKS if "U11" in c.points)
+        self.assertIn("A1", ch.points)
+        ctx = mock.Mock(cfg=CFG, size=1.0, evidence="/tmp")
+        res = {"ok": False, "errors": 0, "accepted_not_completed": 210, "sessions_per_shard": {"0": 25_000},
+               "check": {"ok": False, "failed_sessions": 210}}
+        with mock.patch.object(reliability, "harness", return_value=(json.dumps(res), "cmd")):
+            out = ch.run(ctx)
+        self.assertEqual({e["point"]: e["value"] for e in out.entries}, {"U11": False, "A1": False})
+        res.update(ok=True, accepted_not_completed=0, check={"ok": True, "failed_sessions": 0})
+        with mock.patch.object(reliability, "harness", return_value=(json.dumps(res), "cmd")):
+            out = ch.run(ctx)
+        self.assertEqual({e["point"]: e["value"] for e in out.entries}, {"U11": True, "A1": True})
+
     def test_a_proof_that_cannot_run_here_records_nothing(self):
         from unittest import mock
         ch = next(c for c in reliability.CHECKS if "U12" in c.points)

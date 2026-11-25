@@ -220,6 +220,8 @@ export const messages: Readonly<Record<string, string>> = {
     "La ejecución se detuvo porque una dependencia requerida no está disponible.",
   "A connected tool uses an input schema that this model provider does not support. Update the integration or choose a different model provider, then try again.":
     "Una herramienta conectada utiliza un esquema de entrada que este proveedor de modelo no admite. Actualice la integración o elija un proveedor de modelo diferente y vuelva a intentarlo.",
+  "The conversation history had to be summarized before this turn, but the model's summary came back cut off or empty, even after a retry with more room. Nothing was lost. Send the message again to retry, or use a model with a larger output limit for summaries.":
+    "Había que resumir el historial de la conversación antes de este turno, pero el resumen del modelo llegó cortado o vacío, incluso tras un reintento con más espacio. No se perdió nada. Envíe el mensaje de nuevo para reintentarlo o use para los resúmenes un modelo con un límite de salida mayor.",
   "binary file{value}": "archivo binario{value}",
   "{count} image": "Imagen {count}",
   "{count} images": "Imágenes {count}",

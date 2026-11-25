@@ -15,9 +15,11 @@ carries on (data plane v2 step 9, design.md "Disaster recovery").
 3. `agentd-testnode restore` rebuilds shard 0 from the store into empty data
    directories (timed), its nodes start again, and the drill times how long
    until shard 0 has a leader.
-4. A second message the rebuild lost (admitted inside the loss window, at
-   most about two seconds before the kill) is sent again; the drill counts
-   these. Then every session must finish: `agentd-drive check` with the work
+4. A second message the rebuild lost (a plain commit inside the shipping
+   window: up to 10 s before the kill, never more than 30 s) is sent again;
+   the drill counts these. Session creates and the starts of tools not safe
+   to repeat are never lost: they reach the store before they are answered
+   (guarantees.md, ship-first writes). Then every session must finish: `agentd-drive check` with the work
    tool's ledger (each message completed once, sequences dense, no tool ran
    more often than it has a durable `tool.started`).
 
@@ -40,7 +42,9 @@ p.add_argument("--inflight", type=int, default=3000)
 p.add_argument("--concurrency", type=int, default=1000)
 p.add_argument("--kill-after-s", type=float, default=3.0)
 p.add_argument("--max-rebuild-s", type=float, default=600.0)
-p.add_argument("--max-ship-lag-s", type=float, default=2.0)
+# The shipped log's lag: an object at most every 10 s (`ship::SHIP_EVERY`)
+# plus a tick; the 75k goal's F3 bound is a p99 of 15 s.
+p.add_argument("--max-ship-lag-s", type=float, default=15.0)
 a = p.parse_args()
 
 
@@ -71,6 +75,23 @@ def histogram(shard, name):
             bound = float("inf") if le == "+Inf" else float(le)
             buckets[bound] = buckets.get(bound, 0) + float(line.rsplit(" ", 1)[1])
     return sorted(buckets.items())
+
+
+def counter(name, label=None):
+    """`name` summed over every node of every shard, only series carrying
+    `label` (a `key="value"` string) when given."""
+    total = 0.0
+    for c in range(a.shards):
+        for node in fleet.nodes_of(c):
+            try:
+                text = urllib.request.urlopen(f"http://{fleet.addr(c, node)}/metrics", timeout=5).read().decode()
+            except Exception:
+                continue
+            for line in text.splitlines():
+                if line.startswith(name + "{") or line.startswith(name + " "):
+                    if label is None or label in line:
+                        total += float(line.rsplit(" ", 1)[1])
+    return total
 
 
 def quantile(buckets, q):
@@ -108,6 +129,7 @@ safe_gws = [f"http://{fleet.addr(c, n)}" for c in range(1, a.shards) for n in (1
 sf = os.path.join(fleet.STATE, "sessions.txt")
 
 # 1. Load.
+load_started = time.time()
 out = subprocess.run([DRIVE, "load", "--gateways", ",".join(all_gws), "--agent", "worker",
                       "--sessions", str(a.sessions), "--turns", "1", "--concurrency", str(a.concurrency),
                       "--sessions-file", sf, "--persistent"], capture_output=True, text=True)
@@ -115,8 +137,24 @@ load = json.loads(out.stdout)
 load.pop("shards", None)
 ship_lag = summary("agentd_shard_ship_lag_seconds")
 ship_first = summary("agentd_shard_ship_first_duration_seconds")
+# What answering ship-first writes from the store costs (the owner asked
+# for it in the PR, 2026-11-25): object writes of the log a second per
+# shard, over the load, and the share of tool calls that waited for one.
+load_s = max(time.time() - load_started, 1.0)
+log_puts = counter("agentd_store_puts_total", 'kind="log"')
+ship_first_writes = counter("agentd_shard_ship_first_total")
+tool_starts = counter("agentd_shard_events_appended_total", 'type="tool.started"')
+cost = {
+    "load_s": round(load_s),
+    "log_objects_per_shard_per_s": round(log_puts / load_s / a.shards, 2),
+    "ship_first_writes": int(ship_first_writes),
+    "tool_starts": int(tool_starts),
+    # Ship-first writes per session: its create, its directory entry and
+    # each start of a tool not safe to repeat (the worker agent's tool is).
+    "ship_first_per_session": round(ship_first_writes / max(load.get("sessions") or 1, 1), 2),
+}
 print(json.dumps({"load": {k: load.get(k) for k in ("sessions", "turns_completed", "errors", "turns_per_sec")},
-                  "ship_lag": ship_lag, "ship_first": ship_first}), flush=True)
+                  "ship_lag": ship_lag, "ship_first": ship_first, "cost": cost}), flush=True)
 ids = [l for l in open(sf).read().splitlines() if l]
 second = ids[: a.inflight]
 
@@ -198,7 +236,7 @@ for name, path, turns in (("second", sf2, 2), ("first", sf1, 1)):
 res = {
     "sessions": a.sessions, "shards": a.shards, "inflight": a.inflight,
     "load": {k: load.get(k) for k in ("turns_completed", "errors", "turns_per_sec", "turn")},
-    "ship_lag_s": ship_lag, "ship_first_s": ship_first,
+    "ship_lag_s": ship_lag, "ship_first_s": ship_first, "ship_first_cost": cost,
     "rebuilt": report, "rebuild_s": round(rebuild_s, 1), "kill_to_leader_s": round(back_s, 1),
     "second_messages_lost": lost, "check": checks, "wall_s": round(time.time() - t0),
 }

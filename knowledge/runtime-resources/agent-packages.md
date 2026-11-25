@@ -45,7 +45,12 @@ new exports use the canonical layout. Explicit empty selection suppresses legacy
 file discovery. Ambiguous automatic skill discovery requires an explicit choice.
 
 Disk loaders read declared roots and conventional companion assets. ZIP is the
-folder transport. Server commands read workspace paths through session file
+folder transport. Platform ZIP downloads bundle all direct team agents, including
+linked agents, under `.agents/agents/`. Import makes those snapshots created
+children at the destination; it never copies service connections or grants. Text
+and continuous-source exports retain linked names. The existing one-level
+package limit still applies, and nested teams fail validation rather than being
+silently omitted. Server commands read workspace paths through session file
 commands, never through the server host filesystem. Collection rejects traversal
 and symlinks and excludes hidden credentials. File bodies in diffs are represented
 by digests; MCP credential requirements stay unresolved until explicitly bound.

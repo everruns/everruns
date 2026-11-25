@@ -49,6 +49,8 @@ const RETRYABLE_RUNTIME_ERROR_CODES = new Set([
   "processing_error",
   "provider_session_unavailable",
   "dependency_unavailable",
+  // A rerun summarizes again and often succeeds; history was not changed.
+  "context_summary_failed",
 ]);
 
 export function isRetryableRuntimeError(error: RuntimeErrorInfo | undefined): boolean {
@@ -172,6 +174,8 @@ function localizeRuntimeErrorBase(
       return formatMessage(locale, "runtime_error_dependency_unavailable");
     case "invalid_tool_schema":
       return formatMessage(locale, "runtime_error_invalid_tool_schema");
+    case "context_summary_failed":
+      return formatMessage(locale, "runtime_error_context_summary_failed");
     default:
       return fallback;
   }

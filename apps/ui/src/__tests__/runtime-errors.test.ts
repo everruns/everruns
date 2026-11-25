@@ -229,6 +229,16 @@ describe("runtime error localization", () => {
     expect(text).toContain("Update the integration");
     expect(text).not.toContain("generic processing error");
   });
+
+  it("names a failed history summary and offers a retry", () => {
+    const error = { code: "context_summary_failed" };
+    const text = localizeRuntimeError("en", error, "generic processing error");
+
+    expect(text).toContain("summarized");
+    expect(text).toContain("Nothing was lost");
+    expect(localizeRuntimeError("uk", error, "fallback")).toContain("Нічого не втрачено");
+    expect(isRetryableRuntimeError(error)).toBe(true);
+  });
 });
 
 it("localizes model refusals without suggesting a retry", () => {

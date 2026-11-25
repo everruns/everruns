@@ -20,8 +20,9 @@ shipping catches up when it is back (75k verifier point U11).
    message the shard acknowledged must still be there: `agentd-drive check`
    with the ledger (each message completed once, sequences dense).
 
-Pass: the check holds, shipping caught up in time, and no session lost a
-message the shard acknowledged. Writes .shard/store_outage.json.
+Pass: the check holds, shipping caught up in time, no session lost a
+message the shard acknowledged, and every accepted input ended in a
+completed turn after recovery (`accepted_not_completed` is 0). Writes .shard/store_outage.json.
 """
 import argparse, concurrent.futures, json, os, shutil, signal, subprocess, sys, time
 import urllib.error, urllib.request
@@ -202,6 +203,11 @@ res = {
     "check": {k: after.get(k) for k in ("ok", "failed_sessions", "totals", "failures", "err")},
     "timeline": timeline, "wall_s": round(time.time() - t0),
 }
+# Every input the shard accepted must end in a completed turn after recovery:
+# an accepted message that never runs is lost work (verifier point A1 too).
+res["accepted_not_completed"] = sum(
+    1 for f in (after.get("failures") or [])
+    if any("turn.completed" in p for p in f.get("problems", [])))
 res["ok"] = bool(after.get("ok")) and not failed and caught_up_s is not None \
     and caught_up_s <= a.max_catch_up_s and load.get("errors") == 0
 res["errors"] = len(failed)

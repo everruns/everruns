@@ -1,5 +1,9 @@
 # Everruns Knowledge Update Log
 
+## 2026-11-25
+
+- [Markdown Messages Rendering](ui/markdown-messages.md): Pele renders Mermaid diagrams across the shared UI renderer and Markdown file previews.
+
 ## 2026-11-24
 
 - [Channelkit migration](integrations/channelkit-migration.md): opt-in Framework channels enable policy-aware host egress by default; real-model qualification exposed replies blocked by an offline service despite completed generation.
@@ -9,6 +13,7 @@
 - [Slack modernization](integrations/slack-modernization.md): Socket Mode follows host HTTP proxy/TLS settings through a validated upgrade, bounds provider frames and omits ticket-bearing URLs from connection diagnostics.
 
 - [Channels](integrations/channels.md#output-delivery-checkpoints): protocol-marked pending rows survive the pre-intent crash window under legacy adapters; missing channels retain reconciliation evidence. Deploy the shared-host compatibility baseline before rolling the Channelkit bridge.
+- [Agents using agents](runtime-resources/agents-using-agents.md): name the agent roster Team, link created children to their parent in breadcrumbs, and make ZIP exports bundle linked team agents for fresh-destination imports. Keep source links and credential isolation.
 
 - [Channelkit migration](integrations/channelkit-migration.md): pin verified Rust alpha.5 and move shared/server Slack ingress, history, delivery, media and actions through the scoped bridge; retain host egress, native file references, durable approvals and action receipts. Preserve legacy pending deliveries for reconciliation during cutover.
 

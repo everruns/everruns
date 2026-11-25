@@ -38,3 +38,8 @@ fn analyst() -> Agent {
 ```
 
 See [Agent handoff](/capabilities/agent-handoff/).
+
+## Update 2026-11-24
+
+Agent rosters are now **Team**, with parent breadcrumbs for created children.
+ZIP exports bundle linked agents too, without copying credentials.

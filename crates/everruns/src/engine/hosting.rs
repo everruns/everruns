@@ -960,9 +960,14 @@ impl Engine {
             }
             let registration = resolved.registration()?;
             self.cache_hosted(session, activation.binding.clone(), &registration)?;
+            let (actor_store, fence, consumed) = (
+                activation.epoch.actor_store(),
+                activation.actor.fence,
+                activation.actor.consumed_seq,
+            );
             // Heap-allocate the activation: the full runtime build and driver
             // future is large, and hosts often await activation inline.
-            Box::pin(crate::hosting::execution::run(
+            let ran_once = Box::pin(crate::hosting::execution::run(
                 self,
                 session,
                 registration.agent,
@@ -970,12 +975,98 @@ impl Engine {
                 activation,
                 config.clone(),
             ))
-            .await?;
+            .await;
+            if let Err(error) = ran_once {
+                // Decision: an unreachable event store (an object store outage
+                // behind a data plane) is not this turn's failure. Setup reads
+                // the session's history before the actor's lease loop starts,
+                // and an error there ended the activation with the claim held:
+                // it expired and counted an attempt, and three such claims
+                // sealed the turn (10-minute store outage at 25,000 sessions a
+                // shard on the Mac mini, 2026-11-24). Back off, then hand the
+                // claim back without consuming input: a release resets the
+                // poison guard's count, the input stays runnable, and the turn
+                // runs once the store answers. The actor's own retries cover
+                // the same outage inside the lease (`session_actor::turn`).
+                if outage_release(session, &error, profile.event_store_down()) {
+                    everruns_contracts::rt::sleep(BACKEND_RELEASE_BACKOFF).await;
+                    if let Err(release) = actor_store
+                        .release_actor(session, &config.holder, fence, consumed)
+                        .await
+                    {
+                        tracing::warn!(%session, error = %release, "releasing a claim after a store outage failed");
+                    }
+                }
+                return Err(error);
+            }
+            OUTAGE_RELEASES
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .remove(&session);
             if !profile.process_scheduler() {
                 return Ok(());
             }
             ran = true;
         }
+    }
+}
+
+/// How long an activation waits before handing back a claim its setup could
+/// not use because the event store was unreachable (`Engine::activate`).
+const BACKEND_RELEASE_BACKOFF: Duration = Duration::from_secs(5);
+
+/// Per session, when its claims first started going back for a store outage.
+static OUTAGE_RELEASES: std::sync::LazyLock<
+    std::sync::Mutex<std::collections::HashMap<SessionId, std::time::Instant>>,
+> = std::sync::LazyLock::new(Default::default);
+
+/// Whether an activation that failed with `error` hands its claim back
+/// instead of letting it count toward the poison guard.
+///
+/// Decision: only while the host says its event store is down as a whole
+/// (`SessionHosting::event_store_down`), not on one session's backend error
+/// alone: an object that is missing or unreadable while the store answers is
+/// that session's problem, and handing its claim back forever would keep a
+/// turn that can never load from ever being sealed. And only for
+/// `BACKEND_OUTAGE_LIMIT` per session, as the actor's own wait inside a lease;
+/// past it the poison guard applies as for any failure.
+fn outage_release(session: SessionId, error: &AgentLoopError, store_down: bool) -> bool {
+    use everruns_core::host::session_actor::BACKEND_OUTAGE_LIMIT;
+    if !error.is_backend_unavailable() || !store_down {
+        return false;
+    }
+    let mut releases = OUTAGE_RELEASES
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let since = *releases
+        .entry(session)
+        .or_insert_with(std::time::Instant::now);
+    since.elapsed() < BACKEND_OUTAGE_LIMIT
+}
+
+#[cfg(test)]
+mod outage_tests {
+    use super::*;
+
+    #[test]
+    fn a_claim_goes_back_only_while_the_store_is_down_as_a_whole() {
+        let backend =
+            AgentLoopError::store("event log backend failure: Unable to open file x.messages.json");
+        let healthy = SessionId::new();
+        // One session's object unreadable while the store answers: the poison
+        // guard must still see these, so the turn is sealed after its attempts.
+        assert!(!outage_release(healthy, &backend, false));
+        let down = SessionId::new();
+        assert!(outage_release(down, &backend, true));
+        // A missing object is final, outage or not.
+        let missing = AgentLoopError::store("event log backend failure: object not found");
+        assert!(!outage_release(down, &missing, true));
+        // Bounded: past the limit the claim counts again.
+        OUTAGE_RELEASES.lock().unwrap().insert(
+            down,
+            std::time::Instant::now() - everruns_core::host::session_actor::BACKEND_OUTAGE_LIMIT,
+        );
+        assert!(!outage_release(down, &backend, true));
     }
 }
 

@@ -152,18 +152,21 @@ impl Node {
         }
     }
 
-    /// Make the write at `index` survive the loss of all but one replica
-    /// before it is answered (`ship::ships_first`): held on disk by every
-    /// voter, or else shipped to the object store, retrying until
-    /// `deadline`.
+    /// Make the write at `index` survive the loss of every replica before it
+    /// is answered (`ship::ships_first`): shipped to the object store,
+    /// retrying until `deadline`. Writers waiting together share one object
+    /// (`Shipper::flush`).
+    ///
+    /// Decision (2026-11-25): the store, not every voter's disk. Phase 2
+    /// answered these writes once all three voters held them on disk, and
+    /// shipped them only with the log every 10 s. The disaster drill then
+    /// lost every disk of a shard and with them 687 sessions' `tool.started`
+    /// records, so a resent message ran those tools again, and session
+    /// creates the shard had answered. The 75k goal holds that such writes
+    /// reach the store (U9) and that a whole lost shard finishes every
+    /// session (E2), so they wait for the store again, as at step 9.
     pub(crate) async fn ship_first(&self, index: u64, deadline: Instant) -> anyhow::Result<()> {
         let started = Instant::now();
-        if self.held_everywhere(index).await {
-            self.prom.ship_first_total.inc(&[("path", "replicas")]);
-            self.prom.ship_first_seconds.observe(&[], started.elapsed());
-            self.prom.ship_first_window.observe(started.elapsed());
-            return Ok(());
-        }
         let mut backoff = Duration::from_millis(20);
         loop {
             let inc = self.shared.state.read().incarnation;
@@ -184,61 +187,4 @@ impl Node {
             backoff = (backoff * 2).min(Duration::from_millis(500));
         }
     }
-
-    /// Whether every voter of this shard holds the log through `index` on
-    /// disk, waiting up to [`REPLICA_WAIT`] for the slowest.
-    ///
-    /// Decisions:
-    /// - Only a shard of three or more voters: with fewer, every replica can
-    ///   go at once, and the object store is the only other copy.
-    /// - The leader's replication progress counts an entry only once the
-    ///   follower acknowledged it, and followers fsync before they do
-    ///   (`wal.rs`); the leader's own entry counts once its own disk has it.
-    ///   A matched index past `index` implies `index` (Raft's log matching).
-    /// - A voter that misses [`REPLICA_WAIT`] is likely down or far behind:
-    ///   for [`REPLICA_RETRY`] after, writes go straight to the object store
-    ///   instead of each waiting out the timeout first.
-    async fn held_everywhere(&self, index: u64) -> bool {
-        if self
-            .replicas_slow_until
-            .lock()
-            .is_some_and(|until| Instant::now() < until)
-        {
-            return false;
-        }
-        let voters: Vec<crate::types::NodeId> = {
-            let metrics = self.raft.metrics();
-            let metrics = metrics.borrow();
-            metrics.membership_config.membership().voter_ids().collect()
-        };
-        if voters.len() < 3 {
-            return false;
-        }
-        let held = |m: &openraft::RaftMetrics<crate::types::NodeId, openraft::BasicNode>| {
-            m.replication.as_ref().is_some_and(|progress| {
-                voters.iter().all(|voter| {
-                    progress
-                        .get(voter)
-                        .and_then(|matched| *matched)
-                        .is_some_and(|matched| matched.index >= index)
-                })
-            })
-        };
-        let everywhere = self
-            .raft
-            .wait(Some(REPLICA_WAIT))
-            .metrics(held, "every voter holds the entry")
-            .await
-            .is_ok();
-        if !everywhere {
-            *self.replicas_slow_until.lock() = Some(Instant::now() + REPLICA_RETRY);
-        }
-        everywhere
-    }
 }
-
-/// How long a ship-first write waits for the slowest voter to hold it.
-const REPLICA_WAIT: Duration = Duration::from_millis(250);
-
-/// How long ship-first writes skip the wait after a voter missed it.
-const REPLICA_RETRY: Duration = Duration::from_secs(5);

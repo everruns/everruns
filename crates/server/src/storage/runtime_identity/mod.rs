@@ -474,6 +474,19 @@ impl StorageBackend {
             Ok(sqlx::query_scalar::<_,Option<Uuid>>("SELECT management_user_id FROM runtime_invocations WHERE session_id=$1 AND input_message_id=$2").bind(session).bind(message).fetch_optional(db.pool()).await?.flatten())
         }
     }
+    /// The responder agent of an automated invocation: one recorded with no
+    /// management user and no end user (a schedule, webhook or event message).
+    /// `None` when the invocation is missing or a person sent it.
+    pub async fn runtime_invocation_automated_responder(
+        &self,
+        session_id: SessionId,
+        message_id: Uuid,
+    ) -> Result<Option<Option<Uuid>>> {
+        {
+            let db = self.database();
+            Ok(sqlx::query_scalar::<_, Option<Uuid>>("SELECT responder_agent_id FROM runtime_invocations WHERE session_id=$1 AND input_message_id=$2 AND management_user_id IS NULL AND virtual_user_id IS NULL").bind(session_id).bind(message_id).fetch_optional(db.pool()).await?)
+        }
+    }
     pub async fn runtime_invocation_subject(
         &self,
         session_id: SessionId,

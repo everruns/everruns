@@ -57,6 +57,21 @@ class PagesVerifier(unittest.TestCase):
             f.write('<html lang="uk"><body>Про нас</body></html>\n')
         self.assertIn("**Score 100.0 / 100**.", self.verify())
 
+    def test_goal_edit_drops_evidence_unless_carried(self):
+        self.verify("--record")
+        goal = os.path.join(self.root, "goal.toml")
+        with open(goal) as f:
+            text = f.read()
+        with open(goal, "w") as f:
+            f.write(text + "\n[extra]\nnote = 1\n")
+        md = self.verify("--score")
+        self.assertIn("**Score 0.0 / 100**", md)
+        with open(os.path.join(self.root, "results.jsonl")) as f:
+            old = json.loads(f.readline())["fingerprint"]
+        with open(goal, "a") as f:
+            f.write(f'\n[approval]\ncarry_from = ["{old}"]\n')
+        self.assertIn("(capped from 37.5 by failed gates P1)", self.verify("--score"))
+
     def test_plan_and_json(self):
         self.verify("--plan")
         rep = json.loads(self.verify("--json"))

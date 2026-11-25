@@ -256,7 +256,8 @@ def main():
                     continue
                 rss = rss_mb(pid) if pid else 0.0
                 st = stats(n) or {}
-                counted = (st.get("resident_mb") or 0) + (st.get("wal_held_mb") or 0)
+                counted = (st.get("resident_mb") or 0) + (st.get("wal_held_mb") or 0) \
+                    + (st.get("feed_held_mb") or 0)
                 # Live heap beyond the counted sources: what the remainder
                 # check gates on (rss also holds fragmentation and code).
                 live = ((st.get("heap") or {}).get("allocated_mb")) if st else None

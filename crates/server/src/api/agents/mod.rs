@@ -756,7 +756,12 @@ pub async fn export_agent(
     Path(agent_id): Path<String>,
     Query(query): Query<ExportAgentQuery>,
 ) -> Result<Response, (StatusCode, Json<ErrorResponse>)> {
-    let package = crate::domains::agents::packages::export(&state.ctx(&org), &agent_id).await?;
+    let ctx = state.ctx(&org);
+    let package = if query.format.as_deref() == Some("zip") {
+        crate::domains::agents::packages::export_zip(&ctx, &agent_id).await?
+    } else {
+        crate::domains::agents::packages::export(&ctx, &agent_id).await?
+    };
     let (bytes, extension, content_type) = if query.format.as_deref() == Some("zip") {
         (
             package

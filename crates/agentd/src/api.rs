@@ -107,6 +107,10 @@ pub struct Stats {
     /// Raft log held in memory (not yet purged by a snapshot).
     #[serde(default)]
     pub wal_held_mb: u64,
+    /// Feed records waiting for the control plane, as the memory ledger
+    /// counts them (`Feed::held_bytes`).
+    #[serde(default)]
+    pub feed_held_mb: u64,
     /// Feed records the control plane has not acknowledged yet.
     #[serde(default)]
     pub feed_pending: usize,
@@ -257,6 +261,7 @@ async fn stats(State(node): State<Arc<Node>>) -> Json<Stats> {
         rss_mb: rss_mb(),
         wal: node.wal.stats(),
         wal_held_mb: node.wal.held_bytes() >> 20,
+        feed_held_mb: node.shared.state.read().feed.held_bytes() >> 20,
         feed_pending: node.shared.state.read().feed.records.len(),
         heap: crate::heap::heap(),
         container_mb: crate::memwatch::working().0 >> 20,
@@ -343,7 +348,7 @@ async fn metrics(State(node): State<Arc<Node>>) -> impl IntoResponse {
     );
     w.counters(
         "agentd_shard_ship_first_total",
-        "Ship-first writes by path: replicas (every voter held them) or store (shipped first).",
+        "Ship-first writes, answered once the object store held them (path=store).",
         &p.ship_first_total,
     );
     let puts = crate::prom::Counters::default();

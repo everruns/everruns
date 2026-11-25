@@ -640,6 +640,50 @@ pub fn puts() -> Vec<(&'static str, u64)> {
         .collect()
 }
 
+/// Health of this process's object store, from its own calls.
+///
+/// Decision: an outage is store-wide, not one object's: calls keep failing
+/// (not with "not found") and none has succeeded since, for a while. A
+/// session whose own object is missing or unreadable while other calls
+/// succeed is that session's problem and must not pass for an outage, or a
+/// turn that can never load would be retried forever instead of sealed
+/// (`Engine::activate`, `SessionHosting::event_store_down`).
+static STORE_OK_MS: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(0);
+static STORE_ERR_MS: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(0);
+static STORE_ERR_STREAK: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
+/// Consecutive failed calls, with none succeeding since, that mark an outage.
+const OUTAGE_STREAK: u32 = 8;
+/// An outage is over once no call has failed for this long.
+const OUTAGE_QUIET_MS: i64 = 30_000;
+
+fn store_now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis() as i64)
+}
+
+fn store_succeeded() {
+    use std::sync::atomic::Ordering::Relaxed;
+    STORE_OK_MS.store(store_now_ms(), Relaxed);
+    STORE_ERR_STREAK.store(0, Relaxed);
+}
+
+fn store_failed() {
+    use std::sync::atomic::Ordering::Relaxed;
+    STORE_ERR_MS.store(store_now_ms(), Relaxed);
+    STORE_ERR_STREAK.fetch_add(1, Relaxed);
+}
+
+/// Whether this process's object store looks down as a whole (above).
+pub fn outage() -> bool {
+    use std::sync::atomic::Ordering::Relaxed;
+    let (ok, err) = (STORE_OK_MS.load(Relaxed), STORE_ERR_MS.load(Relaxed));
+    STORE_ERR_STREAK.load(Relaxed) >= OUTAGE_STREAK
+        && err >= ok
+        && store_now_ms() - err < OUTAGE_QUIET_MS
+}
+
 /// Retry transient store failures a few times; a missing object is final.
 pub(crate) async fn retry<T, F, Fut>(op: F) -> anyhow::Result<T>
 where
@@ -648,7 +692,12 @@ where
 {
     let mut delay = Duration::from_millis(50);
     for attempt in 0.. {
-        match op().await {
+        let result = op().await;
+        match &result {
+            Ok(_) | Err(object_store::Error::NotFound { .. }) => store_succeeded(),
+            Err(_) => store_failed(),
+        }
+        match result {
             Ok(value) => return Ok(value),
             Err(error @ object_store::Error::NotFound { .. }) => return Err(error.into()),
             Err(error) if attempt >= 5 => return Err(error.into()),
@@ -665,6 +714,26 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_missing_object_is_not_an_outage_but_calls_failing_together_are() {
+        use std::sync::atomic::Ordering::Relaxed;
+        STORE_ERR_STREAK.store(0, Relaxed);
+        store_succeeded();
+        for _ in 0..20 {
+            // NotFound counts as an answer: the store is up.
+            store_succeeded();
+        }
+        assert!(!outage());
+        for _ in 0..OUTAGE_STREAK - 1 {
+            store_failed();
+        }
+        assert!(!outage(), "a few failures are not an outage yet");
+        store_failed();
+        assert!(outage());
+        store_succeeded();
+        assert!(!outage(), "one success ends it");
+    }
 
     #[test]
     fn object_writes_count_by_kind() {

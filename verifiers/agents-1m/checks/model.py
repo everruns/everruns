@@ -45,11 +45,12 @@ LEVEL_RANK = {"L4": 4, "L3": 3, "L2": 2, "L1": 1, "L0": 0}
 def efficiency_runs(root=EFFICIENCY):
     """agents-75k's runs under its current goal, labelled as its own."""
     try:
-        fp = C.fingerprint(C.load_toml(os.path.join(root, "goal.toml")))
+        goal = C.load_toml(os.path.join(root, "goal.toml"))
         rows = store.read_jsonl(os.path.join(root, "results.jsonl"))
     except FileNotFoundError:
         return []
-    return [{**r, "run": f"agents-75k {r['run']}"} for r in rows if r.get("fingerprint") == fp]
+    ok = {C.fingerprint(goal)} | C.carried(goal)
+    return [{**r, "run": f"agents-75k {r['run']}"} for r in rows if r.get("fingerprint") in ok]
 
 
 def measured(cfg, runs, others=()):
@@ -57,7 +58,7 @@ def measured(cfg, runs, others=()):
     input, from this verifier's runs and `others` (already checked runs of
     the efficiency verifier)."""
     out = {}
-    mine = [r for r in runs if r.get("fingerprint") == cfg.fingerprint]
+    mine = [r for r in runs if cfg.accepts(r.get("fingerprint"))]
     for run in sorted(mine + list(others), key=lambda r: r["at"]):
         if run.get("invalid"):
             continue
