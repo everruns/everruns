@@ -29,4 +29,6 @@ pub const ROOM_ACCESS: Policy = Policy {
 };
 
 #[cfg(test)]
+mod memory_tests;
+#[cfg(test)]
 mod tests;
