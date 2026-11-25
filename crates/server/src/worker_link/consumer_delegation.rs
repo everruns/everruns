@@ -1,11 +1,34 @@
 //! A Work Chat consumer may run the publisher's configured workers, never
 //! management commands. This bounded adapter is shared by local and RPC workers.
+//!
+//! Decision (2026-11-24): an automated run (a schedule, webhook or event
+//! message, carrying no person) of a coordinator agent gets the same bounded
+//! commands. Automated messages deliberately carry no management authority,
+//! so before this every `start_thread` in a scheduled run was refused. The
+//! authority here is the agent's own coordination config, which a manager
+//! wrote, never anything in the event: threads run only on allowed workers
+//! (`workers`, plus the agent's Agents members), only as children of the run's
+//! first session, owned by the same principal.
 use crate::domains::common::CommandError;
 use crate::domains::sessions::{SessionService, types::CreateSessionRequest};
 use crate::storage::StorageBackend;
-use everruns_contracts::typed_id::{AgentId, HarnessId, SessionId};
+use everruns_contracts::typed_id::{AgentId, HarnessId, PrincipalId, SessionId};
 use serde_json::{Value, json};
 use std::sync::Arc;
+
+/// Who a delegated runtime command acts for, and what it may reach.
+struct Scope {
+    root_id: SessionId,
+    root: crate::storage::SessionRow,
+    root_agent: AgentId,
+    owner: PrincipalId,
+    /// The Work Chat endpoint; `None` for automated runs.
+    channel: Option<uuid::Uuid>,
+    /// The end user a consumer message is attributed to; `None` for automated
+    /// runs, whose messages stay automated.
+    subject: Option<PrincipalId>,
+    capabilities: Vec<everruns_contracts::CapabilityRef>,
+}
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn dispatch(
@@ -22,91 +45,80 @@ pub(crate) async fn dispatch(
     let Some(session) = db.get_session(org, current).await? else {
         return Ok(None);
     };
-    let Some(channel) = session.channel_id else {
+    let scope = match session.channel_id {
+        Some(channel) => {
+            work_chat_scope(db, encryption, org, current, message, &session, channel).await?
+        }
+        None => automated_scope(db, org, current, message, &session).await?,
+    };
+    let Some(scope) = scope else {
         return Ok(None);
     };
-    let Some(channel_id) = db.get_agent_channel_public_id(org, channel).await? else {
-        return Ok(None);
-    };
-    let Some((context, channel)) =
-        crate::api::channel_ingress::resolve_channel(db, encryption, &channel_id).await?
-    else {
-        return Ok(None);
-    };
-    if channel.channel_type != crate::domains::agent_channels::record::ChannelType::WorkChat {
-        return Ok(None);
-    };
-    if crate::api::channel_ingress::channel_liveness(&context, &channel).is_err() {
-        return Err(CommandError::forbidden("Channel unavailable"));
-    }
-    // THREAT[TM-AUTHZ-025]: use the recorded consumer invocation, never management authority.
-    let subject = db
-        .runtime_invocation_subject(current, message)
-        .await?
-        .ok_or_else(|| CommandError::forbidden("Consumer invocation required"))?;
-    let owner = crate::domains::agent_channels::api_sessions::end_user_principal(
-        db, org, subject, "active",
-    )
-    .await?
-    .ok_or_else(|| CommandError::forbidden("Consumer unavailable"))?;
-    if session.owner_principal_id != owner.principal_id {
-        return Err(CommandError::forbidden("Consumer session mismatch"));
-    }
-    let root_id = session.root_session_id.unwrap_or(current);
-    let root = db
-        .get_session(org, root_id)
-        .await?
-        .ok_or_else(|| CommandError::not_found("Conversation"))?;
-    if root.channel_id != Some(channel.internal_id) || root.owner_principal_id != owner.principal_id
-    {
-        return Err(CommandError::forbidden("Conversation mismatch"));
-    }
-    let root_agent = context
-        .agent_id
-        .ok_or_else(|| CommandError::not_found("Agent"))?;
-    let agent = crate::domains::agents::queries::resolve(db, org, &root_agent.to_string())
-        .await?
-        .ok_or_else(|| CommandError::not_found("Agent"))?;
-    let harness = crate::domains::harnesses::queries::resolve_effective(db, org, agent.harness_id)
-        .await?
-        .ok_or_else(|| CommandError::not_found("Harness"))?;
-    if !crate::domains::agent_channels::work_chat::features(db, org, root_agent, context.harness_id)
-        .await?
-        .threads
-    {
-        return Err(CommandError::forbidden("Coordinator tools unavailable"));
-    }
+    let Scope {
+        root_id,
+        root,
+        root_agent,
+        owner,
+        channel,
+        subject,
+        capabilities,
+    } = scope;
     let registry = crate::platform::oss_capability_registry();
-    let mut capabilities = harness.capabilities;
-    capabilities.extend(agent.capabilities);
     let capabilities =
         everruns_core::capabilities::resolve_capability_configs(&capabilities, &registry)
             .map_err(|e| CommandError::bad_request(e.to_string()))?;
-    let coordination = capabilities
+    let coordinator = capabilities.iter().find(|cap| {
+        cap.capability_id() == "coordination"
+            && cap.config_value().get("role").and_then(Value::as_str) != Some("worker")
+    });
+    let coordination = match coordinator {
+        Some(coordination) => coordination,
+        // An automated run of an agent that is no coordinator keeps the
+        // management path, which refuses it as before.
+        None if channel.is_none() => return Ok(None),
+        None => {
+            let any = capabilities
+                .iter()
+                .any(|cap| cap.capability_id() == "coordination");
+            return Err(CommandError::forbidden(if any {
+                "Coordinator required"
+            } else {
+                "Coordinator capability required"
+            }));
+        }
+    };
+    // The agent's Agents members are allowed workers too (coordination.rs).
+    let members: Vec<String> = capabilities
         .iter()
-        .find(|cap| cap.capability_id() == "coordination")
-        .ok_or_else(|| CommandError::forbidden("Coordinator capability required"))?;
-    if coordination
-        .config_value()
-        .get("role")
-        .and_then(Value::as_str)
-        == Some("worker")
-    {
-        return Err(CommandError::forbidden("Coordinator required"));
-    }
+        .filter(|cap| {
+            cap.capability_id()
+                == everruns_capabilities::capabilities::agent_handoff::AGENT_HANDOFF_CAPABILITY_ID
+        })
+        .flat_map(|cap| {
+            let config = cap.config_value();
+            config
+                .get("targets")
+                .or_else(|| config.get("members"))
+                .and_then(Value::as_array)
+                .cloned()
+                .unwrap_or_default()
+        })
+        .filter_map(|member| member["agent_id"].as_str().map(str::to_string))
+        .collect();
     let workers = coordination
         .config_value()
         .get("workers")
         .and_then(Value::as_array);
     let allowed = |id: AgentId| {
-        workers.map_or(id == root_agent, |workers| {
-            workers.iter().any(|worker| match worker["id"].as_str() {
-                Some("self") => id == root_agent,
-                Some("any") => true,
-                Some(worker) => worker == id.to_string(),
-                None => false,
+        members.contains(&id.to_string())
+            || workers.map_or(id == root_agent, |workers| {
+                workers.iter().any(|worker| match worker["id"].as_str() {
+                    Some("self") => id == root_agent,
+                    Some("any") => true,
+                    Some(worker) => worker == id.to_string(),
+                    None => false,
+                })
             })
-        })
     };
     let target_id = params
         .get("agent_id")
@@ -156,8 +168,8 @@ pub(crate) async fn dispatch(
                 .get_session(org, id)
                 .await?
                 .ok_or_else(|| CommandError::not_found("Session"))?;
-            if target.channel_id != Some(channel.internal_id)
-                || target.owner_principal_id != owner.principal_id
+            if target.channel_id != channel
+                || target.owner_principal_id != owner
                 || !(target.id == current || target.parent_session_id == Some(current))
             {
                 return Err(CommandError::forbidden("Session outside conversation"));
@@ -191,8 +203,12 @@ pub(crate) async fn dispatch(
                                     .uuid(),
                                 agent_id: target.agent_id.map(|id| id.uuid()),
                                 session_id: target.id.uuid(),
-                                runtime_subject_principal_id: Some(owner.principal_id),
-                                event_metadata: None,
+                                runtime_subject_principal_id: subject,
+                                // An automated run's relay stays automated: no
+                                // person, so no management authority downstream.
+                                event_metadata: subject.is_none().then(|| {
+                                    json!({"type": "coordination", "session_id": current.to_string()})
+                                }),
                                 request_id: None,
                             },
                             crate::domains::messages::types::CreateMessageRequest {
@@ -265,9 +281,9 @@ pub(crate) async fn dispatch(
                     Some(target.internal_id),
                     Some(target.public_id),
                     root.app_id,
-                    Some(channel.internal_id),
+                    channel,
                     None,
-                    owner.principal_id,
+                    owner,
                     None,
                     crate::domains::sessions::record::SessionSource::Subagent,
                     request,
@@ -277,11 +293,146 @@ pub(crate) async fn dispatch(
         }
         _ => {
             return Err(CommandError::forbidden(
-                "Consumer runtime cannot execute management commands",
+                "Delegated runtime cannot execute management commands",
             ));
         }
     };
     Ok(Some(
         serde_json::to_string(&response).map_err(anyhow::Error::from)?,
     ))
+}
+
+/// A Work Chat consumer's scope: the recorded consumer invocation, never
+/// management authority.
+async fn work_chat_scope(
+    db: &Arc<StorageBackend>,
+    encryption: Option<&Arc<crate::storage::EncryptionService>>,
+    org: i64,
+    current: SessionId,
+    message: uuid::Uuid,
+    session: &crate::storage::SessionRow,
+    channel: uuid::Uuid,
+) -> Result<Option<Scope>, CommandError> {
+    let Some(channel_id) = db.get_agent_channel_public_id(org, channel).await? else {
+        return Ok(None);
+    };
+    let Some((context, channel)) =
+        crate::api::channel_ingress::resolve_channel(db, encryption, &channel_id).await?
+    else {
+        return Ok(None);
+    };
+    if channel.channel_type != crate::domains::agent_channels::record::ChannelType::WorkChat {
+        return Ok(None);
+    };
+    if crate::api::channel_ingress::channel_liveness(&context, &channel).is_err() {
+        return Err(CommandError::forbidden("Channel unavailable"));
+    }
+    // THREAT[TM-AUTHZ-025]: use the recorded consumer invocation, never management authority.
+    let subject = db
+        .runtime_invocation_subject(current, message)
+        .await?
+        .ok_or_else(|| CommandError::forbidden("Consumer invocation required"))?;
+    let owner = crate::domains::agent_channels::api_sessions::end_user_principal(
+        db, org, subject, "active",
+    )
+    .await?
+    .ok_or_else(|| CommandError::forbidden("Consumer unavailable"))?;
+    if session.owner_principal_id != owner.principal_id {
+        return Err(CommandError::forbidden("Consumer session mismatch"));
+    }
+    let root_id = session.root_session_id.unwrap_or(current);
+    let root = db
+        .get_session(org, root_id)
+        .await?
+        .ok_or_else(|| CommandError::not_found("Conversation"))?;
+    if root.channel_id != Some(channel.internal_id) || root.owner_principal_id != owner.principal_id
+    {
+        return Err(CommandError::forbidden("Conversation mismatch"));
+    }
+    let root_agent = context
+        .agent_id
+        .ok_or_else(|| CommandError::not_found("Agent"))?;
+    if !crate::domains::agent_channels::work_chat::features(db, org, root_agent, context.harness_id)
+        .await?
+        .threads
+    {
+        return Err(CommandError::forbidden("Coordinator tools unavailable"));
+    }
+    let capabilities = agent_capabilities(db, org, root_agent).await?;
+    Ok(Some(Scope {
+        root_id,
+        root,
+        root_agent,
+        owner: owner.principal_id,
+        channel: Some(channel.internal_id),
+        subject: Some(owner.principal_id),
+        capabilities,
+    }))
+}
+
+/// An automated run's scope. THREAT[TM-AUTHZ-028]: only an invocation with no
+/// person (no management user, no end user) answered by the session's own
+/// agent qualifies; a person's message keeps the management path, and a
+/// person's authority is never borrowed. Every command stays inside the run.
+async fn automated_scope(
+    db: &Arc<StorageBackend>,
+    org: i64,
+    current: SessionId,
+    message: uuid::Uuid,
+    session: &crate::storage::SessionRow,
+) -> Result<Option<Scope>, CommandError> {
+    let Some(agent_id) = session.agent_id else {
+        return Ok(None);
+    };
+    let Some(responder) = db
+        .runtime_invocation_automated_responder(current, message)
+        .await?
+    else {
+        return Ok(None);
+    };
+    let root_id = session.root_session_id.unwrap_or(current);
+    let root = db
+        .get_session(org, root_id)
+        .await?
+        .ok_or_else(|| CommandError::not_found("Conversation"))?;
+    let Some(root_agent) = root.agent_id else {
+        return Ok(None);
+    };
+    // The coordinator is the run's first agent; its threads relay through it.
+    if root.channel_id.is_some() || root.owner_principal_id != session.owner_principal_id {
+        return Err(CommandError::forbidden("Conversation mismatch"));
+    }
+    let agent = crate::domains::agents::queries::resolve(db, org, &agent_id.to_string())
+        .await?
+        .ok_or_else(|| CommandError::not_found("Agent"))?;
+    if responder != Some(agent.internal_id) {
+        return Ok(None);
+    }
+    let capabilities = agent_capabilities(db, org, root_agent).await?;
+    Ok(Some(Scope {
+        root_id,
+        owner: root.owner_principal_id,
+        root,
+        root_agent,
+        channel: None,
+        subject: None,
+        capabilities,
+    }))
+}
+
+/// The effective capabilities of an agent: its harness's, then its own.
+async fn agent_capabilities(
+    db: &Arc<StorageBackend>,
+    org: i64,
+    agent_id: AgentId,
+) -> Result<Vec<everruns_contracts::CapabilityRef>, CommandError> {
+    let agent = crate::domains::agents::queries::resolve(db, org, &agent_id.to_string())
+        .await?
+        .ok_or_else(|| CommandError::not_found("Agent"))?;
+    let harness = crate::domains::harnesses::queries::resolve_effective(db, org, agent.harness_id)
+        .await?
+        .ok_or_else(|| CommandError::not_found("Harness"))?;
+    let mut capabilities = harness.capabilities;
+    capabilities.extend(agent.capabilities);
+    Ok(capabilities)
 }
