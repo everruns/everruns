@@ -62,6 +62,7 @@ pub mod install;
 pub mod install_auth;
 pub mod install_stream;
 pub mod install_tls;
+pub mod lease_sweep;
 pub mod lookups;
 pub mod mcp;
 pub mod memory;

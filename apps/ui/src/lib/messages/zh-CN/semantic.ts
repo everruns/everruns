@@ -214,6 +214,8 @@ export const messages: Readonly<Record<string, string>> = {
     "由于所需的依赖项不可用，执行已停止。",
   "A connected tool uses an input schema that this model provider does not support. Update the integration or choose a different model provider, then try again.":
     "连接的工具使用此模型提供程序不支持的输入架构。更新集成或选择其他模型提供商，然后重试。",
+  "The conversation history had to be summarized before this turn, but the model's summary came back cut off or empty, even after a retry with more room. Nothing was lost. Send the message again to retry, or use a model with a larger output limit for summaries.":
+    "在此轮之前需要总结对话历史，但模型的摘要被截断或为空，即使用更大的空间重试后也是如此。没有丢失任何内容。请重新发送消息以重试，或为摘要使用输出上限更大的模型。",
   "binary file{value}": "二进制文件{value}",
   "{count} image": "{count} 图片\nATIF 导出中省略了",
   "{count} images": "{count} 图片\nATIF 导出中省略了",

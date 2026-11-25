@@ -691,8 +691,7 @@ mod tests {
     }
 
     /// Two zones lost while the shipped log lagged: the third replica's log
-    /// brings back what the object store had not received yet, including
-    /// writes answered only once every voter held them.
+    /// brings back what the object store had not received yet.
     #[tokio::test]
     async fn a_survivors_log_extends_the_shipped_log() {
         let store = Store::open("memory:///").unwrap();

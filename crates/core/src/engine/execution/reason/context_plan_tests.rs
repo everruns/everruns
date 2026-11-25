@@ -447,6 +447,12 @@ mod lifecycle_tests {
             error.is_non_retryable(),
             "rejected summaries must not be paid for again automatically"
         );
+        assert_eq!(
+            error.user_facing_error(Default::default()).code.as_str(),
+            everruns_contracts::user_facing_error::codes::CONTEXT_SUMMARY_FAILED,
+            "the turn names the failed summary, not a generic processing error: {error}"
+        );
+        assert!(error.to_string().contains("cut off"), "{error}");
         assert!(
             store
                 .get_latest_format(session, PROVIDER, MODEL, FORMAT)
@@ -456,6 +462,15 @@ mod lifecycle_tests {
         );
         let events = emitter.events().await;
         assert_summary_account(&events);
+        for event in &events {
+            if let crate::events::EventData::LlmGeneration(data) = &event.data {
+                assert_eq!(
+                    data.metadata.finish_reasons.as_deref(),
+                    Some(&["length".to_string()][..]),
+                    "the trace shows why the summary was rejected"
+                );
+            }
+        }
         assert_eq!(
             events
                 .iter()
@@ -611,12 +626,177 @@ mod lifecycle_tests {
             metadata: LlmCompletionMetadata::default(),
         };
         response.metadata.finish_reason = Some("length".into());
-        assert!(summary_retry_config(&config, &response, 8_000, 4_000).is_none());
-        let retry = summary_retry_config(&config, &response, 200_000, 4_000).unwrap();
+        assert!(summary_retry_config(&config, &response, 8_000, 4_000, 0).is_none());
+        let retry = summary_retry_config(&config, &response, 200_000, 4_000, 0).unwrap();
         assert_eq!(retry.max_tokens, Some(32_768));
         response.metadata.finish_reason = Some("stop".into());
         response.text = "done".into();
-        assert!(summary_retry_config(&config, &response, 200_000, 4_000).is_none());
+        assert!(summary_retry_config(&config, &response, 200_000, 4_000, 32_768).is_none());
+    }
+
+    /// Ecosystem Watch, 2026-11-24: a 200k+ history filled the source page to
+    /// the budget, which left the retry exactly the first attempt's room. The
+    /// retry was skipped and the turn failed at the first cap.
+    #[test]
+    fn a_source_page_filled_to_its_budget_still_retries_with_more_room() {
+        for window in [8, 64, 8_000, 32_000, 128_000, 200_000, 1_000_000] {
+            let (first, retry_cap) = summary_output_caps(window);
+            assert!(retry_cap > first, "window {window}: {first} -> {retry_cap}");
+            assert!(retry_cap <= window);
+            let config = {
+                let mut c = LlmCallConfig::new("m");
+                c.max_tokens = Some(first as u32);
+                c
+            };
+            let mut response = LlmResponse {
+                text: "partial".into(),
+                reasoning: vec![],
+                tool_calls: None,
+                metadata: LlmCompletionMetadata::default(),
+            };
+            response.metadata.finish_reason = Some("length".into());
+            // The largest source the budget admits, plus estimate rounding.
+            let input = window.saturating_sub(retry_cap + 32) + 32 + 1;
+            let retry = summary_retry_config(&config, &response, window, input, retry_cap)
+                .unwrap_or_else(|| panic!("window {window} skipped its retry"));
+            assert!(retry.max_tokens.unwrap() as usize > first);
+        }
+    }
+
+    /// Cut off at its first cap, answers once given more room.
+    struct CutOffOnce {
+        window: usize,
+        caps: std::sync::Mutex<Vec<u32>>,
+    }
+    #[async_trait::async_trait]
+    impl ChatDriver for CutOffOnce {
+        fn effective_context_window(&self, _: &str) -> Option<usize> {
+            Some(self.window)
+        }
+        async fn chat_completion_stream(
+            &self,
+            _: &crate::engine::ProviderEndpoint,
+            messages: Vec<Message>,
+            config: &LlmCallConfig,
+        ) -> Result<LlmResponseStream> {
+            let cap = config.max_tokens.unwrap();
+            let input = policy().estimate_total_tokens(&messages);
+            assert!(
+                input + cap as usize <= self.window,
+                "request exceeds the window"
+            );
+            let first = {
+                let mut caps = self.caps.lock().unwrap();
+                caps.push(cap);
+                caps.len() == 1
+            };
+            let mut metadata = LlmCompletionMetadata::default();
+            metadata.prompt_tokens = Some(100);
+            metadata.completion_tokens = Some(cap);
+            metadata.finish_reason = Some(if first { "length" } else { "stop" }.into());
+            Ok(LlmResponse {
+                text: "User task: continue work.".into(),
+                tool_calls: None,
+                reasoning: Vec::new(),
+                metadata,
+            }
+            .into_stream())
+        }
+    }
+
+    /// Ecosystem Watch, 2026-11-24: a few answered 30-60 KiB web pages put
+    /// the raw history over budget on every call, and each call bought a
+    /// summary although masking them already fit.
+    #[tokio::test]
+    async fn answered_oversized_results_are_masked_instead_of_buying_a_summary() {
+        let mut messages = vec![RuntimeMessage::user("check the ecosystem")];
+        for index in 0..3 {
+            let id = format!("call_{index}");
+            messages.push(RuntimeMessage::assistant_with_tools(
+                "",
+                vec![crate::builtins::tool_types::ToolCall {
+                    id: id.clone(),
+                    name: "web_fetch".into(),
+                    arguments: serde_json::json!({"url": "https://example.com"}),
+                }],
+            ));
+            messages.push(RuntimeMessage::tool_result(
+                id,
+                Some(serde_json::json!({"content": "release ".repeat(4_000)})),
+                None,
+            ));
+        }
+        messages.push(RuntimeMessage::assistant("Two items worth a look."));
+        let journal = Journal(messages);
+        let auto = crate::builtins::CompactionCapability
+            .compaction_policy(&serde_json::json!({
+                "strategy": "auto", "context_budget_tokens": 4096
+            }))
+            .unwrap();
+        async fn summary_calls(journal: &Journal, policy: &dyn CompactionPolicy) -> usize {
+            let store: Arc<dyn CompactionCheckpointStore> =
+                Arc::new(InMemoryCompactionCheckpointStore::default());
+            let driver = Summarizer {
+                calls: AtomicUsize::new(0),
+                finish: "stop",
+            };
+            let emitter = TestEventEmitter::new();
+            Planner {
+                store: &store,
+                retriever: journal,
+                driver: &driver,
+                policy,
+                emitter: &emitter,
+                event_context: &EventContext::default(),
+                session_id: SessionId::new(),
+                provider: "openrouter",
+                provider_id: "configured-provider",
+                model: "model-a",
+                reason: crate::events::CompactionReason::ProactiveBudget,
+                source_sequence: 8,
+                budget: 4096,
+                fallback_summary_window: 128_000,
+            }
+            .run()
+            .await
+            .unwrap();
+            driver.calls.load(Ordering::SeqCst)
+        }
+        assert_eq!(
+            summary_calls(&journal, auto.as_ref()).await,
+            0,
+            "masking fits the budget"
+        );
+        assert!(
+            summary_calls(&journal, policy().as_ref()).await > 0,
+            "a summarization-only policy has no masking to rely on"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_cut_off_summary_of_a_long_history_retries_with_a_larger_cap() {
+        for window in [6_000, 9_000, 16_000, 40_000] {
+            let store: Arc<dyn CompactionCheckpointStore> =
+                Arc::new(InMemoryCompactionCheckpointStore::default());
+            let driver = CutOffOnce {
+                window,
+                caps: Default::default(),
+            };
+            let emitter = TestEventEmitter::new();
+            run(
+                &store,
+                &history(600),
+                &driver,
+                &emitter,
+                SessionId::new(),
+                600,
+            )
+            .await
+            .unwrap_or_else(|error| panic!("window {window}: {error}"));
+            let caps = driver.caps.lock().unwrap().clone();
+            assert!(caps.len() >= 2, "window {window}: {caps:?}");
+            assert!(caps[1] > caps[0], "window {window}: {caps:?}");
+        }
     }
 
     #[tokio::test]

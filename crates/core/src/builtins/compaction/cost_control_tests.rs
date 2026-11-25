@@ -379,3 +379,41 @@ fn test_cost_control_masks_in_batches_that_only_grow() {
     assert_eq!(previous.iter().filter(|m| **m).count(), 16);
     assert_eq!(rewrites, 2);
 }
+
+/// Ecosystem Watch, 2026-11-24: two 60 KiB web pages stayed verbatim as the
+/// "recent" results and forced a paid summary every few calls.
+#[test]
+fn an_answered_oversized_result_is_masked_with_a_way_back() {
+    let page = format!("# Releases\n{}", "release notes ".repeat(4_000));
+    let mut messages = vec![RuntimeMessage::user("check the ecosystem")];
+    messages.extend(make_message_tool_turn(
+        "call_page",
+        "web_fetch",
+        json!({"content": page}),
+    ));
+    messages.push(RuntimeMessage::assistant("Noted the releases."));
+    messages.extend(make_message_tool_turn(
+        "call_fresh",
+        "web_fetch",
+        json!({"content": "x".repeat(30_000)}),
+    ));
+    let config = RuntimeCompactionConfig::from_json(&json!({}));
+    let result = apply_cost_control_masking(&messages, &config, None);
+
+    assert_eq!(result.masked_count, 1, "only the answered page is masked");
+    let masked = result.messages[2].tool_result_content().unwrap();
+    let summary = masked.result.as_ref().unwrap()["summary"].as_str().unwrap();
+    assert!(
+        summary.contains("Starts: {\"content\":\"# Releases"),
+        "{summary}"
+    );
+    assert!(
+        summary.contains("query_history with tool_call_id \"call_page\""),
+        "{summary}"
+    );
+    let fresh = result.messages[5].tool_result_content().unwrap();
+    assert!(
+        fresh.result.as_ref().unwrap().get("masked").is_none(),
+        "the model has not seen the newest result yet"
+    );
+}

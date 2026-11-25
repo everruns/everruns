@@ -231,7 +231,7 @@ class AgentsVerifier(Hooks):
         best = 0
         gates = {p.id for p in cfg.points if p.gate}
         for run in runs:
-            if run.get("fingerprint") != cfg.fingerprint or run.get("invalid"):
+            if not cfg.accepts(run.get("fingerprint")) or run.get("invalid"):
                 continue
             es = [e for e in run.get("entries", []) if e["point"] in gates and e["level"] in ("L3", "L4")]
             if es and all(S.passes(cfg.point(e["point"]), e, cfg.target(cfg.point(e["point"]))) for e in es):

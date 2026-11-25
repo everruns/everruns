@@ -390,3 +390,25 @@ fn session_client_tools_reach_the_worker() {
     };
     assert!(proto_session_to_session(invalid).is_err());
 }
+
+#[test]
+fn a_control_plane_refusal_stays_a_refusal() {
+    let err = grpc_status_to_error(tonic::Status::permission_denied("Not allowed"));
+    assert!(
+        matches!(&err, AgentLoopError::Refused(message) if message == "Not allowed"),
+        "{err:?}"
+    );
+    assert!(err.is_non_retryable());
+}
+
+#[test]
+fn a_refused_command_reaches_the_agent_as_a_refusal() {
+    let err = grpc_command_error_to_error(proto::CommandError {
+        kind: proto::command_error::Kind::Forbidden as i32,
+        message: "Worker not configured".into(),
+    });
+    assert!(
+        matches!(&err, AgentLoopError::Refused(m) if m == "Worker not configured"),
+        "{err:?}"
+    );
+}

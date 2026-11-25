@@ -80,6 +80,14 @@ pub enum AgentLoopError {
     #[error("Session not found: {0}")]
     SessionNotFound(SessionId),
 
+    /// The host refused the request: the run lacks the authority, or the
+    /// target is outside what it may reach. A normal outcome, not a fault:
+    /// the message is written for the model, carries no internal detail, and
+    /// tools return it as a tool error the agent can act on
+    /// ([`crate::tools::ToolExecutionResult::internal_error`]).
+    #[error("Refused: {0}")]
+    Refused(String),
+
     /// Internal error
     #[error("Internal error: {0}")]
     Internal(#[from] anyhow::Error),
@@ -281,6 +289,12 @@ impl AgentLoopError {
         AgentLoopError::ToolExecution(msg.into())
     }
 
+    /// Create a refusal: a host authorization decision the agent should see.
+    /// The message must be safe to show the model.
+    pub fn refused(msg: impl Into<String>) -> Self {
+        AgentLoopError::Refused(msg.into())
+    }
+
     /// Create a message store error
     pub fn store(msg: impl Into<String>) -> Self {
         AgentLoopError::MessageStore(msg.into())
@@ -452,6 +466,9 @@ impl AgentLoopError {
             // Config/driver errors won't self-heal within retries.
             AgentLoopError::Configuration(_) | AgentLoopError::DriverNotRegistered(_) => true,
 
+            // An authorization decision does not change on retry.
+            AgentLoopError::Refused(_) => true,
+
             // The reason phase already attempted permitted compaction before
             // returning overflow. Replaying unchanged input cannot make it fit.
             AgentLoopError::RequestTooLarge(_) => true,
@@ -558,6 +575,11 @@ impl AgentLoopError {
                     }
                     None => classify_runtime_error_message(&err.message, &context),
                 }
+            }
+            AgentLoopError::Configuration(message)
+                if message.contains(crate::user_facing_error::CONTEXT_SUMMARY_FAILED_PREFIX) =>
+            {
+                classify_runtime_error_message(message, &context)
             }
             _ => UserFacingError::new(user_facing_error_codes::PROCESSING_ERROR)
                 .with_optional_field("provider", context.provider)

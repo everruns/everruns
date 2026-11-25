@@ -4,7 +4,8 @@ point's best level, weighted to a 0-100 score.
 Rules (knowledge/operations/verifiers.md):
 - A failed gate caps the score at 25. The newest gate result wins.
 - Noise does not count: with samples, m is taken at the unfavourable end.
-- Invalid runs earn nothing: another goal fingerprint, a failed validity
+- Invalid runs earn nothing: another goal fingerprint (unless the owner
+  carried it over, config.carried), a failed validity
   point, or a verifier rule (Hooks.exclusion).
 - A level never gives more than its certainty per point.
 """
@@ -56,7 +57,7 @@ def passes(point, entry, target):
 
 def exclusion(cfg, run, point, entry, size):
     """Why this entry earns nothing, or None."""
-    if run.get("fingerprint") != cfg.fingerprint:
+    if not cfg.accepts(run.get("fingerprint")):
         return "recorded under another goal fingerprint"
     if run.get("invalid"):
         return "run invalid: " + "; ".join(run["invalid"])

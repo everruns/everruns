@@ -47,9 +47,12 @@ pub(crate) fn grpc_status_to_error(status: tonic::Status) -> AgentLoopError {
         tonic::Code::OutOfRange if msg.contains("message length too large") => {
             AgentLoopError::config(format!("Message exceeds the gRPC size cap: {msg}"))
         }
-        tonic::Code::Unauthenticated | tonic::Code::PermissionDenied => {
-            AgentLoopError::config(format!("Auth error: {msg}"))
-        }
+        // The worker's own credentials failed: a deployment fault.
+        tonic::Code::Unauthenticated => AgentLoopError::config(format!("Auth error: {msg}")),
+        // The control plane refused this run: an authorization decision the
+        // agent should see. Server refusal messages are written for it
+        // (THREAT[TM-TRIGGER-006]: no internal detail).
+        tonic::Code::PermissionDenied => AgentLoopError::refused(msg),
         _ => AgentLoopError::store(format!("gRPC error ({}): {msg}", status.code())),
     }
 }

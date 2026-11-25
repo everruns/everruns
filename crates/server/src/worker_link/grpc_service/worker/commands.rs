@@ -122,9 +122,7 @@ impl WorkerServiceImpl {
                 .runtime_invocation_management_user(session, message)
                 .await
                 .map_err(|_| Status::internal("Invocation unavailable"))?
-                .ok_or_else(|| {
-                    Status::permission_denied("Management-authorized invocation required")
-                })?;
+                .ok_or_else(|| Status::permission_denied(crate::worker_link::NO_PERSON_REFUSAL))?;
             crate::auth::caller_resolution::caller_for_user(&self.db, req.org_id, user)
                 .await
                 .map_err(|_| Status::permission_denied("Management authority revoked"))?
@@ -137,7 +135,10 @@ impl WorkerServiceImpl {
                     crate::auth::caller_resolution::caller_for_user(&self.db, req.org_id, user_id)
                         .await
                         .map_err(|e| {
-                            Status::permission_denied(format!("Failed to resolve caller: {e}"))
+                            tracing::warn!(error = %e, "Failed to resolve worker command caller");
+                            Status::permission_denied(
+                                "The person behind this run no longer has access",
+                            )
                         })?
                 }
                 None => everruns_core::Caller::internal(req.org_id),
@@ -306,9 +307,7 @@ impl WorkerServiceImpl {
             .runtime_invocation_management_user(session.id, message)
             .await
             .map_err(|_| Status::internal("Invocation unavailable"))?
-            .ok_or_else(|| {
-                Status::permission_denied("Management-authorized invocation required")
-            })?;
+            .ok_or_else(|| Status::permission_denied(crate::worker_link::NO_PERSON_REFUSAL))?;
         let caller = crate::auth::caller_resolution::caller_for_user(&self.db, req.org_id, user_id)
             .await
             .map_err(|error| {

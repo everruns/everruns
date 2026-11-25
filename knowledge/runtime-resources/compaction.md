@@ -160,6 +160,16 @@ not a measured provider cache-hit improvement. Exact policy and transformations
 belong in the [capability](../../crates/core/src/builtins/compaction.rs) and
 [cost-control projection](../../crates/core/src/builtins/compaction/cost_control.rs).
 
+A paid portable summary is the last resort, not the first reduction. Masking
+is free, so the planner skips a summary when the masked view already fits, and
+an oversized tool result the model has answered is masked even among the most
+recent ones. Keeping recent results verbatim regardless of size made a long
+scheduled session with 30-60 KiB fetches buy a summary every few calls
+(2026-11-24). A masked result is hidden, not lost: its stub keeps an excerpt
+and names the tool call, and `query_history` reads the journal's original back
+page by page. The summarizer's retry after a cut-off summary always gets a
+larger output limit, because the source page reserves room for it.
+
 ## Measurement and cost
 
 Distinguish retained-window measurements, request estimates, provider-reported

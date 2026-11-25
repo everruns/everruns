@@ -10,11 +10,9 @@
 //!   catalog holds) becomes an org secret, `mcp:<BINDING>`, sealed with the
 //!   org's data key, and the header the placeholder `${BINDING}`. The
 //!   executor fills it per call (`crates/agentd/src/mcp.rs`).
-//! - A server that acts as the agent's service identity names the agent's
-//!   grant as an `mcp_oauth:<row id>` connection, its token secret the
-//!   grant as a self-contained OAuth token set. The data plane refreshes it
-//!   (`RefreshOwner::DataPlane`) and reports each refresh on the feed;
-//!   [`refreshed`] stores it back on the platform's row.
+//! - A server with an OAuth grant keeps its OAuth provider and identity, and
+//!   the data plane asks the credentials server for its token per use
+//!   (`calls::MCP_CONNECTION_TOKEN`); the control plane refreshes the grant.
 //!
 //! Decisions:
 //! - A binding is named for the agent key as well as the server and header
@@ -26,15 +24,16 @@
 //! - A secret is sealed again only when its value changed, and a grant
 //!   only when its tokens did (the data plane's own refreshes come back as
 //!   the same tokens). An agent's bindings it no longer has are removed.
-//! - A server whose grant depends on the turn keeps its OAuth provider and
-//!   identity, and the data plane asks for its token per use of the
-//!   credentials server (`calls::MCP_CONNECTION_TOKEN`, parity gap 8):
-//!   one that acts as the turn's person (`user`, and `user_or_service`,
-//!   whose person comes first), and a service one with no grant of the
-//!   agent's to push (a connection-backed preset, whose token is the org's
-//!   connection). The control plane answers as a v1 worker's lookup does,
-//!   and refreshes the grant. With no grant the call is unauthorized, as on
-//!   the platform.
+//! - Decision (2026-11-25, agentd vs control plane review): every OAuth
+//!   grant stays with the control plane, the agent's service grant too. It
+//!   used to go over as a token set the data plane refreshed, while the
+//!   platform could refresh the same row: a provider that rotates refresh
+//!   tokens spends the old one at the first refresh, so two refreshers
+//!   broke the grant. The control plane answers as a v1 worker's lookup
+//!   does, and is the one refresher. With no grant the call is
+//!   unauthorized, as on the platform. A standalone agentd, with no control
+//!   plane, still refreshes the `mcp_oauth` connections its install pushes
+//!   (`agentd/src/mcp.rs`).
 //! - A preset that does not resolve (removed from the catalog) leaves its
 //!   server out of the copy rather than failing the agent.
 //! - Only agents with MCP servers pay for this: the rest of a session
@@ -53,7 +52,9 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use super::providers::sealed_key;
-use super::{ControlPlane, put_connection, put_secret, remove};
+#[cfg(test)]
+use super::put_connection;
+use super::{ControlPlane, put_secret, remove};
 use crate::domains::mcp_servers::McpServerService;
 use crate::domains::mcp_servers::scoped_mcp::resolve_matched_scoped_mcp_server;
 use crate::storage::{DataPlaneGrant, DbConnectionResolver};
@@ -101,7 +102,7 @@ pub async fn prepare(
         agent_id,
     )
     .await?;
-    prepare_layers(cp, org_id, agent_key, agent_id, &layers, package).await
+    prepare_layers(cp, org_id, agent_key, &layers, package).await
 }
 
 /// `package`'s MCP servers and the field that holds them, if it has any.
@@ -126,7 +127,6 @@ pub async fn prepare_layers(
     cp: &ControlPlane,
     org_id: i64,
     binding_key: &str,
-    agent_id: Option<AgentId>,
     layers: &crate::domains::agent_definitions::PlatformLayers,
     package: &mut Value,
 ) -> anyhow::Result<()> {
@@ -136,12 +136,6 @@ pub async fn prepare_layers(
     };
     let written = crate::domains::agent_definitions::mcp_servers(layers);
     let catalog = McpServerService::new(cp.db.clone(), cp.encryption.clone());
-    let grants = DbConnectionResolver::new(
-        cp.db.as_ref().clone(),
-        cp.encryption()?.clone(),
-        None,
-        catalog.egress_service(),
-    );
     let mut live = HashSet::new();
     let mut unresolved = Vec::new();
     for (name, server) in servers.iter_mut() {
@@ -207,25 +201,11 @@ pub async fn prepare_layers(
                 .keys()
                 .any(|k| k.eq_ignore_ascii_case("authorization"))
         {
-            // The agent's own grant goes over, refreshed on the data plane;
-            // anything else is the turn's to ask for.
-            let pushed = match (resolved.acts_as, agent_id) {
-                (McpServerActsAs::Service, Some(agent_id)) => grants
-                    .agent_service_mcp_grant(org_id, agent_id, provider)
-                    .await
-                    .map_err(|e| anyhow::anyhow!("MCP server {name}: {e}"))?,
-                _ => None,
-            };
+            // The data plane asks the credentials server for the token per
+            // use, which refreshes the grant (module decisions).
             server.auth_mode = McpServerAuthMode::OAuth;
-            match pushed {
-                Some(grant) => {
-                    server.oauth_provider_id = Some(put_grant(cp, org_id, &grant).await?);
-                }
-                None => {
-                    server.oauth_provider_id = Some(provider.to_owned());
-                    server.acts_as = resolved.acts_as;
-                }
-            }
+            server.oauth_provider_id = Some(provider.to_owned());
+            server.acts_as = resolved.acts_as;
         }
         normalize(server);
     }
@@ -250,9 +230,12 @@ fn normalize(server: &mut ScopedMcpServer) {
     server.connect_in_chat = Default::default();
 }
 
+#[cfg(test)]
 /// Put `grant` as an `mcp_oauth` connection and its token secret; the
-/// connection id.
-async fn put_grant(
+/// connection id. Grants went over so before 2026-11-25; a data plane still
+/// running a definition that names one reports its refreshes ([`refreshed`]),
+/// and tests seed one that way.
+pub(super) async fn put_grant(
     cp: &ControlPlane,
     org_id: i64,
     grant: &DataPlaneGrant,

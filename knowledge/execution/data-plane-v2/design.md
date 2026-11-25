@@ -731,7 +731,7 @@ The resulting promises, per failure, are in [guarantees.md](guarantees.md).
 | --- | --- | --- |
 | One node or one zone | Raft elects a new leader on the surviving quorum; the replaced node catches up from a snapshot and the log | None |
 | A shard loses quorum (two zones, correlated disks) | The shard is rebuilt from its last snapshot plus the shipped log in S3 plus the third zone's disk (`restore --survivor`), on new nodes, as a new incarnation | With the survivor's disk: what it had not received yet, usually nothing; never a started side effect. Without any disk: entries not yet shipped, at most about 10 s, enforced by backpressure at 30 s |
-| Registry shard loses quorum | Same rebuild. Session creates and every move step are answered only once every voter holds them (or the bucket, while a voter is down), so no directory entry falls in the window while one disk is left | Same window; no directory entry |
+| Registry shard loses quorum | Same rebuild. Session creates and every move step are answered only once the bucket holds them, so no directory entry falls in the window | Same window; no directory entry |
 | S3 bucket damage or a bad delete | Object versioning; deletes are tombstones first (data rule: nothing is purged by accident) | None |
 | Region loss | Restore in a second region from the replicated bucket and multi-region KMS keys | Replication lag: S3 Replication Time Control commits to 99.99% of objects within 15 minutes, so the regional target is 15 minutes, not seconds |
 | Bad release corrupts state | Point-in-time restore of the affected shard, or of one org's sessions, to before the release | Turns after the chosen point |
@@ -757,13 +757,14 @@ How:
   continues the shipped one (`restore.rs`). Its uncommitted tail comes
   with it: Raft would have committed it had that node been elected, and
   none of it was answered.
-- **No started side effect is ever lost while one disk is left.** A tool
+- **No started side effect is ever lost, even with every disk.** A tool
   call that isn't safe to repeat (today's AtMostOnce class) already writes
   `tool.started` before it runs; in v2 that record, a session's create and
-  every move step are answered only once every voter of a three-zone
-  shard holds them (`Node::ship_first`), so any one surviving disk has
-  them. While a voter is down or more than 250 ms behind, they are shipped
-  to S3 first instead (a forced flush, one PUT, tens of milliseconds).
+  every move step are answered only once S3 holds them (`Node::ship_first`:
+  a forced flush, one PUT shared by every writer waiting, tens of
+  milliseconds). Phase 2 answered them once every voter held them on disk;
+  the disaster drill lost them with every disk, so the store it is again
+  (owner, 2026-11-25).
   After a restore, every started operation is known, and its idempotency
   key (derived from session, message and call) is the same as before.
   Operations whose outcome was lost are reported to the agent as "outcome

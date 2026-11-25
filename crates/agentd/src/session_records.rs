@@ -74,6 +74,27 @@ pub enum RecordOp {
         resource_type: String,
         external_id: String,
     },
+    /// The lease sweep takes a due lease (`lease_sweep.rs`): expired and
+    /// active or failed before, or claimed longer than `stale_after_seconds`
+    /// ago by a sweep that did not finish. Answers the claimed lease, or
+    /// null when it was not due.
+    ClaimLease {
+        provider: String,
+        resource_type: String,
+        external_id: String,
+        stale_after_seconds: u32,
+    },
+    /// The sweep's outcome for the claim made at `claimed_at`: released, or
+    /// failed with `error` and due again in `retry_after_seconds`. A claim
+    /// that is no longer the lease's (renewed, reclaimed) changes nothing.
+    LeaseCleaned {
+        provider: String,
+        resource_type: String,
+        external_id: String,
+        claimed_at: DateTime<Utc>,
+        error: Option<String>,
+        retry_after_seconds: u32,
+    },
     /// Dreaming's compare-exchange: create `key` when `expected` is none
     /// and it is absent, else replace it at revision `expected`.
     Dream {
@@ -103,6 +124,29 @@ pub struct Records {
 impl Records {
     pub fn is_empty(&self) -> bool {
         self.resources.is_empty() && self.leases.is_empty() && self.dreaming.is_empty()
+    }
+
+    /// The leases due for cleanup at `now` (see [`RecordOp::ClaimLease`]).
+    pub fn due_leases(
+        &self,
+        now: DateTime<Utc>,
+        stale_after_seconds: u32,
+    ) -> impl Iterator<Item = &LeasedResource> {
+        self.leases
+            .values()
+            .filter(move |lease| lease_due(lease, now, stale_after_seconds))
+    }
+}
+
+fn lease_due(lease: &LeasedResource, now: DateTime<Utc>, stale_after_seconds: u32) -> bool {
+    match lease.status {
+        LeasedResourceStatus::Active | LeasedResourceStatus::CleanupFailed => {
+            lease.lease_expires_at <= now
+        }
+        LeasedResourceStatus::Cleaning => lease.cleanup_started_at.is_some_and(|started| {
+            started <= now - chrono::Duration::seconds(i64::from(stale_after_seconds))
+        }),
+        LeasedResourceStatus::Released => false,
     }
 }
 
@@ -281,26 +325,65 @@ pub(crate) fn apply(
             external_id,
         } => {
             let key = lease_key(&provider, &resource_type, &external_id);
+            release(records, &key, session, now, notices)
+        }
+        RecordOp::ClaimLease {
+            provider,
+            resource_type,
+            external_id,
+            stale_after_seconds,
+        } => {
+            let key = lease_key(&provider, &resource_type, &external_id);
             match records.leases.get_mut(&key) {
-                Some(lease) => {
-                    lease.status = LeasedResourceStatus::Released;
-                    lease.cleanup_completed_at = Some(now);
+                Some(lease) if lease_due(lease, now, stale_after_seconds) => {
+                    lease.status = LeasedResourceStatus::Cleaning;
+                    lease.cleanup_started_at = Some(now);
+                    lease.cleanup_attempts += 1;
+                    lease.last_cleanup_error = None;
                     lease.updated_at = now;
                     let lease = lease.clone();
                     notices.push(Record::Lease {
                         session_id: session.to_string(),
                         lease: json!(lease),
                     });
-                    let id = lease.id.to_string();
-                    if let Some(entry) = records.resources.get_mut(&id) {
-                        entry.status = SessionResourceStatus::Released;
-                        entry.updated_at = now;
-                        let entry = entry.clone();
-                        notices.push(resource_notice(session, &id, Some(&entry)));
-                    }
                     json!(lease)
                 }
-                None => Value::Null,
+                _ => Value::Null,
+            }
+        }
+        RecordOp::LeaseCleaned {
+            provider,
+            resource_type,
+            external_id,
+            claimed_at,
+            error,
+            retry_after_seconds,
+        } => {
+            let key = lease_key(&provider, &resource_type, &external_id);
+            let ours = records.leases.get(&key).is_some_and(|lease| {
+                lease.status == LeasedResourceStatus::Cleaning
+                    && lease.cleanup_started_at == Some(claimed_at)
+            });
+            match (ours, error) {
+                (false, _) => Value::Null,
+                (true, None) => release(records, &key, session, now, notices),
+                (true, Some(error)) => {
+                    let Some(lease) = records.leases.get_mut(&key) else {
+                        return rejected("lease vanished");
+                    };
+                    lease.status = LeasedResourceStatus::CleanupFailed;
+                    lease.cleanup_started_at = None;
+                    lease.last_cleanup_error = Some(error);
+                    lease.lease_expires_at =
+                        now + chrono::Duration::seconds(i64::from(retry_after_seconds));
+                    lease.updated_at = now;
+                    let lease = lease.clone();
+                    notices.push(Record::Lease {
+                        session_id: session.to_string(),
+                        lease: json!(lease),
+                    });
+                    json!(lease)
+                }
             }
         }
         RecordOp::Dream {
@@ -333,6 +416,37 @@ pub(crate) fn apply(
     };
     changes.push(Change::Session(session));
     Response::Value { value: response }
+}
+
+/// Mark the lease at `key` released, and its resource entry with it.
+fn release(
+    records: &mut Records,
+    key: &str,
+    session: SessionId,
+    now: DateTime<Utc>,
+    notices: &mut Vec<Record>,
+) -> Value {
+    match records.leases.get_mut(key) {
+        Some(lease) => {
+            lease.status = LeasedResourceStatus::Released;
+            lease.cleanup_completed_at = Some(now);
+            lease.updated_at = now;
+            let lease = lease.clone();
+            notices.push(Record::Lease {
+                session_id: session.to_string(),
+                lease: json!(lease),
+            });
+            let id = lease.id.to_string();
+            if let Some(entry) = records.resources.get_mut(&id) {
+                entry.status = SessionResourceStatus::Released;
+                entry.updated_at = now;
+                let entry = entry.clone();
+                notices.push(resource_notice(session, &id, Some(&entry)));
+            }
+            json!(lease)
+        }
+        None => Value::Null,
+    }
 }
 
 fn resource_notice(session: SessionId, id: &str, entry: Option<&SessionResourceEntry>) -> Record {
@@ -381,6 +495,47 @@ impl ShardRecords {
         self.port
             .read(self.session, |s| f(&s.platform.records))
             .await
+    }
+
+    /// Claim `lease` for the lease sweep; the claimed lease, or none when
+    /// it was not due any more.
+    pub(crate) async fn claim_lease(
+        &self,
+        lease: &LeasedResource,
+        stale_after_seconds: u32,
+    ) -> Result<Option<LeasedResource>> {
+        parsed(
+            self.propose(RecordOp::ClaimLease {
+                provider: lease.provider.clone(),
+                resource_type: lease.resource_type.clone(),
+                external_id: lease.external_id.clone(),
+                stale_after_seconds,
+            })
+            .await?,
+        )
+    }
+
+    /// Record the sweep's outcome for the claim `claimed` holds.
+    pub(crate) async fn lease_cleaned(
+        &self,
+        claimed: &LeasedResource,
+        error: Option<String>,
+        retry_after_seconds: u32,
+    ) -> Result<Option<LeasedResource>> {
+        let Some(claimed_at) = claimed.cleanup_started_at else {
+            return Ok(None);
+        };
+        parsed(
+            self.propose(RecordOp::LeaseCleaned {
+                provider: claimed.provider.clone(),
+                resource_type: claimed.resource_type.clone(),
+                external_id: claimed.external_id.clone(),
+                claimed_at,
+                error,
+                retry_after_seconds,
+            })
+            .await?,
+        )
     }
 }
 

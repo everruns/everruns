@@ -37,7 +37,7 @@ only gauges can chart the budgets (`prom::Window`):
 | `agentd_shard_slo_turn_p99_seconds` | Turns the shard finished, `turn.started` to the end of the turn, as each replica applied them | none; depends on the agent |
 | `agentd_shard_slo_admit_p99_seconds` | Admitting a message through this node's gateway | 100 ms |
 | `agentd_shard_slo_ship_lag_p99_seconds` | How long the oldest entry waited to reach the object store | 15 s |
-| `agentd_shard_slo_ship_first_p99_seconds` | How long a write that must survive two lost zones waited before it was answered: for every voter, or for the object store while one is down | 100 ms |
+| `agentd_shard_slo_ship_first_p99_seconds` | How long a write that must survive every lost disk waited for the object store before it was answered | 100 ms |
 
 A minute with no samples reports 0. The worst minute in a longer period is the gauge's maximum.
 

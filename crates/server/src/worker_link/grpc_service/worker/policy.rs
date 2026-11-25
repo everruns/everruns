@@ -132,9 +132,7 @@ impl WorkerServiceImpl {
             .runtime_invocation_management_user(session.id, message)
             .await
             .map_err(|_| Status::internal("Invocation unavailable"))?
-            .ok_or_else(|| {
-                Status::permission_denied("Management-authorized invocation required")
-            })?;
+            .ok_or_else(|| Status::permission_denied(crate::worker_link::NO_PERSON_REFUSAL))?;
         let caller = crate::auth::caller_resolution::caller_for_user(&self.db, req.org_id, user_id)
             .await
             .map_err(|error| {

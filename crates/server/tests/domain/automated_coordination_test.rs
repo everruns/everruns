@@ -195,4 +195,16 @@ async fn an_automated_coordinator_run_starts_threads_only_on_its_team() {
     );
     let denied = service.execute_command(denied).await.unwrap_err();
     assert_eq!(denied.code(), tonic::Code::PermissionDenied);
+    // The worker turns this into a tool error the agent reads (tool error
+    // contract), so the reason is written for it and says what to do next.
+    assert!(
+        denied
+            .message()
+            .starts_with("This run has no person behind it")
+            && denied
+                .message()
+                .contains("tell the person who set up this run"),
+        "{}",
+        denied.message()
+    );
 }

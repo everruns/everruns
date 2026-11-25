@@ -764,3 +764,54 @@ fn trim_keeps_tool_result_when_tool_call_is_visible() {
         "tool result must be kept when its tool call is visible"
     );
 }
+
+#[tokio::test]
+async fn query_history_reads_a_masked_tool_result_back_by_tool_call_id_page_by_page() {
+    let session_id = SessionId::new();
+    let retriever = TestMessageRetriever::new();
+    let page = format!("{}END", "p".repeat(20_000));
+    retriever
+        .seed(
+            session_id,
+            vec![
+                RuntimeMessage::user("fetch it"),
+                RuntimeMessage::tool_result("call_other", Some(json!("other")), None),
+                RuntimeMessage::tool_result("call_page", Some(json!(page)), None),
+            ],
+        )
+        .await;
+    let context = ToolContext::new(session_id).with_message_retriever(Arc::new(retriever));
+
+    let first = match QueryHistoryTool
+        .execute_with_context(json!({"tool_call_id": "call_page"}), &context)
+        .await
+    {
+        ToolExecutionResult::Success(value) => value,
+        other => panic!("expected success, got {other:?}"),
+    };
+    assert_eq!(first["truncated"], true);
+    let next = first["next_offset"].as_u64().unwrap();
+    assert_eq!(next, 16_000);
+
+    let second = match QueryHistoryTool
+        .execute_with_context(
+            json!({"tool_call_id": "call_page", "offset": next}),
+            &context,
+        )
+        .await
+    {
+        ToolExecutionResult::Success(value) => value,
+        other => panic!("expected success, got {other:?}"),
+    };
+    assert_eq!(second["truncated"], false);
+    assert!(second["content"].as_str().unwrap().ends_with("END\""));
+    assert!(second.get("next_offset").is_none());
+
+    match QueryHistoryTool
+        .execute_with_context(json!({"tool_call_id": "call_missing"}), &context)
+        .await
+    {
+        ToolExecutionResult::ToolError(message) => assert!(message.contains("No result")),
+        other => panic!("expected tool error, got {other:?}"),
+    }
+}
