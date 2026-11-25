@@ -573,7 +573,7 @@ impl Ports {
             data.messages = Vec::new();
             data.request_body = None;
         }
-        if !request.is_dreaming_metadata() {
+        if !request.is_background_metadata() {
             self.check(state).map_err(log_error)?;
         } else {
             state.binding(self.session.id).map_err(log_error)?;

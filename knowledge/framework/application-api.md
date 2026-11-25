@@ -237,8 +237,10 @@ a second turn loop beside Engine's, so these are curated
 - Commands, context queries and out-of-band review completions run on the
   runtime the next model call uses (the legacy session's own runtime, or a
   coherent session's query runtime), so they see the same provider, filters,
-  filesystem and capability chain. They append no canonical events and take
-  no execution ownership. The legacy actor answers them during an active
+  filesystem and capability chain. They append no conversation messages and
+  take no execution ownership. Tool-less completions retain bounded, payload-free
+  generation observations for provider usage and spend, including paid responses
+  that fail answer validation. Streaming usage commits before the final chunk. The legacy actor answers them during an active
   turn, so a tool of that turn can call them without deadlocking its mailbox.
 - Capability code is trusted and registered as an in-process value (Agent,
   host services or `Engine::register_capability`), never deserialized.
