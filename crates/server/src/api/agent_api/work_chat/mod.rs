@@ -3,7 +3,7 @@
 use super::*;
 pub(crate) mod experience;
 use crate::domains::agent_channels::record::work_chat::{
-    ChatFeatures, ChatInterface, WorkChatConfig, host_label_ok,
+    ChatFeatures, ChatInterface, WorkChatConfig, WorkChatPlugins, host_label_ok,
 };
 use crate::domains::session_files::service::{CreateFileInput, WorkspaceFileService};
 use axum::extract::Query;
@@ -28,6 +28,14 @@ pub(super) fn routes() -> Router<ChannelApiState> {
             .route(
                 &format!("{prefix}/{{channel_id}}/chat/main"),
                 post(resolve_work_chat_main),
+            )
+            .route(
+                &format!("{prefix}/{{channel_id}}/chat/plugins"),
+                get(list_work_chat_plugins),
+            )
+            .route(
+                &format!("{prefix}/{{channel_id}}/chat/plugins/{{plugin_id}}"),
+                axum::routing::put(set_work_chat_plugin),
             )
             .route(
                 &format!("{prefix}/{{channel_id}}/sessions/{{session_id}}/work"),
@@ -231,6 +239,100 @@ pub(crate) async fn resolve_work_chat_main(
     }
     .await;
     result.unwrap_or_else(|response| response)
+}
+
+/// The signed-in person's plugins in this chat: the agent's, the ones they
+/// added, and approved ones they could add, as the channel allows.
+async fn work_chat_plugins(
+    state: &ChannelApiState,
+    id: &str,
+    headers: &HeaderMap,
+) -> ApiResponse<(
+    uuid::Uuid,
+    WorkChatPlugins,
+    Vec<crate::domains::plugins::choices::PluginOption>,
+    i64,
+)> {
+    use crate::domains::plugins::choices;
+    let auth = authorize_by_id(state, id, headers, None).await?;
+    let settings = config(&auth.channel)?.plugins;
+    let user = auth.caller.end_user_id().ok_or_else(|| {
+        error(
+            StatusCode::FORBIDDEN,
+            "Plugins are chosen by a signed-in person",
+        )
+    })?;
+    let org = auth.context.org_id;
+    let owner = choices::choice_owner(&state.db, org, user.principal_id)
+        .await
+        .map_err(internal_error)?;
+    let refs = choices::agent_refs(
+        &state.db,
+        org,
+        auth.context.harness_id,
+        auth.context.agent_internal_id,
+    )
+    .await
+    .map_err(internal_error)?;
+    let list = choices::options(&state.db, org, owner, Some((&refs, settings)))
+        .await
+        .map_err(internal_error)?;
+    Ok((owner, settings, list, org))
+}
+
+fn plugin_list(
+    settings: WorkChatPlugins,
+    plugins: Vec<crate::domains::plugins::choices::PluginOption>,
+) -> crate::domains::plugins::choices::WorkChatPluginList {
+    // Without the option, plugins a person could add are not shown at all.
+    let plugins = plugins
+        .into_iter()
+        .filter(|option| {
+            settings.allow_adding
+                || option.origin == crate::domains::plugins::choices::PluginOrigin::Agent
+        })
+        .collect();
+    crate::domains::plugins::choices::WorkChatPluginList {
+        allow_adding: settings.allow_adding,
+        allow_turning_off: settings.allow_turning_off,
+        plugins,
+    }
+}
+
+#[utoipa::path(get, operation_id="list_work_chat_plugins", path="/v1/channels/{channel_id}/chat/plugins", description="The signed-in person's plugins in this Work Chat: the agent's, the ones they added, and approved ones they could add. Choices apply to new conversations.", params(("channel_id" = String, Path)), responses((status=200,description="Success",body=crate::domains::plugins::choices::WorkChatPluginList),(status=401,description="Consumer sign-in required"),(status=404,description="Channel or resource unavailable")),tag="agent-execution")]
+pub(crate) async fn list_work_chat_plugins(
+    State(state): State<ChannelApiState>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+) -> Response {
+    work_chat_plugins(&state, &id, &headers)
+        .await
+        .map(|(_, settings, list, _)| Json(plugin_list(settings, list)).into_response())
+        .unwrap_or_else(|response| response)
+}
+
+#[utoipa::path(put, operation_id="set_work_chat_plugin", path="/v1/channels/{channel_id}/chat/plugins/{plugin_id}", description="Add an approved plugin to your conversations in this Work Chat, or turn one off, as the channel allows.", params(("channel_id" = String, Path),("plugin_id" = String, Path)), request_body=crate::domains::plugins::choices::SetPluginChoice, responses((status=200,description="Saved; the updated list",body=crate::domains::plugins::choices::WorkChatPluginList),(status=400,description="The agent cannot run this plugin"),(status=401,description="Consumer sign-in required"),(status=403,description="The channel does not allow this choice"),(status=404,description="Channel or plugin unavailable")),tag="agent-execution")]
+pub(crate) async fn set_work_chat_plugin(
+    State(state): State<ChannelApiState>,
+    Path((id, plugin_id)): Path<(String, String)>,
+    headers: HeaderMap,
+    Json(body): Json<crate::domains::plugins::choices::SetPluginChoice>,
+) -> Response {
+    use crate::domains::plugins::choices;
+    let result = async {
+        let (owner, settings, list, org) = work_chat_plugins(&state, &id, &headers).await?;
+        let command_error =
+            |e| super::super::channel_api::command_error_response(e).into_response();
+        choices::check_channel_choice(&list, settings, &plugin_id, body.enabled)
+            .map_err(command_error)?;
+        choices::set_choice(&state.db, org, owner, &plugin_id, body.enabled)
+            .await
+            .map_err(command_error)?;
+        let (_, settings, list, _) = work_chat_plugins(&state, &id, &headers).await?;
+        Ok(Json(plugin_list(settings, list)).into_response())
+    }
+    .await;
+    result.unwrap_or_else(|response: Response| response)
 }
 
 #[utoipa::path(get, operation_id="list_work_chat_tasks", path="/v1/channels/{channel_id}/sessions/{session_id}/work", description="Background work and threads in this consumer conversation.", params(("channel_id" = String, Path),("session_id" = String, Path)), responses((status=200,description="Success",body=Value),(status=401,description="Consumer sign-in required"),(status=404,description="Channel or resource unavailable")),tag="agent-execution")]

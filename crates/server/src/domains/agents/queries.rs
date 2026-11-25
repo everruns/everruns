@@ -24,13 +24,31 @@ pub async fn get_capabilities(
     let capabilities = rows
         .into_iter()
         .map(|row| everruns_contracts::CapabilityRef::with_config(row.capability_id, row.config))
-        .collect();
-    crate::domains::capabilities::queries::hydrate_declarative_capability_configs(
-        db,
-        org_id,
-        capabilities,
-    )
-    .await
+        .collect::<Vec<_>>();
+    // The agent's own list keeps "all approved plugins" as the one ref it
+    // stored: expanding it here would hand callers a fixed list that, saved
+    // back, silently stops picking up newly approved plugins. Turn building
+    // merges harness, agent and session first, then expands.
+    let all_approved = capabilities
+        .iter()
+        .position(|cap| everruns_contracts::is_all_approved_plugins(cap.capability_id()));
+    let (rest, all_approved) = match all_approved {
+        Some(index) => {
+            let mut rest = capabilities;
+            let all = rest.remove(index);
+            (rest, Some((index, all)))
+        }
+        None => (capabilities, None),
+    };
+    let mut hydrated =
+        crate::domains::capabilities::queries::hydrate_declarative_capability_configs(
+            db, org_id, rest,
+        )
+        .await?;
+    if let Some((index, all)) = all_approved {
+        hydrated.insert(index.min(hydrated.len()), all);
+    }
+    Ok(hydrated)
 }
 
 /// Resolve agent by public ID or name. Single lookup path for both

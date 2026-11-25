@@ -5,7 +5,7 @@ import { fetchUpstream } from "../../../server/upstream";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 const allowed =
-  /^(sessions(?:\/[a-zA-Z0-9_-]+(?:\/(?:messages(?:\/[a-zA-Z0-9_-]+\/reactions\/(?!\.)[^/\s?#]{1,64})?|events|sse|cancel|question-answers|tool-approvals|files|work|settings|share|reactions))?)?|chat\/(?:main|config|view|shared\/[a-zA-Z0-9_-]+)|virtual-users\/me(?:\/connections(?:\/[a-zA-Z0-9_-]+(?:\/authorize)?)?)?)$/;
+  /^(sessions(?:\/[a-zA-Z0-9_-]+(?:\/(?:messages(?:\/[a-zA-Z0-9_-]+\/reactions\/(?!\.)[^/\s?#]{1,64})?|events|sse|cancel|question-answers|tool-approvals|files|work|settings|share|reactions))?)?|chat\/(?:main|config|view|plugins(?:\/[a-zA-Z0-9_-]+)?|shared\/[a-zA-Z0-9_-]+)|virtual-users\/me(?:\/connections(?:\/[a-zA-Z0-9_-]+(?:\/authorize)?)?)?)$/;
 async function proxy(request: Request, { params }: { params: Promise<{ path: string[] }> }) {
   try {
     const path = (await params).path.join("/");

@@ -150,6 +150,7 @@ External-service capabilities and blueprint-backed workflows.
 | [Parallel Search and Fetch](/integrations/parallel/) | `parallel_search` | 0 (hosted MCP tools from Parallel: search, fetch, decisions, image search) |
 | [Jev Decisions](/integrations/typesafe/) | `jev` | 1 |
 | [User MCP Servers](/capabilities/user-mcp-servers/) | `user_mcp` | 7 (only with `manage` on) |
+| [Plugins](/capabilities/plugins/) | `plugins` | 2 |
 | [Poppy Personal Agent](/capabilities/poppy-personal-agent/) | `poppy_client` | 5 |
 
 ### Platform

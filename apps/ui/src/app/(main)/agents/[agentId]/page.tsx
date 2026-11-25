@@ -112,6 +112,9 @@ import { AgentChecks, applyByteSpanReplacement } from "@/components/agents/agent
 import { agentFilesSectionVisible } from "@/components/agents/agent-files-visibility";
 import { AgentConfigColumn, type AgentMoreRow } from "@/components/agents/agent-config-column";
 import { AgentCostEstimate } from "@/components/agents/agent-cost-estimate";
+import { agentPluginsSummary } from "@/components/agents/agent-plugins-section";
+import { useInstalledPlugins } from "@/hooks/use-plugins";
+import { resolveHarnessInheritance } from "@/lib/harness-inheritance";
 import { AgentIntegrationsPanel } from "@/components/agents/agent-integrations-panel";
 import { useAgentChannels } from "@/hooks/use-agent-channels";
 import { useAgentTriggers } from "@/hooks/use-agent-triggers";
@@ -234,6 +237,7 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
   const sourceQuery = useAgentSource(agentId);
   const sourceManaged = !!sourceQuery.data && sourceQuery.data.mode !== "two_way";
   const { data: harnesses } = useHarnesses();
+  const { data: installedPlugins } = useInstalledPlugins();
   usePageTitle(agent ? getDisplayName(agent, displayLocale) : null, ui("Agent"));
   const { data: allCapabilities } = useCapabilities({ includeRetired: true });
   const { data: models } = useModels();
@@ -532,6 +536,20 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
   )
     ? "Bashkit Virtual Workspace"
     : undefined;
+  // Capability refs the agent's harness chain already brings, so the Plugins
+  // section can judge which plugins this agent can run.
+  const inheritedRefs = (() => {
+    const harnessId = draft.fields.harness_id || agent.harness_id;
+    const byId = new Map((harnesses ?? []).map((harness) => [harness.id, harness]));
+    const harness = harnessId ? byId.get(harnessId) : undefined;
+    if (!harness) return [];
+    return resolveHarnessInheritance(harness, byId).chain.flatMap((link) =>
+      (link.capabilities ?? []).map((capability) => capability.ref),
+    );
+  })();
+  const approvedPluginCount = installedPlugins?.filter(
+    (plugin) => plugin.status === "active",
+  ).length;
   const network = normalizeNetworkAccess(draft.networkAccess);
   const brandingParts = [
     ...(agent.avatar ? ["Avatar"] : []),
@@ -568,6 +586,11 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
       summary: mcpAttachments?.length
         ? ui("{value0} attached", { value0: mcpAttachments.length })
         : ui("None"),
+    },
+    {
+      id: "plugins",
+      label: ui("Plugins"),
+      summary: agentPluginsSummary(draft.capabilities, approvedPluginCount, ui),
     },
     {
       id: "credentials",
@@ -1113,6 +1136,7 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
             draft={draft}
             readOnly={readOnly}
             fixedSandbox={fixedSandbox}
+            inheritedRefs={inheritedRefs}
             onDraftChange={onDraftChange}
             viewSettings={showViews ? viewSettings : undefined}
             viewSettingsReadOnly={readOnly || !canManage}

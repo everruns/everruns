@@ -60,6 +60,7 @@ pub const USER_MCP_SERVERS: &str = "user_mcp_servers";
 pub const SESSION_SPEND: &str = "session_spend";
 pub const AGENT_SCRIPTS: &str = "agent_scripts";
 pub const AGENT_SCRIPT_SAVE: &str = "agent_script_save";
+pub const PLUGINS_CALL: &str = "plugins_call";
 
 const fn call(name: &'static str, command: &'static str, person: bool) -> Call {
     Call {
@@ -94,6 +95,7 @@ pub const CALLS: &[Call] = &[
     call(SESSION_SPEND, "worker_get_session_spend", false),
     call(AGENT_SCRIPTS, "list_agent_scripts", false),
     call(AGENT_SCRIPT_SAVE, "agent_script_save", true),
+    call(PLUGINS_CALL, "worker_plugins_call", false),
 ];
 
 /// The call named `name`.

@@ -209,6 +209,11 @@ pub fn from_env(db: Arc<crate::storage::StorageBackend>, base_url: &str) -> Inje
             configs.clone(),
             calls.clone(),
         )))
+        .register(Arc::new(hosted::plugins::service(
+            base_url,
+            configs.clone(),
+            calls.clone(),
+        )))
         .register(Arc::new(hosted::slack::service(
             base_url,
             configs,

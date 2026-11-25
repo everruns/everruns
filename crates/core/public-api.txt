@@ -297,6 +297,9 @@ everruns_core::plugins	module
 everruns_core::plugins::compiler	module
 everruns_core::plugins::compiler::CompiledPlugin	struct
 everruns_core::plugins::compiler::compile_plugin	function
+everruns_core::plugins::environment::EVERRUNS_EXTENSION	constant
+everruns_core::plugins::environment::PluginRequirement	struct
+everruns_core::plugins::environment::plugin_requirement	function
 everruns_core::plugins::file_set	module
 everruns_core::plugins::file_set::MAX_PLUGIN_FILES	constant
 everruns_core::plugins::file_set::MAX_PLUGIN_FILE_BYTES	constant
@@ -341,6 +344,7 @@ everruns_core::session_mcp_servers::SESSION_MCP_SERVER_KV_PREFIX	constant
 everruns_core::session_mcp_servers::SessionMcpServer	struct
 everruns_core::session_mcp_servers::SessionMcpServerSource	enum
 everruns_core::session_mcp_servers::SessionMcpServerSource::Ard	variant
+everruns_core::session_mcp_servers::SessionMcpServerSource::Plugin	variant
 everruns_core::session_mcp_servers::SessionMcpServerSource::UserMcp	variant
 everruns_core::session_mcp_servers::get_session_mcp_server	function
 everruns_core::session_mcp_servers::load_session_mcp_servers	function

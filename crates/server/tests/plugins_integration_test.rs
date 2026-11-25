@@ -774,8 +774,8 @@ async fn test_default_marketplace_seeded_at_org_creation() {
     );
     assert_eq!(
         mkt["source"]["repo"].as_str(),
-        Some("everruns/plugins"),
-        "default marketplace must point at everruns/plugins"
+        Some("everruns/plugin-directory"),
+        "default marketplace must point at everruns/plugin-directory"
     );
     assert_eq!(
         mkt["status"].as_str(),
@@ -854,4 +854,109 @@ async fn test_default_marketplace_deletion_is_permanent() {
         StatusCode::NOT_FOUND,
         "deleted marketplace must return 404"
     );
+}
+
+// ============================================================
+// Personal plugins (Settings > Personal > Plugins)
+// ============================================================
+
+#[tokio::test]
+async fn test_personal_plugin_choices() {
+    let server = dev_server().await;
+    let path = testdata_plugins_path();
+    let marketplace_id = server
+        .post(
+            "/v1/platform/plugin_marketplaces",
+            json!({ "name": "personal-mkt", "source_type": "local_path", "source": path }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json_value()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    server
+        .post(
+            &format!("/v1/platform/plugin_marketplaces/{marketplace_id}/sync"),
+            json!({}),
+        )
+        .await
+        .assert_success();
+    let plugin_id = server
+        .post(
+            "/v1/platform/plugins",
+            json!({ "marketplace_id": marketplace_id, "plugin_name": "microsoft-docs" }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json_value()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let find = |list: &serde_json::Value| {
+        list.as_array()
+            .expect("a list of plugins")
+            .iter()
+            .find(|option| option["id"] == plugin_id.as_str())
+            .cloned()
+            .expect("the approved plugin is listed")
+    };
+
+    // Approved, not chosen: the person could add it.
+    let listed = server
+        .get("/v1/platform/users/me/plugins")
+        .await
+        .assert_success()
+        .json_value();
+    let option = find(&listed);
+    assert_eq!(option["origin"], "available");
+    assert_eq!(option["enabled"], false);
+
+    // Added for themselves.
+    let added = server
+        .put(
+            &format!("/v1/platform/users/me/plugins/{plugin_id}"),
+            json!({ "enabled": true }),
+        )
+        .await
+        .assert_success()
+        .json_value();
+    let option = find(&added);
+    assert_eq!(option["origin"], "added");
+    assert_eq!(option["enabled"], true);
+
+    // Removed again.
+    let removed = server
+        .put(
+            &format!("/v1/platform/users/me/plugins/{plugin_id}"),
+            json!({ "enabled": false }),
+        )
+        .await
+        .assert_success()
+        .json_value();
+    assert_eq!(find(&removed)["origin"], "available");
+
+    // An unknown or disabled plugin cannot be chosen.
+    server
+        .put(
+            "/v1/platform/users/me/plugins/plugin_00000000000000000000000000000000",
+            json!({ "enabled": true }),
+        )
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+    server
+        .patch(
+            &format!("/v1/platform/plugins/{plugin_id}"),
+            json!({ "status": "disabled" }),
+        )
+        .await
+        .assert_success();
+    server
+        .put(
+            &format!("/v1/platform/users/me/plugins/{plugin_id}"),
+            json!({ "enabled": true }),
+        )
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
 }

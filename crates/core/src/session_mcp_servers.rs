@@ -35,6 +35,13 @@ pub enum SessionMcpServerSource {
     },
     /// Added by the person through `user_mcp` for this chat only.
     UserMcp,
+    /// Brought by a plugin the agent loaded into this chat (`load_plugin`).
+    Plugin {
+        /// The plugin's name.
+        plugin: String,
+        /// The install it came from (`plugin_...`).
+        install_id: String,
+    },
 }
 
 /// An MCP server that joins one session's turns.

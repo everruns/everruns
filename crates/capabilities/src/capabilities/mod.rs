@@ -29,6 +29,7 @@ mod platform_docs;
 pub mod platform_management;
 pub mod platform_native;
 mod platform_skills;
+pub mod plugins;
 pub mod poppy_client;
 pub mod published_views;
 pub mod reactions;
@@ -108,6 +109,9 @@ pub use platform::{
     execute_input_schema, query_input_schema,
 };
 pub use platform_management::{PLATFORM_MANAGEMENT_CAPABILITY_ID, PlatformManagementCapability};
+pub use plugins::{
+    PLUGINS_CAPABILITY_ID, PluginsCall, PluginsCapability, PluginsInvoker, PluginsInvokerExt,
+};
 #[cfg(feature = "poppy-client")]
 pub use poppy_client::{
     ConversationState, InMemoryPoppyStore, PoppyAccount, PoppyClient, PoppyError, PoppyKey,
@@ -270,6 +274,9 @@ pub fn register_hosted_capabilities(
     // Inert without the control plane's Poppy client, which holds the keys
     // and runs the protocol (knowledge/integrations/poppy-personal-agent.md).
     registry.register(PoppyClientCapability);
+    // Inert without the control plane, which holds the organization's
+    // approved plugins (knowledge/integrations/plugins.md).
+    registry.register(PluginsCapability);
     registry.register(DataKnowledgeCapability);
     registry.register(knowledge::KnowledgeCapability);
     registry.register(CitationRetrievalCapability);

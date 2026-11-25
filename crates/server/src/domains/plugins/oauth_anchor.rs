@@ -309,6 +309,7 @@ mod tests {
             dependencies: Vec::new(),
             features: Vec::new(),
             risk_level: everruns_core::capabilities::RiskLevel::Low,
+            environment: None,
         }
     }
 

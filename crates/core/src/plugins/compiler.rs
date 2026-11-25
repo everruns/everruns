@@ -36,6 +36,9 @@ pub struct CompiledPlugin {
     pub definition: DeclarativeCapabilityDefinition,
     /// Non-fatal install warnings collected during compilation.
     pub warnings: Vec<String>,
+    /// Portable MCP servers silent on sign-in (no `com.everruns` entry): public
+    /// until the installer finds one wants OAuth and makes it act as the person.
+    pub auth_probe: Vec<String>,
 }
 
 /// Compile a `PluginFileSet` into a `CompiledPlugin`.
@@ -95,7 +98,8 @@ pub fn compile_plugin(file_set: &PluginFileSet) -> Result<CompiledPlugin, String
     all_skills.extend(command_skills);
 
     // --- MCP servers ---
-    let mcp_servers = compile_mcp_servers(file_set, &manifest, &mut warnings)?;
+    let mut auth_probe = Vec::new();
+    let mcp_servers = compile_mcp_servers(file_set, &manifest, &mut warnings, &mut auth_probe)?;
 
     // Warn about unsupported component fields in the manifest.
     for ignored_field in &["hooks", "lspServers", "monitors", "themes", "outputStyles"] {
@@ -122,6 +126,7 @@ pub fn compile_plugin(file_set: &PluginFileSet) -> Result<CompiledPlugin, String
         dependencies: Vec::new(),
         features: Vec::new(),
         risk_level: crate::capabilities::RiskLevel::Low,
+        environment: None,
     };
 
     // Run through declarative validation to catch size/count violations.
@@ -139,6 +144,7 @@ pub fn compile_plugin(file_set: &PluginFileSet) -> Result<CompiledPlugin, String
         manifest,
         definition,
         warnings,
+        auth_probe,
     })
 }
 
@@ -492,9 +498,12 @@ fn compile_mcp_servers(
     file_set: &PluginFileSet,
     manifest: &PluginManifest,
     warnings: &mut Vec<String>,
+    auth_probe: &mut Vec<String>,
 ) -> Result<Option<CapabilityMcpServers>, String> {
     if manifest.is_agent_plugins_v1() {
-        return Ok(compile_agent_plugins_v1_mcp(file_set, manifest, warnings));
+        return Ok(compile_agent_plugins_v1_mcp(
+            file_set, manifest, warnings, auth_probe,
+        ));
     }
 
     // Resolve where to look for MCP config.
@@ -638,6 +647,7 @@ fn compile_agent_plugins_v1_mcp(
     file_set: &PluginFileSet,
     manifest: &PluginManifest,
     warnings: &mut Vec<String>,
+    auth_probe: &mut Vec<String>,
 ) -> Option<CapabilityMcpServers> {
     let content = file_set.text_file("mcp.json")?;
     let value: serde_json::Value = match serde_json::from_str(&content) {
@@ -770,6 +780,13 @@ fn compile_agent_plugins_v1_mcp(
                     "MCP server '{server_name}': unsupported com.everruns actsAs '{other}'; server was skipped"
                 ));
                 continue;
+            }
+            // Plain Agent Plugins: the server says nothing about sign-in.
+            // Whether it wants OAuth is the server's to say (RFC 9728), so
+            // the installer asks it (`auth_probe`).
+            None if extension.is_none() => {
+                auth_probe.push(server_name.clone());
+                McpServerActsAs::None
             }
             None => {
                 warnings.push(format!(
@@ -1043,6 +1060,46 @@ mod tests {
         assert_eq!(server.acts_as, McpServerActsAs::User);
         assert_eq!(server.url, "https://mcp.resend.com/mcp");
         assert!(server.oauth_provider_id.is_none());
+    }
+
+    #[test]
+    fn plain_agent_plugins_mcp_compiles_and_is_probed_at_install() {
+        let mut files = std::collections::BTreeMap::new();
+        files.insert(
+            "plugin.json".to_string(),
+            serde_json::json!({
+                "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+                "name": "visti",
+                "extensions": {"com.everruns": {"environment": "workspace"}}
+            })
+            .to_string()
+            .into_bytes(),
+        );
+        files.insert(
+            "mcp.json".to_string(),
+            serde_json::json!({
+                "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+                "mcpServers": {
+                    "visti": {"type": "streamable-http", "url": "https://visti.sh/mcp"}
+                }
+            })
+            .to_string()
+            .into_bytes(),
+        );
+        let file_set = PluginFileSet::from_map("visti", files).unwrap();
+
+        let compiled = compile_plugin(&file_set).expect("plain plugin compiles");
+
+        let server = compiled
+            .definition
+            .mcp_servers
+            .as_ref()
+            .and_then(|servers| servers.get("visti"))
+            .expect("server kept, not skipped");
+        assert_eq!(server.auth_mode, McpServerAuthMode::None);
+        assert_eq!(server.acts_as, McpServerActsAs::None);
+        assert_eq!(compiled.auth_probe, ["visti"]);
+        assert!(compiled.warnings.is_empty(), "{:?}", compiled.warnings);
     }
 
     #[test]

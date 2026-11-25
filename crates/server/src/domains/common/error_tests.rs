@@ -7,7 +7,7 @@ fn command_metadata_declares_feature_gated_surfaces() {
         ("list_skills", "skills", Some("skills")),
         ("list_memories", "memories", Some("memory")),
         ("list_knowledge", "knowledge", None),
-        ("list_plugins", "plugins", Some("plugins")),
+        ("list_plugins", "plugins", None),
         ("create_observer", "observers", Some("observers")),
         ("list_notifications", "notifications", None),
         ("list_agents", "agents", None),

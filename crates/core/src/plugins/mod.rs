@@ -10,10 +10,12 @@
 // See knowledge/integrations/plugins.md for the full specification.
 
 pub mod compiler;
+mod environment;
 pub mod file_set;
 pub mod manifest;
 
 pub use compiler::{CompiledPlugin, compile_plugin};
+pub use environment::{EVERRUNS_EXTENSION, PluginRequirement, plugin_requirement};
 pub use file_set::{
     MAX_PLUGIN_FILE_BYTES, MAX_PLUGIN_FILES, MAX_PLUGIN_TOTAL_BYTES, PluginFileSet,
 };

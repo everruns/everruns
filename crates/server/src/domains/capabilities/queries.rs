@@ -163,11 +163,61 @@ pub fn row_to_declarative_capability(row: &DeclarativeCapabilityRow) -> Declarat
     }
 }
 
+/// Replace [`everruns_contracts::ALL_APPROVED_PLUGINS_REF`] with a ref per
+/// approved (active) plugin, and return which refs came from it.
+///
+/// A plugin whose MCP server still needs an acting identity, or one the
+/// capability list already names, is left out. The environment is not checked
+/// here, because this may see one layer (the agent without its harness): the
+/// expanded plugins carry their requirement, undeclared ones the strict
+/// default, and collection drops those the full capability list cannot run.
+/// So an admin approving a sandbox-only plugin never breaks a chat-only agent.
+async fn expand_all_approved_plugins(
+    db: &StorageBackend,
+    org_id: i64,
+    capabilities: Vec<AgentCapabilityConfig>,
+) -> anyhow::Result<(
+    Vec<AgentCapabilityConfig>,
+    std::collections::HashSet<String>,
+)> {
+    let mut from_all = std::collections::HashSet::new();
+    if !capabilities
+        .iter()
+        .any(|cap| everruns_contracts::is_all_approved_plugins(cap.capability_id()))
+    {
+        return Ok((capabilities, from_all));
+    }
+    let named: std::collections::HashSet<String> = capabilities
+        .iter()
+        .map(|cap| cap.capability_id().to_string())
+        .collect();
+    let mut expanded = Vec::with_capacity(capabilities.len());
+    for cap in capabilities {
+        if !everruns_contracts::is_all_approved_plugins(cap.capability_id()) {
+            expanded.push(cap);
+            continue;
+        }
+        for install in db.list_active_plugin_installs(org_id).await? {
+            let cap_id = everruns_contracts::plugin_capability_id(&install.public_id);
+            if named.contains(&cap_id)
+                || from_all.contains(&cap_id)
+                || !legacy_mcp_servers_requiring_identity(&install.definition).is_empty()
+            {
+                continue;
+            }
+            from_all.insert(cap_id.clone());
+            expanded.push(AgentCapabilityConfig::new(cap_id));
+        }
+    }
+    Ok((expanded, from_all))
+}
+
 pub async fn hydrate_declarative_capability_configs(
     db: &StorageBackend,
     org_id: i64,
     capabilities: Vec<AgentCapabilityConfig>,
 ) -> anyhow::Result<Vec<AgentCapabilityConfig>> {
+    let (capabilities, from_all) = expand_all_approved_plugins(db, org_id, capabilities).await?;
     let mut hydrated = Vec::with_capacity(capabilities.len());
     for cap in capabilities {
         let cap_id = cap.capability_id().to_string();
@@ -205,6 +255,13 @@ pub async fn hydrate_declarative_capability_configs(
                 hydrate_declarative_capability_config(cap.config_value().clone(), &definition),
             ));
         } else if is_plugin_capability(&cap_id)
+            && everruns_core::capabilities::is_plugin_turned_off(cap.config_value())
+        {
+            // A person turned this plugin off for their conversation. The
+            // marker stays as it is so that, merged over the agent's ref, it
+            // replaces it; collection then leaves the plugin out.
+            hydrated.push(cap);
+        } else if is_plugin_capability(&cap_id)
             && let Some(plugin_public_id) = parse_plugin_capability_id(&cap_id)
             && let Some(row) = db
                 .get_plugin_install_by_public_id(org_id, plugin_public_id)
@@ -221,7 +278,7 @@ pub async fn hydrate_declarative_capability_configs(
             // Same contract as the declarative branch above: an installed
             // plugin whose definition no longer parses stops the build instead
             // of contributing an empty shell.
-            let definition =
+            let mut definition =
                 deserialize_persisted_definition(row.id, &cap_id, &row.definition).map_err(
                     |error| {
                         anyhow::anyhow!(
@@ -229,6 +286,13 @@ pub async fn hydrate_declarative_capability_configs(
                         )
                     },
                 )?;
+            // Collection enforces what the plugin declared. The strict default
+            // for an undeclared plugin (sandbox) gates only "all approved" and
+            // loading on request: installs from before declarations existed
+            // keep running on the agents that already picked them.
+            let requirement = crate::domains::plugins::queries::install_requirement(&row);
+            definition.environment = (requirement.declared || from_all.contains(&cap_id))
+                .then_some(requirement.environment);
             hydrated.push(AgentCapabilityConfig::with_config(
                 cap_id,
                 hydrate_plugin_capability_config(cap.config_value().clone(), &definition),
@@ -562,6 +626,86 @@ mod tests {
                 .definition,
             stored
         );
+    }
+
+    async fn install(db: &StorageBackend, name: &str, mcp_auth: Option<&str>) -> String {
+        let public_id = everruns_contracts::typed_id::PluginInstallId::new().to_string();
+        let mut definition = json!({"name": name, "description": format!("{name} plugin")});
+        if let Some(auth_mode) = mcp_auth {
+            definition["mcp_servers"] =
+                json!({"remote": {"url": "https://example.com/mcp", "auth_mode": auth_mode}});
+        }
+        db.create_plugin_install(
+            ORG,
+            crate::storage::CreatePluginInstallRow {
+                public_id: public_id.clone(),
+                name: name.to_string(),
+                marketplace_id: None,
+                source: json!({}),
+                version: None,
+                pinned_sha: None,
+                manifest: json!({"name": name}),
+                definition,
+                warnings: json!([]),
+            },
+        )
+        .await
+        .unwrap();
+        public_id
+    }
+
+    /// "All approved" becomes every active install that needs no admin
+    /// setup, once each, with the strict environment requirement stamped; a
+    /// turned-off marker passes through for the collector to drop.
+    #[tokio::test]
+    async fn all_approved_expands_to_active_installs() {
+        let db = StorageBackend::test_database();
+        let docs = install(&db, "docs", None).await;
+        let mail = install(&db, "mail", None).await;
+        let _waiting = install(&db, "waiting", Some("oauth")).await;
+        let mail_ref = everruns_contracts::plugin_capability_id(&mail);
+
+        let hydrated = hydrate_declarative_capability_configs(
+            &db,
+            ORG,
+            vec![
+                AgentCapabilityConfig::new(everruns_contracts::ALL_APPROVED_PLUGINS_REF),
+                AgentCapabilityConfig::with_config(mail_ref.as_str(), json!({"enabled": false})),
+            ],
+        )
+        .await
+        .unwrap();
+
+        let ids: Vec<String> = hydrated
+            .iter()
+            .map(|cap| cap.capability_id().to_string())
+            .collect();
+        assert_eq!(
+            ids.iter().filter(|id| id.contains(&docs)).count(),
+            1,
+            "docs joins once: {ids:?}"
+        );
+        assert_eq!(
+            ids.iter().filter(|id| id.contains(&mail)).count(),
+            1,
+            "an explicitly named install is not added twice: {ids:?}"
+        );
+        assert!(
+            !ids.iter().any(|id| id.ends_with("_all")),
+            "the all ref itself is gone: {ids:?}"
+        );
+        assert_eq!(
+            ids.len(),
+            2,
+            "the install waiting for an admin is skipped: {ids:?}"
+        );
+        let marker = hydrated
+            .iter()
+            .find(|cap| cap.capability_id().to_string() == mail_ref)
+            .unwrap();
+        assert!(everruns_core::capabilities::is_plugin_turned_off(
+            marker.config_value()
+        ));
     }
 
     // THREAT[TM-MCP-015]: a row stored before the write-path check must not

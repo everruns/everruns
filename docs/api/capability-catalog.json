@@ -1188,6 +1188,24 @@
     {
       "category": "Integrations",
       "dependencies": [],
+      "docs_slug": "plugins",
+      "feature_flag": null,
+      "features": [],
+      "grades": [
+        "prod",
+        "dev"
+      ],
+      "id": "plugins",
+      "name": "Plugins",
+      "status": "available",
+      "tools": [
+        "load_plugin",
+        "search_plugins"
+      ]
+    },
+    {
+      "category": "Integrations",
+      "dependencies": [],
       "docs_slug": "poppy-personal-agent",
       "feature_flag": null,
       "features": [],

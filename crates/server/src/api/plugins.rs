@@ -8,6 +8,8 @@
 //   GET/POST   /v1/platform/plugins
 //   GET/PATCH/DELETE /v1/platform/plugins/{id}
 //   POST       /v1/platform/plugins/{id}/update
+//   GET        /v1/platform/users/me/plugins
+//   PUT        /v1/platform/users/me/plugins/{id}
 //
 // Spec: knowledge/integrations/plugins.md
 
@@ -125,6 +127,12 @@ pub fn routes(state: AppState) -> Router {
                 .delete(uninstall_plugin),
         )
         .route("/v1/platform/plugins/{id}/update", post(update_plugin))
+        .route("/v1/platform/plugins/config", get(plugin_config))
+        .route("/v1/platform/users/me/plugins", get(list_my_plugins))
+        .route(
+            "/v1/platform/users/me/plugins/{id}",
+            axum::routing::put(set_my_plugin_choice),
+        )
         .with_state(state)
 }
 
@@ -458,4 +466,80 @@ pub async fn update_plugin(
         .dispatcher(&org)
         .run(crate::domains::plugins::UpdatePlugin { id })
         .await
+}
+
+// ============================================================================
+// A person's own plugins
+// ============================================================================
+
+/// GET /v1/platform/users/me/plugins
+#[utoipa::path(
+    get,
+    path = "/v1/platform/users/me/plugins",
+    responses(
+        (status = 200, description = "Approved plugins with your own choices", body = Vec<crate::domains::plugins::choices::PluginOption>),
+        (status = 500, description = "Internal server error", body = ErrorResponse),
+    ),
+    tag = "plugins"
+)]
+pub async fn list_my_plugins(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+) -> ApiResult<Vec<crate::domains::plugins::choices::PluginOption>> {
+    state
+        .dispatcher(&org)
+        .run(crate::domains::plugins::ListMyPlugins {})
+        .await
+}
+
+/// PUT /v1/platform/users/me/plugins/{id}
+#[utoipa::path(
+    put,
+    path = "/v1/platform/users/me/plugins/{id}",
+    params(("id" = String, Path, description = "Plugin install ID (plugin_...)")),
+    request_body = crate::domains::plugins::choices::SetPluginChoice,
+    responses(
+        (status = 200, description = "Choice saved; the updated list", body = Vec<crate::domains::plugins::choices::PluginOption>),
+        (status = 404, description = "No approved plugin with that ID", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse),
+    ),
+    tag = "plugins"
+)]
+pub async fn set_my_plugin_choice(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(req): Json<crate::domains::plugins::choices::SetPluginChoice>,
+) -> ApiResult<Vec<crate::domains::plugins::choices::PluginOption>> {
+    state
+        .dispatcher(&org)
+        .run(crate::domains::plugins::SetMyPluginChoice {
+            id,
+            enabled: req.enabled,
+        })
+        .await
+}
+
+/// GET /v1/platform/plugins/config
+#[utoipa::path(
+    get,
+    path = "/v1/platform/plugins/config",
+    responses(
+        (status = 200, description = "Resource config for plugins", body = everruns_core::ResourceConfigResponse),
+    ),
+    tag = "plugins"
+)]
+pub async fn plugin_config(
+    State(state): State<AppState>,
+    org: ResolvedOrg,
+) -> Json<everruns_core::ResourceConfigResponse> {
+    let policies = everruns_core::evaluate_policies_with(
+        state.auth.permission_resolver.as_ref(),
+        &Caller::from(&org),
+        &[
+            &crate::domains::plugins::PLUGIN_VIEW,
+            &crate::domains::plugins::PLUGIN_MANAGE,
+        ],
+    );
+    Json(everruns_core::ResourceConfigResponse { policies })
 }

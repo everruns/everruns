@@ -826,6 +826,19 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         ))
     }
 
+    fn plugins_invoker(
+        &self,
+        org_id: i64,
+        session_id: everruns_contracts::typed_id::SessionId,
+    ) -> Option<Arc<dyn everruns_capabilities::capabilities::PluginsInvoker>> {
+        Some(Arc::new(
+            crate::internal_commands::CommandPluginsInvoker::new(
+                crate::grpc_adapters::GrpcAdapter::new_org_scoped(self.client.clone(), org_id),
+                session_id,
+            ),
+        ))
+    }
+
     fn saved_script_store(
         &self,
         org_id: i64,

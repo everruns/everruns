@@ -11,8 +11,6 @@ export interface FeatureFlags {
   skills: boolean;
   /** Workspace memory management UI. Experimental. */
   memory: boolean;
-  /** Plugin marketplace and installed-plugin management UI. Experimental. */
-  plugins: boolean;
   voice: boolean;
   /** Observers: online scoring of production sessions. Organization adoption opt-in. */
   observers: boolean;

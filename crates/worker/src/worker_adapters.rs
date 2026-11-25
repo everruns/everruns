@@ -537,6 +537,17 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
         None
     }
 
+    /// The session's Plugins client (`plugins` capability). Defaults to none:
+    /// the org's approved plugins live in the control plane, and the tools
+    /// then say plugins cannot be loaded here.
+    fn plugins_invoker(
+        &self,
+        _org_id: i64,
+        _session_id: everruns_contracts::typed_id::SessionId,
+    ) -> Option<Arc<dyn everruns_capabilities::capabilities::PluginsInvoker>> {
+        None
+    }
+
     /// The session's agent's saved scripts, for `tools scripts` (Tools in
     /// Shell D8). Defaults to none: the scripts live in the control plane.
     fn saved_script_store(

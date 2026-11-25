@@ -93,6 +93,7 @@ use crate::{CapabilityId, CapabilityRef as AgentCapabilityConfig};
 // ============================================================================
 
 mod declarative;
+mod environment;
 pub mod facts;
 pub mod injected;
 pub mod skill_contribution;
@@ -134,6 +135,7 @@ pub use declarative::{
     hydrate_plugin_capability_config, is_declarative_capability, parse_declarative_capability_id,
     plugin_capability_info, validate_declarative_capability_definition,
 };
+pub use environment::PluginEnvironment;
 pub use facts::{FACTS_DYNAMIC_NOTE, Fact, FactsContext, Volatility, render_facts_block};
 pub use skill_contribution::{
     MAX_SKILLS_PER_CAPABILITY, SKILL_CAPABILITY_PREFIX, SKILLS_DISCOVERY_PATH,

@@ -21,11 +21,13 @@ use everruns_internal_protocol::commands::{call, call_secret, decode, failure, i
 mod credentials;
 pub use everruns_internal_protocol::commands::dreaming;
 pub use everruns_internal_protocol::commands::knowledge;
+mod plugins;
 mod poppy;
 mod session_schedules;
 mod session_storage;
 mod session_tasks;
 
+pub use plugins::CommandPluginsInvoker;
 pub use poppy::CommandPoppyInvoker;
 pub use session_schedules::CommandSessionScheduleStore;
 pub use session_storage::CommandSessionStorageStore;

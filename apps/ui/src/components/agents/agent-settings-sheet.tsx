@@ -34,6 +34,7 @@ import { InitialFilesEditor } from "@/components/initial-files-editor";
 import { NetworkAccessEditor } from "@/components/network-access-editor";
 import { SandboxPolicyEditor } from "@/components/agents/sandbox-policy-editor";
 import { AgentMcpPanel } from "@/components/agents/agent-mcp-panel";
+import { AgentPluginsSection } from "@/components/agents/agent-plugins-section";
 import { AgentCredentialsPanel } from "@/components/agents/agent-credentials-panel";
 import { AgentHealthCheck } from "@/components/agents/agent-health-check";
 import { AgentServiceAccount } from "@/components/agents/agent-service-account";
@@ -53,6 +54,7 @@ export type AgentSettingsSection =
   | "localization"
   | "branding"
   | "mcp"
+  | "plugins"
   | "credentials"
   | "service"
   | "files"
@@ -92,6 +94,11 @@ const SECTIONS: Record<
     description: "Servers whose tools this agent can call.",
     kind: "live",
     wide: true,
+  },
+  plugins: {
+    title: "Plugins",
+    description: "Which of the organization's plugins this agent uses.",
+    kind: "draft",
   },
   credentials: {
     title: "Credentials",
@@ -161,6 +168,8 @@ interface AgentSettingsSheetProps {
   viewSettingsReadOnly?: boolean;
   /** Wraps a draft change so the page enters edit mode. */
   onDraftChange: <T>(apply: (value: T) => void) => (value: T) => void;
+  /** Capability refs the agent's harness chain contributes. */
+  inheritedRefs?: readonly string[];
 }
 
 /** Loads the agent's triggers only when the sandbox section is open. */
@@ -182,6 +191,7 @@ export function AgentSettingsSheet({
   onDraftChange,
   viewSettings,
   viewSettingsReadOnly = readOnly,
+  inheritedRefs = [],
 }: AgentSettingsSheetProps) {
   const ui = useUiTranslations();
   const chatMode = usePageChatMode();
@@ -221,6 +231,7 @@ export function AgentSettingsSheet({
                         sandbox: "sandbox_policy",
                         max_output_tokens: "max_output_tokens",
                         mcp: ["mcpServers", "mcp_servers"],
+                        plugins: "capabilities",
                         service: "service_virtual_user_id",
                       } as Record<string, string | string[]>
                     )[active] ?? active)
@@ -249,6 +260,14 @@ export function AgentSettingsSheet({
                 />
               )}
               {active === "mcp" && <AgentMcpPanel agent={agent} readOnly={readOnly} />}
+              {active === "plugins" && (
+                <AgentPluginsSection
+                  capabilities={draft.capabilities}
+                  inheritedRefs={inheritedRefs}
+                  onChange={onDraftChange(draft.setCapabilities)}
+                  readOnly={readOnly}
+                />
+              )}
               {active === "credentials" && <AgentCredentialsPanel agentId={agent.id} />}
               {active === "service" && (
                 <AgentServiceAccount

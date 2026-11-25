@@ -306,6 +306,9 @@ jest.mock("@/hooks/use-change-history", () => ({
 }));
 
 jest.mock("@/hooks/use-members", () => ({ useMembers: () => ({ data: [] }) }));
+jest.mock("@/hooks/use-plugins", () => ({
+  useInstalledPlugins: () => ({ data: [], isLoading: false }),
+}));
 jest.mock("@/hooks/use-organizations", () => ({
   useOrganization: () => ({ data: { id: "org_1", effective_research_model_id: null } }),
 }));

@@ -567,6 +567,74 @@ pub async fn collect_capability_tools_with_configs(
     collect(capability_configs, registry, ctx, false).await
 }
 
+/// Whether a plugin ref's config is the marker a person's "turn off" leaves
+/// (`{"enabled": false}`): a session-level ref that replaces the agent's when
+/// the layers merge, so the plugin is left out of that conversation.
+pub fn is_plugin_turned_off(config: &serde_json::Value) -> bool {
+    config.get("enabled") == Some(&serde_json::Value::Bool(false))
+}
+
+/// Drop plugins turned off for this conversation, and plugin definitions that need more than the whole capability list
+/// provides (their `environment`), or `None` when every one fits.
+///
+/// Checked here, on the merged list, because a plugin's need is about the
+/// agent as a whole: the file system usually comes from the harness, the
+/// plugin from the agent. A skipped plugin is logged, not an error: "all
+/// approved plugins" must not break an agent because an admin approved one
+/// that needs a sandbox.
+fn without_skipped_plugins(
+    capability_configs: &[AgentCapabilityConfig],
+) -> Option<Vec<AgentCapabilityConfig>> {
+    let turned_off = |config: &AgentCapabilityConfig| {
+        crate::is_plugin_capability(config.capability_id())
+            && is_plugin_turned_off(config.config_value())
+    };
+    let needs = |config: &AgentCapabilityConfig| {
+        if !crate::is_plugin_capability(config.capability_id()) {
+            return None;
+        }
+        config
+            .config_value()
+            .get("environment")
+            .and_then(serde_json::Value::as_str)
+            .and_then(super::PluginEnvironment::parse)
+    };
+    if !capability_configs
+        .iter()
+        .any(|config| needs(config).is_some() || turned_off(config))
+    {
+        return None;
+    }
+    let provided = super::PluginEnvironment::provided_by(
+        capability_configs
+            .iter()
+            .map(|config| config.capability_id()),
+    );
+    let mut dropped = false;
+    let kept = capability_configs
+        .iter()
+        .filter(|config| match needs(config) {
+            _ if turned_off(config) => {
+                dropped = true;
+                false
+            }
+            Some(need) if !need.satisfied_by(provided) => {
+                tracing::info!(
+                    capability = config.capability_id(),
+                    needs = %need,
+                    provides = %provided,
+                    "plugin skipped: the agent does not provide the environment it needs"
+                );
+                dropped = true;
+                false
+            }
+            _ => true,
+        })
+        .cloned()
+        .collect();
+    dropped.then_some(kept)
+}
+
 async fn collect(
     capability_configs: &[AgentCapabilityConfig],
     registry: &CapabilityRegistry,
@@ -607,6 +675,14 @@ async fn collect(
             &without_conflicts[..]
         }
         _ => capability_configs,
+    };
+    let runnable: Vec<AgentCapabilityConfig>;
+    let capability_configs = match without_skipped_plugins(capability_configs) {
+        Some(kept) => {
+            runnable = kept;
+            &runnable[..]
+        }
+        None => capability_configs,
     };
     // Resolve the session-wide mode before any prompt or hook receives its
     // context. Individual definitions are previewed below; late MCP operations
@@ -1178,3 +1254,61 @@ pub async fn apply_capabilities(
 // ============================================================================
 // Tests
 // ============================================================================
+
+#[cfg(test)]
+mod environment_tests {
+    use super::*;
+
+    fn plugin(id: &str, environment: Option<&str>) -> AgentCapabilityConfig {
+        let mut config = serde_json::json!({"name": id, "description": "p"});
+        if let Some(environment) = environment {
+            config["environment"] = environment.into();
+        }
+        AgentCapabilityConfig::with_config(format!("plugin:{id}"), config)
+    }
+
+    fn ids(configs: &[AgentCapabilityConfig]) -> Vec<&str> {
+        configs
+            .iter()
+            .map(|config| config.capability_id())
+            .collect()
+    }
+
+    #[test]
+    fn plugins_needing_more_than_the_whole_list_provides_are_dropped() {
+        let configs = vec![
+            AgentCapabilityConfig::new("session_file_system"),
+            plugin("docs", Some("workspace")),
+            plugin("builder", Some("sandbox")),
+            plugin("old", None),
+        ];
+        let kept = without_skipped_plugins(&configs).expect("one plugin is dropped");
+        assert_eq!(
+            ids(&kept),
+            ["session_file_system", "plugin:docs", "plugin:old"]
+        );
+    }
+
+    #[test]
+    fn a_turned_off_plugin_is_left_out() {
+        let configs = vec![
+            plugin("docs", Some("conversation")),
+            AgentCapabilityConfig::with_config(
+                "plugin:visti",
+                serde_json::json!({"enabled": false}),
+            ),
+        ];
+        let kept = without_skipped_plugins(&configs).expect("the marker is dropped");
+        assert_eq!(ids(&kept), ["plugin:docs"]);
+    }
+
+    #[test]
+    fn nothing_changes_when_every_plugin_fits() {
+        let configs = vec![
+            AgentCapabilityConfig::new("session_sandbox"),
+            plugin("builder", Some("sandbox")),
+        ];
+        assert!(without_skipped_plugins(&configs).is_none());
+        assert!(without_skipped_plugins(&[plugin("chat", Some("conversation"))]).is_none());
+    }
+}

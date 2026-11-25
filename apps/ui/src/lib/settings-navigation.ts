@@ -62,6 +62,15 @@ export const settingsNavigationSections: NavigationSection[] = [
         description: "Manage the MCP presets agents and people can add",
       },
       {
+        // Approved plugins; replaced the main-navigation Plugins page.
+        name: "Plugins",
+        href: "/settings/plugins",
+        keywords: ["plugins", "marketplace", "directory", "skills", "approve", "sources"],
+        icon: registryDomainIcons.plugins,
+        policy: "plugin.view",
+        description: "Approve the plugins agents and people may use",
+      },
+      {
         name: "Slack workspaces",
         href: "/settings/slack",
         icon: SlackIcon,
@@ -148,6 +157,13 @@ export const settingsNavigationSections: NavigationSection[] = [
         keywords: ["mcp", "mcp servers", "tools"],
         icon: registryDomainIcons.mcpServers,
         description: "MCP servers you add and sign in to for yourself",
+      },
+      {
+        name: "Plugins",
+        href: "/settings/my-plugins",
+        keywords: ["plugins", "my plugins"],
+        icon: registryDomainIcons.plugins,
+        description: "Approved plugins you add to your own conversations",
       },
       {
         name: "AI clients",
