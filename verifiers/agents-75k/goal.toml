@@ -65,8 +65,8 @@ realism_tolerance = 0.10              # G6: generated coding load within 10% of 
 driver_cpu_max = 0.70                 # D7: the load generator is not the bottleneck
 rebuild_s = 60                        # U7: drill rebuilt a 37k-session shard in 3.7 s (2026-11-12)
 kill_to_leader_s = 15                 # U8: drill measured 7.4 s
-ship_first_p99_s = 0.1                # U9: drill measured p99 at or under 100 ms
-loss_window_share = 0.01              # U10: drill resent 18 of 3,000 (0.6%)
+ship_first_p99_s = 0.25               # U9: 100 ms batching plus the store write (owner, 2026-11-25); step 9 drill measured p99 at or under 100 ms unbatched
+loss_window_share = 0.10              # U10: 10 s shipping (owner, 2026-11-25); store-first drill resent 177 of 3,000 (5.9%); step 9 with 2 s shipping resent 18 (0.6%)
 gate_streak = 3                       # R10: the gate passes three runs in a row
 
 [cost]
@@ -81,3 +81,6 @@ agents = [25_000, 50_000, 75_000]
 # Not fingerprinted. The owner records approval of a full (L4) run here, e.g.
 # full_run = "2026-12-01 one full run approved"
 full_run = ""
+# Earlier goal fingerprints whose results still count, scored against today's
+# targets. 2026-11-25: U9 0.1 s -> 0.25 s for 100 ms batching; U10 1% -> 10% for 10 s shipping.
+carry_from = ["edc6e32781fa635d"]

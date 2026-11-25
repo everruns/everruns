@@ -58,7 +58,7 @@ def gate_streak(cfg, runs, entries):
     if not clean(entries):
         return 0
     streak = 1
-    for r in sorted((r for r in runs if r.get("imported") and r.get("fingerprint") == cfg.fingerprint),
+    for r in sorted((r for r in runs if r.get("imported") and cfg.accepts(r.get("fingerprint"))),
                     key=lambda r: r["at"], reverse=True):
         if not clean(r["entries"]):
             break

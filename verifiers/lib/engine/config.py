@@ -9,6 +9,11 @@ Decisions:
 - The fingerprint covers the parsed goal minus its [approval] and [meta]
   tables, so the owner can record an approval or retitle the verifier
   without invalidating results.
+- A goal edit invalidates every result by default. The owner can list
+  earlier fingerprints in [approval] carry_from: their results are then
+  scored again against today's targets (raw values are recorded, so a
+  moved limit re-judges them). points.toml edits already work that way.
+  Only the owner writes goal.toml, so only the owner can carry evidence.
 """
 
 import ast
@@ -116,6 +121,10 @@ class Config:
     size: float = None  # a milestone overrides the verifier's default size
     _by_id: dict = field(default_factory=dict, repr=False)
 
+    def accepts(self, fp):
+        """Whether a result recorded under goal fingerprint fp counts."""
+        return fp == self.fingerprint or fp in carried(self.goal)
+
     def point(self, pid):
         if not self._by_id:
             self._by_id = {p.id: p for p in self.points}
@@ -152,6 +161,11 @@ class Config:
     def at(self, size):
         """The same config scored at a milestone."""
         return Config(self.goal, self.layout, self.levels, self.points, self.fingerprint, self.hooks, size)
+
+
+def carried(goal):
+    """Earlier goal fingerprints whose results the owner carried over."""
+    return set((goal.get("approval") or {}).get("carry_from") or [])
 
 
 def fingerprint(goal):

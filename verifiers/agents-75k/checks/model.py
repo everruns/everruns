@@ -37,7 +37,7 @@ def measured(cfg, runs):
     """key -> {value, run, level}: the best-level, newest measurement of each input."""
     out = {}
     for run in sorted(runs, key=lambda r: r["at"]):
-        if run.get("fingerprint") != cfg.fingerprint or run.get("invalid"):
+        if not cfg.accepts(run.get("fingerprint")) or run.get("invalid"):
             continue
         level = max((LEVEL_RANK[l] for l in run.get("levels", [])), default=0)
         if level == 0:
