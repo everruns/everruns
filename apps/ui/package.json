@@ -39,7 +39,7 @@
     "@copilotkit/shared": "1.83.0",
     "@everruns/generative-ui": "file:generative-ui",
     "@openuidev/react-headless": "^0.18.1",
-    "@openuidev/react-lang": "^1.0.1",
+    "@openuidev/react-lang": "^1.1.1",
     "@openuidev/react-ui": "^0.18.1",
     "@pierre/diffs": "1.6.4",
     "@rjsf/core": "^6.11.0",
