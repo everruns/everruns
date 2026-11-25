@@ -1112,14 +1112,25 @@ async fn test_dataset_export_atif_uses_model_view_not_raw_log() {
     assert_eq!(done.status, EvalDatasetStatus::Completed);
     let dataset_body = done.body.expect("completed dataset has body");
 
-    // Model view: the eight oldest tool results are masked out; the two most
-    // recent survive.
+    // Model view: the eight oldest tool results are masked down to a short
+    // excerpt plus a `query_history` recovery pointer; the two most recent
+    // survive verbatim.
+    let body = |i: usize| format!("BULKY_RESULT_{i}{:5000}", "");
     for i in 0..8 {
         assert!(
-            !dataset_body.contains(&format!("BULKY_RESULT_{i}")),
-            "masked tool result {i} must be absent from the ATIF dataset row",
+            !dataset_body.contains(&body(i)),
+            "masked tool result {i} must lose its bulky body in the ATIF dataset row",
+        );
+        assert!(
+            dataset_body.contains(&format!("BULKY_RESULT_{i}")),
+            "masked tool result {i} must keep its excerpt in the ATIF dataset row",
         );
     }
+    assert!(
+        dataset_body.contains("Hidden to save context")
+            && dataset_body.contains("query_history with tool_call_id"),
+        "masked tool results must keep the query_history recovery pointer",
+    );
     for i in 8..10 {
         assert!(
             dataset_body.contains(&format!("BULKY_RESULT_{i}")),
