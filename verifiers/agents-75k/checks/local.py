@@ -203,6 +203,22 @@ def density_sessions(ctx):
     return max(200, int(ctx.cfg.goal["density"]["sessions_per_shard"] * ctx.size))
 
 
+def coding_memory(result):
+    """G1: node memory per thousand coding sessions, the worst node."""
+    out = Output(density=result["sessions"])
+    out.add("G1", "L2", result["gated"]["node_rss_mb_per_1k_sessions"],
+            note=f"{result['sessions']:,} coding sessions on one shard, {result.get('turns_per_session')} turns each")
+    return out
+
+
+def run_coding_memory(ctx):
+    text, cmd = harness(ctx, "memory_bench.py", ["--sessions", density_sessions(ctx), "--turns", 4, "--coding"], "coding_memory")
+    out = coding_memory(last_json(text))
+    for e in out.entries:
+        e["evidence"] = cmd
+    return out
+
+
 def run_memory_bench(ctx):
     text, cmd = harness(ctx, "memory_bench.py", ["--sessions", density_sessions(ctx), "--turns", 4, "--no-baseline"], "memory_bench")
     out = memory_bench(last_json(text))
@@ -302,6 +318,8 @@ CARGO = ("cargo",)
 CHECKS = [
     Check("memory-bench", "L2", ["C1", "C5"], minutes=60, needs=CARGO, run=run_memory_bench,
           command="scripts/agentd/memory_bench.py --sessions 25000 --turns 4 --no-baseline"),
+    Check("coding-memory", "L2", ["G1"], minutes=60, needs=CARGO, run=run_coding_memory,
+          command="scripts/agentd/memory_bench.py --sessions 25000 --turns 4 --coding"),
     Check("shard-soak", "L2", ["A4", "C3", "E1", "F1", "U13"], minutes=75, needs=CARGO, run=run_shard_soak,
           command="scripts/agentd/shard_soak.py --scale 1.0"),
     Check("bench", "L2", ["C4"], minutes=10, needs=CARGO, run=run_bench,

@@ -316,7 +316,7 @@ target = "layout.node_memory_limit_mb * (1 - goal.limits.headroom) / goal.densit
 unit = "MB per 1k coding sessions"
 cheapest = "L2"
 scales = "per_shard"
-built_from = "memory_bench.py with the coding scenarios (new)"
+built_from = "memory_bench.py --coding: llmsim coding scenarios from the recorded profile"
 watches = ["crates/agentd/src/state.rs", "crates/agentd/src/session_storage.rs"]
 
 [[point]]

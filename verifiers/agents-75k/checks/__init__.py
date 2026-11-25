@@ -37,7 +37,6 @@ def registry(cfg=None):
 NOT_BUILT = {
     "B4": ("L2", "drive reports with model time split out of turn time"),
     "F2": ("L1", "long-session gate: turn time flat over 200,000 turns"),
-    "G1": ("L2", "memory_bench.py with the coding scenarios"),
     "G2": ("L2", "drive with the coding scenarios, overhead per model call"),
     "G3": ("L1", "idle unload and reload test (memory design)"),
     "G4": ("L1", "blob reference test for payloads over 256 KB (memory design)"),

@@ -200,6 +200,12 @@ class Adapters(unittest.TestCase):
         # A peak served by shedding more than 0.1% of requests is not served.
         self.assertEqual(local.peak({**served, "shed_share": 0.02}).entries[0]["value"], 0)
 
+    def test_coding_memory(self):
+        out = local.coding_memory({"sessions": 25000, "turns_per_session": 4,
+                                   "gated": {"node_rss_mb_per_1k_sessions": 210.5}})
+        self.assertEqual([(e["point"], e["value"]) for e in out.entries], [("G1", 210.5)])
+        self.assertEqual(out.density, 25000)
+
     def test_proof_verdicts(self):
         self.assertEqual(reliability.verdict({"ok": True, "errors": 0}), (True, 0))
         self.assertEqual(reliability.verdict({"load_errors": 2, "check": {"ok": True}}), (False, 2))
