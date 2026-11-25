@@ -22,10 +22,10 @@ Slack is the first migration and the parity bar. Other providers follow one at a
 time. A2A, AG-UI, Poppy, voice, public chat and the Agent Execution API retain their
 own protocol contracts.
 
-The bridge pins the published Rust `0.1.0-alpha.5` core and Slack packages, frozen at
-[`fb98e85`](https://github.com/everruns/channelkit/commit/fb98e857c26d2d859551b750d2ca13aa9d5d9707).
-The [versioned Slack guide](https://docs.rs/channelkit-slack/0.1.0-alpha.5/channelkit_slack/guide/)
-and upstream [adoption contract](https://github.com/everruns/channelkit/blob/fb98e857c26d2d859551b750d2ca13aa9d5d9707/knowledge/operations/everruns-adoption.md)
+The bridge pins the published Rust `0.1.0-alpha.6` core and Slack packages, frozen at
+[`6a58224`](https://github.com/everruns/channelkit/commit/6a582246ac2f36e7d799d05dbea683bdab35e713).
+The [versioned Slack guide](https://docs.rs/channelkit-slack/0.1.0-alpha.6/channelkit_slack/guide/)
+and upstream [adoption contract](https://github.com/everruns/channelkit/blob/6a582246ac2f36e7d799d05dbea683bdab35e713/knowledge/operations/everruns-adoption.md)
 own library behavior. Cargo resolves registry artifacts with checksums; no mutable
 main or path replacement participates in the deployment build.
 
@@ -50,6 +50,9 @@ transferring bot credentials.
 The Framework `channels` feature enables its default policy-aware host egress;
 otherwise the provider model can finish while Slack delivery remains offline.
 An application-supplied egress service remains authoritative for every provider hop.
+Native file downloads accept the host ceiling and cap transport reads instead of
+rejecting a larger budget before fetching a small file. This preserves the host's
+default 25 MiB intake contract; upload limits remain provider-specific.
 
 The output checkpoint foundation is merged. Opting drivers use a fenced write-ahead
 ledger in Memory, serve SQLite and server PostgreSQL; confirmed split parts and native
@@ -123,8 +126,8 @@ Source anchors: [server Slack driver](../../crates/server/src/channels/slack/hos
 [interactivity](../../crates/server/src/channels/slack/events/interactivity.rs),
 [scheduled conversations](../../crates/server/src/channels/slack/scheduled.rs),
 [reaction mapping](../../crates/server/src/channels/slack/delivery/reactions.rs),
-[Channelkit adapter contract](https://docs.rs/channelkit/0.1.0-alpha.5/channelkit/trait.Adapter.html)
-and [Slack guide](https://docs.rs/channelkit-slack/0.1.0-alpha.5/channelkit_slack/guide/).
+[Channelkit adapter contract](https://docs.rs/channelkit/0.1.0-alpha.6/channelkit/trait.Adapter.html)
+and [Slack guide](https://docs.rs/channelkit-slack/0.1.0-alpha.6/channelkit_slack/guide/).
 
 ## Correctness prerequisites
 

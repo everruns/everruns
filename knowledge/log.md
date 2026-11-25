@@ -6,6 +6,8 @@
 
 ## 2026-11-24
 
+- [Channelkit migration](integrations/channelkit-migration.md): adopt verified registry alpha.6 after real private-file intake exposed a host/download-budget mismatch; bounded caller ceilings preserve the default intake policy.
+
 - [Channelkit migration](integrations/channelkit-migration.md): opt-in Framework channels enable policy-aware host egress by default; real-model qualification exposed replies blocked by an offline service despite completed generation.
 
 - [Channelkit migration](integrations/channelkit-migration.md): new public approval cards retain their original reply destination and reject redirected callbacks before consuming the durable decision; legacy signed cards remain compatible.
