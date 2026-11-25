@@ -768,8 +768,36 @@ pub async fn serve_node(
     listen: SocketAddr,
     join: bool,
 ) -> anyhow::Result<()> {
-    let listener = tokio::net::TcpListener::bind(listen).await?;
+    let listener = bind_retrying(listen).await?;
     serve_node_on(cfg, host, topology, listener, join).await
+}
+
+/// How long a starting node waits for its port to come free.
+const BIND_WAIT: Duration = Duration::from_secs(30);
+
+/// Bind `addr`, waiting up to [`BIND_WAIT`] while it is still in use.
+///
+/// Decision: a node killed with SIGKILL holds its sockets until the kernel
+/// finishes the call it was in (an fsync under load can take seconds), and
+/// one started again at once found its port taken and exited: the hour
+/// soak lost a node of its shard that way for good (Mac mini, 2026-11-25),
+/// and the shard, left with two, stalled. Kubernetes restarts a container
+/// that exits, but with a growing backoff; waiting here costs nothing.
+async fn bind_retrying(addr: SocketAddr) -> anyhow::Result<tokio::net::TcpListener> {
+    let started = std::time::Instant::now();
+    loop {
+        match tokio::net::TcpListener::bind(addr).await {
+            Ok(listener) => return Ok(listener),
+            Err(error)
+                if error.kind() == std::io::ErrorKind::AddrInUse
+                    && started.elapsed() < BIND_WAIT =>
+            {
+                tracing::warn!(%addr, "port still in use; waiting for it");
+                tokio::time::sleep(Duration::from_millis(250)).await;
+            }
+            Err(error) => return Err(error.into()),
+        }
+    }
 }
 
 /// [`serve_node`] on a listener the caller already bound, so a caller that
@@ -860,14 +888,25 @@ pub async fn serve_node_with(
 /// Raft's listener on `addr`, not yet tied to any runtime. Reusing the
 /// address lets a restarted node take its port back at once.
 fn raft_listener(addr: SocketAddr) -> anyhow::Result<std::net::TcpListener> {
-    let socket = if addr.is_ipv4() {
-        tokio::net::TcpSocket::new_v4()?
-    } else {
-        tokio::net::TcpSocket::new_v6()?
-    };
-    socket.set_reuseaddr(true)?;
-    socket.bind(addr)?;
-    Ok(socket.listen(1024)?.into_std()?)
+    // Bound after the API port, which waited for the old process to go
+    // (`bind_retrying`); a few tries cover the Raft port freeing just after.
+    let mut tries = 0;
+    loop {
+        let socket = if addr.is_ipv4() {
+            tokio::net::TcpSocket::new_v4()?
+        } else {
+            tokio::net::TcpSocket::new_v6()?
+        };
+        socket.set_reuseaddr(true)?;
+        match socket.bind(addr) {
+            Ok(()) => return Ok(socket.listen(1024)?.into_std()?),
+            Err(error) if error.kind() == std::io::ErrorKind::AddrInUse && tries < 40 => {
+                tries += 1;
+                std::thread::sleep(Duration::from_millis(250));
+            }
+            Err(error) => return Err(error.into()),
+        }
+    }
 }
 
 /// How long a draining executor waits for its turns to hand off. Below the
