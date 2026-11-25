@@ -18,10 +18,9 @@
 //!   in `services::standard_webhooks`) is the only gate and runs before the
 //!   body is parsed; then the timestamp window and, through the shared event
 //!   pipeline, a replay check on `webhook-id`.
-//! - **410 means "stop".** A delivery for a trigger that is gone, disabled,
-//!   unsubscribed, or for a superseded subscription id gets
-//!   `410 Gone`, which the spec defines as ending the subscription. That is the
-//!   safety net when an `events/unsubscribe` could not be delivered.
+//! - **410 abandons one delivery.** Unknown, disabled or superseded
+//!   subscriptions answer `410 Gone`. The final contract preserves the remote
+//!   subscription until unsubscribe or TTL expiry.
 //! - **Refresh is periodic, not durable-workflow driven.** A background loop
 //!   re-subscribes rows whose `refresh_before` is near. `events/subscribe` is
 //!   idempotent on the server, so replicas racing on one row do no harm, and
@@ -326,12 +325,14 @@ pub enum InboundOutcome {
     Challenge(String),
     /// An event, handed to the pipeline.
     Event(TriggerEventOutcome),
+    /// A signed gap or termination envelope; never starts a run.
+    Control,
 }
 
 /// Why a delivery was refused.
 #[derive(Debug)]
 pub enum InboundRejection {
-    /// No live subscription for this callback: the sender should stop.
+    /// No live subscription for this callback: abandon this delivery.
     Gone,
     /// Over the 256 KiB body cap.
     TooLarge,
@@ -350,6 +351,7 @@ pub struct McpEventTriggers {
     encryption: Option<Arc<EncryptionService>>,
     egress: Arc<dyn EgressService>,
     api_base_url: String,
+    refresh_wake: tokio::sync::Notify,
 }
 
 impl McpEventTriggers {
@@ -364,6 +366,7 @@ impl McpEventTriggers {
             encryption,
             egress,
             api_base_url: api_base_url.into().trim_end_matches('/').to_string(),
+            refresh_wake: tokio::sync::Notify::new(),
         }
     }
 
@@ -392,11 +395,31 @@ impl McpEventTriggers {
             .map_or(DEFAULT_REFRESH_INTERVAL, Duration::from_secs);
         let service = self.clone();
         tokio::spawn(async move {
-            let mut tick = tokio::time::interval(interval);
-            tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
             loop {
-                tick.tick().await;
                 service.refresh_due().await;
+                // Honor even grants shorter than the normal sweep interval.
+                // Keep the database query bounded and use half the remaining
+                // lifetime to leave room for network latency on refresh.
+                let pause = service
+                    .db
+                    .list_agent_trigger_mcp_subscriptions_due(
+                        Utc::now() + REFRESH_MARGIN,
+                        REFRESH_BATCH,
+                    )
+                    .await
+                    .ok()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|row| row.refresh_before)
+                    .map(|expiry| (expiry - Utc::now()).to_std().unwrap_or(Duration::ZERO))
+                    .map(|remaining| (remaining / 2).max(Duration::from_millis(100)))
+                    .min()
+                    .unwrap_or(interval)
+                    .min(interval);
+                tokio::select! {
+                    _ = tokio::time::sleep(pause) => {},
+                    _ = service.refresh_wake.notified() => {},
+                }
             }
         })
     }
@@ -490,23 +513,34 @@ impl McpEventTriggers {
         };
         match result {
             Ok(result) => {
+                let wake_refresher = fresh_secret || state.status == MCP_SUBSCRIPTION_PENDING;
                 state.remote_subscription_id = result
                     .get("id")
                     .and_then(Value::as_str)
                     .map(|id| truncate(id, MAX_NAME_LEN));
-                state.refresh_before = Some(parse_refresh_before(
-                    result.get("refreshBefore"),
-                    Utc::now(),
-                ));
-                if let Some(cursor) = result.get("cursor").and_then(Value::as_str) {
-                    state.cursor = Some(truncate(cursor, MAX_CURSOR_LEN));
+                state.refresh_before = match result.get("refreshBefore") {
+                    Some(Value::Null) => None,
+                    value => Some(parse_refresh_before(value, Utc::now())),
+                };
+                // Explicit null clears an earlier replay position. An absent
+                // optional cursor leaves the last delivered position intact.
+                if let Some(cursor) = result.get("cursor") {
+                    state.cursor = cursor
+                        .as_str()
+                        .map(|cursor| truncate(cursor, MAX_CURSOR_LEN));
                 }
                 state.status = MCP_SUBSCRIPTION_ACTIVE.to_string();
                 state.last_error = None;
-                self.db
+                let stored = self
+                    .db
                     .upsert_agent_trigger_mcp_subscription(state)
                     .await
-                    .map_err(classify_anyhow)
+                    .map_err(classify_anyhow)?;
+                // A newly created short grant cannot wait for an idle sweep.
+                if wake_refresher {
+                    self.refresh_wake.notify_one();
+                }
+                Ok(stored)
             }
             Err(error) => {
                 if state.status != MCP_SUBSCRIPTION_PENDING {
@@ -559,9 +593,9 @@ impl McpEventTriggers {
                 None => Err(CommandError::not_found("Agent")),
             };
             if let Err(error) = outcome {
-                // The callback answers 410 from now on, which ends the
-                // subscription on the server's next delivery.
-                tracing::info!(trigger_id = %trigger.id, error = %error, "MCP events/unsubscribe failed; relying on 410");
+                // Reject future deliveries with 410. The remote subscription
+                // is eventually reclaimed by TTL expiry.
+                tracing::info!(trigger_id = %trigger.id, error = %error, "MCP events/unsubscribe failed; relying on TTL expiry");
             }
         }
         if let Err(error) = self
@@ -711,6 +745,9 @@ impl McpEventTriggers {
             .await
             .map_err(failed)?
             .ok_or(InboundRejection::Gone)?;
+        if subscription.status == MCP_SUBSCRIPTION_FAILED && subscription.refresh_before.is_none() {
+            return Err(InboundRejection::Gone);
+        }
         let key = self
             .encryption
             .as_ref()
@@ -756,6 +793,37 @@ impl McpEventTriggers {
         {
             return Err(InboundRejection::Gone);
         }
+        if let Some(kind) = body.get("type").and_then(Value::as_str) {
+            let mut state = UpsertAgentTriggerMcpSubscription::from(subscription.clone());
+            match kind {
+                "gap" => {
+                    let cursor = body
+                        .get("cursor")
+                        .ok_or(InboundRejection::BadRequest("gap cursor is missing"))?;
+                    if !cursor.is_null() && !cursor.is_string() {
+                        return Err(InboundRejection::BadRequest("invalid gap cursor"));
+                    }
+                    state.cursor = cursor.as_str().map(|s| truncate(s, MAX_CURSOR_LEN));
+                }
+                "terminated" => {
+                    let code = body
+                        .pointer("/error/code")
+                        .and_then(Value::as_i64)
+                        .ok_or(InboundRejection::BadRequest("termination error is missing"))?;
+                    state.status = MCP_SUBSCRIPTION_FAILED.to_string();
+                    state.last_error = Some(format!("MCP event subscription terminated ({code})"));
+                    // Rediscover a removed/changed descriptor. A permission
+                    // termination stops automatic renewal until user action.
+                    state.refresh_before = matches!(code, -32023 | -32026).then(Utc::now);
+                }
+                _ => return Err(InboundRejection::BadRequest("unknown control envelope")),
+            }
+            self.db
+                .upsert_agent_trigger_mcp_subscription(state)
+                .await
+                .map_err(failed)?;
+            return Ok(InboundOutcome::Control);
+        }
         let config = parse_config(&trigger).map_err(|_| InboundRejection::Gone)?;
         let name = body
             .get("name")
@@ -774,9 +842,9 @@ impl McpEventTriggers {
             .filter(|agent| agent.status == "active" && !agent.exposures_suspended)
             .ok_or(InboundRejection::Gone)?;
 
-        if let Some(cursor) = body.get("cursor").and_then(Value::as_str) {
+        if let Some(cursor) = body.get("cursor") {
             let mut state = UpsertAgentTriggerMcpSubscription::from(subscription.clone());
-            state.cursor = Some(truncate(cursor, MAX_CURSOR_LEN));
+            state.cursor = cursor.as_str().map(|s| truncate(s, MAX_CURSOR_LEN));
             if let Err(error) = self.db.upsert_agent_trigger_mcp_subscription(state).await {
                 tracing::warn!(%error, trigger_id = %trigger.id, "failed to store MCP event cursor");
             }

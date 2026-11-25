@@ -11,9 +11,16 @@
 
 mod body;
 mod mrtr;
+mod request;
+
+pub use request::http_request;
+pub(super) use request::parse_rpc_result;
 
 #[cfg(test)]
 mod body_tests;
+mod events;
+#[cfg(test)]
+mod events_tests;
 
 use mrtr::{MrtrRequest, request_with_inputs, resolve_input_required, validate_tool_consent_scope};
 
@@ -290,6 +297,9 @@ async fn do_handshake(
         stateful: true,
         session_id,
         server_info_json,
+        server_capabilities_json: serde_json::from_str::<Value>(init_json)
+            .ok()
+            .and_then(|v| v.get("result")?.get("capabilities").map(Value::to_string)),
     })
 }
 
@@ -688,62 +698,6 @@ pub struct McpRpcError {
     pub code: i64,
     pub message: String,
     pub data: Option<Value>,
-}
-
-/// Send one JSON-RPC request for any method (for example `events/subscribe`)
-/// and return its `result`. Negotiates the protocol era (`Auto`) and applies
-/// the same DNS-pinned SSRF contract as tool calls. A JSON-RPC error comes
-/// back as an [`McpRpcError`] inside the `anyhow::Error`; a non-2xx HTTP
-/// response as an [`McpHttpStatusError`].
-pub async fn http_request(
-    egress: &dyn EgressService,
-    url: &str,
-    headers: &HashMap<String, String>,
-    credential: Option<&McpCredential>,
-    method: &str,
-    params: &Value,
-) -> Result<Value> {
-    let (text, _) = request_with_inputs(
-        egress,
-        url,
-        headers,
-        credential,
-        McpProtocolMode::Auto,
-        url,
-        method,
-        params,
-        None,
-        InputHandlers {
-            url: None,
-            form: None,
-            ui_apps: false,
-        },
-    )
-    .await?;
-    parse_rpc_result(&text)
-}
-
-/// Parse a JSON-RPC response body into its `result`, or an [`McpRpcError`].
-pub(super) fn parse_rpc_result(text: &str) -> Result<Value> {
-    let json_str = extract_json_from_response(text)
-        .ok_or_else(|| anyhow!("SSE response missing data line"))?;
-    let mut response: Value = serde_json::from_str(json_str)?;
-    if let Some(error) = response.get("error").filter(|error| !error.is_null()) {
-        return Err(McpRpcError {
-            code: error.get("code").and_then(Value::as_i64).unwrap_or(-32603),
-            message: error
-                .get("message")
-                .and_then(Value::as_str)
-                .unwrap_or("unknown error")
-                .to_string(),
-            data: error.get("data").cloned(),
-        }
-        .into());
-    }
-    response
-        .get_mut("result")
-        .map(Value::take)
-        .ok_or_else(|| anyhow!("MCP server returned empty result"))
 }
 
 /// Execute a tool via `tools/call`. Negotiates the protocol era (`Auto`).
@@ -1361,6 +1315,22 @@ impl McpTransport for HttpTransport {
         credential: Option<&McpCredential>,
     ) -> Result<Value> {
         let (url, headers) = Self::http_parts(connection)?;
+        if method.starts_with("events/") {
+            return tokio::time::timeout(
+                CALL_TIMEOUT,
+                events::request(
+                    self.egress.as_ref(),
+                    url,
+                    headers,
+                    credential,
+                    connection.protocol_mode,
+                    method,
+                    &params,
+                ),
+            )
+            .await
+            .map_err(|_| anyhow!("MCP Events request timed out"))?;
+        }
         let cache_key = NegotiationCacheKey::new(connection, url, headers, credential);
         let cached = self.cached_negotiation(&cache_key);
         let (text, negotiated) = request_with_inputs(

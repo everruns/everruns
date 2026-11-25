@@ -44,6 +44,8 @@ impl everruns_core::EgressService for McpServerSlot {
 /// (unless told not to) and records every request.
 #[derive(Default)]
 pub struct WebhookReceiver {
+    /// Optional local conformance receiver; absent in ordinary domain tests.
+    pub forward: parking_lot::RwLock<Option<Arc<dyn everruns_core::EgressService>>>,
     pub requests: parking_lot::Mutex<Vec<everruns_core::EgressRequest>>,
     pub refuse_verification: std::sync::atomic::AtomicBool,
     /// Statuses to answer event deliveries with, in order; then 200.
@@ -56,6 +58,10 @@ impl everruns_core::EgressService for WebhookReceiver {
         &self,
         request: everruns_core::EgressRequest,
     ) -> everruns_core::EgressResult<everruns_core::EgressResponse> {
+        let forward = self.forward.read().clone();
+        if let Some(forward) = forward {
+            return forward.send(request).await;
+        }
         let body: Value = serde_json::from_slice(&request.body).unwrap_or_default();
         self.requests.lock().push(request);
         let (status, body) = if body["type"] == "verification" {

@@ -614,6 +614,8 @@ pub struct Negotiated {
     /// Kept as JSON text so this stays `Eq`. The control plane sanitizes it
     /// before anything is stored or shown.
     pub server_info_json: Option<String>,
+    /// Capability declaration retained from a stateful handshake.
+    pub server_capabilities_json: Option<String>,
 }
 
 impl Negotiated {
@@ -624,6 +626,7 @@ impl Negotiated {
             stateful: false,
             session_id: None,
             server_info_json: None,
+            server_capabilities_json: None,
         }
     }
 
@@ -639,12 +642,14 @@ impl Negotiated {
                 stateful: true,
                 session_id: None,
                 server_info_json: None,
+                server_capabilities_json: None,
             },
             McpProtocolMode::V2025March => Self {
                 version: MCP_PROTOCOL_VERSION_2025_03.to_string(),
                 stateful: true,
                 session_id: None,
                 server_info_json: None,
+                server_capabilities_json: None,
             },
         }
     }

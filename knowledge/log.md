@@ -2,6 +2,8 @@
 
 ## 2026-11-25
 
+- [MCP Events](integrations/mcp-events.md): final SEP-3415 discovery, routing, errors, delivery-local 410, and isolated official conformance evidence.
+
 - [Markdown Messages Rendering](ui/markdown-messages.md): Pele renders Mermaid diagrams across the shared UI renderer and Markdown file previews.
 
 ## 2026-11-24

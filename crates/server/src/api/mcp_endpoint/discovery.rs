@@ -100,7 +100,7 @@ pub(super) fn handle_server_discover(
         capabilities["extensions"] = extensions;
     }
     if events {
-        capabilities["events"] = json!({});
+        capabilities["extensions"]["io.modelcontextprotocol/events"] = json!({});
     }
     let mut result = json!({
         "supportedVersions": SUPPORTED_PROTOCOL_VERSIONS,

@@ -34,14 +34,18 @@ fn secret() -> String {
 }
 
 async fn rpc(server: &TestServer, method: &str, params: Value) -> Value {
-    server
+    let mut headers = vec![
+        ("content-type", "application/json"),
+        ("MCP-Protocol-Version", LATEST),
+    ];
+    if let Some(name) = params.get("name").and_then(Value::as_str) {
+        headers.push(("Mcp-Name", name));
+    }
+    let response: Value = server
         .request_raw(
             Method::POST,
             "/mcp",
-            vec![
-                ("content-type", "application/json"),
-                ("MCP-Protocol-Version", LATEST),
-            ],
+            headers,
             serde_json::to_vec(&json!({
                 "jsonrpc": "2.0", "id": 1, "method": method, "params": params
             }))
@@ -49,7 +53,11 @@ async fn rpc(server: &TestServer, method: &str, params: Value) -> Value {
         )
         .await
         .assert_success()
-        .json()
+        .json();
+    if method.starts_with("events/") && response.get("result").is_some() {
+        assert_eq!(response["result"]["resultType"], "complete", "{method}");
+    }
+    response
 }
 
 async fn tool(server: &TestServer, name: &str, arguments: Value) -> Value {
@@ -99,7 +107,7 @@ fn subscribe_params(name: &str, arguments: Value) -> Value {
 }
 
 /// A real org member to subscribe as.
-async fn member(server: &TestServer) -> Subscriber {
+pub(super) async fn member(server: &TestServer) -> Subscriber {
     let user = server
         .db
         .create_user(everruns_server::storage::CreateUserRow {
@@ -153,7 +161,7 @@ fn event(session_id: &str, event_type: &str, data: Value) -> everruns_core::Even
     }
 }
 
-fn turn_completed(session_id: &str) -> everruns_core::Event {
+pub(super) fn turn_completed(session_id: &str) -> everruns_core::Event {
     event(
         session_id,
         "turn.completed",
@@ -195,7 +203,10 @@ fn assert_signed(request: &everruns_core::EgressRequest) {
 async fn events_are_available_despite_retired_org_override() {
     let server = TestServer::in_memory().await;
     let discover = rpc(&server, "server/discover", json!({})).await;
-    assert_eq!(discover["result"]["capabilities"]["events"], json!({}));
+    assert_eq!(
+        discover["result"]["capabilities"]["extensions"]["io.modelcontextprotocol/events"],
+        json!({})
+    );
     let list = rpc(&server, "events/list", json!({})).await;
     let names: Vec<&str> = list["result"]["events"]
         .as_array()
@@ -222,7 +233,10 @@ async fn events_are_available_despite_retired_org_override() {
         .await
         .unwrap();
     let discover = rpc(&server, "server/discover", json!({})).await;
-    assert_eq!(discover["result"]["capabilities"]["events"], json!({}));
+    assert_eq!(
+        discover["result"]["capabilities"]["extensions"]["io.modelcontextprotocol/events"],
+        json!({})
+    );
     let list = rpc(&server, "events/list", json!({})).await;
     assert_eq!(list["result"]["events"].as_array().unwrap().len(), 3);
 }
@@ -232,10 +246,10 @@ async fn anonymous_mcp_cannot_subscribe() {
     let server = TestServer::in_memory().await;
     let params = subscribe_params("session.completed", json!({}));
     let resp = rpc(&server, "events/subscribe", params.clone()).await;
-    assert_eq!(resp["error"]["code"], -32602);
+    assert_eq!(resp["error"]["code"], -32024);
     assert!(resp["error"]["message"].as_str().unwrap().contains("user"));
     let resp = rpc(&server, "events/unsubscribe", params).await;
-    assert_eq!(resp["error"]["code"], -32602);
+    assert_eq!(resp["error"]["code"], -32024);
     assert!(
         server.webhooks.requests.lock().is_empty(),
         "no callback is contacted for a refused subscriber"
@@ -312,7 +326,7 @@ async fn subscribe_refuses_unsafe_callbacks_and_bad_secrets() {
     let error = subscribe(&server, &subscriber, with(HOOK, &secret()))
         .await
         .unwrap_err();
-    assert_eq!(error.code, -32015);
+    assert_eq!(error.code, -32027);
     assert_eq!(error.data, Some(json!({ "reason": "challenge_failed" })));
     let rows = server
         .db
@@ -416,7 +430,7 @@ async fn questions_approvals_and_failures_are_announced() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn failed_deliveries_retry_and_gone_ends_the_subscription() {
+async fn failed_deliveries_retry_and_gone_only_abandons_one_delivery() {
     let server = TestServer::in_memory().await;
     let subscriber = member(&server).await;
     let (session_id, _) = session(&server).await;
@@ -452,10 +466,10 @@ async fn failed_deliveries_retry_and_gone_ends_the_subscription() {
             .mcp_events
             .dispatch(&turn_completed(&session_id))
             .await,
-        0,
-        "410 removed the subscription"
+        1,
+        "410 must preserve the subscription"
     );
-    assert_eq!(deliveries(&server).len(), 4);
+    assert_eq!(deliveries(&server).len(), 5);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -474,6 +488,13 @@ async fn unsubscribe_and_leaving_the_org_stop_delivery() {
         .unsubscribe(&subscriber, &target)
         .await
         .unwrap();
+    let missing = server
+        .mcp_events
+        .unsubscribe(&subscriber, &target)
+        .await
+        .unwrap_err();
+    assert_eq!(missing.code, -32023);
+    assert_eq!(missing.data, Some(json!({"kind":"subscription"})));
     assert_eq!(
         server
             .mcp_events
@@ -534,4 +555,74 @@ async fn unsubscribe_and_leaving_the_org_stop_delivery() {
         .await
         .unwrap();
     assert!(rows.is_empty(), "a former member's subscription is dropped");
+    let attempts = deliveries(&server);
+    let (request, body) = attempts.last().unwrap();
+    assert_signed(request);
+    assert_eq!(body["type"], "terminated");
+    assert_eq!(body["error"]["code"], -32024);
+    assert!(body.get("data").is_none());
+}
+
+#[tokio::test]
+async fn final_routing_headers_are_required_and_legacy_requests_remain_accepted() {
+    let server = TestServer::in_memory().await;
+    // Upstream discovery only runs these probes when poll is advertised.
+    // Exercise the real endpoint's refusal paths without advertising a mode
+    // this server does not implement.
+    for method in ["events/poll", "events/stream"] {
+        let missing = rpc(&server, method, json!({"name":"unknown.event"})).await;
+        assert_eq!(missing["error"]["code"], -32023);
+        assert_eq!(missing["error"]["data"]["kind"], "event");
+        let unsupported = rpc(&server, method, json!({"name":"session.completed"})).await;
+        assert_eq!(unsupported["error"]["code"], -32026);
+        assert_eq!(unsupported["error"]["data"]["feature"], "deliveryMode");
+    }
+    for method in [
+        "events/subscribe",
+        "events/unsubscribe",
+        "events/poll",
+        "events/stream",
+    ] {
+        for name in [None, Some("wrong.event")] {
+            let mut headers = vec![
+                ("content-type", "application/json"),
+                ("MCP-Protocol-Version", LATEST),
+            ];
+            if let Some(name) = name {
+                headers.push(("Mcp-Name", name));
+            }
+            let response: Value = server.request_raw(Method::POST, "/mcp", headers, serde_json::to_vec(&json!({"jsonrpc":"2.0", "id":1, "method":method, "params":{"name":"session.completed"}})).unwrap()).await.assert_status(axum::http::StatusCode::BAD_REQUEST).json();
+            assert_eq!(response["error"]["code"], -32020);
+        }
+    }
+    let response: Value = server.request_raw(Method::POST, "/mcp", vec![("content-type", "application/json"), ("MCP-Protocol-Version", "2025-11-25")], serde_json::to_vec(&json!({"jsonrpc":"2.0", "id":1, "method":"events/subscribe", "params":subscribe_params("session.completed",json!({}))})).unwrap()).await.assert_success().json();
+    assert_eq!(
+        response["error"]["code"], -32024,
+        "legacy reached authentication without a routing header"
+    );
+    assert!(server.webhooks.requests.lock().is_empty());
+    let legacy: Value = server
+        .request_raw(
+            Method::POST,
+            "/mcp",
+            vec![
+                ("content-type", "application/json"),
+                ("MCP-Protocol-Version", "2025-11-25"),
+            ],
+            serde_json::to_vec(&json!({
+                "jsonrpc": "2.0", "id": 2, "method": "events/list", "params": {}
+            }))
+            .unwrap(),
+        )
+        .await
+        .assert_success()
+        .json();
+    assert!(legacy["result"]["events"].is_array());
+    assert!(legacy["result"].get("resultType").is_none());
+    let discovery = rpc(&server, "server/discover", json!({})).await;
+    assert!(discovery["result"]["capabilities"].get("events").is_none());
+    assert_eq!(
+        discovery["result"]["capabilities"]["extensions"]["io.modelcontextprotocol/events"],
+        json!({})
+    );
 }

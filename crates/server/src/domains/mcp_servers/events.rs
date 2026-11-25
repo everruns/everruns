@@ -2,7 +2,7 @@
 //! completion, failure, and input required, delivered to MCP clients such as
 //! ChatGPT.
 //!
-//! Decision: webhook delivery only. The draft spec also has in-band delivery on
+//! Decision: webhook delivery only. SEP-3415 also defines poll and push delivery on
 //! an open stream, but `/mcp` is stateless and ChatGPT asks for webhooks.
 //!
 //! Decision: payloads carry identifiers and state, never transcript text. The
@@ -41,8 +41,8 @@ pub const SESSION_FAILED: &str = "session.failed";
 pub const SESSION_INPUT_REQUIRED: &str = "session.input_required";
 pub const EVENT_NAMES: [&str; 3] = [SESSION_COMPLETED, SESSION_FAILED, SESSION_INPUT_REQUIRED];
 
-/// JSON-RPC error for a callback that failed verification (draft spec).
-pub const CALLBACK_VERIFICATION_FAILED: i64 = -32015;
+/// SEP-3415 CallbackEndpointError.
+pub const CALLBACK_VERIFICATION_FAILED: i64 = -32027;
 const DEFAULT_TTL: Duration = Duration::from_secs(24 * 60 * 60);
 const MIN_TTL: Duration = Duration::from_secs(60);
 const MAX_TTL: Duration = Duration::from_secs(7 * 24 * 60 * 60);
@@ -101,29 +101,53 @@ pub struct SubscriptionTarget {
 impl SubscriptionTarget {
     /// Parse `{name, arguments, delivery: {mode: "webhook", url}}`.
     pub fn from_params(params: &Value) -> Result<Self, EventsError> {
-        let name = params
-            .get("name")
-            .and_then(Value::as_str)
-            .ok_or_else(|| EventsError::invalid("name is required"))?;
-        if !EVENT_NAMES.contains(&name) {
-            return Err(EventsError::invalid(format!("Unknown event: {name}")));
-        }
+        let name = Self::event_name(params)?;
         let arguments = validate_arguments(params.get("arguments"))?;
         let delivery = params
             .get("delivery")
             .ok_or_else(|| EventsError::invalid("delivery is required"))?;
-        if delivery.get("mode").and_then(Value::as_str) != Some("webhook") {
-            return Err(EventsError::invalid("Only webhook delivery is supported"));
+        if let Some(mode) = delivery.get("mode") {
+            let mode = mode
+                .as_str()
+                .ok_or_else(|| EventsError::invalid("delivery.mode must be a string"))?;
+            if !matches!(mode, "webhook" | "poll" | "push") {
+                return Err(EventsError::invalid("invalid delivery.mode"));
+            }
+            if mode != "webhook" {
+                return Err(EventsError {
+                    code: -32026,
+                    message: "Only webhook delivery is supported".into(),
+                    data: Some(json!({"feature":"deliveryMode", "value":mode})),
+                });
+            }
         }
         let url = delivery
             .get("url")
             .and_then(Value::as_str)
             .ok_or_else(|| EventsError::invalid("delivery.url is required"))?;
+        if !url::Url::parse(url).is_ok_and(|parsed| parsed.scheme() == "https") {
+            return Err(EventsError::invalid("delivery.url must be an https URL"));
+        }
         Ok(Self {
             name: name.to_string(),
             arguments,
             url: url.to_string(),
         })
+    }
+
+    pub fn event_name(params: &Value) -> Result<&str, EventsError> {
+        let name = params
+            .get("name")
+            .and_then(Value::as_str)
+            .ok_or_else(|| EventsError::invalid("name is required"))?;
+        if !EVENT_NAMES.contains(&name) {
+            return Err(EventsError {
+                code: -32023,
+                message: format!("Unknown event: {name}"),
+                data: Some(json!({"kind":"event"})),
+            });
+        }
+        Ok(name)
     }
 }
 
@@ -314,10 +338,18 @@ impl McpEventsService {
         target: &SubscriptionTarget,
     ) -> Result<(), EventsError> {
         let id = subscription_id(subscriber, target);
-        self.db
+        let removed = self
+            .db
             .delete_mcp_event_subscription(&id)
             .await
             .map_err(|e| EventsError::internal(e.to_string()))?;
+        if !removed {
+            return Err(EventsError {
+                code: -32023,
+                message: "Subscription not found".into(),
+                data: Some(json!({"kind":"subscription"})),
+            });
+        }
         Ok(())
     }
 
@@ -334,7 +366,7 @@ impl McpEventsService {
         let challenge = format!("{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple());
         let body = serde_json::to_vec(&json!({ "type": "verification", "challenge": challenge }))
             .map_err(|e| EventsError::internal(e.to_string()))?;
-        let message_id = format!("msg_verify_{}", Uuid::now_v7().simple());
+        let message_id = format!("msg_verification_{}", Uuid::now_v7().simple());
         let response = self
             .post(org_id, url, id, &message_id, key, body)
             .await
@@ -449,9 +481,7 @@ impl McpEventsService {
         else {
             // The subscriber left the org: nothing they subscribed to is
             // theirs to hear about any more.
-            self.db
-                .delete_mcp_event_subscription(&subscription.subscription_key)
-                .await?;
+            self.terminate(subscription).await?;
             return Ok(false);
         };
         let caller = Caller {
@@ -465,12 +495,36 @@ impl McpEventsService {
         };
         let allowed = crate::domains::sessions::SESSION_VIEW
             .evaluate_with(self.permission_resolver.as_ref(), &caller);
-        Ok(allowed.is_ok())
+        if allowed.is_err() {
+            self.terminate(subscription).await?;
+            return Ok(false);
+        }
+        Ok(true)
     }
 
-    /// Sign and POST one event, retrying on failure. `410 Gone` ends the
-    /// subscription; `413` is not retried, since the same body will not fit
-    /// next time either.
+    async fn terminate(&self, subscription: &McpEventSubscriptionRow) -> anyhow::Result<()> {
+        // Revocation removes the subscription before notifying the receiver.
+        // This control body carries no session data or authorization detail.
+        if self
+            .db
+            .delete_mcp_event_subscription(&subscription.subscription_key)
+            .await?
+        {
+            self.deliver(
+                subscription,
+                &Uuid::now_v7().to_string(),
+                &json!({
+                    "type":"terminated",
+                    "error":{"code":-32024,"message":"Forbidden","data":{"reason":"Access revoked"}}
+                }),
+            )
+            .await;
+        }
+        Ok(())
+    }
+
+    /// Sign and POST one event, retrying on failure. SEP-3415 makes `410`
+    /// and `413` non-retryable for this delivery only, preserving the subscription.
     async fn deliver(
         &self,
         subscription: &McpEventSubscriptionRow,
@@ -487,7 +541,10 @@ impl McpEventsService {
             tracing::warn!(subscription = %subscription.subscription_key, "MCP event body over the size cap");
             return false;
         }
-        let message_id = format!("msg_{}", event_id.trim_start_matches("event_"));
+        let message_id = match body.get("type").and_then(Value::as_str) {
+            Some(kind) => format!("msg_{kind}_{event_id}"),
+            None => format!("msg_{}", event_id.trim_start_matches("event_")),
+        };
         let mut delays = self.retry_delays.iter();
         loop {
             // Each attempt is signed fresh: a new timestamp, so a receiver's
@@ -504,17 +561,7 @@ impl McpEventsService {
                 .await;
             match outcome {
                 Ok(response) if (200..300).contains(&response.status) => return true,
-                Ok(response) if response.status == 410 => {
-                    if let Err(error) = self
-                        .db
-                        .delete_mcp_event_subscription(&subscription.subscription_key)
-                        .await
-                    {
-                        tracing::warn!(error = %error, "Failed to drop a gone MCP event subscription");
-                    }
-                    return false;
-                }
-                Ok(response) if response.status == 413 => return false,
+                Ok(response) if matches!(response.status, 410 | 413) => return false,
                 Err(PostError::Blocked(reason)) => {
                     tracing::warn!(reason = %reason, "MCP event callback blocked");
                     return false;
@@ -554,7 +601,7 @@ impl McpEventsService {
         // resolved and pinned so a name cannot rebind to a private address
         // between the check and the connect (TM-TOOL-018); the egress client
         // follows no redirects.
-        if !url.starts_with("https://") {
+        if !url::Url::parse(url).is_ok_and(|parsed| parsed.scheme() == "https") {
             return Err(PostError::Blocked(
                 "callback URL must use https".to_string(),
             ));
@@ -793,13 +840,36 @@ mod tests {
         assert!(SubscriptionTarget::from_params(&ok).is_ok());
         let mut bad = ok.clone();
         bad["name"] = json!("session.deleted");
-        assert!(SubscriptionTarget::from_params(&bad).is_err());
+        assert_eq!(
+            SubscriptionTarget::from_params(&bad).unwrap_err().code,
+            -32023
+        );
         let mut bad = ok.clone();
         bad["arguments"] = json!({ "org_id": "o" });
         assert!(SubscriptionTarget::from_params(&bad).is_err());
-        let mut bad = ok;
-        bad["delivery"]["mode"] = json!("stream");
-        assert!(SubscriptionTarget::from_params(&bad).is_err());
+        let mut unsubscribe = ok.clone();
+        unsubscribe["delivery"]
+            .as_object_mut()
+            .unwrap()
+            .remove("mode");
+        assert!(SubscriptionTarget::from_params(&unsubscribe).is_ok());
+        for url in ["http://8.8.8.8/hook", "not-a-url"] {
+            unsubscribe["delivery"]["url"] = json!(url);
+            assert_eq!(
+                SubscriptionTarget::from_params(&unsubscribe)
+                    .unwrap_err()
+                    .code,
+                -32602
+            );
+        }
+        for (mode, code) in [("stream", -32602), ("poll", -32026), ("push", -32026)] {
+            let mut bad = ok.clone();
+            bad["delivery"]["mode"] = json!(mode);
+            assert_eq!(
+                SubscriptionTarget::from_params(&bad).unwrap_err().code,
+                code
+            );
+        }
     }
 
     #[test]

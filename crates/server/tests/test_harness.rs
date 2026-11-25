@@ -33,6 +33,8 @@ use everruns_server::{
 // test binary, so support modules live under `tests/test_harness/`.
 #[path = "test_harness/egress_fakes.rs"]
 mod egress_fakes;
+#[path = "test_harness/mcp_events_conformance.rs"]
+mod mcp_events_conformance;
 pub use egress_fakes::{McpServerSlot, WebhookReceiver};
 #[path = "test_harness/response.rs"]
 mod response;
