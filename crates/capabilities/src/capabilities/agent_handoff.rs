@@ -271,10 +271,7 @@ impl Capability for AgentHandoffCapability {
 
     fn tools_with_config(&self, config: &Value) -> Vec<Box<dyn Tool>> {
         let _ = AgentHandoffConfig::from_value(config).unwrap_or_default();
-        // The routing agent talks in the run conversation too; the agents it
-        // hands work to get the same tools from the run_conversation
-        // capability the host attaches to their sessions.
-        super::run_conversation::run_conversation_tools()
+        Vec::new()
     }
 
     fn tools(&self) -> Vec<Box<dyn Tool>> {
@@ -285,10 +282,10 @@ impl Capability for AgentHandoffCapability {
         &self,
         config: &Value,
     ) -> Option<super::DelegationTargetProvider> {
-        Some(super::DelegationTargetProvider {
-            target_type: "agent",
-            tool: Box::new(SpawnAgentHandoffTool::new(config)),
-        })
+        Some(super::DelegationTargetProvider::new(
+            "agent",
+            Box::new(SpawnAgentHandoffTool::new(config)),
+        ))
     }
 
     async fn system_prompt_contribution_with_config(
@@ -333,13 +330,16 @@ Agents you can hand work to:\n{}\n\
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-struct AgentHandoffConfig {
-    #[serde(default, alias = "members")]
-    targets: Vec<AgentHandoffTargetConfig>,
+pub(crate) struct AgentHandoffConfig {
+    #[serde(default, alias = "members", alias = "agents")]
+    pub(crate) targets: Vec<AgentHandoffTargetConfig>,
+    /// Any agent the person may run, by agent id (Spawn agents `any_agent`).
+    #[serde(default)]
+    pub(crate) any_agent: bool,
 }
 
 impl AgentHandoffConfig {
-    fn from_value(value: &Value) -> serde_json::Result<Self> {
+    pub(crate) fn from_value(value: &Value) -> serde_json::Result<Self> {
         if value.is_null() {
             return Ok(Self::default());
         }
@@ -372,14 +372,14 @@ impl AgentHandoffConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct AgentHandoffTargetConfig {
+pub(crate) struct AgentHandoffTargetConfig {
     #[serde(default)]
-    id: String,
+    pub(crate) id: String,
     #[serde(default)]
-    name: String,
+    pub(crate) name: String,
     #[serde(default)]
-    description: Option<String>,
-    agent_id: AgentId,
+    pub(crate) description: Option<String>,
+    pub(crate) agent_id: AgentId,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     harness_id: Option<HarnessId>,
     #[serde(default)]
@@ -656,9 +656,8 @@ async fn finalize_handoff_task(
             Some("Agent handoff completed without reporting a structured result.".to_string());
         error = Some(TaskError {
             kind: "no_result".to_string(),
-            message:
-                "Agent handoff completed without calling report_result for its result_schema task."
-                    .to_string(),
+            message: "Agent handoff completed without calling finish for its result_schema task."
+                .to_string(),
         });
     }
     finish_handoff_task(context, task_id, state, summary, error, expected_attempt).await;
@@ -850,7 +849,7 @@ async fn register_in_run_conversation(
     target: &AgentHandoffTargetConfig,
     child: everruns_contracts::typed_id::SessionId,
 ) {
-    use super::run_conversation::register_agent;
+    use super::sibling_communication::register_agent;
     let agent_name = |agent_id| async move {
         store
             .get_agent_by_id(agent_id)
@@ -907,6 +906,10 @@ impl SpawnAgentHandoffTool {
         Self {
             config: AgentHandoffConfig::from_value(config).unwrap_or_default(),
         }
+    }
+
+    pub(crate) fn from_config(config: AgentHandoffConfig) -> Self {
+        Self { config }
     }
 }
 
@@ -977,11 +980,11 @@ impl Tool for SpawnAgentHandoffTool {
                 },
                 "result_schema": {
                     "type": "object",
-                    "description": "JSON Schema for the child agent's final structured result. The child must call report_result before the task can succeed."
+                    "description": "JSON Schema for the child agent's final structured result. The child must call finish before the task can succeed."
                 },
                 "message_schema": {
                     "type": "object",
-                    "description": "JSON Schema for structured progress messages. The child receives report_task_progress."
+                    "description": "JSON Schema for structured progress messages. The child receives report_progress."
                 }
             },
             "required": ["name", "instructions", "target"],
@@ -1077,10 +1080,21 @@ impl Tool for SpawnAgentHandoffTool {
             );
         }
 
-        let Some(target) = self.config.target(target_id) else {
-            return ToolExecutionResult::tool_error(format!(
-                "Unknown handoff target: \"{target_id}\". Check configured targets."
-            ));
+        let any_target;
+        let target = match self.config.target(target_id) {
+            Some(target) => target,
+            None if self.config.any_agent => {
+                match super::spawn_agents::any_agent_target(store, target_id).await {
+                    Ok(target) => any_target = target,
+                    Err(error) => return error,
+                }
+                &any_target
+            }
+            None => {
+                return ToolExecutionResult::tool_error(format!(
+                    "Unknown agent: \"{target_id}\". Check the configured agents."
+                ));
+            }
         };
         let seed = match parse_seed(&arguments, target.files) {
             Ok(value) => value,

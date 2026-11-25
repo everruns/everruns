@@ -22,7 +22,7 @@ use crate::local::{
     LocalPlatformStore, LocalScheduleRunner, LocalScheduleRunnerHandle, LocalScheduleStore,
     LocalSessionRunner, LocalSessionTaskRegistry, LocalTaskRecovery, SqliteDb,
 };
-use everruns_capabilities::capabilities::coordination::{
+use everruns_capabilities::capabilities::threads::{
     THREAD_RESOLVED_DETAIL, ThreadTurn, settle_thread_turn,
 };
 use everruns_capabilities::{PlatformHostBackendsExt, PlatformMessage, PlatformStore};
@@ -545,7 +545,7 @@ impl LocalSessionRunner for HostedSessionRunner {
         session_id: SessionId,
         limit: Option<usize>,
     ) -> Result<Vec<PlatformMessage>> {
-        crate::coordination::platform_messages(
+        crate::threads::platform_messages(
             self.hosting.reader(session_id).event_log,
             session_id,
             limit,
@@ -562,7 +562,7 @@ impl LocalSessionRunner for HostedSessionRunner {
     }
 
     async fn latest_terminal_turn_status(&self, session_id: SessionId) -> Result<Option<String>> {
-        crate::coordination::latest_terminal_turn_status(
+        crate::threads::latest_terminal_turn_status(
             self.hosting.reader(session_id).event_log,
             session_id,
         )

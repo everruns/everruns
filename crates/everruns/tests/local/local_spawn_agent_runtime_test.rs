@@ -12,12 +12,12 @@
 // same reason the live sibling test lives in `everruns-llm-tests`.
 //
 // What it exercises against a real assembled runtime:
-// - The single `spawn_agent` tool composes the union `target.type` enum from the
-//   active delegation capabilities (subagents + agent_handoff) — EVE-677 AC #6.
-// - `target.type = subagent`, background mode → `subagent` task, settled via the
+// - The single `spawn_agent` tool from Spawn agents picks who works with
+//   `agent` (`self` or a named agent) — EVE-677 AC #6.
+// - `agent = self`, background (no `wait`) → `subagent` task, settled via the
 //   detached watcher's bare-`idle`→`completed` local-host path, summary carrying
 //   the child's real reply — EVE-677 AC #1.
-// - `target.type = agent`, foreground mode → `agent_handoff` task (its own kind,
+// - `agent = <name>`, `wait = true` → `agent_handoff` task (its own kind,
 //   not `subagent`) settled inline with the target agent's reply — AC #1/#3.
 //
 // Determinism note: one llmsim driver serves the parent and every child. Tool
@@ -32,7 +32,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use everruns::local::{LocalPlatformStore, LocalSessionRunner, LocalSessionTaskRegistry, SqliteDb};
-use everruns_capabilities::capabilities::{AgentHandoffCapability, SubagentCapability};
+use everruns_capabilities::capabilities::SpawnAgentsCapability;
 use everruns_capabilities::{PlatformHostBackendsExt, PlatformMessage, PlatformStore};
 use everruns_contracts::driver_registry::DriverRegistry;
 use everruns_contracts::error::Result;
@@ -201,8 +201,7 @@ fn spawn_agent_sim(handoff_target_id: &str) -> LlmSimConfig {
         arguments: serde_json::json!({
             "name": "Subagent Echo",
             "instructions": format!("Acknowledge {SUBAGENT_MARKER} and reply briefly."),
-            "target": { "type": "subagent" },
-            "mode": "background",
+            "agent": "self",
         }),
     };
     let handoff_call = ToolCall {
@@ -211,8 +210,8 @@ fn spawn_agent_sim(handoff_target_id: &str) -> LlmSimConfig {
         arguments: serde_json::json!({
             "name": "Handoff Run",
             "instructions": format!("Acknowledge {HANDOFF_MARKER} and reply briefly."),
-            "target": { "type": "agent", "id": handoff_target_id },
-            "mode": "foreground",
+            "agent": handoff_target_id,
+            "wait": true,
         }),
     };
 
@@ -262,16 +261,15 @@ async fn await_terminal(
 
 #[tokio::test(flavor = "multi_thread")]
 async fn spawn_agent_dispatches_subagent_and_handoff_via_llmsim() {
-    // Capabilities: subagents + agent_handoff are both registered and both
-    // active on the parent, so the assembled `spawn_agent` advertises both
-    // targets and dispatches to each.
+    // Capabilities: Spawn agents with `self` and one named agent, so the one
+    // assembled `spawn_agent` dispatches to a copy of this agent and to the
+    // named agent.
     let mut capabilities = CapabilityRegistry::new();
-    capabilities.register(SubagentCapability);
-    capabilities.register(AgentHandoffCapability);
+    capabilities.register(SpawnAgentsCapability);
     let platform = HostComposition::new(capabilities, DriverRegistry::new());
 
-    // Parent (root) session: harness carries subagents + a configured
-    // agent_handoff target pointing at the plain target agent below.
+    // Parent (root) session: harness carries Spawn agents with `self` and a
+    // named agent pointing at the plain target agent below.
     let parent_harness_id = HarnessId::from_seed(677);
     let parent_agent_id = AgentId::from_seed(677);
     let parent_subagent_session_id = SessionId::from_seed(677);
@@ -284,11 +282,11 @@ async fn spawn_agent_dispatches_subagent_and_handoff_via_llmsim() {
 
     let parent_harness = HarnessBuilder::new("orchestrator", "You delegate work to other agents.")
         .id(parent_harness_id)
-        .capability("subagents")
         .capability(everruns_contracts::CapabilityRef::with_config(
-            "agent_handoff",
+            "spawn_agents",
             serde_json::json!({
-                "targets": [{
+                "self": true,
+                "agents": [{
                     "id": HANDOFF_TARGET_ID,
                     "name": "Target One",
                     "agent_id": target_agent_id,
@@ -361,8 +359,7 @@ async fn spawn_agent_dispatches_subagent_and_handoff_via_llmsim() {
         "turn entry must not embed the engine loop's full future state",
     );
 
-    // AC #6: the single assembled `spawn_agent` advertises the union of the two
-    // active delegation targets, in the dispatcher's canonical order.
+    // AC #6: one assembled `spawn_agent` picks who works with `agent`.
     let context = runtime
         .load_context(parent_subagent_session_id)
         .await
@@ -373,10 +370,10 @@ async fn spawn_agent_dispatches_subagent_and_handoff_via_llmsim() {
         .iter()
         .find(|tool| tool.name() == "spawn_agent")
         .expect("assembled context exposes the unified spawn_agent tool");
-    assert_eq!(
-        spawn_agent.parameters()["properties"]["target"]["properties"]["type"]["enum"],
-        serde_json::json!(["subagent", "agent"]),
-        "spawn_agent must advertise exactly the active delegation targets",
+    let properties = &spawn_agent.parameters()["properties"];
+    assert!(
+        properties.get("agent").is_some() && properties.get("target").is_none(),
+        "spawn_agent must pick who works with `agent`: {properties}",
     );
 
     // ---- Target 1: subagent (background) -----------------------------------

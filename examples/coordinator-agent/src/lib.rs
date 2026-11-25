@@ -4,41 +4,59 @@
 //! each thread keeps a checklist and finishes with a summary, and every
 //! finished thread wakes the coordinator with an automatic update.
 //!
+//! Threads ([`Threads`]) give the agent `start_thread`, `message_thread`,
+//! `list_threads`, `get_thread` and `close_thread`; [`Coordinator`] makes it
+//! route work instead of doing it. A thread runs the coordinator itself, or
+//! the `copywriter` agent added with
+//! [`AgentBuilder::threads_with`](everruns::AgentBuilder::threads_with).
+//!
 //! The example runs on a real model (`gpt-6.2-sol`). The tests drive
 //! [`coordinator`] with a scripted stand-in that lives only in `tests/`.
 
 use std::time::Duration;
 
-use everruns::coordination::{self, Coordination, Thread, ThreadStatus};
 use everruns::providers::openai::{OpenAI, OpenAIError};
+use everruns::threads::{self, Coordinator, Thread, ThreadStatus, Threads};
 use everruns::{Agent, AgentLoopError, BuildError, LocalConfig, Model, Session, WorkspacePolicy};
 
 /// The model the example runs on.
 pub const MODEL: &str = "gpt-6.2-sol";
 
 pub const INSTRUCTIONS: &str = "\
-You coordinate a small launch team. Do not do focused work yourself: start one \
-thread per piece of work with start_thread, giving it a short title and a brief \
-that says what done looks like. When an automatic update says a thread finished, \
-tell the person in one line what it produced. When the person asks you to \
-resolve a thread, call resolve_thread with its id (list_threads shows ids). \
-Inside a thread, keep your checklist current with update_checklist and finish \
-with complete_assignment.";
+You coordinate a small launch team. Start one thread per piece of work. Public \
+copy such as announcements goes to the copywriter agent; run everything else \
+yourself. When an automatic update says a thread finished, tell the person in \
+one line what it produced. When the person accepts a thread's work, close it.";
+
+/// The copywriter's instructions. It runs announcement threads.
+pub const COPYWRITER_INSTRUCTIONS: &str = "\
+You write short, concrete launch copy. Write the draft to the file the brief \
+names, keep your checklist current, and finish with a one-line summary.";
 
 /// The person's first request in the demo conversation.
 pub const LAUNCH_REQUEST: &str = "Plan the launch: write the announcement and draft a pricing FAQ.";
 /// The person's follow-up once both threads are ready for review.
-pub const RESOLVE_REQUEST: &str = "The announcement looks good. Resolve that thread.";
+pub const CLOSE_REQUEST: &str = "The announcement looks good. Close that thread.";
 
-/// Build the coordinator: an agent with the coordination capability whose
-/// threads share `workspace`. Session state lives in `workspace/.everruns`.
+/// Build the coordinator: Threads plus Coordinator, with a copywriter its
+/// threads can run. Threads share `workspace`; session state lives in
+/// `workspace/.everruns`.
 #[allow(deprecated)] // Legacy facade lane until EVE-1298 moves this onto Engine hosting.
 pub fn coordinator(model: Model, workspace: &std::path::Path) -> Result<Agent, BuildError> {
+    let copywriter = Agent::builder()
+        .name("copywriter")
+        .description("Writes announcements and other public launch copy.")
+        .instructions(COPYWRITER_INSTRUCTIONS)
+        .model(model.clone())
+        .workspace_policy(WorkspacePolicy::read_write())
+        .build()?;
     Agent::builder()
         .name("launch-coordinator")
         .instructions(INSTRUCTIONS)
         .model(model)
-        .capability(Coordination::new().max_active_threads(4))
+        .capability(Threads::new().max_open(4))
+        .capability(Coordinator)
+        .threads_with(copywriter)
         .max_iterations(8)
         // Threads write their drafts; the default policy is read-only.
         .workspace_policy(WorkspacePolicy::read_write())
@@ -59,7 +77,7 @@ pub async fn wait_for_threads(
 ) -> Result<Vec<Thread>, AgentLoopError> {
     let deadline = tokio::time::Instant::now() + timeout;
     loop {
-        let threads = coordination::threads(session).await?;
+        let threads = threads::list(session).await?;
         if done(&threads) || tokio::time::Instant::now() >= deadline {
             return Ok(threads);
         }

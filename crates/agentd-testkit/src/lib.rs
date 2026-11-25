@@ -808,10 +808,10 @@ pub fn definition(name: &str) -> Option<Value> {
             files
         }
         "team" => {
-            // `files`, with subagents: sessions of the same agent, placed
+            // `files`, with Spawn agents: sessions of the same agent, placed
             // wherever the gateway puts them.
             let mut team = agent("team", "Ask a helper.", "files", &[]);
-            team["capabilities"] = json!([{ "ref": "subagents" }]);
+            team["capabilities"] = json!([{ "ref": "spawn_agents" }]);
             team
         }
         "mcp" => {

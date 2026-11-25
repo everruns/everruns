@@ -7,10 +7,10 @@
 
 use std::time::Duration;
 
-use everruns::coordination;
+use everruns::threads;
 use everruns::{Engine, Session};
 use everruns_coordinator_agent::{
-    LAUNCH_REQUEST, RESOLVE_REQUEST, all_ready, coordinator, openai_model, render_board, replies,
+    CLOSE_REQUEST, LAUNCH_REQUEST, all_ready, coordinator, openai_model, render_board, replies,
     wait_for_new_reply, wait_for_threads,
 };
 
@@ -36,8 +36,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("coordinator> {reply}   (automatic update)\n");
     }
 
-    say(&session, RESOLVE_REQUEST).await?;
-    let threads = coordination::threads(&session).await?;
+    say(&session, CLOSE_REQUEST).await?;
+    let threads = threads::list(&session).await?;
     println!("\nBoard\n{}", render_board(&threads));
     println!("\nDrafts are in {}", workspace.display());
     Ok(())

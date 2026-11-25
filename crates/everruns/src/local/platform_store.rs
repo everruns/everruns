@@ -246,13 +246,21 @@ impl PlatformStore for LocalPlatformStore {
     async fn get_harness(&self, _id: HarnessId) -> Result<Option<HarnessDefinition>> {
         Err(unsupported("get_harness"))
     }
-    // Framework members (`AgentBuilder::member`) build their harness from their
+    // Added agents (`AgentBuilder::spawns`, `threads_with`) build their harness from their
     // own Agent value, so this id only labels the child session's record. An
     // agent id that is not a member is refused when the child is created.
     async fn get_agent_harness_id(&self, _id: AgentId) -> Result<Option<HarnessId>> {
         Ok(Some(HarnessId::new()))
     }
-    async fn get_agent_by_id(&self, _id: AgentId) -> Result<Option<AgentDefinition>> {
-        Err(unsupported("get_agent_by_id"))
+    // A local profile has no agent catalog. Added agents run from their own
+    // Agent value, and the runner refuses any id that is not the lead's own
+    // or an added agent when the child session is created, so this lookup
+    // only confirms the id and the real check stays at creation.
+    async fn get_agent_by_id(&self, id: AgentId) -> Result<Option<AgentDefinition>> {
+        Ok(Some(AgentDefinition::new(
+            id,
+            id.to_string(),
+            String::new(),
+        )))
     }
 }

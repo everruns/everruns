@@ -10,6 +10,8 @@ tags:
 ---
 # Agents That Use Other Agents
 
+> Superseded in part (2026-11-25): agents start other agents through Spawn agents or Threads, never both; see [Threads: How Agents Hand Off Work](threads.md). This page keeps the executor details.
+
 Status: accepted (2026-11-02). All three parts are built (2026-11-03):
 members, created-here agents, package format and the Team tab; approvals
 and questions on the first session, the shared team folder, copy-of-files
@@ -80,7 +82,7 @@ What the field agrees on, and what Everruns does by default:
 |---|---|---|
 | Conversation | Not shared; the brief only | n/a |
 | Files | Own files | A copy of this session's files, set per member |
-| Team folder | A `team/` folder every agent in the run reads and writes | Always on |
+| Team folder | A `shared/` folder (was `team/`) every agent in the run reads and writes | Always on |
 | Sandbox | Own, from its own harness | Not shared in v1: git branches carry code work |
 | Memory, tools, model, harness | Its own | n/a |
 | Connections and credentials | Resolved for the active agent or invoking person; never passed from the parent | See [GitHub identities](../integrations/github-model.md) |
@@ -148,11 +150,11 @@ agent's request is a follow-up.
 
 ## Team folder
 
-Every agent in a run sees one `team/` folder in its files, mounted at `/team`.
+Every agent in a run sees one `shared/` folder in its files, mounted at `/shared` (was `/team` until 2026-11-25).
 What one agent writes there the others read at once, and it outlives every
 session of the run. The Agents capability's prompt asks the routing agent to
 pass paths instead of pasting long content and to have each agent write under
-`team/<its name>/`.
+`shared/<its name>/`.
 
 - **Storage.** A Memory with scope `run`, owned by the run's first session
   (`owner_session_id`), created on first use. It reuses the memory mount's
@@ -193,9 +195,9 @@ session creation), so the same agent on its own has nothing to talk in.
   posted.
 - `read_run_conversation(limit?)` reads the latest messages and lists who can
   be messaged.
-- **Storage.** One file per message under `team/conversation/`, in the team
+- **Storage.** One file per message under `shared/conversation/`, in the team
   folder, so the person reads it in the first session's Files and it outlives
-  the run. Names map to sessions in `team/conversation/agents/<name>`, written
+  the run. Names map to sessions in `shared/conversation/agents/<name>`, written
   by `spawn_agent` (for itself and the agent it hands work to) and by each
   agent when it first uses the tools.
 - **Safety.** Delivery goes only to the run's first session or a session
@@ -205,7 +207,7 @@ session creation), so the same agent on its own has nothing to talk in.
 - **Not yet.** Reactions in the run conversation, and the person posting
   there from the UI: the person talks to the first agent.
 
-Code: `crates/capabilities/src/capabilities/run_conversation.rs`.
+Code: `crates/capabilities/src/capabilities/sibling_communication.rs`.
 
 ## Whole run
 

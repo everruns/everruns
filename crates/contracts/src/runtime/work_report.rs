@@ -51,12 +51,18 @@ pub const WORK_REPORT_EVENT_TYPES: &[&str] = &[
 
 /// Tools that write the plan. Their calls shape [`WorkReport::plan`] and are
 /// not listed as steps of their own.
-pub const PLAN_TOOL_NAMES: &[&str] = &["write_todos", "update_checklist", "update_status"];
+pub const PLAN_TOOL_NAMES: &[&str] = &[
+    "write_todos",
+    "report_progress",
+    "update_checklist",
+    "update_status",
+];
 
-/// Tools the agent reports finished work with (`report_done`, and a
-/// coordinated worker's `complete_assignment`). A successful call supplies the
-/// summary, how the work was checked, and links; it is not a step.
-pub const REPORT_TOOL_NAMES: &[&str] = &["report_done", "complete_assignment"];
+/// Tools the agent reports finished work with (`report_done`, and a thread's
+/// `finish`; `complete_assignment` in sessions recorded before Threads). A
+/// successful call supplies the summary, how the work was checked, and
+/// links; it is not a step.
+pub const REPORT_TOOL_NAMES: &[&str] = &["report_done", "finish", "complete_assignment"];
 
 /// Artifacts taken from an agent's own report.
 pub const MAX_REPORTED_ARTIFACTS: usize = 10;

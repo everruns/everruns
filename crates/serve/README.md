@@ -122,7 +122,7 @@ revenue-analyst/
     skills/sql-style/SKILL.md
   src/
     main.rs                # serve::assets!() + serve::start(...)
-    agent.rs               # #[agent(default)], .member("reviewer")
+    agent.rs               # #[agent(default)], .spawns("reviewer")
     reviewer.rs            # #[agent]
     tools/run_sql.rs       # #[tool]          (fn name = tool name)
     channels/slack.rs      # #[channel]
@@ -146,7 +146,7 @@ cron, a filter naming an unknown tool.
 
 | Macro | On | Becomes |
 |---|---|---|
-| `#[agent]`, `#[agent(default)]` | `fn() -> Agent` | An agent. `/v1/sessions` serves the default one; `Agent::builder().member("name")` lets one agent hand work to another through `spawn_agent`. |
+| `#[agent]`, `#[agent(default)]` | `fn() -> Agent` | An agent. `/v1/sessions` serves the default one; `Agent::builder().spawns("name")` lets one agent call another through `spawn_agent`. |
 | `#[tool]`, `#[tool(needs_approval)]`, `#[tool(needs_approval = \|a: &Args\| …)]` | `async fn([cx: &Cx,] args…) -> Result<T>` | A tool. The name is the fn name and the doc comment is the description. It also generates an `Args` struct (`run_sql` → `RunSql`) with a JSON Schema. |
 | `#[channel]` | `fn() -> impl Into<Channel>` (a driver such as `Slack` or `Webhook`) | `POST /v1/channels/{name}`. Each thread maps to one session, and replies are delivered back while the turn runs. `agent = "…"` picks the agent. It also generates `name::channel(target)`. |
 | `#[schedule("0 9 * * MON")]` | `async fn(&Cx) -> Result` | A cron entry. |

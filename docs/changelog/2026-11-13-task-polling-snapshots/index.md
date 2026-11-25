@@ -8,7 +8,7 @@ products: [framework, platform, cloud]
 release: "0.53.0"
 surfaces: [agent]
 links:
-  docs: [/capabilities/sub-agents/]
+  docs: [/capabilities/spawn-agents/]
 ---
 
 The `list_tasks` tool returns a snapshot that agents can pass as `since` on the
@@ -37,4 +37,4 @@ async fn poll(context: &ToolContext) -> ToolExecutionResult {
 }
 ```
 
-See [sub-agents](/capabilities/sub-agents/) for background task controls.
+See [sub-agents](/capabilities/spawn-agents/) for background task controls.

@@ -8,6 +8,8 @@ tags:
 ---
 # Coordination
 
+> Superseded in part (2026-11-25): agents start other agents through Spawn agents or Threads, never both; see [Threads: How Agents Hand Off Work](threads.md). This page keeps the executor details.
+
 Status: implemented. Every Platform Chat session, Main chat and side chats
 alike, is a coordinator; there is no flag (the `chat_threads` opt-in was removed
 2026-11-10, see [Chat, side chats, threads](../ui/chat-mode.md)). Custom agents
@@ -20,7 +22,7 @@ person talks to one place, work happens in threads they can open, and a board
 shows what is working, what needs them, and what is ready for review.
 
 The `coordination` capability
-([`coordination.rs`](../../crates/capabilities/src/capabilities/coordination.rs))
+([`threads.rs`](../../crates/capabilities/src/capabilities/threads.rs))
 owns the tools, limits and executor. Its header comment carries the detailed
 decisions; this concept owns the contract.
 
@@ -97,7 +99,7 @@ popover, and a wake that does not parse falls back to a folded line
 ## Framework
 
 The `everruns` facade runs the same capability on a local profile
-([`coordination.rs`](../../crates/everruns/src/coordination.rs)). Threads are
+([`threads.rs`](../../crates/everruns/src/threads.rs)). Threads are
 sessions of the engine that owns the coordinator and run its agent; another
 worker agent is refused, since a local profile has no agent catalog. The
 settlement rules for a thread turn live with the capability

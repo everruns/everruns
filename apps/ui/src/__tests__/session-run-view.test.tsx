@@ -121,7 +121,8 @@ describe("whole run view", () => {
         (item) => item.key,
       );
     expect(keys([])).not.toContain("agents");
-    expect(keys(["agent_handoffs"])).toContain("agents");
+    expect(keys(["spawn_agents"])).toContain("agents");
+    expect(keys(["threads"])).toContain("agents");
     expect(keys([], true)).toContain("agents");
   });
 });

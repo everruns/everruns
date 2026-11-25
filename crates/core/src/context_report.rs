@@ -282,7 +282,7 @@ fn section_label(key: &str) -> &'static str {
         "rules" => "Rules",
         "skills" => "Skills",
         "mcp" => "MCP",
-        "subagents" => "Subagents",
+        "subagents" => "Agents",
         "plugins" => "Plugins",
         "conversation" => "Conversation",
         _ => "Tools",
@@ -304,7 +304,11 @@ fn classify_capability_prompt(capability_id: &str) -> &'static str {
         "rules"
     } else if capability_id == "skills" || capability_id.starts_with("skill:") {
         "skills"
-    } else if capability_id == "subagents" {
+    } else if matches!(
+        capability_id,
+        "spawn_agents" | "threads" | "coordinator" | "sibling_communication"
+    ) {
+        // Key kept for stored reports and the UI; the label says "Agents".
         "subagents"
     } else if capability_id.starts_with("mcp:") {
         "mcp"
@@ -540,7 +544,14 @@ mod tests {
         assert_eq!(classify_capability_prompt("skills"), "skills");
         assert_eq!(classify_capability_prompt("skill:abc"), "skills");
         assert_eq!(classify_capability_prompt("mcp:abc"), "mcp");
-        assert_eq!(classify_capability_prompt("subagents"), "subagents");
+        for id in [
+            "spawn_agents",
+            "threads",
+            "coordinator",
+            "sibling_communication",
+        ] {
+            assert_eq!(classify_capability_prompt(id), "subagents", "{id}");
+        }
         for id in [
             "",
             "skills-extra",

@@ -40,14 +40,15 @@ pub fn runtime_capability_registry() -> CapabilityRegistry {
 /// registrations retain the registry's normal duplicate handling.
 pub fn compose_runtime_capability_registry(mut registry: CapabilityRegistry) -> CapabilityRegistry {
     register_session_service_capabilities(&mut registry);
-    // `AgentBuilder::member` attaches the Agents capability; it is inert on an
-    // agent without members.
+    // `AgentBuilder::spawns` attaches Spawn agents; it is inert on an agent
+    // that does not have it. Threads need a local profile, whose registry
+    // carries every delegation capability (`local::runtime_builder`).
     #[cfg(feature = "local")]
     if registry
-        .get(everruns_capabilities::capabilities::AGENT_HANDOFF_CAPABILITY_ID)
+        .get(everruns_capabilities::capabilities::SPAWN_AGENTS_CAPABILITY_ID)
         .is_none()
     {
-        registry.register(everruns_capabilities::capabilities::AgentHandoffCapability);
+        registry.register(everruns_capabilities::capabilities::SpawnAgentsCapability);
     }
     #[cfg(feature = "sql-database")]
     if !registry.has("session_sql_database") {

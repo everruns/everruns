@@ -14,7 +14,6 @@ pub mod background_execution;
 pub mod citation_retrieval;
 pub mod citation_verification;
 pub mod citation_web;
-pub mod coordination;
 pub mod data_knowledge;
 pub mod delegation_result;
 mod environment_file_tools;
@@ -33,17 +32,19 @@ pub mod poppy_client;
 pub mod published_views;
 pub mod reactions;
 pub mod research;
-pub mod run_conversation;
 pub mod sandbox_desktop;
 mod sandbox_workspace;
 pub mod session_sandbox;
 pub mod session_schedule;
 pub mod session_sql_database;
 pub mod session_tasks;
+pub mod sibling_communication;
 pub mod slack;
+pub mod spawn_agents;
 mod subagent_helper_models;
 mod subagent_spawn_args;
 pub mod subagents;
+pub mod threads;
 pub mod user_hooks;
 pub mod user_mcp;
 pub mod util;
@@ -74,14 +75,13 @@ pub use citation_verification::{
     CitationVerificationConfig, VerificationMode,
 };
 pub use citation_web::{CITATION_WEB_CAPABILITY_ID, CitationWebCapability};
-pub use coordination::{
-    AssignmentTaskExecutor, COORDINATION_CAPABILITY_ID, CoordinationCapability,
-    THREAD_RESOLVED_DETAIL,
-};
 pub use data_knowledge::{DATA_KNOWLEDGE_CAPABILITY_ID, DataKnowledgeCapability};
 pub use delegation_result::{
-    ReportResultTool, ReportTaskProgressTool, report_result_tool_for_child_session,
-    report_task_progress_tool_for_child_session,
+    ReportResultTool, ReportTaskProgressTool, finish_tool_for_child_session,
+    report_progress_tool_for_child_session,
+};
+pub use everruns_contracts::capability::delegation::{
+    COORDINATOR_CAPABILITY_ID, PARENT_COMMUNICATION_CAPABILITY_ID, SPAWN_AGENTS_CAPABILITY_ID,
 };
 pub use everruns_core::host::session_services::capabilities::session::{
     GetSessionInfoTool, SESSION_CAPABILITY_ID, SessionCapability, SessionCapabilityConfig,
@@ -131,12 +131,20 @@ pub use session_sql_database::{
     SqlSchemaTool,
 };
 pub use session_tasks::{SESSION_TASKS_CAPABILITY_ID, SessionTasksCapability};
+pub use sibling_communication::{
+    SIBLING_COMMUNICATION_CAPABILITY_ID, SiblingCommunicationCapability,
+};
 pub use slack::{
     SLACK_CAPABILITY_ID, SLACK_MODEL_VIEW_CAPABILITY_ID, SlackAddReactionTool, SlackCapability,
     SlackLookupUserTool, SlackModelViewCapability, SlackUpdateMessageTool, SlackUploadFileTool,
 };
+pub use spawn_agents::SpawnAgentsCapability;
 pub use subagents::{
     SUBAGENTS_CAPABILITY_ID, SpawnLifetime, SpawnSubagentAsAgentTool, SubagentCapability,
+};
+pub use threads::{
+    AssignmentTaskExecutor, COORDINATOR_SYSTEM_PROMPT, CoordinatorCapability,
+    THREAD_RESOLVED_DETAIL, THREADS_CAPABILITY_ID, ThreadsCapability,
 };
 pub use user_hooks::{USER_HOOKS_CAPABILITY_ID, UserHooksCapability};
 pub use user_mcp::{
@@ -188,9 +196,10 @@ fn register_environment_capabilities(
 ) {
 }
 
-/// Register the agent-delegation capabilities compiled into this build:
-/// `agent_handoff`, plus `a2a_agent_delegation` (Cargo feature `a2a`) and
-/// `ag_ui_delegation` (Cargo feature `ag-ui`).
+/// Register the capabilities for agents that start other agents: Spawn
+/// agents, Threads, Coordinator and Sibling communication, plus
+/// `a2a_agent_delegation` (Cargo feature `a2a`) and `ag_ui_delegation`
+/// (Cargo feature `ag-ui`).
 ///
 /// No feature-flag check: the opt-in is the Cargo feature plus an explicit
 /// capability ref on the agent. [`register_hosted_capabilities`] calls this
@@ -199,8 +208,10 @@ fn register_environment_capabilities(
 pub fn register_agent_delegation_capabilities(
     registry: &mut everruns_core::capabilities::CapabilityRegistry,
 ) {
-    registry.register(AgentHandoffCapability);
-    registry.register(run_conversation::RunConversationCapability);
+    registry.register(SpawnAgentsCapability);
+    registry.register(ThreadsCapability);
+    registry.register(CoordinatorCapability);
+    registry.register(SiblingCommunicationCapability);
     #[cfg(feature = "a2a")]
     registry.register(A2aAgentDelegationCapability);
     #[cfg(feature = "ag-ui")]
@@ -233,13 +244,10 @@ pub fn register_hosted_capabilities(
     registry.register(MemoryCapability);
     registry.register(BackgroundExecutionCapability);
     registry.register(SessionScheduleCapability);
-    registry.register(SubagentCapability);
     registry.register(SessionTasksCapability);
-    // Custom agents opt in by adding the capability; Platform Chat (main and
-    // side chats) always coordinates. Registration is unconditional.
-    registry.register(CoordinationCapability);
-    // Delegation has no feature flag: adding the capability to an agent is
-    // the opt-in, like coordination above.
+    // Spawn agents, Threads, Coordinator: no feature flag; adding the
+    // capability to an agent is the opt-in. Platform Chat (main and side
+    // chats) always has Threads and Coordinator.
     register_agent_delegation_capabilities(registry);
     // First channel adapter to implement `Capability::tools()` (EVE-1024). It
     // is inert outside a Slack-originated session: the invoker seam resolves
@@ -377,7 +385,8 @@ mod tests {
     #[test]
     fn external_delegation_registration_follows_the_cargo_features() {
         let registry = hosted_capability_registry_for_grade(everruns_core::DeploymentGrade::Prod);
-        assert!(registry.has(AGENT_HANDOFF_CAPABILITY_ID));
+        assert!(registry.has(SPAWN_AGENTS_CAPABILITY_ID));
+        assert!(registry.has(THREADS_CAPABILITY_ID));
         assert_eq!(
             registry.has(everruns_core::capabilities::A2A_AGENT_DELEGATION_CAPABILITY_ID),
             cfg!(feature = "a2a"),

@@ -625,9 +625,9 @@ User: "Analyze my codebase and suggest improvements"
 → Spawn "Dependency Auditor" to review dependencies
 → Wait for all to complete
 → Synthesize findings into a prioritized improvement plan"#,
-        tags: &["orchestration", "subagents", "demo", "seed"],
+        tags: &["orchestration", "spawn-agents", "demo", "seed"],
         capabilities: &[
-            SeedCapability::new("subagents"),
+            SeedCapability::new("spawn_agents"),
             SeedCapability::new("current_time"),
         ],
         dev_only: false,

@@ -32,7 +32,7 @@ The same report appears in three places:
 | `result` | Facts measured from the run (files changed, tasks started, issues), a summary, checks, links |
 
 Progress is never invented. "Step N of M" appears only when the agent shared a
-plan with `write_todos`, `update_checklist` or `update_status`, and a step shows a
+plan with `write_todos`, `report_progress` or `update_status`, and a step shows a
 count only when its tool reported one. Without a plan the report lists steps and
 draws no bar.
 

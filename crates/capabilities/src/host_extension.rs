@@ -12,13 +12,11 @@ use everruns_core::tools::{Tool, ToolRegistry};
 use std::sync::Arc;
 
 use crate::PlatformStore;
-use crate::capabilities::coordination::{
-    COORDINATOR_TOOL_NAMES, WORKER_TOOL_NAMES, open_assignment_for_thread, worker_tool_definitions,
-    worker_tools,
+use crate::capabilities::threads::{
+    PARENT_TOOL_NAMES, THREAD_TOOL_NAMES, open_assignment_for_thread, parent_tool_definitions,
+    parent_tools,
 };
-use crate::capabilities::{
-    report_result_tool_for_child_session, report_task_progress_tool_for_child_session,
-};
+use crate::capabilities::{finish_tool_for_child_session, report_progress_tool_for_child_session};
 
 /// Factory producing a platform store scoped to one organization and session.
 pub type PlatformStoreFactory = Arc<dyn Fn(i64, SessionId) -> Arc<dyn PlatformStore> + Send + Sync>;
@@ -87,7 +85,7 @@ impl HostToolAugmentor for PlatformToolAugmentor {
         let Some(task_registry) = task_registry else {
             return Ok(());
         };
-        if let Some(tool) = report_result_tool_for_child_session(
+        if let Some(tool) = finish_tool_for_child_session(
             session_id,
             session_store.as_ref(),
             task_registry.as_ref(),
@@ -96,7 +94,7 @@ impl HostToolAugmentor for PlatformToolAugmentor {
         {
             definitions.push(tool.to_definition());
         }
-        if let Some(tool) = report_task_progress_tool_for_child_session(
+        if let Some(tool) = report_progress_tool_for_child_session(
             session_id,
             session_store.as_ref(),
             task_registry.as_ref(),
@@ -105,14 +103,15 @@ impl HostToolAugmentor for PlatformToolAugmentor {
         {
             definitions.push(tool.to_definition());
         }
-        // A thread works its coordinator's assignment: it gets the worker
-        // tools and never the coordinator's own (threads do not start threads).
+        // A thread works its parent's assignment: it gets the parent tools
+        // (`parent_communication`) and never the thread tools (threads do not
+        // start threads).
         if let Some(assignment) =
             open_assignment_for_thread(session_id, session_store.as_ref(), task_registry.as_ref())
                 .await?
         {
-            definitions.retain(|definition| !COORDINATOR_TOOL_NAMES.contains(&definition.name()));
-            definitions.extend(worker_tool_definitions(&assignment));
+            definitions.retain(|definition| !THREAD_TOOL_NAMES.contains(&definition.name()));
+            definitions.extend(parent_tool_definitions(&assignment));
         }
         Ok(())
     }
@@ -131,8 +130,8 @@ impl HostToolAugmentor for PlatformToolAugmentor {
         };
         if requested_definitions
             .iter()
-            .any(|definition| definition.name() == "report_result")
-            && let Some(tool) = report_result_tool_for_child_session(
+            .any(|definition| definition.name() == "finish")
+            && let Some(tool) = finish_tool_for_child_session(
                 session_id,
                 session_store.as_ref(),
                 task_registry.as_ref(),
@@ -143,8 +142,8 @@ impl HostToolAugmentor for PlatformToolAugmentor {
         }
         if requested_definitions
             .iter()
-            .any(|definition| definition.name() == "report_task_progress")
-            && let Some(tool) = report_task_progress_tool_for_child_session(
+            .any(|definition| definition.name() == "report_progress")
+            && let Some(tool) = report_progress_tool_for_child_session(
                 session_id,
                 session_store.as_ref(),
                 task_registry.as_ref(),
@@ -155,7 +154,7 @@ impl HostToolAugmentor for PlatformToolAugmentor {
         }
         if requested_definitions
             .iter()
-            .any(|definition| WORKER_TOOL_NAMES.contains(&definition.name()))
+            .any(|definition| PARENT_TOOL_NAMES.contains(&definition.name()))
             && let Some(assignment) = open_assignment_for_thread(
                 session_id,
                 session_store.as_ref(),
@@ -163,7 +162,7 @@ impl HostToolAugmentor for PlatformToolAugmentor {
             )
             .await?
         {
-            for tool in worker_tools(&assignment) {
+            for tool in parent_tools(&assignment) {
                 registry.register_boxed(tool);
             }
         }

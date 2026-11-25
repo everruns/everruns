@@ -1364,7 +1364,7 @@ mod tests {
             everruns_contracts::capability::BuiltInHarnessPreset::Worker.effective_capabilities();
         assert!(
             check_workspace_on_chat_harness(
-                &[capability("skills"), capability("subagents")],
+                &[capability("skills"), capability("spawn_agents")],
                 &worker,
                 &empty_registry()
             )

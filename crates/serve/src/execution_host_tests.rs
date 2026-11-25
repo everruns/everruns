@@ -704,7 +704,7 @@ fn app_with_member() -> crate::App {
     inner.agents[0].spec = crate::Agent::builder()
         .model("sim")
         .instructions("Hand the work to helper.")
-        .member("helper")
+        .spawns("helper")
         .offline(crate::sim::script([
             crate::sim::call(
                 "spawn_agent",
@@ -774,7 +774,7 @@ fn members_must_be_other_agents_of_the_app_one_level_deep() {
     let entry = |name: &str, members: &[&str]| {
         let mut builder = crate::Agent::builder().model("sim");
         for member in members {
-            builder = builder.member(*member);
+            builder = builder.spawns(*member);
         }
         crate::app::AgentEntry {
             name: name.into(),

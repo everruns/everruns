@@ -1,35 +1,45 @@
-//! Coordinator agents: one session hands focused work to threads.
+//! Threads: one session hands followed work to child sessions.
 //!
 //! Stability: alpha.
 //!
-//! A coordinator is an agent with the [`Coordination`] capability. It starts a
-//! **thread** (a child session working one piece of work), relays follow-ups to
-//! it, and reports back. Threads report through tools of their own: a
-//! checklist, a completion with a summary, a question, a redirect. Every
-//! report wakes the coordinator with an automatic update, so the person keeps
-//! talking to one session while the work happens elsewhere.
+//! An agent starts other agents one of two ways, never both:
 //!
-//! Coordination needs the `local` feature and an agent built with
+//! - **Spawn agents** ([`SpawnAgents`](crate::SpawnAgents),
+//!   [`AgentBuilder::spawns`](crate::AgentBuilder::spawns)): a one-off call.
+//!   A brief goes in, a result comes back, and the child is done.
+//! - **Threads** ([`Threads`], [`AgentBuilder::threads_with`](crate::AgentBuilder::threads_with)):
+//!   followed work. The agent starts a **thread** (a child session working
+//!   one piece of work), sends it follow-ups, and closes it when the work is
+//!   accepted. A thread reports through tools of its own: progress, a finish
+//!   with a summary, a question for its parent, a hand back. Every report
+//!   wakes the parent with an automatic update, so the person keeps talking
+//!   to one session while the work happens elsewhere.
+//!
+//! Add [`Coordinator`] next to [`Threads`] to make the agent behave as a
+//! coordinator: it routes work to threads instead of doing it itself.
+//!
+//! Threads need the `local` feature and an agent built with
 //! [`AgentBuilder::local`](crate::AgentBuilder::local): threads and their
-//! assignments live in the local profile's SQLite store. Threads run the
-//! coordinator's own agent, in the same [`Engine`].
+//! assignments live in the local profile's SQLite store. Threads run in the
+//! parent's [`Engine`].
 //!
 //! # Example
 //!
 //! ```no_run
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-//! use everruns::coordination::{self, Coordination};
+//! use everruns::threads::{self, Coordinator, Threads};
 //! use everruns::{Agent, Engine, LocalConfig, Model};
 //!
 //! let agent = Agent::builder()
 //!     .instructions("Hand each piece of work to a thread.")
 //!     .model(Model::simulated("On it."))
-//!     .capability(Coordination::new().max_active_threads(3))
+//!     .capability(Threads::new().max_open(3))
+//!     .capability(Coordinator)
 //!     .local(LocalConfig::new("./.everruns"))
 //!     .build()?;
 //! let session = Engine::new().create(agent);
 //! session.run("Plan the launch: copy, pricing page, and a demo video.").await?;
-//! for thread in coordination::threads(&session).await? {
+//! for thread in threads::list(&session).await? {
 //!     println!("{:?}  {}", thread.status, thread.title);
 //! }
 //! # Ok(())
@@ -37,22 +47,22 @@
 //! ```
 
 // Decision: the Framework runs threads through the engine that owns the
-// coordinator (`EngineSessionRunner`), so a thread is an ordinary engine
-// session the application can resume and read like any other.
-// Decision: `self` workers and the agent's own members
-// (`AgentBuilder::member`). A local profile has no agent catalog to look any
-// other worker up in, so the runner refuses any other agent id.
+// parent (`EngineSessionRunner`), so a thread is an ordinary engine session
+// the application can resume and read like any other.
+// Decision: a thread runs this agent (`self`) or one of the agents added with
+// `AgentBuilder::threads_with`. A local profile has no agent catalog to look
+// any other agent up in, so the runner refuses any other agent id.
 // Decision: the wake path covers `assignment` tasks only. Other task kinds
 // keep their existing between-turn delivery; widening the waker would change
 // how every local background task reaches its session.
 // Decision: thread turns the runner starts are settled right after they end.
 // A turn the application starts on a thread directly is not settled: the
-// person talks to the coordinator, and it routes (user decision, 2026-10-08).
+// person talks to the parent, and it routes (user decision, 2026-10-08).
 
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
-use everruns_capabilities::capabilities::coordination::{
+use everruns_capabilities::capabilities::threads::{
     THREAD_RESOLVED_DETAIL, ThreadTurn, settle_thread_turn,
 };
 use everruns_capabilities::{PlatformCreateSessionRequest, PlatformMessage};
@@ -77,49 +87,86 @@ use crate::engine::{Engine, WeakEngine};
 use crate::local::LocalSessionRunner;
 use crate::{CapabilityRef, CapabilitySpec, IntoCapability, Session};
 
-/// Capability id of [`Coordination`].
-pub const CAPABILITY_ID: &str = "coordination";
+/// Capability id of [`Threads`].
+pub const CAPABILITY_ID: &str = everruns_contracts::capability::delegation::THREADS_CAPABILITY_ID;
+/// Capability id of [`Coordinator`].
+pub const COORDINATOR_CAPABILITY_ID: &str =
+    everruns_contracts::capability::delegation::COORDINATOR_CAPABILITY_ID;
 
-/// Lets an agent start threads, relay to them, and resolve them.
+/// Lets an agent start threads, message them, and close them.
 ///
-/// Defaults: threads run this agent, at most 8 work at once, 100 in total.
-#[derive(Clone, Debug, Default)]
-pub struct Coordination {
-    max_active_threads: Option<u64>,
-    max_total_threads: Option<u64>,
+/// Defaults: threads run this agent, at most 8 are open at once, 100 in
+/// total. Add other agents threads may run with
+/// [`AgentBuilder::threads_with`](crate::AgentBuilder::threads_with).
+#[derive(Clone, Debug)]
+pub struct Threads {
+    run_self: bool,
+    max_open: Option<u64>,
+    max_total: Option<u64>,
 }
 
-impl Coordination {
-    /// Coordination with the default limits.
+impl Default for Threads {
+    fn default() -> Self {
+        Self {
+            run_self: true,
+            max_open: None,
+            max_total: None,
+        }
+    }
+}
+
+impl Threads {
+    /// Threads with the default limits, running this agent.
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Most threads working at the same time.
-    pub fn max_active_threads(mut self, limit: u64) -> Self {
-        self.max_active_threads = Some(limit);
+    /// Whether a thread may run this agent itself (default `true`). Turn it
+    /// off when threads should only run the agents added with
+    /// [`AgentBuilder::threads_with`](crate::AgentBuilder::threads_with).
+    pub fn run_self(mut self, enabled: bool) -> Self {
+        self.run_self = enabled;
         self
     }
 
-    /// Most threads this coordinator may ever start.
-    pub fn max_total_threads(mut self, limit: u64) -> Self {
-        self.max_total_threads = Some(limit);
+    /// Most threads open at the same time.
+    pub fn max_open(mut self, limit: u64) -> Self {
+        self.max_open = Some(limit);
+        self
+    }
+
+    /// Most threads this agent may ever start.
+    pub fn max_total(mut self, limit: u64) -> Self {
+        self.max_total = Some(limit);
         self
     }
 }
 
-impl IntoCapability for Coordination {
+impl IntoCapability for Threads {
     fn into_capability(self) -> CapabilitySpec {
         let mut config = serde_json::Map::new();
-        if let Some(limit) = self.max_active_threads {
-            config.insert("max_active_threads".into(), limit.into());
+        config.insert("self".into(), self.run_self.into());
+        if let Some(limit) = self.max_open {
+            config.insert("max_open".into(), limit.into());
         }
-        if let Some(limit) = self.max_total_threads {
-            config.insert("max_total_threads".into(), limit.into());
+        if let Some(limit) = self.max_total {
+            config.insert("max_total".into(), limit.into());
         }
         CapabilityRef::new(CAPABILITY_ID)
             .config(serde_json::Value::Object(config))
             .into()
+    }
+}
+
+/// Makes an agent behave as a coordinator: it hands work to threads, follows
+/// them, and reports back, instead of doing the work itself. Behaviour only
+/// (a prompt); needs [`Threads`].
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Coordinator;
+
+impl IntoCapability for Coordinator {
+    fn into_capability(self) -> CapabilitySpec {
+        CapabilityRef::new(COORDINATOR_CAPABILITY_ID).into()
     }
 }
 
@@ -131,15 +178,15 @@ pub enum ThreadStatus {
     NeedsYou,
     /// The thread is working.
     Working,
-    /// The thread finished; the coordinator has not resolved it yet.
+    /// The thread finished; its parent has not closed it yet.
     ReadyForReview,
     /// The work was cancelled and the thread was left open.
     Open,
-    /// The coordinator resolved the thread.
-    Resolved,
+    /// The parent closed the thread.
+    Closed,
 }
 
-/// One thread a coordinator started.
+/// One thread a session started.
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub struct Thread {
@@ -159,8 +206,8 @@ pub struct Thread {
     pub assignments: usize,
 }
 
-/// The threads a coordinator session started, oldest first.
-pub async fn threads(session: &Session) -> std::result::Result<Vec<Thread>, AgentLoopError> {
+/// The threads a session started, oldest first.
+pub async fn list(session: &Session) -> std::result::Result<Vec<Thread>, AgentLoopError> {
     let execution = session.inner().execution.clone();
     let backends = execution
         .backends()
@@ -228,7 +275,7 @@ pub async fn threads(session: &Session) -> std::result::Result<Vec<Thread>, Agen
 
 fn thread_status(task: &SessionTask) -> ThreadStatus {
     if task.state_detail.as_deref() == Some(THREAD_RESOLVED_DETAIL) {
-        return ThreadStatus::Resolved;
+        return ThreadStatus::Closed;
     }
     match task.state {
         SessionTaskState::AwaitingInput | SessionTaskState::Failed => ThreadStatus::NeedsYou,
@@ -265,7 +312,7 @@ impl EngineHub {
     }
 }
 
-/// Wrap the profile's task registry so assignment updates wake coordinators.
+/// Wrap the profile's task registry so assignment updates wake parents.
 pub(crate) fn observed_registry(
     inner: Arc<dyn SessionTaskRegistry>,
     hub: Arc<EngineHub>,
@@ -273,7 +320,7 @@ pub(crate) fn observed_registry(
     Arc::new(ObservingTaskRegistry::new(inner).with_observer(Arc::new(CoordinatorWaker { hub })))
 }
 
-/// Starts (or steers) a coordinator turn with an automatic update when one of
+/// Starts (or steers) a parent turn with an automatic update when one of
 /// its assignments changes, the Framework form of the server's task waker.
 struct CoordinatorWaker {
     hub: Arc<EngineHub>,
@@ -286,7 +333,7 @@ impl TaskTransitionObserver for CoordinatorWaker {
         task: &SessionTask,
         transition: TaskTransition,
     ) -> anyhow::Result<()> {
-        // Resolution is the coordinator's own act; it needs no update about it.
+        // Resolution is the parent's own act; it needs no update about it.
         if task.kind != TASK_KIND_ASSIGNMENT
             || task.state_detail.as_deref() == Some(THREAD_RESOLVED_DETAIL)
         {
@@ -304,7 +351,7 @@ impl TaskTransitionObserver for CoordinatorWaker {
             let session = match engine.resume(coordinator).await {
                 Ok(session) => session,
                 Err(error) => {
-                    tracing::warn!(%coordinator, %error, "coordination: wake failed");
+                    tracing::warn!(%coordinator, %error, "threads: wake failed");
                     return;
                 }
             };
@@ -317,14 +364,14 @@ impl TaskTransitionObserver for CoordinatorWaker {
                 Ok(sent) => {
                     let _ = sent.wait().await;
                 }
-                Err(error) => tracing::warn!(%coordinator, %error, "coordination: wake failed"),
+                Err(error) => tracing::warn!(%coordinator, %error, "threads: wake failed"),
             }
         });
         Ok(())
     }
 }
 
-/// Runs threads as sessions of the engine that owns their coordinator.
+/// Runs threads as sessions of the engine that owns their parent.
 pub(crate) struct EngineSessionRunner {
     hub: Arc<EngineHub>,
     sessions: Arc<dyn RuntimeSessionStore>,
@@ -361,11 +408,11 @@ impl EngineSessionRunner {
         if let Err(error) =
             settle_thread_turn(self.registry.as_ref(), coordinator, thread, turn).await
         {
-            tracing::debug!(%thread, %error, "coordination: thread turn settle failed");
+            tracing::debug!(%thread, %error, "threads: thread turn settle failed");
         }
     }
 
-    /// Run one input as a turn of `session_id`, settling its coordinator's
+    /// Run one input as a turn of `session_id`, settling its parent's
     /// thread record around it.
     async fn run_input(&self, session_id: SessionId, input: InputMessage) -> Result<()> {
         // A cut-over session belongs to its authority, which delivers its
@@ -429,7 +476,7 @@ impl LocalSessionRunner for EngineSessionRunner {
             Some(agent_id) if parent_record.as_ref().and_then(|s| s.agent_id) != Some(agent_id) => {
                 agent.member_on_host(agent_id).ok_or_else(|| {
                     AgentLoopError::tool(
-                        "a Framework engine runs threads with the coordinator's own agent or one of its members only",
+                        "a Framework engine runs threads with the parent's own agent or an agent added with threads_with only",
                     )
                 })?
             }

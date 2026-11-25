@@ -1,38 +1,38 @@
-// Coordination capability (knowledge/runtime-resources/coordination.md)
+// Threads capability (knowledge/runtime-resources/threads.md)
 //
-// A coordinator session hands work to threads and keeps the record of who is
-// doing what. The person talks to the coordinator; the coordinator starts a
-// thread per piece of work, relays follow-ups, and reports results back.
+// A thread is the role a session plays when another agent opened it for
+// followed, continued work. The parent starts a thread per piece of work,
+// relays follow-ups into it, and reads its checklist and result; the person
+// can open the thread and talk to it directly.
 //
-// Decision: a thread is a child session (parent_session_id = coordinator). It
+// Decision: a thread is a child session (parent_session_id = parent). It
 //   lives across many units of work; each unit is one `assignment` task owned
-//   by the coordinator and linked to the thread through `links.child_session_id`.
+//   by the parent and linked to the thread through `links.child_session_id`.
 //   A thread runs at most one open assignment at a time.
-// Decision: a thread finishes an assignment explicitly with
-//   `complete_assignment`. A turn that ends without it is not a result: the
-//   server's thread turn listener (crates/server/src/listeners/coordination/mod.rs)
-//   flags the assignment as needing attention, which wakes the coordinator.
+// Decision: a thread finishes an assignment explicitly with `finish`. A turn
+//   that ends without it is not a result: the server's thread turn listener
+//   (crates/server/src/listeners/coordination/mod.rs) flags the assignment as
+//   needing attention, which wakes the parent.
 // Decision: assignment tasks carry no heartbeat and no watcher. The reaper
 //   ignores tasks without a heartbeat, so a thread can wait on the person for
 //   days without being failed as orphaned, and threads use no background slot.
-// Decision: threads talk to each other only through the coordinator (user
-//   decision, 2026-10-08), so all routing has one owner and one record.
-// Decision: worker tools (`update_checklist`, `complete_assignment`,
-//   `ask_decision`, `report_to_coordinator`, `redirect_to_coordinator`) are
-//   injected per turn by `PlatformToolAugmentor` into a session that has an
-//   open assignment, the way `report_result` reaches subagents. Coordinator
-//   tools are hidden inside threads: a thread does not start threads.
-// Decision: an agent's team members (its `agent_handoff` members) are allowed
-//   workers without listing them in `workers` (user decision, 2026-11-24): a
-//   coordinator answers and plans, and hands a thread to the member built for
-//   the work, by the member's name or agent id. Membership is read from the
-//   coordinator's agent when the thread starts, so editing the team needs no
-//   second edit here. A coordinator supersedes the Agents capability, so
-//   `spawn_agent` never competes with `start_thread`: a model given both
-//   called spawn_agent with a bad target 36 times instead of starting a thread.
-// Decision: relays reach a thread as plain user-role text with a framing line.
-//   A tool-based reply channel is being designed separately; keeping relay text
-//   in `frame_*` helpers keeps that swap local to this file.
+// Decision: threads talk to each other only through their parent unless the
+//   agent turns on `sibling_communication` (user decisions, 2026-10-08 and
+//   2026-11-25), so routing has one owner and one record by default.
+// Decision: parent tools (`report_progress`, `ask_parent`, `finish`,
+//   `hand_back`) are injected per turn by `PlatformToolAugmentor` into a
+//   session that has an open assignment (`parent_communication`). Thread tools
+//   are hidden inside threads: a thread does not start threads.
+// Decision: who may work a thread is this capability's own list: `self`,
+//   `agents` (named, by agent id; names are filled on save), and `any_agent`.
+//   Threads supersedes Spawn agents, so `spawn_agent` never competes with
+//   `start_thread`: a model given both called spawn_agent with a bad target 36
+//   times instead of starting a thread. Validation refuses both on one agent.
+// Decision: coordinator behaviour (answer quick questions, route real work to
+//   threads) is the separate `coordinator` capability, a prompt that needs
+//   this one. Threads alone gives the tools without the persona.
+// Decision: relays reach a thread as plain user-role text with a framing line,
+//   kept in `frame_*` helpers so a tool-based channel stays a local swap.
 
 use super::delegation_result::truncate_summary;
 use super::util::{get_subagent_delegate, require_str_nonblank};
@@ -59,29 +59,24 @@ use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-pub const COORDINATION_CAPABILITY_ID: &str = "coordination";
+pub use everruns_contracts::capability::delegation::THREADS_CAPABILITY_ID;
 
 /// `state_detail` on a thread's latest assignment once the coordinator
 /// resolved the thread. Reopening clears it.
 pub const THREAD_RESOLVED_DETAIL: &str = "resolved";
 const THREAD_REOPENED_DETAIL: &str = "reopened";
 
-/// Coordinator tools, hidden from a session that is itself a thread.
-pub const COORDINATOR_TOOL_NAMES: [&str; 5] = [
+/// Thread tools, hidden from a session that is itself a thread.
+pub const THREAD_TOOL_NAMES: [&str; 5] = [
     "start_thread",
     "message_thread",
     "list_threads",
     "get_thread",
-    "resolve_thread",
+    "close_thread",
 ];
-/// Worker tools, injected into a thread that has an open assignment.
-pub const WORKER_TOOL_NAMES: [&str; 5] = [
-    "update_checklist",
-    "complete_assignment",
-    "ask_decision",
-    "report_to_coordinator",
-    "redirect_to_coordinator",
-];
+/// Parent tools (`parent_communication`), injected into a thread that has an
+/// open assignment.
+pub const PARENT_TOOL_NAMES: [&str; 4] = ["report_progress", "ask_parent", "finish", "hand_back"];
 
 const DEFAULT_MAX_ACTIVE_THREADS: u64 = 8;
 const DEFAULT_MAX_TOTAL_THREADS: u64 = 100;
@@ -100,54 +95,69 @@ const GET_THREAD_MESSAGE_LIMIT: usize = 20;
 // Config
 // =============================================================================
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "snake_case")]
-enum Role {
-    /// Starts and steers threads.
-    #[default]
-    Coordinator,
-    /// Only works on threads another coordinator starts: no coordinator tools.
-    Worker,
-}
-
+/// An agent that may work threads. Names are filled from the agent on save.
 #[derive(Debug, Clone, Deserialize)]
-struct WorkerRef {
+struct ThreadAgent {
+    agent_id: AgentId,
+    #[serde(default)]
     id: String,
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    description: Option<String>,
+}
+
+impl ThreadAgent {
+    /// The name the model addresses: the agent's name, else its id.
+    fn label(&self) -> String {
+        [&self.id, &self.name]
+            .into_iter()
+            .find(|value| !value.trim().is_empty())
+            .cloned()
+            .unwrap_or_else(|| self.agent_id.to_string())
+    }
+
+    fn matches(&self, wanted: &str) -> bool {
+        self.id == wanted
+            || self.name.eq_ignore_ascii_case(wanted)
+            || self.agent_id.to_string() == wanted
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct CoordinationConfig {
+struct ThreadsConfig {
+    /// This agent works threads itself.
+    #[serde(rename = "self", default = "default_true")]
+    runs_self: bool,
+    /// Named agents that may work threads.
     #[serde(default)]
-    role: Role,
-    /// Who may work a thread: `self` (this agent), `any` (any agent the person
-    /// may run), or an agent id. Defaults to `self` only.
-    #[serde(default = "default_workers")]
-    workers: Vec<WorkerRef>,
+    agents: Vec<ThreadAgent>,
+    /// Any agent the person may run, by agent id.
     #[serde(default)]
-    max_active_threads: Option<u64>,
+    any_agent: bool,
     #[serde(default)]
-    max_total_threads: Option<u64>,
+    max_open: Option<u64>,
+    #[serde(default)]
+    max_total: Option<u64>,
 }
 
-impl Default for CoordinationConfig {
+fn default_true() -> bool {
+    true
+}
+
+impl Default for ThreadsConfig {
     fn default() -> Self {
         Self {
-            role: Role::default(),
-            workers: default_workers(),
-            max_active_threads: None,
-            max_total_threads: None,
+            runs_self: true,
+            agents: Vec::new(),
+            any_agent: false,
+            max_open: None,
+            max_total: None,
         }
     }
 }
 
-fn default_workers() -> Vec<WorkerRef> {
-    vec![WorkerRef {
-        id: "self".to_string(),
-    }]
-}
-
-impl CoordinationConfig {
+impl ThreadsConfig {
     fn parse(config: &Value) -> Result<Self, String> {
         if config.is_null() {
             return Ok(Self::default());
@@ -155,23 +165,16 @@ impl CoordinationConfig {
         serde_json::from_value(config.clone()).map_err(|error| error.to_string())
     }
 
-    fn allows_self(&self) -> bool {
-        self.workers.iter().any(|worker| worker.id == "self")
-    }
-
-    fn allows_agent(&self, agent_id: &str) -> bool {
-        self.workers
-            .iter()
-            .any(|worker| worker.id == "any" || worker.id == agent_id)
+    fn agent(&self, wanted: &str) -> Option<&ThreadAgent> {
+        self.agents.iter().find(|agent| agent.matches(wanted))
     }
 
     fn max_active(&self) -> u64 {
-        self.max_active_threads
-            .unwrap_or(DEFAULT_MAX_ACTIVE_THREADS)
+        self.max_open.unwrap_or(DEFAULT_MAX_ACTIVE_THREADS)
     }
 
     fn max_total(&self) -> u64 {
-        self.max_total_threads.unwrap_or(DEFAULT_MAX_TOTAL_THREADS)
+        self.max_total.unwrap_or(DEFAULT_MAX_TOTAL_THREADS)
     }
 }
 
@@ -179,12 +182,17 @@ impl CoordinationConfig {
 // Capability
 // =============================================================================
 
-/// Lets an agent coordinate work across threads.
-pub struct CoordinationCapability;
+/// Lets an agent open threads: followed, continued work in child sessions.
+pub struct ThreadsCapability;
 
-impl Capability for CoordinationCapability {
+impl Capability for ThreadsCapability {
     fn id(&self) -> &str {
-        COORDINATION_CAPABILITY_ID
+        THREADS_CAPABILITY_ID
+    }
+
+    /// Retired id, rewritten on read (`capability::delegation`).
+    fn aliases(&self) -> Vec<&'static str> {
+        vec!["coordination"]
     }
 
     fn narrate(
@@ -199,18 +207,18 @@ impl Capability for CoordinationCapability {
     }
 
     fn name(&self) -> &str {
-        "Coordination"
+        "Threads"
     }
 
     fn description(&self) -> &str {
-        "Coordinate work across threads: start a thread per piece of work, relay follow-ups, and track each thread's checklist and result."
+        "Open a thread per piece of work: it works in the background, keeps a checklist, takes follow-ups, and reports back. The person can open a thread and talk to it."
     }
 
     fn localizations(&self) -> Vec<CapabilityLocalization> {
         vec![CapabilityLocalization::text(
             "uk",
-            "Координація",
-            "Координуйте роботу в гілках: запускайте окрему гілку для кожного завдання, передавайте уточнення та відстежуйте чекліст і результат кожної гілки.",
+            "Гілки",
+            "Відкривайте окрему гілку для кожного завдання: вона працює у фоні, веде чекліст, приймає уточнення й звітує. Людина може відкрити гілку й писати в неї напряму.",
         )]
     }
 
@@ -223,16 +231,16 @@ impl Capability for CoordinationCapability {
     }
 
     fn category(&self) -> Option<&str> {
-        Some("Core")
+        Some("Orchestration")
     }
 
     fn risk_level(&self) -> RiskLevel {
-        // Threads are sessions that spend: same footing as subagents.
+        // Threads are sessions that spend: same footing as spawned agents.
         RiskLevel::High
     }
 
     fn features(&self) -> Vec<&'static str> {
-        vec!["coordination"]
+        vec!["threads"]
     }
 
     fn config_schema(&self) -> Option<Value> {
@@ -240,88 +248,81 @@ impl Capability for CoordinationCapability {
             "type": "object",
             "additionalProperties": false,
             "properties": {
-                "role": {
-                    "type": "string",
-                    "enum": ["coordinator", "worker"],
-                    "default": "coordinator",
-                    "description": "coordinator starts and steers threads; worker only works on threads another coordinator starts."
+                "self": {
+                    "type": "boolean",
+                    "default": true,
+                    "title": "This agent",
+                    "description": "This agent works threads itself."
                 },
-                "workers": {
+                "agents": {
                     "type": "array",
-                    "description": "Who may work a thread: {\"id\": \"self\"} for this agent, {\"id\": \"any\"} for any agent the person may run, or {\"id\": \"agent_...\"} for one agent. Defaults to self.",
+                    "title": "Agents",
+                    "description": "Other agents that may work threads, each as itself. The model passes the agent's name.",
                     "items": {
                         "type": "object",
-                        "properties": { "id": { "type": "string" } },
-                        "required": ["id"],
-                        "additionalProperties": false
+                        "properties": { "agent_id": { "type": "string" } },
+                        "required": ["agent_id"]
                     }
                 },
-                "max_active_threads": {
+                "any_agent": {
+                    "type": "boolean",
+                    "default": false,
+                    "title": "Any agent",
+                    "description": "Any agent the person may run can work a thread, by agent id."
+                },
+                "max_open": {
                     "type": "integer",
                     "minimum": 1,
                     "maximum": 64,
                     "default": DEFAULT_MAX_ACTIVE_THREADS,
                     "description": "Threads that may be working at once."
                 },
-                "max_total_threads": {
+                "max_total": {
                     "type": "integer",
                     "minimum": 1,
                     "maximum": 1000,
                     "default": DEFAULT_MAX_TOTAL_THREADS,
-                    "description": "Threads one coordinator session may start in total."
+                    "description": "Threads one session may open in total."
                 }
             }
         }))
     }
 
     fn validate_config(&self, config: &Value) -> Result<(), String> {
-        let parsed = CoordinationConfig::parse(config)?;
-        if parsed.workers.is_empty() {
-            return Err("workers must name at least one worker".to_string());
-        }
-        for worker in &parsed.workers {
-            if worker.id != "self" && worker.id != "any" && worker.id.parse::<AgentId>().is_err() {
-                return Err(format!(
-                    "workers[].id must be \"self\", \"any\", or an agent id, got \"{}\"",
-                    worker.id
-                ));
-            }
+        let parsed = ThreadsConfig::parse(config)?;
+        if !parsed.runs_self && parsed.agents.is_empty() && !parsed.any_agent {
+            return Err(
+                "Threads needs at least one agent to work them: set self, list agents, or allow any_agent"
+                    .to_string(),
+            );
         }
         if parsed.max_active().clamp(1, 64) != parsed.max_active() {
-            return Err("max_active_threads must be between 1 and 64".to_string());
+            return Err("max_open must be between 1 and 64".to_string());
         }
         if parsed.max_total().clamp(1, 1000) != parsed.max_total() {
-            return Err("max_total_threads must be between 1 and 1000".to_string());
+            return Err("max_total must be between 1 and 1000".to_string());
         }
         Ok(())
     }
 
     fn system_prompt_addition(&self) -> Option<&str> {
-        Some(COORDINATOR_SYSTEM_PROMPT)
+        Some(THREADS_SYSTEM_PROMPT)
     }
 
-    /// A coordinator hands work off through threads only: the Agents
-    /// capability then just names the team (read by `start_thread`), and its
-    /// `spawn_agent` would be a second, competing way to delegate.
-    fn supersedes_with_config(&self, config: &Value) -> Vec<&'static str> {
-        match CoordinationConfig::parse(config).map(|config| config.role) {
-            Ok(Role::Worker) => Vec::new(),
-            _ => vec![super::agent_handoff::AGENT_HANDOFF_CAPABILITY_ID],
-        }
+    /// One way to start work per agent: Threads wins over a harness default
+    /// of Spawn agents (validation refuses both set on the agent itself).
+    fn supersedes(&self) -> Vec<&'static str> {
+        vec![everruns_contracts::capability::delegation::SPAWN_AGENTS_CAPABILITY_ID]
     }
 
     fn tools_with_config(&self, config: &Value) -> Vec<Box<dyn Tool>> {
-        let config = CoordinationConfig::parse(config).unwrap_or_default();
-        if config.role == Role::Worker {
-            return Vec::new();
-        }
-        let config = Arc::new(config);
+        let config = Arc::new(ThreadsConfig::parse(config).unwrap_or_default());
         vec![
             Box::new(StartThreadTool(config.clone())),
             Box::new(MessageThreadTool),
-            Box::new(ListThreadsTool),
+            Box::new(ListThreadsTool(config)),
             Box::new(GetThreadTool),
-            Box::new(ResolveThreadTool),
+            Box::new(CloseThreadTool),
         ]
     }
 
@@ -330,7 +331,57 @@ impl Capability for CoordinationCapability {
     }
 }
 
-/// Backend-authored narration for the coordinator and worker tools. Titles
+/// Coordinator behaviour: a prompt that makes the agent answer quick questions
+/// and route real work to threads. Needs Threads (pulled in as a dependency).
+pub struct CoordinatorCapability;
+
+impl Capability for CoordinatorCapability {
+    fn id(&self) -> &str {
+        everruns_contracts::capability::delegation::COORDINATOR_CAPABILITY_ID
+    }
+
+    fn name(&self) -> &str {
+        "Coordinator"
+    }
+
+    fn description(&self) -> &str {
+        "Behave as a coordinator: answer quick questions, start a thread for real work, relay follow-ups and results. Needs Threads."
+    }
+
+    fn localizations(&self) -> Vec<CapabilityLocalization> {
+        vec![CapabilityLocalization::text(
+            "uk",
+            "Координатор",
+            "Поводиться як координатор: відповідає на швидкі запитання, відкриває гілку для справжньої роботи, передає уточнення й результати. Потребує гілок.",
+        )]
+    }
+
+    fn status(&self) -> CapabilityStatus {
+        CapabilityStatus::Available
+    }
+
+    fn icon(&self) -> Option<&str> {
+        Some("network")
+    }
+
+    fn category(&self) -> Option<&str> {
+        Some("Orchestration")
+    }
+
+    fn dependencies(&self) -> Vec<&'static str> {
+        vec![THREADS_CAPABILITY_ID]
+    }
+
+    fn system_prompt_addition(&self) -> Option<&str> {
+        Some(COORDINATOR_SYSTEM_PROMPT)
+    }
+
+    fn tools(&self) -> Vec<Box<dyn Tool>> {
+        Vec::new()
+    }
+}
+
+/// Backend-authored narration for the thread and parent tools. Titles
 /// are the model's own short labels; briefs and reports are never echoed.
 fn narrate_coordination(
     tool_name: &str,
@@ -384,35 +435,27 @@ fn narrate_coordination(
                 "Не вдалося прочитати гілку",
             ),
         ),
-        "resolve_thread" => (
-            (
-                "Resolving thread",
-                "Resolved thread",
-                "Could not resolve thread",
-            ),
+        "close_thread" => (
+            ("Closing thread", "Closed thread", "Could not close thread"),
             ("Закриваю гілку", "Закрив гілку", "Не вдалося закрити гілку"),
         ),
-        "update_checklist" => (
+        "report_progress" => (
             (
-                "Updating checklist",
-                "Updated checklist",
-                "Could not update checklist",
+                "Reporting progress",
+                "Reported progress",
+                "Could not report progress",
             ),
-            ("Оновлюю план", "Оновив план", "Не вдалося оновити план"),
+            ("Звітую про хід", "Звітував про хід", "Не вдалося звітувати"),
         ),
-        "complete_assignment" => (
-            (
-                "Completing assignment",
-                "Completed assignment",
-                "Could not complete assignment",
-            ),
+        "finish" => (
+            ("Finishing", "Finished", "Could not finish"),
             (
                 "Завершую завдання",
                 "Завершив завдання",
                 "Не вдалося завершити завдання",
             ),
         ),
-        "ask_decision" => (
+        "ask_parent" => (
             (
                 "Asking for a decision",
                 "Asked for a decision",
@@ -424,19 +467,11 @@ fn narrate_coordination(
                 "Не вдалося попросити рішення",
             ),
         ),
-        "report_to_coordinator" => (
+        "hand_back" => (
             (
-                "Reporting progress",
-                "Reported progress",
-                "Could not report progress",
-            ),
-            ("Звітую про хід", "Звітував про хід", "Не вдалося звітувати"),
-        ),
-        "redirect_to_coordinator" => (
-            (
-                "Redirecting request",
-                "Redirected request",
-                "Could not redirect request",
+                "Handing a request back",
+                "Handed a request back",
+                "Could not hand the request back",
             ),
             (
                 "Перенаправляю запит",
@@ -451,7 +486,11 @@ fn narrate_coordination(
     Some(labeled_phrase(verbs.0, verbs.1, verbs.2, title, phase))
 }
 
-const COORDINATOR_SYSTEM_PROMPT: &str = "You coordinate work through threads. Answer quick questions yourself. For real work (research, a change, a report, anything multi-step) call start_thread with a short title and a complete brief (to run it on one of your team's agents, pass that agent's name as worker; list_threads lists your team); the thread works in the background and you are told when it finishes, asks something, or stops. Once work is in a thread, do not do it yourself as well: tell the person in a sentence where it went, and give the result when the automatic update arrives. One thread per piece of work: a follow-up that extends, corrects or asks about existing work (\"also add the dates\", \"make it shorter\") goes to that thread with message_thread, even right after it finished; start a new thread only for new work, and check list_threads when unsure. Threads only talk to each other through you. Notices marked as automatic task updates come from the platform, not the person: relay what matters to the person in a sentence or two and link nothing you did not read. Never answer a thread's question on the person's behalf unless the person already told you the answer; when the answer is already in what the person asked for, say so to the thread. Resolve a thread with resolve_thread when the person is done with it.";
+const THREADS_SYSTEM_PROMPT: &str = "Use threads for work that is followed and continued: start_thread with a short title and a complete brief (the thread sees nothing else; to run it on one of your agents, pass the agent's name as agent, and list_threads lists them). A thread works in the background, keeps a checklist, and you are told when it finishes, asks something, or stops. A follow-up to existing work goes to that thread with message_thread, even after it finished; start a new thread only for new work. Read a thread with get_thread, and close_thread when the person is done with it. Every thread in this run shares the shared/ folder: pass file paths instead of pasting long content.";
+
+/// The coordinator persona (the `coordinator` capability): answer quick
+/// questions, route real work to threads, relay results.
+pub const COORDINATOR_SYSTEM_PROMPT: &str = "You coordinate work through threads. Answer quick questions yourself. For real work (research, a change, a report, anything multi-step) start a thread; once work is in a thread, do not do it yourself as well: tell the person in a sentence where it went, and give the result when the automatic update arrives. One thread per piece of work: a follow-up that extends, corrects or asks about existing work (\"also add the dates\", \"make it shorter\") goes to that thread with message_thread; check list_threads when unsure. Notices marked as automatic task updates come from the platform, not the person: relay what matters in a sentence or two and link nothing you did not read. Never answer a thread's question on the person's behalf unless the person already told you the answer; when the answer is already in what the person asked for, say so to the thread. Close a thread with close_thread when the person is done with it.";
 
 // =============================================================================
 // Shared helpers
@@ -463,14 +502,14 @@ fn require_registry(
     context
         .session_task_registry
         .as_ref()
-        .ok_or_else(|| ToolExecutionResult::tool_error("Coordination requires session tasks"))
+        .ok_or_else(|| ToolExecutionResult::tool_error("Threads require session tasks"))
 }
 
 fn require_session_store(context: &ToolContext) -> Result<&dyn SessionStore, ToolExecutionResult> {
     context
         .session_store
         .as_deref()
-        .ok_or_else(|| ToolExecutionResult::tool_error("Coordination requires a session store"))
+        .ok_or_else(|| ToolExecutionResult::tool_error("Threads require a session store"))
 }
 
 fn bounded_text<'a>(
@@ -591,16 +630,16 @@ fn assignment_view(task: &SessionTask) -> Value {
 // Instructions appended to every brief. The UI shows the brief without them by
 // matching this text and the two headers below (chat-thread-messages.ts in the
 // UI), so change them together.
-const BRIEF_INSTRUCTIONS: &str = "Keep your checklist current with update_checklist. When the work is done, call complete_assignment with a short summary and how you checked it. The brief is the person's request, so do not ask for approval to do what it asks; call ask_decision only for a real choice the brief leaves open. If this request belongs to someone else, call redirect_to_coordinator.";
+const BRIEF_INSTRUCTIONS: &str = "Keep your checklist current with report_progress. When the work is done, call finish with a short summary and how you checked it. The brief is the person's request, so do not ask for approval to do what it asks; call ask_parent only for a real choice the brief leaves open. If this request belongs to someone else, call hand_back.";
 
 /// First message a thread receives for a new assignment.
 fn frame_brief(title: &str, brief: &str) -> String {
-    format!("New assignment from the coordinator: {title}\n\n{brief}\n\n{BRIEF_INSTRUCTIONS}")
+    format!("New assignment from your parent: {title}\n\n{brief}\n\n{BRIEF_INSTRUCTIONS}")
 }
 
 /// A follow-up relayed into a thread with an open assignment.
 fn frame_relay(message: &str) -> String {
-    format!("Message from the coordinator:\n\n{message}")
+    format!("Message from your parent:\n\n{message}")
 }
 
 /// Send to a thread off the tool's call path: embedded hosts run the thread's
@@ -696,7 +735,7 @@ macro_rules! context_tool {
     };
 }
 
-struct StartThreadTool(Arc<CoordinationConfig>);
+struct StartThreadTool(Arc<ThreadsConfig>);
 
 #[async_trait]
 impl Tool for StartThreadTool {
@@ -716,7 +755,7 @@ impl Tool for StartThreadTool {
             "properties": {
                 "title": { "type": "string", "description": "A few plain words naming the work, in the person's vocabulary." },
                 "brief": { "type": "string", "description": "Everything the thread needs: the ask in the person's words, relevant decisions, and what done looks like." },
-                "worker": { "type": "string", "description": "\"self\" (default) runs the thread on this agent; a team member's name (or agent id) runs it on that agent." }
+                "agent": { "type": "string", "description": "\"self\" (default) runs the thread on this agent; an agent's name from list_threads runs it on that agent." }
             },
             "required": ["title", "brief"],
             "additionalProperties": false
@@ -740,30 +779,30 @@ impl Tool for StartThreadTool {
 }
 
 async fn start_thread(
-    config: &CoordinationConfig,
+    config: &ThreadsConfig,
     arguments: Value,
     context: &ToolContext,
 ) -> Result<ToolExecutionResult, ToolExecutionResult> {
     let title = bounded_text(&arguments, "title", MAX_TITLE_BYTES)?;
     let brief = bounded_text(&arguments, "brief", MAX_BRIEF_BYTES)?;
     let worker = arguments
-        .get("worker")
+        .get("agent")
         .and_then(Value::as_str)
         .map(str::trim)
-        .filter(|worker| !worker.is_empty())
+        .filter(|agent| !agent.is_empty())
         .unwrap_or("self");
     let registry = require_registry(context)?;
     let delegate = get_subagent_delegate(context)?;
     let session_store = require_session_store(context)?;
 
-    let coordinator = session_store
+    let parent = session_store
         .get_session(context.session_id)
         .await
         .map_err(ToolExecutionResult::internal_error)?
         .ok_or_else(|| ToolExecutionResult::tool_error("Current session not found"))?;
-    if coordinator.parent_session_id.is_some() {
+    if parent.parent_session_id.is_some() {
         return Err(ToolExecutionResult::tool_error(
-            "This session is a thread, and threads do not start threads. Report to your coordinator with report_to_coordinator instead.",
+            "This session is a thread, and threads do not start threads. Tell your parent with report_progress instead.",
         ));
     }
 
@@ -787,47 +826,36 @@ async fn start_thread(
     }
 
     let (harness_id, agent_id) = if worker == "self" {
-        if !config.allows_self() {
+        if !config.runs_self {
             return Err(ToolExecutionResult::tool_error(
-                "This agent is not configured to work threads itself. Pass an allowed agent id as worker.",
+                "This agent does not work threads itself. Pass one of its agents by name (list_threads lists them).",
             ));
         }
-        // The thread runs on the agent's current harness, not the coordinator
+        // The thread runs on the agent's current harness, not the parent
         // session's: a long-lived Chat can predate a harness move (migration
         // 165 left old Chats on `generic`), and session creation validates
         // against the agent's binding.
-        let harness_id = match coordinator.agent_id {
+        let harness_id = match parent.agent_id {
             Some(agent_id) => delegate
                 .get_agent_harness_id(agent_id)
                 .await
                 .map_err(ToolExecutionResult::internal_error)?
-                .unwrap_or(coordinator.harness_id),
-            None => coordinator.harness_id,
+                .unwrap_or(parent.harness_id),
+            None => parent.harness_id,
         };
-        (harness_id, coordinator.agent_id)
+        (harness_id, parent.agent_id)
     } else {
-        let member = match coordinator.agent_id {
-            Some(agent_id) => delegate
-                .get_agent_by_id(agent_id)
-                .await
-                .map_err(ToolExecutionResult::internal_error)?
-                .and_then(|agent| team_member(&agent, worker)),
-            None => None,
-        };
-        let agent_id: AgentId = match member {
-            Some(agent_id) => agent_id,
+        let agent_id: AgentId = match config.agent(worker) {
+            Some(agent) => agent.agent_id,
+            None if config.any_agent => worker.parse().map_err(|_| {
+                ToolExecutionResult::tool_error(format!(
+                    "agent must be \"self\", one of your agents' names, or an agent id, got \"{worker}\". list_threads lists your agents."
+                ))
+            })?,
             None => {
-                let agent_id = worker.parse().map_err(|_| {
-                    ToolExecutionResult::tool_error(format!(
-                        "worker must be \"self\", a team member's name, or an agent id, got \"{worker}\". list_threads lists your team."
-                    ))
-                })?;
-                if !config.allows_agent(worker) {
-                    return Err(ToolExecutionResult::tool_error(format!(
-                        "Agent {worker} is not an allowed worker for this coordinator."
-                    )));
-                }
-                agent_id
+                return Err(ToolExecutionResult::tool_error(format!(
+                    "\"{worker}\" is not one of the agents that may work threads here. list_threads lists them."
+                )));
             }
         };
         // THREAT[TM-AUTHZ]: the delegate runs as the person, so an agent they
@@ -846,7 +874,7 @@ async fn start_thread(
             .get_agent_harness_id(agent_id)
             .await
             .map_err(ToolExecutionResult::internal_error)?
-            .unwrap_or(coordinator.harness_id);
+            .unwrap_or(parent.harness_id);
         (harness_id, Some(agent_id))
     };
 
@@ -856,7 +884,7 @@ async fn start_thread(
             agent_id,
             title: Some(title.to_string()),
             goal: Some(title.to_string()),
-            locale: coordinator.locale.clone(),
+            locale: parent.locale.clone(),
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: Some(context.session_id),
@@ -891,80 +919,9 @@ async fn start_thread(
         "thread_id": thread.id.to_string(),
         "assignment_id": task.id,
         "title": title,
-        "worker": worker,
+        "agent": worker,
         "status": "working",
     })))
-}
-
-/// One of the coordinator agent's team members (its `agent_handoff` members).
-#[derive(Deserialize)]
-struct TeamMember {
-    #[serde(default)]
-    id: String,
-    #[serde(default)]
-    name: String,
-    #[serde(default)]
-    description: Option<String>,
-    agent_id: AgentId,
-}
-
-/// `agent`'s team. Read from the agent definition, not from the turn's
-/// collected capabilities: a coordinator supersedes `agent_handoff`, which
-/// then contributes no prompt, so the team is surfaced through list_threads.
-fn team(agent: &everruns_core::AgentDefinition) -> Vec<TeamMember> {
-    #[derive(Deserialize)]
-    struct Team {
-        #[serde(default, alias = "members")]
-        targets: Vec<TeamMember>,
-    }
-    agent
-        .capabilities
-        .iter()
-        .find(|capability| capability.id() == super::agent_handoff::AGENT_HANDOFF_CAPABILITY_ID)
-        .and_then(|capability| {
-            serde_json::from_value::<Team>(capability.config_value().clone()).ok()
-        })
-        .map(|team| team.targets)
-        .unwrap_or_default()
-        .into_iter()
-        .map(|mut member| {
-            if member.id.trim().is_empty() {
-                member.id = member.agent_id.to_string();
-            }
-            member
-        })
-        .collect()
-}
-
-/// The agent id of `worker` when it names one of `agent`'s team members by
-/// name or agent id.
-fn team_member(agent: &everruns_core::AgentDefinition, worker: &str) -> Option<AgentId> {
-    team(agent)
-        .into_iter()
-        .find(|member| {
-            member.id == worker || member.name == worker || member.agent_id.to_string() == worker
-        })
-        .map(|member| member.agent_id)
-}
-
-/// The team of the agent this session runs, or none when it cannot be read.
-async fn session_team(context: &ToolContext) -> Vec<TeamMember> {
-    let (Some(store), Ok(delegate)) = (
-        context.session_store.as_ref(),
-        get_subagent_delegate(context),
-    ) else {
-        return Vec::new();
-    };
-    let Ok(Some(session)) = store.get_session(context.session_id).await else {
-        return Vec::new();
-    };
-    let Some(agent_id) = session.agent_id else {
-        return Vec::new();
-    };
-    match delegate.get_agent_by_id(agent_id).await {
-        Ok(Some(agent)) => team(&agent),
-        _ => Vec::new(),
-    }
 }
 
 struct MessageThreadTool;
@@ -1121,7 +1078,7 @@ async fn reopen(context: &ToolContext, thread: SessionId, latest: &SessionTask) 
             .set_session_archived(
                 thread,
                 false,
-                &crate::platform_store::tool_change_reason("coordination", "reopen thread"),
+                &crate::platform_store::tool_change_reason("threads", "reopen thread"),
             )
             .await
     {
@@ -1129,7 +1086,7 @@ async fn reopen(context: &ToolContext, thread: SessionId, latest: &SessionTask) 
     }
 }
 
-struct ListThreadsTool;
+struct ListThreadsTool(Arc<ThreadsConfig>);
 
 #[async_trait]
 impl Tool for ListThreadsTool {
@@ -1140,7 +1097,7 @@ impl Tool for ListThreadsTool {
     }
 
     fn description(&self) -> &str {
-        "List this session's threads, newest activity first, with each thread's status (working, needs_attention, ready_for_review, open, resolved) and current assignment."
+        "List this session's threads, newest activity first, with each thread's status (working, needs_attention, ready_for_review, open, resolved) and current assignment, and the agents that may work threads."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -1198,20 +1155,20 @@ impl Tool for ListThreadsTool {
             })
             .collect();
         rows.sort_by_key(|row| std::cmp::Reverse(row.0));
-        let team: Vec<Value> = session_team(context)
-            .await
-            .into_iter()
-            .map(|member| {
-                json!({
-                    "worker": member.id,
-                    "name": member.name,
-                    "description": member.description,
-                })
+        let mut agents: Vec<Value> = Vec::new();
+        if self.0.runs_self {
+            agents.push(json!({ "agent": "self", "description": "This agent." }));
+        }
+        agents.extend(self.0.agents.iter().map(|agent| {
+            json!({
+                "agent": agent.label(),
+                "description": agent.description,
             })
-            .collect();
+        }));
         ToolExecutionResult::success(json!({
             "threads": rows.into_iter().map(|(_, row)| row).collect::<Vec<_>>(),
-            "team": team,
+            "agents": agents,
+            "any_agent": self.0.any_agent,
         }))
     }
 }
@@ -1297,18 +1254,18 @@ async fn get_thread(
     })))
 }
 
-struct ResolveThreadTool;
+struct CloseThreadTool;
 
 #[async_trait]
-impl Tool for ResolveThreadTool {
-    context_tool!("resolve_thread", "Resolve Thread");
+impl Tool for CloseThreadTool {
+    context_tool!("close_thread", "Close Thread");
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
-        ToolExecutionResult::tool_error("resolve_thread requires session context.")
+        ToolExecutionResult::tool_error("close_thread requires session context.")
     }
 
     fn description(&self) -> &str {
-        "Mark a thread resolved once the person is done with it, or reopen it with reopen=true. A thread that is still working is refused unless cancel=true, which stops its assignment."
+        "Close a thread once the person is done with it, or reopen it with reopen=true. A thread that is still working is refused unless cancel=true, which stops its assignment."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -1317,7 +1274,7 @@ impl Tool for ResolveThreadTool {
             "properties": {
                 "thread_id": { "type": "string" },
                 "reopen": { "type": "boolean" },
-                "cancel": { "type": "boolean", "description": "Stop a working assignment and resolve the thread." }
+                "cancel": { "type": "boolean", "description": "Stop a working assignment and close the thread." }
             },
             "required": ["thread_id"],
             "additionalProperties": false
@@ -1329,13 +1286,13 @@ impl Tool for ResolveThreadTool {
         arguments: Value,
         context: &ToolContext,
     ) -> ToolExecutionResult {
-        resolve_thread(arguments, context)
+        close_thread(arguments, context)
             .await
             .unwrap_or_else(|error| error)
     }
 }
 
-async fn resolve_thread(
+async fn close_thread(
     arguments: Value,
     context: &ToolContext,
 ) -> Result<ToolExecutionResult, ToolExecutionResult> {
@@ -1361,14 +1318,14 @@ async fn resolve_thread(
     }
     if !latest.state.is_terminal() && !cancel {
         return Err(ToolExecutionResult::tool_error(
-            "This thread is still working. Wait for it, or pass cancel=true to stop it and resolve.",
+            "This thread is still working. Wait for it, or pass cancel=true to stop it and close it.",
         ));
     }
     if !latest.state.is_terminal() {
         notify_thread(
             context,
             thread,
-            "The coordinator resolved this thread. Stop work; do not start anything new.",
+            "Your parent closed this thread. Stop work; do not start anything new.",
         );
     }
     registry
@@ -1388,7 +1345,7 @@ async fn resolve_thread(
             .set_session_archived(
                 thread,
                 true,
-                &crate::platform_store::tool_change_reason("resolve_thread", "resolve thread"),
+                &crate::platform_store::tool_change_reason("close_thread", "close thread"),
             )
             .await
             .is_ok(),
@@ -1401,13 +1358,13 @@ async fn resolve_thread(
     })))
 }
 
-#[path = "coordination_worker.rs"]
+#[path = "threads_parent.rs"]
 mod worker;
 #[cfg(test)]
-use worker::{AskDecisionTool, RedirectToCoordinatorTool};
+use worker::{AskParentTool, HandBackTool};
 pub use worker::{
-    ThreadAssignment, ThreadTurn, open_assignment_for_thread, settle_thread_turn,
-    worker_tool_definitions, worker_tools,
+    ThreadAssignment, ThreadTurn, open_assignment_for_thread, parent_tool_definitions,
+    parent_tools, settle_thread_turn,
 };
 
 // =============================================================================
@@ -1452,7 +1409,7 @@ impl TaskExecutor for AssignmentTaskExecutor {
             notify_thread(
                 context,
                 thread,
-                "The coordinator canceled this assignment. Stop work and reply with a one-line note on where you got to.",
+                "Your parent canceled this assignment. Stop work and reply with a one-line note on where you got to.",
             );
         }
         // No watcher settles assignments, so cancel settles it here.
@@ -1479,5 +1436,5 @@ inventory::submit! {
 }
 
 #[cfg(test)]
-#[path = "coordination_tests.rs"]
+#[path = "threads_tests.rs"]
 mod tests;

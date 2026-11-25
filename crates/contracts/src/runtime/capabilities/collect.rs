@@ -977,7 +977,10 @@ async fn collect(
         let def = tool
             .to_definition()
             .with_category("Orchestration")
-            .with_capability_attribution("agent_delegation", Some("Agent Delegation"));
+            .with_capability_attribution(
+                crate::capability::delegation::SPAWN_AGENTS_CAPABILITY_ID,
+                Some("Spawn agents"),
+            );
         tools.push(Box::new(tool));
         tool_definitions.push(def);
     }

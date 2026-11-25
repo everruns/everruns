@@ -15,7 +15,7 @@ jest.mock("@/hooks", () => ({
 }));
 
 const subagents = (config: Record<string, unknown> = {}): AgentCapabilityConfig[] => [
-  { ref: "subagents", config } as AgentCapabilityConfig,
+  { ref: "spawn_agents", config } as AgentCapabilityConfig,
 ];
 
 describe("helper models", () => {

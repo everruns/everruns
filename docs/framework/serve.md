@@ -121,7 +121,7 @@ revenue-analyst/
     skills/sql-style/SKILL.md
   src/
     main.rs                # serve::assets!() + serve::start(...)
-    agent.rs               # #[agent(default)], .member("reviewer")
+    agent.rs               # #[agent(default)], .spawns("reviewer")
     reviewer.rs            # #[agent]
     tools/run_sql.rs       # #[tool]
     channels/slack.rs      # #[channel]
@@ -139,7 +139,7 @@ expression or a filter naming an unknown tool.
 
 | Macro | On | Becomes |
 | --- | --- | --- |
-| `#[agent]`, `#[agent(default)]` | `fn() -> Agent` | An agent. New sessions use the default one. `Agent::builder().member("name")` lets it hand work to another agent of the app through `spawn_agent`; see [Agents that use other agents](#agents-that-use-other-agents). |
+| `#[agent]`, `#[agent(default)]` | `fn() -> Agent` | An agent. New sessions use the default one. `Agent::builder().spawns("name")` lets it call another agent of the app through `spawn_agent`; see [Agents that use other agents](#agents-that-use-other-agents). |
 | `#[tool]`, `#[tool(needs_approval)]`, `#[tool(needs_approval = \|a: &Args\| …)]` | `async fn([cx: &Cx,] args…) -> Result<T>` | A tool named after the function, described by its doc comment. It also generates an arguments struct (`run_sql` → `RunSql`) with a JSON Schema. |
 | `#[channel]` | `fn() -> impl Into<Channel>` (a driver such as `Slack` or `Webhook`) | `POST /v1/channels/{name}`. Each external thread maps to one session, and replies are delivered back while the turn runs. `agent = "…"` picks the agent. |
 | `#[schedule("0 9 * * MON")]` | `async fn(&Cx) -> Result` | A cron entry. A 5-field cron counts weekdays 0-6 from Sunday (7 is also Sunday), so `0 9 * * 1-5` runs Monday through Friday. |
@@ -412,7 +412,7 @@ fn analyst() -> Agent {
     Agent::builder()
         .model("openai/gpt-6.2-sol")
         .instructions(md!("instructions.md"))
-        .member("reviewer")
+        .spawns("reviewer")
         .build()
 }
 
@@ -429,16 +429,16 @@ analyst's run, in the foreground or as a background task, and the answer comes
 back to the analyst. The reviewer is still an agent of the app, with its own
 sessions and routes. This is the same hand-off the
 [Framework](/framework/) and the platform use; see
-[Agent handoff](/capabilities/agent-handoff/).
+[Spawn agents](/capabilities/spawn-agents/).
 
-A member must be another agent of the app and cannot have members of its own;
+A spawned agent must be another agent of the app and cannot spawn agents of its own;
 `discover()` reports anything else.
 
 ## Limitations
 
 - After a restart, an approval answered "always" before it is asked again is
   lost.
-- A member agent's approvals and questions wait on the member's own session,
+- A spawned agent's approvals and questions wait on its own session,
   not on the session that handed it the work.
 - A2A tasks are held in memory, and A2A 0.3 clients are not served.
 - A deny note is not passed to the model.

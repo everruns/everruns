@@ -65,17 +65,22 @@ export type CoordinatorMessage =
   | { kind: "assignment"; title: string; body: string }
   | { kind: "relay"; body: string };
 
-const ASSIGNMENT = /^New assignment from the coordinator: (.*)\n\n([\s\S]*)$/;
-const RELAY = /^Message from the coordinator:\n\n([\s\S]*)$/;
-/** Start of the instructions `frame_brief` appends after the brief. */
-const BRIEF_INSTRUCTIONS = "\n\nKeep your checklist current with update_checklist.";
+// Threads frame what their parent sends ("your parent"); sessions started
+// before the Threads capability say "the coordinator".
+const ASSIGNMENT = /^New assignment from (?:your parent|the coordinator): (.*)\n\n([\s\S]*)$/;
+const RELAY = /^Message from (?:your parent|the coordinator):\n\n([\s\S]*)$/;
+/** Starts of the instructions `frame_brief` appends after the brief. */
+const BRIEF_INSTRUCTIONS = [
+  "\n\nKeep your checklist current with report_progress.",
+  "\n\nKeep your checklist current with update_checklist.",
+];
 
-/** What the coordinator sent a thread, without the worker's instructions. */
+/** What a parent sent a thread, without the thread's instructions. */
 export function parseCoordinatorMessage(text: string): CoordinatorMessage | null {
   const assignment = ASSIGNMENT.exec(text);
   if (assignment) {
     const rest = assignment[2];
-    const end = rest.lastIndexOf(BRIEF_INSTRUCTIONS);
+    const end = Math.max(...BRIEF_INSTRUCTIONS.map((marker) => rest.lastIndexOf(marker)));
     const body = (end >= 0 ? rest.slice(0, end) : rest).trim();
     return { kind: "assignment", title: assignment[1].trim(), body };
   }

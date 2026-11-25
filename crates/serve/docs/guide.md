@@ -228,7 +228,7 @@ immediately with `curl -X POST localhost:3000/dev/schedules/weekly`.
 fn analyst() -> Agent {
     Agent::builder()
         .model("openai/gpt-6.2-sol")
-        .member("reviewer") // another #[agent] of this app
+        .spawns("reviewer") // another #[agent] of this app
         .build()
 }
 
@@ -237,16 +237,16 @@ fn analyst() -> Agent {
 fn reviewer() -> Agent { … }
 ```
 
-`.member("reviewer")` gives the analyst the `spawn_agent` tool with the
+`.spawns("reviewer")` gives the analyst the `spawn_agent` tool with the
 reviewer as a target, described by its doc comment (or `.description(…)`).
 Work handed to the reviewer runs as its own session in the analyst's run, on
 the same engine, in the foreground or as a background task, and the answer
 comes back to the analyst. The reviewer stays an agent of the app in its own
 right: it has its own sessions, Agent API and channels.
 
-Members nest one level: discovery refuses a member that is not an agent of
-the app, the agent itself, or a member with members of its own. A member's
-approvals and questions wait on the member's own session; the child session
+Spawned agents nest one level: discovery refuses one that is not an agent of
+the app, the agent itself, or one that spawns agents of its own. A spawned
+agent's approvals and questions wait on its own session; the child session
 id is in the analyst's `spawn_agent` result.
 
 ## 9. Evals

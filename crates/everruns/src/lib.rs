@@ -218,7 +218,7 @@ mod tool;
 pub mod voice;
 /// Session-owned background work, scheduling, cancellation, and wakes.
 pub mod work;
-pub use agent::{Agent, AgentBuilder, BuildError, Model};
+pub use agent::{Agent, AgentBuilder, BuildError, Model, SpawnAgents};
 pub use capability_config::{CapabilityRef, CapabilitySpec, IntoCapability};
 pub use context::{CommandArgument, CommandInfo, ContextMessage, SessionContext, ToolInfo};
 pub use decisions::{Answers, Decision, Decisions, DecisionsError};
@@ -329,11 +329,11 @@ pub use tool::{
 };
 
 #[cfg(feature = "local")]
-pub mod coordination;
-#[cfg(feature = "local")]
 pub mod local;
 #[cfg(feature = "local")]
 pub mod sqlite;
+#[cfg(feature = "local")]
+pub mod threads;
 #[cfg(feature = "local")]
 #[deprecated(note = "use LocalGitWorkspace")]
 pub use local::LocalGitWorkspace as LocalGitWorkspaceProvider;

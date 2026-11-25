@@ -44,6 +44,8 @@ updated without touching the agent:
 - **Repeatable procedures**: a skill (`everruns skills create --help`, from
   `SKILL.md` content), attached as `skill:<id>`.
 - **Scripts it runs often**: saved scripts (`everruns agents scripts --help`).
+- **Other agents to call or hand work to**: Spawn agents or Threads, see
+  [agents-starting-agents.md](agents-starting-agents.md).
 - **Guardrails** on input or output: start from
   `everruns capabilities guardrails examples list` and test a config with
   `everruns capabilities guardrails dry-run --help` before attaching it.

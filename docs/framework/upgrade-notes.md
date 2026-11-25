@@ -9,6 +9,46 @@ upgrades across a release that moved or renamed public Rust APIs. Releases
 that need no code changes are not listed. For every release, see the
 [changelog](https://github.com/everruns/everruns/blob/main/CHANGELOG.md).
 
+## 0.54
+
+### Spawn agents and Threads replace coordination and members
+
+An agent starts other agents in one of two ways, never both:
+[Spawn agents](/capabilities/spawn-agents/) for one-off calls and
+[Threads](/capabilities/threads/) for followed work. The build fails when an
+agent mixes them.
+
+| Before | After |
+|---|---|
+| `.member(agent)` | `.spawns(agent)` (one-off calls) or `.threads_with(agent)` (threads) |
+| `everruns::coordination::{Coordination, threads}` | `everruns::threads::{Threads, Coordinator, list}` |
+| `Coordination::new()` | `.capability(Threads::new()).capability(Coordinator)` |
+| `.max_active_threads(n)`, `.max_total_threads(n)` | `.max_open(n)`, `.max_total(n)` |
+| `ThreadStatus::Resolved` | `ThreadStatus::Closed` |
+| capability `subagents`, `agent_handoff` | `spawn_agents` (`SpawnAgents::new()`) |
+| capability `coordination`, `run_conversation` | `threads` + `coordinator`, `sibling_communication` |
+
+```diff
+-use everruns::coordination::{self, Coordination};
++use everruns::threads::{self, Coordinator, Threads};
+
+ Agent::builder()
+-    .capability(Coordination::new())
+-    .member(copywriter)
++    .capability(Threads::new())
++    .capability(Coordinator)
++    .threads_with(copywriter)
+```
+
+`spawn_agent` now takes `agent` (`"self"` or a name) and `wait`; calls in the
+old `target`/`mode` form still work. A thread reports with `report_progress`,
+`ask_parent`, `finish` and `hand_back` (they replace `update_checklist` and
+`report_to_coordinator`, `ask_decision`, `complete_assignment` and
+`redirect_to_coordinator`), and a
+parent closes it with `close_thread` (was `resolve_thread`). Stored retired
+ids are rewritten on read, so saved agents keep working. See
+[Agents that start agents](/framework/coordination/).
+
 ## 0.49
 
 ### `local()` and `backends()` are deprecated

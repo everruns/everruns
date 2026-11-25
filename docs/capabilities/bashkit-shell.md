@@ -163,5 +163,5 @@ the value on a secure page, so it never passes through the MCP client.
 
 - [Bashkit project](https://bashkit.sh), the interpreter powering this capability
 - [File System](/capabilities/file-system/), file operations on the same workspace
-- [Sub Agents](/capabilities/sub-agents/), background and parallel execution
+- [Spawn agents](/capabilities/spawn-agents/), background and parallel execution
 - [Capabilities Overview](/capabilities/)

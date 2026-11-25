@@ -16,7 +16,7 @@ target for new sessions.
 |---------|-------------|-------------|
 | [Base](/built-ins/harnesses/base/) | System essentials every agent needs | Compaction, error disclosure, tool-call repair, loop detection, approval guidance |
 | [Conversation](/built-ins/harnesses/conversation/) | Default for dialogue, no workspace | Base + structured questions, message timestamps |
-| [Worker](/built-ins/harnesses/worker/) | Worker without compute | Base + files, AGENTS.md, skills, long context, budgeting, subagents, tasks |
+| [Worker](/built-ins/harnesses/worker/) | Worker without compute | Base + files, AGENTS.md, skills, long context, budgeting, tasks |
 | [Bashkit Worker](/built-ins/harnesses/bashkit-worker/) | Worker with the Bashkit virtual shell | Worker + Bashkit shell, fixed Sandbox Template |
 | [Sandbox Worker](/built-ins/harnesses/sandbox-worker/) | Worker with a full sandbox | Worker + the shell of a container or managed Sandbox Template |
 | [Worker Base (deprecated)](/built-ins/harnesses/worker-base/) | Deprecated legacy bundle | Files, bash, project instructions |

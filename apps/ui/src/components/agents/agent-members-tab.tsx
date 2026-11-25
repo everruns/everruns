@@ -1,8 +1,9 @@
 "use client";
 
-// Team tab: the agents this agent hands work to.
+// Team tab: the agents this agent starts.
 //
-// The list is the Agents capability's members. Each member is a real agent:
+// The list is the `agents` of the agent's Spawn agents or Threads capability
+// (an agent has one or the other, never both). Each member is a real agent:
 // "Created here" ones were made as part of this agent (they group under it on
 // Agents home and travel in its export); "Linked" ones are any other agent in
 // the organization. Names, labels and "Used when" come from the member agent
@@ -29,15 +30,16 @@ import {
   DrawerTitle,
 } from "@/components/ui/drawer";
 
-export const AGENTS_CAPABILITY = "agent_handoff";
+/** Capabilities that list the agents this one starts. */
+export const AGENTS_CAPABILITIES = ["spawn_agents", "threads"];
 
 export type Member = { agent_id: string } & Record<string, unknown>;
 
-/** The members listed on an agent's Agents capability, or null without it. */
+/** The agents listed on Spawn agents or Threads, or null without either. */
 export function agentMembers(agent: Agent): Member[] | null {
-  const cap = agent.capabilities.find((c) => c.ref === AGENTS_CAPABILITY);
+  const cap = agent.capabilities.find((c) => AGENTS_CAPABILITIES.includes(c.ref));
   if (!cap) return null;
-  const list = (cap.config?.targets ?? cap.config?.members ?? []) as Member[];
+  const list = (cap.config?.agents ?? cap.config?.targets ?? cap.config?.members ?? []) as Member[];
   return list.filter((m) => typeof m?.agent_id === "string");
 }
 
@@ -59,9 +61,11 @@ export function withFiles(member: Member, files: string): Member {
 }
 
 function withMembers(agent: Agent, members: Member[]): AgentCapabilityConfig[] {
-  return agent.capabilities.map((cap) =>
-    cap.ref === AGENTS_CAPABILITY ? { ...cap, config: { ...cap.config, targets: members } } : cap,
-  );
+  return agent.capabilities.map((cap) => {
+    if (!AGENTS_CAPABILITIES.includes(cap.ref)) return cap;
+    const { targets: _targets, members: _members, ...config } = cap.config ?? {};
+    return { ...cap, config: { ...config, agents: members } };
+  });
 }
 
 export function AgentMembersTab({ agent, canEdit }: { agent: Agent; canEdit: boolean }) {
@@ -90,7 +94,7 @@ export function AgentMembersTab({ agent, canEdit }: { agent: Agent; canEdit: boo
           <h2 className="font-semibold">{ui("Team")}</h2>
           <p className="text-sm text-muted-foreground">
             {ui(
-              "This agent hands work to these agents. Each runs in its own conversation with its own model and tools.",
+              "This agent starts these agents. Each runs in its own conversation with its own model and tools.",
             )}
           </p>
         </div>

@@ -29,7 +29,7 @@ Task statuses: `pending`, `in_progress`, `completed`.
 
 Report finished work once, before the final reply: what was done, how it was checked, and links
 to what it produced. The session's work report shows this summary instead of the first sentence
-of the reply, and a coordinated worker's `complete_assignment` is read the same way.
+of the reply, and a thread's `finish` is read the same way.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|

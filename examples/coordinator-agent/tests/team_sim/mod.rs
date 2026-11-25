@@ -25,7 +25,7 @@ pub fn simulated_model() -> Model {
 /// threads can run concurrently in any order and still get the same script.
 pub struct TeamSim;
 
-const BRIEF_MARKER: &str = "New assignment from the coordinator: ";
+const BRIEF_MARKER: &str = "New assignment from your parent: ";
 
 #[async_trait]
 impl ChatDriver for TeamSim {
@@ -80,13 +80,13 @@ fn next_move(messages: &[Message]) -> (String, Vec<ToolCall>) {
             Vec::new(),
         );
     }
-    if request.contains("Resolve") {
+    if request.contains("Close") {
         return match thread_id(messages, "Announcement") {
             Some(id) if called.is_empty() => (
-                "Resolving the announcement thread.".into(),
-                vec![call("resolve_thread", json!({ "thread_id": id }))],
+                "Closing the announcement thread.".into(),
+                vec![call("close_thread", json!({ "thread_id": id }))],
             ),
-            _ => ("Resolved the announcement thread.".into(), Vec::new()),
+            _ => ("Closed the announcement thread.".into(), Vec::new()),
         };
     }
     if called.is_empty() {
@@ -97,7 +97,8 @@ fn next_move(messages: &[Message]) -> (String, Vec<ToolCall>) {
                     "start_thread",
                     json!({
                         "title": "Announcement",
-                        "brief": "Write a three-line launch announcement. Done means it names the product, the date, and where to sign up.",
+                        "brief": "Write a three-line launch announcement to announcement.md. Done means it names the product, the date, and where to sign up.",
+                        "agent": "copywriter",
                     }),
                 ),
                 call(
@@ -145,14 +146,14 @@ fn thread_move(title: &str, step: usize) -> (String, Vec<ToolCall>) {
         1 => (
             "Updating the checklist.".into(),
             vec![call(
-                "update_checklist",
+                "report_progress",
                 json!({ "steps": steps.map(|title| json!({ "title": title, "status": "done" })) }),
             )],
         ),
         2 => (
             "Finishing up.".into(),
             vec![call(
-                "complete_assignment",
+                "finish",
                 json!({
                     "summary": summary,
                     "validation": "Checked against the brief.",

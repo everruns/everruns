@@ -1,10 +1,13 @@
-//! Spawn five child agents, receive task IDs immediately, then wait for every
-//! child to finish. The in-memory task table represents an application-owned
-//! task registry; every child is an ordinary Everruns agent with its own
-//! session and context.
+//! Child agents managed by the application's own tools: spawn five, receive
+//! task IDs immediately, then wait for every child to finish. The in-memory
+//! task table represents an application-owned task registry; every child is
+//! an ordinary Everruns agent with its own session and context.
+//!
+//! Most applications want the built-in Spawn agents capability instead (see
+//! the `spawn_agents` example); this one shows the tools underneath.
 //!
 //! ```text
-//! cargo run -p everruns --features openai --example subagents
+//! cargo run -p everruns --features openai --example custom_child_agents
 //! ```
 
 use std::collections::{HashMap, HashSet};

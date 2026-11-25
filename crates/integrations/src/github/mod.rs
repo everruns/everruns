@@ -261,7 +261,7 @@ impl Capability for GitHubScoutCapability {
     }
 
     fn dependencies(&self) -> Vec<&'static str> {
-        vec!["subagents"]
+        vec!["spawn_agents"]
     }
 
     fn localizations(&self) -> Vec<CapabilityLocalization> {

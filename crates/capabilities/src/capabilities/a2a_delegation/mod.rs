@@ -101,7 +101,7 @@ impl Capability for A2aAgentDelegationCapability {
                             "id": {
                                 "type": "string",
                                 "title": "Agent ID",
-                                "description": "Stable ID used in spawn_agent target.external_agent_id."
+                                "description": "Stable ID the model passes as spawn_agent agent."
                             },
                             "name": {
                                 "type": "string",
@@ -261,12 +261,14 @@ impl Capability for A2aAgentDelegationCapability {
         &self,
         config: &Value,
     ) -> Option<super::DelegationTargetProvider> {
-        Some(super::DelegationTargetProvider {
-            target_type: "external_a2a",
-            tool: Box::new(SpawnAgentTool::new(
-                A2aDelegationConfig::from_value(config).unwrap_or_default(),
-            )),
-        })
+        let parsed = A2aDelegationConfig::from_value(config).unwrap_or_default();
+        let agents = parsed
+            .agents
+            .iter()
+            .map(|a| (a.id.clone(), a.name.clone(), a.description.clone()));
+        let agents = super::spawn_agents::delegation_agents("external_a2a", agents);
+        let tool = Box::new(SpawnAgentTool::new(parsed));
+        Some(super::DelegationTargetProvider::new("external_a2a", tool).with_agents(agents))
     }
 
     fn dependencies(&self) -> Vec<&'static str> {
@@ -298,9 +300,7 @@ impl Capability for A2aAgentDelegationCapability {
 
         Some(format!(
             "<capability id=\"{}\">\n\
-Delegate work to configured external A2A agents with spawn_agent.\n\
-Use mode=\"background\" for long-running work and wait_task (from session_tasks) later for results; use mode=\"foreground\" when blocked on the result.\n\
-Use message_task for follow-up input or input_required tasks; use cancel_task to stop a remote task.\n\
+Delegate work to configured external A2A agents with spawn_agent: pass the agent's name as agent. Spawns run in the background; read results with wait_task (from session_tasks), and set wait to true only when blocked on the result. Use message_task for follow-up input or input_required tasks, and cancel_task to stop a remote task.\n\
 Available external agents:\n{}\n\
 </capability>",
             self.id(),
@@ -1517,7 +1517,7 @@ impl Tool for SpawnAgentTool {
             .is_some_and(|schema| !schema.is_null())
         {
             return ToolExecutionResult::tool_error(
-                "message_schema is not supported for external_a2a targets because remote agents cannot receive report_task_progress.",
+                "message_schema is not supported for external_a2a targets because remote agents cannot receive report_progress.",
             );
         }
         if result_schema.is_some()

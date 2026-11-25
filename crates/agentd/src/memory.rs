@@ -65,7 +65,7 @@ pub const MOUNTS: &[&str] = &[
     "/memory/agent",
     "/memory/user",
     "/memory/shared",
-    "/team",
+    "/shared",
     "/room",
 ];
 

@@ -216,12 +216,9 @@ impl Capability for SubagentCapability {
     }
 
     fn delegation_target_with_config(&self, config: &Value) -> Option<DelegationTargetProvider> {
-        Some(DelegationTargetProvider {
-            target_type: "subagent",
-            tool: Box::new(SpawnSubagentAsAgentTool {
-                helpers: HelperModelSettings::from_config(config),
-            }),
-        })
+        let helpers = HelperModelSettings::from_config(config);
+        let tool = Box::new(SpawnSubagentAsAgentTool { helpers });
+        Some(DelegationTargetProvider::new("subagent", tool).with_self(true))
     }
 }
 
@@ -663,7 +660,7 @@ async fn find_subagent_task(context: &ToolContext, child_id: SessionId) -> Optio
 // =============================================================================
 /// Unified delegation wrapper for the subagent target of `spawn_agent`.
 ///
-/// Carries the agent's helper models (from the `subagents` capability
+/// Carries the agent's helper models (from the `spawn_agents` capability
 /// config) so the `model` enum is fixed for the session.
 #[derive(Default)]
 pub struct SpawnSubagentAsAgentTool {
@@ -737,11 +734,11 @@ impl Tool for SpawnSubagentAsAgentTool {
                 },
                 "result_schema": {
                     "type": "object",
-                    "description": "Optional JSON Schema for the subagent's final structured result. When set, the child receives report_result and must call it before the task can succeed."
+                    "description": "Optional JSON Schema for the subagent's final structured result. When set, the child receives finish and must call it before the task can succeed."
                 },
                 "message_schema": {
                     "type": "object",
-                    "description": "Optional JSON Schema for structured progress messages. When set, the child receives report_task_progress and valid calls post data messages to the task thread."
+                    "description": "Optional JSON Schema for structured progress messages. When set, the child receives report_progress and valid calls post data messages to the task thread."
                 },
                 "push_configs": {
                     "type": "array",
@@ -1551,9 +1548,8 @@ async fn settle_subagent_outcome(
             task_state = SessionTaskState::Failed;
             task_error = Some(TaskError {
                 kind: "no_result".to_string(),
-                message:
-                    "Subagent completed without calling report_result for its result_schema task."
-                        .to_string(),
+                message: "Subagent completed without calling finish for its result_schema task."
+                    .to_string(),
             });
             summary = Some("Subagent completed without reporting a structured result.".to_string());
         }
@@ -3226,7 +3222,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn report_task_progress_posts_structured_outbound_message() {
+    async fn report_progress_posts_structured_outbound_message() {
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
         let parent_session_id = SessionId::new();
         let task = registry
@@ -3256,7 +3252,7 @@ mod tests {
             task.attempt,
             task.spec["message_schema"].clone(),
         );
-        assert_eq!(tool.name(), "report_task_progress");
+        assert_eq!(tool.name(), "report_progress");
         let mut context = ToolContext::new(SessionId::new());
         context.session_task_registry = Some(registry.clone());
 
@@ -3283,7 +3279,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn report_task_progress_rejects_stale_task_attempt() {
+    async fn report_progress_rejects_stale_task_attempt() {
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
         let parent_session_id = SessionId::new();
         let task = registry
@@ -3340,7 +3336,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn report_task_progress_rejects_invalid_message_schema_payload() {
+    async fn report_progress_rejects_invalid_message_schema_payload() {
         let tool = ReportTaskProgressTool::new(
             SessionId::new(),
             "task_test".to_string(),
@@ -3387,7 +3383,7 @@ mod tests {
             1,
             json!({"type": "object"}),
         );
-        assert_eq!(subagent.name(), "report_task_progress");
+        assert_eq!(subagent.name(), "report_progress");
         assert_eq!(SEND_MESSAGE_TOOL_NAME, "send_message");
         assert_ne!(subagent.name(), SEND_MESSAGE_TOOL_NAME);
 
@@ -3399,8 +3395,8 @@ mod tests {
             "send_message tool must survive"
         );
         assert!(
-            registry.has("report_task_progress"),
-            "subagent report_task_progress tool must survive"
+            registry.has("report_progress"),
+            "subagent report_progress tool must survive"
         );
     }
 
