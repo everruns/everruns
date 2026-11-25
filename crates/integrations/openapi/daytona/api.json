@@ -23,6 +23,27 @@
         ],
         "type": "object"
       },
+      "AddGangNodes": {
+        "properties": {
+          "expectedGeneration": {
+            "description": "Current sandbox topology generation.",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "nodes": {
+            "description": "One resource specification per appended rank.",
+            "items": {
+              "$ref": "#/components/schemas/GangNodeResources"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "expectedGeneration",
+          "nodes"
+        ],
+        "type": "object"
+      },
       "Announcement": {
         "properties": {
           "learnMoreUrl": {
@@ -207,6 +228,10 @@
           "actorId": {
             "type": "string"
           },
+          "actorPartner": {
+            "description": "Partner application that obtained the actor token, by its configured name",
+            "type": "string"
+          },
           "createdAt": {
             "format": "date-time",
             "type": "string"
@@ -300,6 +325,9 @@
                 "start",
                 "stop",
                 "resize",
+                "add_nodes",
+                "remove_nodes",
+                "replace_node",
                 "replace_labels",
                 "create_backup",
                 "update_public_status",
@@ -333,6 +361,7 @@
                 "create_ssh_access",
                 "revoke_ssh_access",
                 "recover",
+                "create_registry_push_access",
                 "regenerate_proxy_api_key",
                 "regenerate_ssh_gateway_api_key",
                 "regenerate_snapshot_manager_credentials",
@@ -959,14 +988,42 @@
             "description": "Build information for the sandbox"
           },
           "cpu": {
-            "description": "CPU cores allocated to the sandbox",
+            "description": "CPU cores allocated to the sandbox. On a multi-node sandbox this scalar applies to every node.",
             "example": 2,
             "type": "integer"
           },
+          "cpuPerNode": {
+            "description": "CPU cores for each node in rank order. Specify either cpu or cpuPerNode.",
+            "example": [
+              16,
+              32
+            ],
+            "items": {
+              "minimum": 1,
+              "type": "integer"
+            },
+            "minItems": 1,
+            "nullable": true,
+            "type": "array"
+          },
           "disk": {
-            "description": "Disk space allocated to the sandbox in GB",
+            "description": "Disk space in GB allocated to the sandbox. On a multi-node sandbox this scalar applies to every node.",
             "example": 3,
             "type": "integer"
+          },
+          "diskPerNode": {
+            "description": "Disk space in GB for each node in rank order. Specify either disk or diskPerNode.",
+            "example": [
+              100,
+              200
+            ],
+            "items": {
+              "minimum": 1,
+              "type": "integer"
+            },
+            "minItems": 1,
+            "nullable": true,
+            "type": "array"
           },
           "domainAllowList": {
             "description": "Comma-separated list of allowed domains for the sandbox",
@@ -1020,9 +1077,23 @@
             "type": "string"
           },
           "memory": {
-            "description": "Memory allocated to the sandbox in GB",
+            "description": "Memory in GB allocated to the sandbox. On a multi-node sandbox this scalar applies to every node.",
             "example": 1,
             "type": "integer"
+          },
+          "memoryPerNode": {
+            "description": "Memory in GB for each node in rank order. Specify either memory or memoryPerNode.",
+            "example": [
+              64,
+              128
+            ],
+            "items": {
+              "minimum": 1,
+              "type": "integer"
+            },
+            "minItems": 1,
+            "nullable": true,
+            "type": "array"
           },
           "name": {
             "description": "The name of the sandbox. If not provided, the sandbox ID will be used as the name",
@@ -1580,6 +1651,148 @@
         },
         "type": "object"
       },
+      "GangMembershipOperation": {
+        "properties": {
+          "completedAt": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "errorReason": {
+            "type": "string"
+          },
+          "expectedGeneration": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "id": {
+            "type": "string"
+          },
+          "phase": {
+            "type": "string"
+          },
+          "policyRevision": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "sandboxId": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "PENDING",
+              "RUNNING",
+              "COMPLETED",
+              "FAILED"
+            ],
+            "type": "string"
+          },
+          "targetGeneration": {
+            "minimum": 2,
+            "type": "integer"
+          },
+          "type": {
+            "enum": [
+              "ADD",
+              "REMOVE",
+              "REPLACE"
+            ],
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "sandboxId",
+          "type",
+          "status",
+          "phase",
+          "expectedGeneration",
+          "targetGeneration",
+          "policyRevision",
+          "createdAt",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
+      "GangNodeFailure": {
+        "properties": {
+          "failedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "fencingError": {
+            "type": "string"
+          },
+          "fencingStatus": {
+            "enum": [
+              "PENDING",
+              "FENCED",
+              "FAILED"
+            ],
+            "type": "string"
+          },
+          "incarnation": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "memberId": {
+            "type": "string"
+          },
+          "rank": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "reportedState": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SandboxState"
+              }
+            ]
+          }
+        },
+        "required": [
+          "rank",
+          "memberId",
+          "incarnation",
+          "reason",
+          "reportedState",
+          "failedAt",
+          "fencingStatus"
+        ],
+        "type": "object"
+      },
+      "GangNodeResources": {
+        "properties": {
+          "cpu": {
+            "description": "CPU cores for the appended node.",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "disk": {
+            "description": "Disk in GB for the appended node.",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "memory": {
+            "description": "Memory in GB for the appended node.",
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "cpu",
+          "memory",
+          "disk"
+        ],
+        "type": "object"
+      },
       "GenerateWorkosAdminPortalLink": {
         "properties": {
           "intent": {
@@ -1603,6 +1816,13 @@
             "minimum": 0,
             "type": "integer"
           },
+          "availableSandboxes": {
+            "description": "Observed estimates of sandbox counts for each supported GPU count, ordered ascending and including zero counts. Each sandbox must fit on one runner. Sizes and purchase types are alternative uses of the same capacity; counts must not be added together. Capacity is not reserved; sandbox creation remains authoritative.",
+            "items": {
+              "$ref": "#/components/schemas/GpuSandboxCapacity"
+            },
+            "type": "array"
+          },
           "availableSpot": {
             "description": "GPU units currently free for spot placement across schedulable runners.",
             "minimum": 0,
@@ -1620,7 +1840,8 @@
         "required": [
           "gpuType",
           "availableOnDemand",
-          "availableSpot"
+          "availableSpot",
+          "availableSandboxes"
         ],
         "type": "object"
       },
@@ -1644,12 +1865,39 @@
         ],
         "type": "object"
       },
+      "GpuSandboxCapacity": {
+        "properties": {
+          "gpuCount": {
+            "description": "GPU units per sandbox.",
+            "maximum": 8,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "onDemand": {
+            "description": "Estimated number of on-demand sandboxes that fit at observation time, including immediately reclaimable spot capacity.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "spot": {
+            "description": "Estimated number of spot sandboxes that fit in free capacity at observation time.",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "gpuCount",
+          "onDemand",
+          "spot"
+        ],
+        "type": "object"
+      },
       "GpuType": {
         "enum": [
           "H100",
           "H200",
           "B200",
           "B300",
+          "L40S",
           "RTX-PRO-6000",
           "RTX-4090",
           "RTX-5090",
@@ -1894,7 +2142,8 @@
           "UPDATE_SANDBOX_SECRETS",
           "SNAPSHOT_SANDBOX",
           "FORK_SANDBOX",
-          "PAUSE_SANDBOX"
+          "PAUSE_SANDBOX",
+          "UPDATE_SANDBOX_FABRIC"
         ],
         "type": "string"
       },
@@ -2318,6 +2567,10 @@
           "workosOrgId": {
             "description": "ID of the WorkOS organization mirrored from this organization (absent for personal organizations, which are never mirrored)",
             "type": "string"
+          },
+          "zeroDataRetention": {
+            "description": "Whether zero data retention is enabled for this organization. Set by Daytona; read-only through the API.",
+            "type": "boolean"
           }
         },
         "required": [
@@ -2341,6 +2594,7 @@
           "defaultQueueTimeout",
           "sandboxLimitedNetworkEgress",
           "previewWarningEnabled",
+          "zeroDataRetention",
           "ssoEnabled",
           "scimEnabled",
           "authenticatedRateLimit",
@@ -3064,6 +3318,10 @@
             "nullable": true,
             "type": "number"
           },
+          "maxNodesPerSandbox": {
+            "description": "Maximum derived GPU node count; zero disables multi-node sandboxes.",
+            "type": "number"
+          },
           "maxSandboxLifespan": {
             "description": "Maximum sandbox lifespan in minutes, measured from sandbox creation to its auto-destroy deadline. If null or 0, lifespan is unrestricted. When set, sandboxes created without a TTL default to this lifespan and TTL cannot be disabled.",
             "nullable": true,
@@ -3282,6 +3540,38 @@
         ],
         "type": "object"
       },
+      "RemoveGangNodes": {
+        "properties": {
+          "count": {
+            "description": "Number of highest ranks to remove.",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "expectedGeneration": {
+            "description": "Current sandbox topology generation.",
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expectedGeneration",
+          "count"
+        ],
+        "type": "object"
+      },
+      "ReplaceGangNode": {
+        "properties": {
+          "expectedGeneration": {
+            "description": "Current sandbox topology generation.",
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expectedGeneration"
+        ],
+        "type": "object"
+      },
       "ResizeSandbox": {
         "properties": {
           "cpu": {
@@ -3453,6 +3743,11 @@
             "description": "The sandbox class supported by this runner",
             "example": "linux-vm"
           },
+          "sshGatewayUrl": {
+            "description": "The address of the runner SSH gateway; unset means the runner domain on the default port (2220)",
+            "example": "ssh://runner1.example.com:2220",
+            "type": "string"
+          },
           "state": {
             "allOf": [
               {
@@ -3514,6 +3809,93 @@
           "container"
         ],
         "type": "string"
+      },
+      "RunnerFabricHealth": {
+        "properties": {
+          "domain": {
+            "description": "Physical fabric failure domain.",
+            "type": "string"
+          },
+          "errorReason": {
+            "type": "string"
+          },
+          "gdrHint": {
+            "type": "string"
+          },
+          "healthy": {
+            "description": "True only after discovery, address, RDMA, and rail checks pass.",
+            "type": "boolean"
+          },
+          "profileId": {
+            "type": "string"
+          },
+          "rails": {
+            "items": {
+              "$ref": "#/components/schemas/RunnerFabricRail"
+            },
+            "type": "array"
+          },
+          "transport": {
+            "enum": [
+              "roce-v2"
+            ],
+            "type": "string"
+          },
+          "transportConfig": {
+            "additionalProperties": true,
+            "type": "object"
+          }
+        },
+        "required": [
+          "domain",
+          "transport",
+          "profileId",
+          "healthy",
+          "rails",
+          "transportConfig"
+        ],
+        "type": "object"
+      },
+      "RunnerFabricRail": {
+        "properties": {
+          "address": {
+            "type": "string"
+          },
+          "index": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "macAddress": {
+            "type": "string"
+          },
+          "netdev": {
+            "type": "string"
+          },
+          "pciAddress": {
+            "type": "string"
+          },
+          "prefixLength": {
+            "maximum": 32,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "rdmaDevice": {
+            "type": "string"
+          },
+          "uverbsDevice": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "index",
+          "pciAddress",
+          "netdev",
+          "rdmaDevice",
+          "uverbsDevice",
+          "address",
+          "prefixLength"
+        ],
+        "type": "object"
       },
       "RunnerFull": {
         "properties": {
@@ -3677,6 +4059,11 @@
             "description": "The sandbox class supported by this runner",
             "example": "linux-vm"
           },
+          "sshGatewayUrl": {
+            "description": "The address of the runner SSH gateway; unset means the runner domain on the default port (2220)",
+            "example": "ssh://runner1.example.com:2220",
+            "type": "string"
+          },
           "state": {
             "allOf": [
               {
@@ -3839,6 +4226,9 @@
             "example": "runner-123.daytona.example.com",
             "type": "string"
           },
+          "fabric": {
+            "$ref": "#/components/schemas/RunnerFabricHealth"
+          },
           "metrics": {
             "allOf": [
               {
@@ -3858,6 +4248,11 @@
               "$ref": "#/components/schemas/RunnerServiceHealth"
             },
             "type": "array"
+          },
+          "sshGatewayUrl": {
+            "description": "Address the SSH gateway dials to reach the runner SSH gateway",
+            "example": "ssh://runner-123.daytona.example.com:2220",
+            "type": "string"
           }
         },
         "required": [
@@ -3979,7 +4374,7 @@
             "description": "Build information for the sandbox"
           },
           "cpu": {
-            "description": "The CPU quota for the sandbox",
+            "description": "The CPU quota for the sandbox; for a multi-node sandbox, this is the job total.",
             "example": 2,
             "type": "integer"
           },
@@ -3993,6 +4388,10 @@
             "example": "1.0.0",
             "type": "string"
           },
+          "degraded": {
+            "description": "The multi-node GPU sandbox remains usable but one or more fabric checks are degraded.",
+            "type": "boolean"
+          },
           "desiredState": {
             "allOf": [
               {
@@ -4003,7 +4402,7 @@
             "example": "destroyed"
           },
           "disk": {
-            "description": "The disk quota for the sandbox",
+            "description": "The disk quota for the sandbox; for a multi-node sandbox, this is the job total.",
             "example": 10,
             "type": "integer"
           },
@@ -4028,7 +4427,7 @@
             "type": "string"
           },
           "gpu": {
-            "description": "The GPU quota for the sandbox",
+            "description": "The GPU quota for the sandbox; for a multi-node sandbox, this is the job total.",
             "example": 0,
             "type": "integer"
           },
@@ -4041,10 +4440,19 @@
             "description": "The GPU type assigned to the sandbox",
             "example": "H100"
           },
+          "headSandboxId": {
+            "description": "ID of the multi-node GPU sandbox (rank 0); present only on internal node rows.",
+            "type": "string"
+          },
           "id": {
             "description": "The ID of the sandbox",
             "example": "sandbox123",
             "type": "string"
+          },
+          "incarnation": {
+            "description": "Physical incarnation for an internal node row.",
+            "minimum": 1,
+            "type": "integer"
           },
           "kvm": {
             "description": "Whether the sandbox exposes KVM (/dev/kvm) to its guest",
@@ -4072,7 +4480,7 @@
             "type": "string"
           },
           "memory": {
-            "description": "The memory quota for the sandbox",
+            "description": "The memory quota for the sandbox; for a multi-node sandbox, this is the job total.",
             "example": 4,
             "type": "integer"
           },
@@ -4095,6 +4503,23 @@
             "description": "Outcome of the runner's most recent network policy change: why the network settings fields (what was requested) are not what the runner enforces. Absent when the latest change was applied; a new request leaves it as it is until its own outcome is known.",
             "example": "persist updated proxy policy binding: operation not permitted",
             "type": "string"
+          },
+          "nodeCount": {
+            "description": "Derived number of physical nodes in this sandbox.",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "nodeRank": {
+            "description": "Rank within the multi-node GPU sandbox; present only on internal node rows.",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "nodes": {
+            "description": "Nodes of the multi-node GPU sandbox in rank order. Rank 0 is this sandbox. Absent for single-node sandboxes.",
+            "items": {
+              "$ref": "#/components/schemas/SandboxNode"
+            },
+            "type": "array"
           },
           "organizationId": {
             "description": "The organization ID of the sandbox",
@@ -4181,6 +4606,11 @@
             "description": "The toolbox proxy URL for the sandbox",
             "example": "https://proxy.app.daytona.io/toolbox",
             "type": "string"
+          },
+          "topologyGeneration": {
+            "description": "Committed logical topology generation.",
+            "minimum": 1,
+            "type": "integer"
           },
           "updatedAt": {
             "description": "The last update timestamp of the sandbox",
@@ -4535,6 +4965,81 @@
           "createdAt"
         ],
         "type": "string"
+      },
+      "SandboxNode": {
+        "properties": {
+          "cpu": {
+            "description": "CPU cores allocated to this node.",
+            "type": "integer"
+          },
+          "disk": {
+            "description": "Disk allocated to this node in GB.",
+            "type": "integer"
+          },
+          "fabricAddress": {
+            "description": "Rail-0 address assigned to this member.",
+            "type": "string"
+          },
+          "fabricHealthy": {
+            "description": "Latest fabric health reported by the assigned runner.",
+            "type": "boolean"
+          },
+          "fabricPrefixLength": {
+            "description": "Prefix length of the member rail-0 address.",
+            "type": "integer"
+          },
+          "fabricUnhealthySince": {
+            "description": "Start of the current sustained unhealthy interval.",
+            "type": "string"
+          },
+          "failure": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/GangNodeFailure"
+              }
+            ],
+            "description": "Failure details for this rank while the multi-node GPU sandbox is degraded."
+          },
+          "gpu": {
+            "description": "GPU units allocated to this node.",
+            "type": "integer"
+          },
+          "id": {
+            "type": "string"
+          },
+          "incarnation": {
+            "description": "Physical incarnation of this logical rank.",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "memory": {
+            "description": "Memory allocated to this node in GB.",
+            "type": "integer"
+          },
+          "rank": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "state": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SandboxState"
+              }
+            ],
+            "description": "Current state of this logical rank."
+          }
+        },
+        "required": [
+          "rank",
+          "id",
+          "state",
+          "incarnation",
+          "cpu",
+          "gpu",
+          "memory",
+          "disk"
+        ],
+        "type": "object"
       },
       "SandboxState": {
         "enum": [
@@ -5003,6 +5508,38 @@
             "type": "array"
           }
         },
+        "type": "object"
+      },
+      "SupportContact": {
+        "properties": {
+          "channel": {
+            "description": "How the user reached for support: the Pylon chat, the Slack link or the support mailto",
+            "enum": [
+              "pylon",
+              "slack",
+              "email"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "channel"
+        ],
+        "type": "object"
+      },
+      "TelemetryDisabledOrganizations": {
+        "properties": {
+          "organizationIds": {
+            "description": "IDs of organizations whose sandbox telemetry must not be stored (zero data retention or telemetry turned off)",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "organizationIds"
+        ],
         "type": "object"
       },
       "TestIdentityProviderConnection": {
@@ -5535,6 +6072,15 @@
             "description": "Optional error message when reporting an error state",
             "example": "Failed to pull snapshot image",
             "type": "string"
+          },
+          "fabricFenced": {
+            "description": "The runner has restored an idle-closed fabric state for this failed member.",
+            "type": "boolean"
+          },
+          "incarnation": {
+            "description": "Physical node incarnation producing this report.",
+            "minimum": 1,
+            "type": "integer"
           },
           "recoverable": {
             "description": "Whether the sandbox is recoverable",
@@ -6444,6 +6990,15 @@
             "required": false,
             "schema": {
               "$ref": "#/components/schemas/DateFilter"
+            }
+          },
+          {
+            "description": "Filter by the partner application that obtained the actor token.",
+            "in": "query",
+            "name": "actorPartner",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/StringFilter"
             }
           }
         ],
@@ -7671,6 +8226,41 @@
           }
         ],
         "summary": "Get sandbox identity by sandbox auth token",
+        "tags": [
+          "organizations"
+        ]
+      }
+    },
+    "/api/organizations/sandbox-telemetry/disabled-organization-ids": {
+      "get": {
+        "description": "Used by the OTEL collector's store pipeline to drop these organizations' records before ClickHouse. Read from the database on every call; the collector polls it.",
+        "operationId": "getTelemetryDisabledOrganizationIds",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelemetryDisabledOrganizations"
+                }
+              }
+            },
+            "description": "Telemetry-disabled organization IDs"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "oauth2": [
+              "openid",
+              "profile",
+              "email"
+            ]
+          }
+        ],
+        "summary": "List organizations whose sandbox telemetry must not be stored",
         "tags": [
           "organizations"
         ]
@@ -11785,6 +12375,66 @@
         ]
       }
     },
+    "/api/sandbox/{sandboxIdOrName}/membership-operations/{operationId}": {
+      "get": {
+        "operationId": "getGangMembershipOperation",
+        "parameters": [
+          {
+            "description": "Use with JWT to specify the organization ID",
+            "in": "header",
+            "name": "X-Daytona-Organization-ID",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sandboxIdOrName",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "operationId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GangMembershipOperation"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "oauth2": [
+              "openid",
+              "profile",
+              "email"
+            ]
+          }
+        ],
+        "summary": "Get a membership operation of a multi-node GPU sandbox",
+        "tags": [
+          "sandbox"
+        ]
+      }
+    },
     "/api/sandbox/{sandboxIdOrName}/network-settings": {
       "post": {
         "description": "Changes outbound network policy on the runner for a running sandbox (for example block all traffic, restore access, or set a CIDR allow list).",
@@ -11844,6 +12494,200 @@
           }
         ],
         "summary": "Update sandbox network settings",
+        "tags": [
+          "sandbox"
+        ]
+      }
+    },
+    "/api/sandbox/{sandboxIdOrName}/nodes": {
+      "post": {
+        "operationId": "addSandboxNodes",
+        "parameters": [
+          {
+            "description": "Use with JWT to specify the organization ID",
+            "in": "header",
+            "name": "X-Daytona-Organization-ID",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sandboxIdOrName",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddGangNodes"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GangMembershipOperation"
+                }
+              }
+            },
+            "description": "Membership operation accepted"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "oauth2": [
+              "openid",
+              "profile",
+              "email"
+            ]
+          }
+        ],
+        "summary": "Append nodes to a multi-node sandbox",
+        "tags": [
+          "sandbox"
+        ]
+      }
+    },
+    "/api/sandbox/{sandboxIdOrName}/nodes/remove": {
+      "post": {
+        "operationId": "removeSandboxNodes",
+        "parameters": [
+          {
+            "description": "Use with JWT to specify the organization ID",
+            "in": "header",
+            "name": "X-Daytona-Organization-ID",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sandboxIdOrName",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RemoveGangNodes"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GangMembershipOperation"
+                }
+              }
+            },
+            "description": "Membership operation accepted"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "oauth2": [
+              "openid",
+              "profile",
+              "email"
+            ]
+          }
+        ],
+        "summary": "Remove the highest ranks from a multi-node sandbox",
+        "tags": [
+          "sandbox"
+        ]
+      }
+    },
+    "/api/sandbox/{sandboxIdOrName}/nodes/{rank}/replace": {
+      "post": {
+        "operationId": "replaceSandboxNode",
+        "parameters": [
+          {
+            "description": "Use with JWT to specify the organization ID",
+            "in": "header",
+            "name": "X-Daytona-Organization-ID",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sandboxIdOrName",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "rank",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReplaceGangNode"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GangMembershipOperation"
+                }
+              }
+            },
+            "description": "Membership operation accepted"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "oauth2": [
+              "openid",
+              "profile",
+              "email"
+            ]
+          }
+        ],
+        "summary": "Replace a failed multi-node sandbox rank",
         "tags": [
           "sandbox"
         ]
@@ -12642,6 +13486,7 @@
     },
     "/api/sandbox/{sandboxIdOrName}/stop": {
       "post": {
+        "description": "Stops a single-node sandbox. For a multi-node GPU sandbox, stop is irreversible and destroys every node, including all ephemeral local data.",
         "operationId": "stopSandbox",
         "parameters": [
           {
@@ -12681,7 +13526,7 @@
                 }
               }
             },
-            "description": "Sandbox has been stopped"
+            "description": "Sandbox has been stopped, or every node of the multi-node GPU sandbox has been marked for destruction"
           }
         },
         "security": [
@@ -12725,7 +13570,7 @@
             }
           },
           {
-            "description": "Maximum time to live in minutes, re-anchored from the current time (0 to disable). When it elapses the sandbox is destroyed, even if it is stopped, paused, or archived",
+            "description": "Maximum time to live in minutes, re-anchored from the current time (0 to disable). When it elapses the sandbox is destroyed, even if it is stopped, paused, or archived. On a multi-node head, expiry destroys every member and all ephemeral local data",
             "in": "path",
             "name": "ttlMinutes",
             "required": true,
@@ -14699,6 +15544,47 @@
           }
         ],
         "summary": "Confirm (link) a pending SSO account link",
+        "tags": [
+          "users"
+        ]
+      }
+    },
+    "/api/users/me/support-contacts": {
+      "post": {
+        "description": "Called by the dashboard when the blocked screen user clicks a support channel. Recorded as a product analytics event that carries nothing about the refusal itself.",
+        "operationId": "recordSupportContact",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SupportContact"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Support contact recorded"
+          },
+          "403": {
+            "description": "The caller was admitted by the email access gate, so it cannot have seen the blocked screen"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "oauth2": [
+              "openid",
+              "profile",
+              "email"
+            ]
+          }
+        ],
+        "summary": "Record that a user refused by the email access gate reached for support",
         "tags": [
           "users"
         ]
