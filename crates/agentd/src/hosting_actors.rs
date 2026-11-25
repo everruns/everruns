@@ -204,6 +204,30 @@ impl SessionActorStore for Ports {
                 holder: holder.to_owned(),
                 fence,
                 now_ms: now_ms(),
+                forgive: false,
+            })
+            .await?
+        {
+            Response::Ok => Ok(true),
+            Response::Fenced => Ok(false),
+            other => Err(refused(session, other)),
+        }
+    }
+
+    async fn forgive_actor_lease(
+        &self,
+        session: SessionId,
+        holder: &str,
+        fence: u64,
+    ) -> Result<bool> {
+        self.scope(session)?;
+        match self
+            .order(Command::Progress {
+                session,
+                holder: holder.to_owned(),
+                fence,
+                now_ms: now_ms(),
+                forgive: true,
             })
             .await?
         {

@@ -672,3 +672,103 @@ async fn explicit_redirect_probe_only_reloads_new_journal_sequences() {
     assert_eq!(*journal.offsets.lock().unwrap(), vec![Some(2), Some(3)]);
     assert_eq!(lease.cursor(), 2);
 }
+
+/// Renews hang (a shard too busy to answer within the TTL) or report the
+/// lease taken; counts the holder's reports that it is alive.
+#[derive(Default)]
+struct Busy {
+    fenced: std::sync::atomic::AtomicBool,
+    forgiven: std::sync::atomic::AtomicUsize,
+}
+
+#[async_trait]
+impl SessionActorStore for Busy {
+    async fn renew_actor_lease(
+        &self,
+        _id: SessionId,
+        _holder: &str,
+        _fence: u64,
+        _ttl: Duration,
+        _consumed: i64,
+    ) -> Result<Option<ActorRenewal>> {
+        if self.fenced.load(Ordering::SeqCst) {
+            return Ok(None);
+        }
+        std::future::pending().await
+    }
+    async fn forgive_actor_lease(&self, _id: SessionId, _holder: &str, fence: u64) -> Result<bool> {
+        assert_eq!(fence, 1);
+        self.forgiven.fetch_add(1, Ordering::SeqCst);
+        Ok(true)
+    }
+    async fn release_actor(
+        &self,
+        _id: SessionId,
+        _holder: &str,
+        _fence: u64,
+        _consumed: i64,
+    ) -> Result<ActorRelease> {
+        unreachable!("the renew test never releases")
+    }
+    async fn read_actor_journal(
+        &self,
+        _id: SessionId,
+        _after: Option<i32>,
+        _limit: u32,
+    ) -> Result<ActorJournal> {
+        unreachable!("the renew test reads nothing")
+    }
+}
+
+async fn renew_until_lost(store: Arc<Busy>, armed: bool) -> Arc<Lease> {
+    let lease = Arc::new(
+        Lease::new(
+            store,
+            "worker".into(),
+            &leased(),
+            Duration::from_secs(10),
+            3,
+        )
+        .with_stall_timeout(Duration::from_secs(5)),
+    );
+    if !armed {
+        assert!(lease.disarm_watchdog());
+    }
+    let renewer = tokio::spawn(super::lease::renew_loop(
+        lease.clone(),
+        Arc::new(tokio::sync::Notify::new()),
+        tokio::time::Instant::now(),
+    ));
+    tokio::time::timeout(Duration::from_secs(120), renewer)
+        .await
+        .expect("the renewer stops once the lease is lost")
+        .expect("renewer task");
+    assert!(lease.is_lost());
+    lease
+}
+
+/// The R9 soak (Mac mini, 2026-11-25): renewals of a busy shard ran past the
+/// TTL, each lost lease counted as a holder death, and the poison guard
+/// sealed healthy turns. A holder whose lease was lost only to renewals that
+/// did not get through says it is alive, once.
+#[tokio::test(start_paused = true)]
+async fn a_lease_lost_to_slow_renewals_reports_its_holder_alive() {
+    let store = Arc::new(Busy::default());
+    renew_until_lost(store.clone(), false).await;
+    assert_eq!(store.forgiven.load(Ordering::SeqCst), 1);
+}
+
+/// A lease another holder took, or one the stall watchdog stopped, is not
+/// forgiven: those count toward the poison guard as before.
+#[tokio::test(start_paused = true)]
+async fn a_lease_taken_or_stalled_is_not_forgiven() {
+    let taken = Arc::new(Busy::default());
+    taken.fenced.store(true, Ordering::SeqCst);
+    renew_until_lost(taken.clone(), false).await;
+    assert_eq!(taken.forgiven.load(Ordering::SeqCst), 0);
+
+    let stalled = Arc::new(Busy::default());
+    let lease = renew_until_lost(stalled.clone(), true).await;
+    assert!(lease.is_stalled());
+    assert_eq!(stalled.forgiven.load(Ordering::SeqCst), 0);
+}

@@ -341,6 +341,22 @@ pub trait SessionActorStore: Send + Sync {
         Ok(true)
     }
 
+    /// `holder`'s lease `fence` was lost because its renewals did not get
+    /// through within a TTL, while the holder stayed alive (it calls this):
+    /// not a holder death. The store takes back the attempt that lease
+    /// counted toward the poison guard, a bounded number of times, and when
+    /// the lease still holds the actor, hands it back so the next lease
+    /// resumes at once. `false` when the store did not. The default keeps
+    /// counting the lease, as a crash.
+    async fn forgive_actor_lease(
+        &self,
+        _session_id: SessionId,
+        _holder: &str,
+        _fence: u64,
+    ) -> Result<bool> {
+        Ok(false)
+    }
+
     /// Hand the lease back mid-turn, between steps, leaving the actor
     /// runnable so the next lease resumes the open turn from the log at once
     /// (a draining holder). `None` when this store cannot: the holder then
