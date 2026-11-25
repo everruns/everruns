@@ -147,7 +147,7 @@ pub(crate) async fn acquire(ctx: &Ctx, key: &Key) -> Result<Lease, CommandError>
         .map_err(|e| CommandError::internal(e.into()))?;
     let mut connection = tokio::time::timeout(
         Duration::from_secs(5),
-        PgConnection::connect_with(&ctx.db.pool().connect_options()),
+        PgConnection::connect_with(&ctx.db.background_pool().connect_options()),
     )
     .await
     .map_err(|_| busy())?

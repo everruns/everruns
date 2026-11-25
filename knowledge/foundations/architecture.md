@@ -838,7 +838,7 @@ Multiple control-plane instances can run behind a load balancer for HA.
 Set `EXPECTED_INSTANCES=N` to inform each instance about the total count:
 
 - **SSE connection limits**: Global and per-org limits divided by N. Per-session limits unchanged.
-- **Database pool sizing**: Set `DATABASE_POOL_MAX = pg_max_connections / N - margin`. An instance opens `DATABASE_POOL_MAX + DATABASE_BACKGROUND_POOL_MAX + DATABASE_LIVENESS_POOL_MAX` connections, and the startup warning fires when that sum × instances exceeds 80% of `PG_MAX_CONNECTIONS` (default 100).
+- **Database pool sizing**: Unset pools are derived at startup from the database's `max_connections`, split across `EXPECTED_INSTANCES` after `DATABASE_RESERVED_CONNECTIONS` (`crates/server/src/storage/repositories/pool_sizing.rs`), so a database resize needs no matching setting. `DATABASE_POOLER_ADDR` sends request and liveness pools through a transaction pooler; session work stays direct.
 - **Metrics**: Each instance maintains its own ring buffer. The `/v1/platform/durable/metrics/timeseries` response includes `instance_count` when >1.
 
 ### Load Balancer Requirements
