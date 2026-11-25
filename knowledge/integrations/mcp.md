@@ -724,6 +724,11 @@ When omitted, the default org is used (first org from the user's membership list
 
 ## Error contract
 
+This is the wire form of the general
+[tool error contract](../execution/tool-execution.md#tool-error-contract): a
+refusal is `permission_denied` with its reason, an actionable error carries a
+`hint` with the next step, and only a fault is `internal`.
+
 `tools/call` failures use the MCP-standard error shape
 (`isError: true` plus a `content[0].text` string) **and** carry a
 typed `structuredContent` envelope so LLM toolcallers can branch on a

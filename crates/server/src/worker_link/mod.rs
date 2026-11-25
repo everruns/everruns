@@ -16,3 +16,10 @@ pub(crate) mod consumer_delegation;
 
 // Restricted customer-hosted execution, separate from the trusted worker link.
 pub mod custom_workers;
+
+/// The refusal a run with no person behind it gets for a command that acts
+/// for a person. Agents read it as a tool error (`AgentLoopError::Refused`),
+/// so it says what happened in their terms and nothing internal.
+pub(crate) const NO_PERSON_REFUSAL: &str = "This run has no person behind it (a schedule, \
+     webhook or event started it), so it cannot use commands that act for a person. Do the \
+     work without this command, or tell the person who set up this run that it needs it.";

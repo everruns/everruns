@@ -112,7 +112,7 @@ pub async fn save(cp: &ControlPlane, ctx: &Ctx, params: &Value) -> anyhow::Resul
     else {
         return Ok(refused(
             Kind::Forbidden,
-            "Management-authorized invocation required",
+            crate::worker_link::NO_PERSON_REFUSAL,
         ));
     };
     let Ok(caller) =

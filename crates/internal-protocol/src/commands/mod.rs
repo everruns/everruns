@@ -53,7 +53,15 @@ pub fn is_bad_request(error: &proto::CommandError) -> bool {
     proto::command_error::Kind::try_from(error.kind) == Ok(proto::command_error::Kind::BadRequest)
 }
 
+/// A command's own failure. A refusal stays [`AgentLoopError::Refused`] with
+/// its reason, which tools return to the agent as a tool error
+/// (`knowledge/execution/tool-execution.md`, tool error contract); anything
+/// else is a store error kept internal.
 pub fn failure(operation: &str, error: proto::CommandError) -> AgentLoopError {
+    if proto::command_error::Kind::try_from(error.kind) == Ok(proto::command_error::Kind::Forbidden)
+    {
+        return AgentLoopError::refused(error.message);
+    }
     AgentLoopError::store(format!("{operation}: {}", error.message))
 }
 
@@ -90,5 +98,30 @@ pub async fn call<R: serde::de::DeserializeOwned>(
     match transport.execute_internal_command(name, params).await? {
         Ok(value) => decode(operation, value),
         Err(error) => Err(failure(operation, error)),
+    }
+}
+
+#[cfg(test)]
+mod failure_tests {
+    use super::*;
+
+    #[test]
+    fn a_refused_command_stays_a_refusal_and_other_failures_stay_internal() {
+        let refused = failure(
+            "create session",
+            proto::CommandError {
+                kind: proto::command_error::Kind::Forbidden as i32,
+                message: "Worker not configured".into(),
+            },
+        );
+        assert!(matches!(&refused, AgentLoopError::Refused(m) if m == "Worker not configured"));
+        let fault = failure(
+            "create session",
+            proto::CommandError {
+                kind: proto::command_error::Kind::Internal as i32,
+                message: "db down".into(),
+            },
+        );
+        assert!(matches!(fault, AgentLoopError::MessageStore(_)));
     }
 }
