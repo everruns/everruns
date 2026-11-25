@@ -720,16 +720,26 @@ pub async fn request(
         .await?;
     super::managed::check_high_risk_caps(ctx, &req.capabilities).await?;
     // An exported team lead keeps Spawn agents or Threads without its
-    // `agents` list (the package's `agents` and `members` carry them), which
-    // alone fails "needs at least one agent". Validate it as `apply` will
-    // write it: with one agent per team member attached.
-    let mut checked = req.capabilities.clone();
-    let team = m.agents.len() + m.members.as_ref().map_or(0, Vec::len);
-    if team > 0 {
-        let placeholders = (0..team)
-            .map(|_| json!({ "agent_id": AgentId::new() }))
-            .collect();
-        attach_members(&mut checked, placeholders);
+    // `agents` list (the package's `agents` and `members` carry them, and
+    // `apply` attaches them once they exist), which alone fails "needs at
+    // least one agent". Validate the rest of its settings as if it already
+    // had someone to start; the real list is checked when it is written.
+    let mut checked =
+        everruns_contracts::capability::delegation::canonicalize_delegation_capabilities(
+            &req.capabilities,
+        );
+    if !m.agents.is_empty() || m.members.as_ref().is_some_and(|m| !m.is_empty()) {
+        for cap in checked
+            .iter_mut()
+            .filter(|cap| is_agents_capability(cap.capability_id()))
+        {
+            if !cap.config_value().is_object() {
+                cap.set_config(json!({}));
+            }
+            if let Some(config) = cap.config_mut().as_object_mut() {
+                config.insert("self".to_string(), Value::Bool(true));
+            }
+        }
     }
     let caps = crate::domains::capabilities::validation::normalize_capability_refs(
         &ctx.db,
