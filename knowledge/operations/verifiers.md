@@ -69,6 +69,10 @@ prove (see [Reliability at 75k](#reliability-at-75k)).
   agents, error and cost bars), so the score cannot rise by quietly
   redefining "agent". Its fingerprint is on every result; results under
   another fingerprint earn nothing; only the owner changes it (CODEOWNERS).
+  When an edit should not throw away earlier evidence (a limit moved to
+  match a design decision), the owner lists the old fingerprint in
+  `[approval] carry_from`: those results are scored again against the new
+  targets from their recorded values.
   `layout.toml`, the fleet the goal is projected onto, is a lever the
   climber may change.
 - **No load tooling of its own.** Adapters call the harnesses that exist
