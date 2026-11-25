@@ -66,6 +66,7 @@
     "parallel_tool_calls": "runs",
     "platform": "runs",
     "platform_management": "runs",
+    "plugins": "runs",
     "poppy_client": "runs",
     "progress_guard": "runs",
     "prompt_caching": "runs",

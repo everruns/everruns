@@ -701,7 +701,7 @@ mod tests {
         );
         let marker = hydrated
             .iter()
-            .find(|cap| cap.capability_id().to_string() == mail_ref)
+            .find(|cap| cap.capability_id() == mail_ref)
             .unwrap();
         assert!(everruns_core::capabilities::is_plugin_turned_off(
             marker.config_value()
