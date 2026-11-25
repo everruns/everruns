@@ -163,6 +163,10 @@ def run(a):
         "turn_p99_ms": report["turn"]["p99_ms"],
         "resident_mb": stats.get("resident_mb"),
         "resident_events": stats.get("resident_events"),
+        # Sessions whose events left memory (idle unload or the budget), and
+        # the per-node limit the nodes measured pressure against.
+        "unloaded_sessions": stats.get("unloaded_sessions"),
+        "limit_mb": int(os.environ.get("AGENTD_MEMORY_LIMIT_MB", "0")) or None,
         "wal_held_mb": stats.get("wal_held_mb"),
         "rss_mb": {"idle": {n: round(idle[n]) for n in NODES}, "loaded": {n: round(loaded[n]) for n in NODES},
                    "leader": leader},

@@ -214,10 +214,16 @@ class Adapters(unittest.TestCase):
         self.assertEqual(local.peak({**served, "shed_share": 0.02}).entries[0]["value"], 0)
 
     def test_coding_memory(self):
-        out = local.coding_memory({"sessions": 25000, "turns_per_session": 4,
-                                   "gated": {"node_rss_mb_per_1k_sessions": 210.5}})
+        result = {"sessions": 25000, "turns_per_session": 4, "turns": 100000, "errors": 0,
+                  "limit_mb": 8192, "unloaded_sessions": 24000,
+                  "gated": {"node_rss_mb_per_1k_sessions": 210.5}}
+        out = local.coding_memory(result)
         self.assertEqual([(e["point"], e["value"]) for e in out.entries], [("G1", 210.5)])
+        self.assertIn("node limit 8192 MB, 24000 sessions unloaded", out.entries[0]["note"])
         self.assertEqual(out.density, 25000)
+        # Turns missing or errors: no pass, whatever the memory.
+        out = local.coding_memory({**result, "turns": 99000})
+        self.assertEqual(out.entries[0]["value"], 1e9)  # far over the target: no credit
 
     def test_proof_verdicts(self):
         self.assertEqual(reliability.verdict({"ok": True, "errors": 0}), (True, 0))

@@ -206,8 +206,15 @@ def density_sessions(ctx):
 def coding_memory(result):
     """G1: node memory per thousand coding sessions, the worst node."""
     out = Output(density=result["sessions"])
-    out.add("G1", "L2", result["gated"]["node_rss_mb_per_1k_sessions"],
-            note=f"{result['sessions']:,} coding sessions on one shard, {result.get('turns_per_session')} turns each")
+    # Decision (coordinator, 2026-11-25): a pass needs no errors and every
+    # turn done; the note records the per-node limit and how many sessions
+    # were unloaded, so a run that only fit by unloading everything shows.
+    expected = result["sessions"] * (result.get("turns_per_session") or 0)
+    ok = (result.get("errors") or 0) == 0 and result.get("turns") == expected
+    out.add("G1", "L2", result["gated"]["node_rss_mb_per_1k_sessions"] if ok else 1e9,
+            note=f"{result['sessions']:,} coding sessions on one shard, {result.get('turns_per_session')} turns each, "
+                 f"{result.get('turns')}/{expected} turns, {result.get('errors')} errors, "
+                 f"node limit {result.get('limit_mb') or 'none'} MB, {result.get('unloaded_sessions')} sessions unloaded")
     return out
 
 
