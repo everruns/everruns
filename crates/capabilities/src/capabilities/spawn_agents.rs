@@ -461,6 +461,7 @@ pub(crate) async fn any_agent_target(
 
 /// Named agents a delegation target lists in `spawn_agent`: `(id, name,
 /// description)` of each configured agent.
+#[cfg(feature = "a2a")]
 pub(crate) fn delegation_agents(
     target_type: &'static str,
     agents: impl Iterator<Item = (String, String, Option<String>)>,
