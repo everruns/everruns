@@ -10,11 +10,10 @@ links:
   docs: [/providers/gemini/]
 ---
 
-A Gemini agent that ran twenty tools in a row used to send the whole
-conversation twenty times: every message, every tool result and every thought
-signature, on every call. [Gemini](/providers/gemini/) now runs on Google's
-Interactions API, which stores each turn on Google's side. The next call sends
-the stored turn's id and only what is new since the model answered:
+A Gemini agent running twenty tools used to resend the whole conversation
+twenty times: every message, result and thought signature.
+[Gemini](/providers/gemini/) now uses Google's Interactions API, which stores
+each turn on Google's side; the next call sends that turn's id and what is new:
 
 ```json
 {
@@ -31,10 +30,9 @@ the stored turn's id and only what is new since the model answered:
 }
 ```
 
-OpenAI agents have worked this way through the Responses API; Gemini agents
-now do too, with nothing to configure. The system prompt and tools still go with every call. If Google
-no longer has the stored turn, Everruns sends the full transcript once and
-carries on.
+OpenAI agents do this through the Responses API; Gemini agents
+now do too. The system prompt and tools still go with each call. If Google
+lost the stored turn, Everruns resends the transcript once.
 
 Batch requests, explicit cached content, long decode past 65,536 output
 tokens and custom base URLs stay on `generateContent`.
@@ -46,8 +44,6 @@ interaction storage and replays the full signed transcript on each call.
 
 ## Update 2026-11-25
 
-A tool result carrying only text now goes back as a plain string instead of a
-one-element content array. Google documents the array form as a *multimodal*
-function response, which only Gemini 3 and later models accept, so Gemini 2.5
-rejected the follow-up turn with a `400 INVALID_ARGUMENT` error. Results that
-carry an image, document or screenshot keep the array.
+A text-only tool result returns as a plain string, not a one-element content
+array: Google treats that array as *multimodal*, which only Gemini 3+ accept.
+Results carrying media keep the array.
