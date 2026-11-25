@@ -128,8 +128,9 @@ impl Cursor {
 #[derive(Debug, Clone, Default)]
 pub struct Filter {
     pub labels: BTreeMap<String, String>,
-    /// Record types (`Usage`, `Session`, ...) or, for `Event` records, the
-    /// session event's own type (`turn.completed`, ...). Empty: every one.
+    /// Record types (`Usage`, `Session`, ...) or a session event's own type
+    /// (`turn.completed`, ...), which an `Events` pointer names among its
+    /// types; its events are read from the session. Empty: every one.
     pub types: Vec<String>,
 }
 
@@ -146,13 +147,14 @@ impl Filter {
             return true;
         }
         let kind = record.record.kind();
-        let event_type = match &record.record {
-            crate::dp::Record::Event { event, .. } => event["type"].as_str(),
-            _ => None,
+        let event_types: Vec<&str> = match &record.record {
+            crate::dp::Record::Event { event, .. } => event["type"].as_str().into_iter().collect(),
+            crate::dp::Record::Events { types, .. } => types.iter().map(String::as_str).collect(),
+            _ => Vec::new(),
         };
         self.types
             .iter()
-            .any(|t| t == kind || Some(t.as_str()) == event_type)
+            .any(|t| t == kind || event_types.contains(&t.as_str()))
     }
 }
 
@@ -164,6 +166,48 @@ pub struct StreamRecord {
     pub group: String,
     #[serde(flatten)]
     pub record: FeedRecord,
+    /// An `Events` pointer's events, read from the session when served
+    /// ([`expand`]): the stream gives every tapped event, as it did when
+    /// the feed carried copies.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub events: Option<Vec<Value>>,
+}
+
+/// Fill each `Events` pointer of `records` with the events it names, read
+/// from its session. A session that cannot be read now leaves the pointer
+/// without them; its events stay in the session's history.
+/// With a type filter that names session event types (not the `Events`
+/// record itself), only events of those types come with a pointer.
+async fn expand(gateway: &Arc<Gateway>, records: &mut [StreamRecord], filter: &Filter) {
+    let only: Option<&[String]> = (!filter.types.is_empty()
+        && !filter.types.iter().any(|t| t == "Events"))
+    .then_some(&filter.types);
+    for record in records.iter_mut() {
+        let crate::dp::Record::Events {
+            session_id,
+            from,
+            to,
+            types,
+        } = &record.record.record
+        else {
+            continue;
+        };
+        let Ok(session) = session_id.parse::<everruns_contracts::typed_id::SessionId>() else {
+            continue;
+        };
+        let Ok(events) = crate::gateway_v1::read_events(gateway, session, from - 1).await else {
+            continue;
+        };
+        record.events = Some(
+            events
+                .into_iter()
+                .filter(|e| e.sequence.is_some_and(|s| s <= *to))
+                .filter(|e| types.contains(&e.event_type))
+                .filter(|e| only.is_none_or(|only| only.contains(&e.event_type)))
+                .map(|e| serde_json::to_value(e.into_public()).unwrap_or(Value::Null))
+                .collect(),
+        );
+    }
 }
 
 /// A page of the stream after `cursor`, at most `limit` records.
@@ -238,6 +282,7 @@ pub async fn read(
                 incarnation,
                 group: record.org_id.clone(),
                 record,
+                events: None,
             });
         }
     }
@@ -387,7 +432,8 @@ async fn stream_inner(
         .is_some_and(|a| a.contains("text/event-stream"));
     if sse {
         // First read here, so a bad cursor answers with its status.
-        let (first, next) = read(&store, &sources()?, &cursor, &filter, limit).await?;
+        let (mut first, next) = read(&store, &sources()?, &cursor, &filter, limit).await?;
+        expand(&gateway, &mut first, &filter).await;
         // Each event's id is the cursor just past it, so a client that
         // reconnects with `Last-Event-ID` resumes there. Records filtered out
         // after the last one sent are read again then, and skipped again.
@@ -422,7 +468,8 @@ async fn stream_inner(
                         Err(_) => continue,
                     };
                     match read(&store, &sources, &next, &filter, 500).await {
-                        Ok((page, after)) => {
+                        Ok((mut page, after)) => {
+                            expand(&gateway, &mut page, &filter).await;
                             pending = page;
                             next = after;
                         }
@@ -437,8 +484,9 @@ async fn stream_inner(
     }
     let deadline = tokio::time::Instant::now() + wait;
     loop {
-        let (records, next) = read(&store, &sources()?, &cursor, &filter, limit).await?;
+        let (mut records, next) = read(&store, &sources()?, &cursor, &filter, limit).await?;
         if !records.is_empty() || tokio::time::Instant::now() >= deadline {
+            expand(&gateway, &mut records, &filter).await;
             return Ok(Json(json!({ "data": records, "cursor": next.encode() })).into_response());
         }
         // Nothing yet: what was scanned past (filtered out) stays skipped.

@@ -95,7 +95,7 @@ impl EventReader for SnapshotLog {
 #[async_trait]
 impl EventLog for SnapshotLog {
     async fn append(&self, request: EventRequest) -> std::result::Result<Event, EventLogError> {
-        if request.session_id == self.session && request.is_dreaming_metadata() {
+        if request.session_id == self.session && request.is_background_metadata() {
             return self.inner.append(request).await;
         }
 

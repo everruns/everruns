@@ -17,6 +17,7 @@ mod support;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
+use everruns_agentd_testkit::fake_cp::FakeCp;
 use everruns_contracts::typed_id::MessageId;
 use futures::StreamExt;
 use reqwest::StatusCode;
@@ -146,15 +147,16 @@ async fn a_channel_reaches_a_v2_session_and_its_events_reach_the_control_plane()
     // The org's policy taps turn completions only: one per turn, its org's.
     fleet
         .until("both turns tapped", || async {
-            cp.tapped_events()
+            tapped(&fleet, &cp)
+                .await
                 .iter()
                 .filter(|(_, s, _)| *s == session)
                 .count()
                 >= 2
         })
         .await;
-    let tapped: Vec<_> = cp
-        .tapped_events()
+    let tapped: Vec<_> = tapped(&fleet, &cp)
+        .await
         .into_iter()
         .filter(|(_, s, _)| *s == session)
         .collect();
@@ -163,6 +165,27 @@ async fn a_channel_reaches_a_v2_session_and_its_events_reach_the_control_plane()
         assert_eq!(org, ORG);
         assert_eq!(event["type"], "turn.completed", "{event}");
     }
+}
+
+/// The tapped events, as the control plane gets them: each pointer on the
+/// feed read back from its session's history (`Record::Events`).
+async fn tapped(fleet: &Fleet, cp: &FakeCp) -> Vec<(String, String, serde_json::Value)> {
+    let ranges = cp.tapped_ranges();
+    let mut histories: HashMap<String, Vec<serde_json::Value>> = HashMap::new();
+    let mut out = Vec::new();
+    for (org, session, from, to, types) in ranges {
+        if !histories.contains_key(&session) {
+            histories.insert(session.clone(), fleet.events(&session).await);
+        }
+        for event in &histories[&session] {
+            let sequence = event["sequence"].as_i64().unwrap_or(-1) as i32;
+            let kind = event["type"].as_str().unwrap_or_default();
+            if (from..=to).contains(&sequence) && types.iter().any(|t| t == kind) {
+                out.push((org.clone(), session.clone(), event.clone()));
+            }
+        }
+    }
+    out
 }
 
 fn percentile(sorted: &[Duration], p: usize) -> Duration {
@@ -218,7 +241,8 @@ async fn bench_channel_replies_and_tapped_events() {
     let wanted = SESSIONS * 2;
     fleet
         .until("every turn tapped", || async {
-            cp.tapped_events()
+            tapped(&fleet, &cp)
+                .await
                 .iter()
                 .filter(|(_, _, e)| e["type"] == "turn.completed")
                 .count()
@@ -226,7 +250,7 @@ async fn bench_channel_replies_and_tapped_events() {
         })
         .await;
     let mut per_turn: HashMap<String, usize> = HashMap::new();
-    for (_, _, event) in cp.tapped_events() {
+    for (_, _, event) in tapped(&fleet, &cp).await {
         if event["type"] == "turn.completed" {
             *per_turn
                 .entry(event["data"]["turn_id"].to_string())

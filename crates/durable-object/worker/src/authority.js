@@ -166,17 +166,24 @@ export class Authority {
           return {};
         }
         case "append": {
-          // Maintenance owns an independent durable claim, never the turn epoch.
-          // Only metadata events may enter through this path.
-          const data = body.event?.data;
-          const generation = body.event?.type === "llm.generation" &&
-            /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(body.event?.metadata?.dreaming_operation_id ?? "") &&
+          // Background observations never own a turn epoch or carry conversation data.
+          const event = body.event;
+          const data = event?.data;
+          const uuid = (value) => typeof value === "string" &&
+            /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(value);
+          const empty = (value) => value === undefined || Array.isArray(value) && value.length === 0;
+          const generation = event?.type === "llm.generation" &&
             Array.isArray(data?.messages) && data.messages.length === 0 &&
-            (data.tools?.length ?? 0) === 0 && data.request_body == null &&
-            data.output?.text == null && (data.output?.tool_calls?.length ?? 0) === 0;
-          const maintenance = (body.event?.type === "dreaming.activity" || generation) &&
-            body.event?.context?.turn_id == null &&
-            new TextEncoder().encode(JSON.stringify(body.event)).length <= 4096;
+            empty(data.tools) && data.request_body == null &&
+            data.output != null && typeof data.output === "object" && !Array.isArray(data.output) &&
+            data.output.text == null && empty(data.output.tool_calls);
+          // THREAT[TM-DURABLE-012]: no execution identity can bypass its epoch.
+          const auxiliary = generation && uuid(event?.metadata?.completion_operation_id) &&
+            event?.context?.exec_id == null && event?.context?.input_message_id == null;
+          const maintenance = (event?.type === "dreaming.activity" ||
+            generation && uuid(event?.metadata?.dreaming_operation_id) || auxiliary) &&
+            event?.context?.turn_id == null &&
+            new TextEncoder().encode(JSON.stringify(event)).length <= 4096;
           if (!maintenance) j.checkOwner(state, body.lease);
           if (body.conditional && (state.head || null) !== body.expected)
             return { conflict: true, actual: state.head || null, event: null };

@@ -2,8 +2,9 @@
 //!
 //! A v2 org's session events live on its data plane. Observers and
 //! trace exports work from events, so the org's policy names the
-//! types they need (`TenantPolicy::events`), the data plane copies those
-//! onto the feed (`shard/src/tap.rs`), and feed ingest hands each one here.
+//! types they need (`TenantPolicy::events`), the data plane puts a pointer
+//! to those it commits on the feed (`agentd/src/tap.rs`), and feed ingest
+//! reads them from the session's history and hands each one here.
 //!
 //! Decisions:
 //! - The policy asks only for what the org uses: observer types while it
@@ -101,6 +102,63 @@ pub async fn resync(db: &StorageBackend, org_id: i64) {
     if let Err(error) = sync(db, org_id).await {
         tracing::warn!(org_id, %error, "data plane event types not updated");
     }
+}
+
+/// The tapped events a pointer names (`Record::Events`), read from the
+/// session's history on its data plane: each as its stream form, in
+/// sequence order. An unreachable data plane fails the read, so the feed
+/// position is tried again.
+pub async fn read_range(
+    cp: &ControlPlane,
+    org_id: i64,
+    session_id: &str,
+    from: i32,
+    to: i32,
+    types: &[String],
+) -> anyhow::Result<Vec<Value>> {
+    let Ok(session) = session_id.parse::<SessionId>() else {
+        return Ok(Vec::new());
+    };
+    let Some(plane) = super::session_plane::SessionPlane::with(cp, org_id, session).await? else {
+        tracing::warn!(
+            org_id,
+            session_id,
+            "tapped events of a session not on a data plane; dropped"
+        );
+        return Ok(Vec::new());
+    };
+    let types: Vec<&str> = types.iter().map(String::as_str).collect();
+    let rows = plane.events(from, to, &types, None).await?;
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            serde_json::json!({
+                "id": row.id,
+                "type": row.event_type,
+                "ts": row.ts,
+                "session_id": session_id,
+                "context": row.context,
+                "data": row.data,
+                "sequence": row.sequence,
+            })
+        })
+        .collect())
+}
+
+/// Hand the tapped events a pointer names to the listeners, in order.
+pub async fn deliver_range(
+    cp: &ControlPlane,
+    listeners: &[Arc<dyn EventListener>],
+    org_id: i64,
+    session_id: &str,
+    from: i32,
+    to: i32,
+    types: &[String],
+) -> anyhow::Result<()> {
+    for event in read_range(cp, org_id, session_id, from, to, types).await? {
+        deliver(cp, listeners, org_id, session_id, &event).await?;
+    }
+    Ok(())
 }
 
 /// Hand one tapped event of `org_id` to the listeners that take its type.
