@@ -343,7 +343,7 @@ async fn metrics(State(node): State<Arc<Node>>) -> impl IntoResponse {
     );
     w.counters(
         "agentd_shard_ship_first_total",
-        "Ship-first writes by path: replicas (every voter held them) or store (shipped first).",
+        "Ship-first writes, answered once the object store held them (path=store).",
         &p.ship_first_total,
     );
     let puts = crate::prom::Counters::default();

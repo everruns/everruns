@@ -24,18 +24,15 @@
 //! - If shipping falls more than [`BEHIND_LIMIT`] behind, the shard stops
 //!   admitting new work ([`Shipper::behind`]) until it catches up, so the
 //!   loss window is a bound and not a hope.
-//! - Some writes must survive anything short of losing every replica before
-//!   they are answered ([`ships_first`]): the start of a tool call that is
-//!   not safe to repeat, a session's create, and every step of a move. A
-//!   rebuild then knows every call that started (it reports a lost outcome
-//!   as unknown instead of running the call again), never loses a session
-//!   someone was told exists, and never finds a session in two shards.
-//!   Such a write is answered once every voter of a shard of three or more
-//!   holds it on disk (followers fsync before they acknowledge), so two
-//!   lost zones still leave a copy on the third; while a voter lags or is
-//!   down, it is shipped to the object store first instead, as before
-//!   (`Node::ship_first`). The cost is one object write only while the
-//!   shard runs short of a replica.
+//! - Some writes must survive losing every replica before they are
+//!   answered ([`ships_first`]): the start of a tool call that is not safe
+//!   to repeat, a session's create, and every step of a move. A rebuild then
+//!   knows every call that started (it reports a lost outcome as unknown
+//!   instead of running the call again), never loses a session someone was
+//!   told exists, and never finds a session in two shards. Such a write is
+//!   shipped to the object store before it is answered (`Node::ship_first`);
+//!   writers waiting together share one object, and the object carries every
+//!   entry committed before it, so the plain writes around it ship early too.
 //! - Shipping is one at a time per node: the loop and the writes that
 //!   ship first share one lock, so progress is never read half-updated.
 

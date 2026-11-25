@@ -15,9 +15,11 @@ carries on (data plane v2 step 9, design.md "Disaster recovery").
 3. `agentd-testnode restore` rebuilds shard 0 from the store into empty data
    directories (timed), its nodes start again, and the drill times how long
    until shard 0 has a leader.
-4. A second message the rebuild lost (admitted inside the loss window, at
-   most about two seconds before the kill) is sent again; the drill counts
-   these. Then every session must finish: `agentd-drive check` with the work
+4. A second message the rebuild lost (a plain commit inside the shipping
+   window: up to 10 s before the kill, never more than 30 s) is sent again;
+   the drill counts these. Session creates and the starts of tools not safe
+   to repeat are never lost: they reach the store before they are answered
+   (guarantees.md, ship-first writes). Then every session must finish: `agentd-drive check` with the work
    tool's ledger (each message completed once, sequences dense, no tool ran
    more often than it has a durable `tool.started`).
 
@@ -40,7 +42,9 @@ p.add_argument("--inflight", type=int, default=3000)
 p.add_argument("--concurrency", type=int, default=1000)
 p.add_argument("--kill-after-s", type=float, default=3.0)
 p.add_argument("--max-rebuild-s", type=float, default=600.0)
-p.add_argument("--max-ship-lag-s", type=float, default=2.0)
+# The shipped log's lag: an object at most every 10 s (`ship::SHIP_EVERY`)
+# plus a tick; the 75k goal's F3 bound is a p99 of 15 s.
+p.add_argument("--max-ship-lag-s", type=float, default=15.0)
 a = p.parse_args()
 
 
