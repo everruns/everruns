@@ -408,7 +408,8 @@ fn ephemeral_event(request: EventRequest) -> Event {
 #[cfg(test)]
 mod commit_class_tests {
     use super::*;
-    use crate::events::{EventContext, VALID_EVENT_TYPES};
+    use crate::events::{EventContext, LlmGenerationData, VALID_EVENT_TYPES};
+    use everruns_contracts::typed_id::{MessageId, TurnId};
 
     /// The whole table. Every other event type of the protocol, and any
     /// type added later, is a barrier.
@@ -455,6 +456,34 @@ mod commit_class_tests {
                 .find(|(deferred, _)| deferred == event_type)
                 .map_or(CommitClass::Barrier, |(_, class)| *class);
             assert_eq!(CommitClass::of(&request), expected, "{event_type}");
+        }
+    }
+
+    #[test]
+    fn completion_usage_is_a_barrier_with_and_without_turn_ownership() {
+        for context in [
+            EventContext::empty(),
+            EventContext::turn(TurnId::new(), MessageId::new()),
+        ] {
+            let request = EventRequest::new(
+                SessionId::new(),
+                context,
+                LlmGenerationData::success(
+                    vec![],
+                    vec![],
+                    None,
+                    vec![],
+                    "model".into(),
+                    None,
+                    None,
+                    None,
+                    None,
+                ),
+            )
+            .with_metadata(
+                serde_json::json!({"completion_operation_id":uuid::Uuid::now_v7().to_string()}),
+            );
+            assert_eq!(CommitClass::of(&request), CommitClass::Barrier);
         }
     }
 }

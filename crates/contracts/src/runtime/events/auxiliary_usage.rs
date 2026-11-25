@@ -3,17 +3,8 @@
 use super::*;
 
 impl EventRequest {
-    /// Metadata-only accounting can finish after its caller's foreground epoch.
-    /// It may not impersonate turn execution or append prompts and responses.
+    /// A bounded, payload-free usage observation stamped by the completion host.
     pub fn is_session_completion_usage(&self) -> bool {
-        // THREAT[TM-DURABLE-012]: no execution identity or conversation payload
-        // may pass the read-only query runtime's narrow billing exception.
-        if self.context.turn_id.is_some()
-            || self.context.exec_id.is_some()
-            || self.context.input_message_id.is_some()
-        {
-            return false;
-        }
         let EventData::LlmGeneration(data) = &self.data else {
             return false;
         };
@@ -32,7 +23,13 @@ impl EventRequest {
 
     /// The narrow exceptions to foreground ownership, each with a bounded payload.
     pub fn is_background_metadata(&self) -> bool {
-        self.is_dreaming_metadata() || self.is_session_completion_usage()
+        // THREAT[TM-DURABLE-012]: an unowned billing observation cannot
+        // impersonate execution. Turn-scoped reviews still require their epoch.
+        self.is_dreaming_metadata()
+            || (self.is_session_completion_usage()
+                && self.context.turn_id.is_none()
+                && self.context.exec_id.is_none()
+                && self.context.input_message_id.is_none())
     }
 }
 
