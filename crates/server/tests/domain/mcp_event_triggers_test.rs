@@ -43,6 +43,7 @@ struct FakeEventsServer {
     refresh_before: parking_lot::Mutex<Option<String>>,
     reject_subscribe: AtomicBool,
     null_cursor: AtomicBool,
+    omit_cursor: AtomicBool,
 }
 
 impl FakeEventsServer {
@@ -96,12 +97,16 @@ impl FakeEventsServer {
                 let refresh_before = self.refresh_before.lock().clone().unwrap_or_else(|| {
                     (chrono::Utc::now() + chrono::Duration::hours(1)).to_rfc3339()
                 });
-                Ok(json!({
+                let mut response = json!({
                     "id": format!("sub_{id}"),
                     "refreshBefore": refresh_before,
                     "cursor": if self.null_cursor.load(Ordering::SeqCst) { Value::Null } else { json!(format!("cursor_{id}")) },
                     "truncated": false,
-                }))
+                });
+                if self.omit_cursor.load(Ordering::SeqCst) {
+                    response.as_object_mut().unwrap().remove("cursor");
+                }
+                Ok(response)
             }
             "events/unsubscribe" => Ok(json!({})),
             _ => Err((-32601, "method not found")),

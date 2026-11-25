@@ -522,13 +522,11 @@ impl McpEventTriggers {
                     Some(Value::Null) => None,
                     value => Some(parse_refresh_before(value, Utc::now())),
                 };
-                // Explicit null clears an earlier replay position. An absent
-                // optional cursor leaves the last delivered position intact.
-                if let Some(cursor) = result.get("cursor") {
-                    state.cursor = cursor
-                        .as_str()
-                        .map(|cursor| truncate(cursor, MAX_CURSOR_LEN));
-                }
+                // SEP-3415 makes omission identical to an explicit null.
+                state.cursor = result
+                    .get("cursor")
+                    .and_then(Value::as_str)
+                    .map(|cursor| truncate(cursor, MAX_CURSOR_LEN));
                 state.status = MCP_SUBSCRIPTION_ACTIVE.to_string();
                 state.last_error = None;
                 let stored = self
@@ -797,9 +795,7 @@ impl McpEventTriggers {
             let mut state = UpsertAgentTriggerMcpSubscription::from(subscription.clone());
             match kind {
                 "gap" => {
-                    let cursor = body
-                        .get("cursor")
-                        .ok_or(InboundRejection::BadRequest("gap cursor is missing"))?;
+                    let cursor = body.get("cursor").unwrap_or(&Value::Null);
                     if !cursor.is_null() && !cursor.is_string() {
                         return Err(InboundRejection::BadRequest("invalid gap cursor"));
                     }
@@ -842,12 +838,13 @@ impl McpEventTriggers {
             .filter(|agent| agent.status == "active" && !agent.exposures_suspended)
             .ok_or(InboundRejection::Gone)?;
 
-        if let Some(cursor) = body.get("cursor") {
-            let mut state = UpsertAgentTriggerMcpSubscription::from(subscription.clone());
-            state.cursor = cursor.as_str().map(|s| truncate(s, MAX_CURSOR_LEN));
-            if let Err(error) = self.db.upsert_agent_trigger_mcp_subscription(state).await {
-                tracing::warn!(%error, trigger_id = %trigger.id, "failed to store MCP event cursor");
-            }
+        let mut state = UpsertAgentTriggerMcpSubscription::from(subscription.clone());
+        state.cursor = body
+            .get("cursor")
+            .and_then(Value::as_str)
+            .map(|s| truncate(s, MAX_CURSOR_LEN));
+        if let Err(error) = self.db.upsert_agent_trigger_mcp_subscription(state).await {
+            tracing::warn!(%error, trigger_id = %trigger.id, "failed to store MCP event cursor");
         }
 
         let outcome = dispatch_event(

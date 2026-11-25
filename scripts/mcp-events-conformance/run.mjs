@@ -3,6 +3,7 @@
 import { spawn } from "node:child_process";
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { checkDeliveryIdentities } from "./delivery-identities.mjs";
 const [dir, base, binary, receiverFile] = process.argv.slice(2);
 const output = path.resolve(".local/mcp-events-conformance/results");
 await mkdir(output, { recursive: true });
@@ -167,3 +168,29 @@ await writeFile(
 );
 
 if (issues.length) throw new Error(issues.join("\n"));
+
+try {
+  const checks = await checkDeliveryIdentities(base, receiverFile);
+  await writeFile(
+    path.join(output, "everruns-checks.json"),
+    JSON.stringify(checks, null, 2),
+  );
+  console.log(JSON.stringify(checks));
+} catch (error) {
+  await writeFile(
+    path.join(output, "everruns-checks.json"),
+    JSON.stringify(
+      [
+        {
+          id: "everruns-webhook-delivery-regressions",
+          source: "everruns",
+          status: "FAILURE",
+          error: error.message,
+        },
+      ],
+      null,
+      2,
+    ),
+  );
+  throw error;
+}
