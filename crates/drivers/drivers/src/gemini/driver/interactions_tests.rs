@@ -183,7 +183,7 @@ async fn a_continued_turn_sends_only_what_followed_the_models_answer() {
     assert_eq!(body["previous_interaction_id"], json!("v1_prev"));
     assert_eq!(
         body["input"],
-        json!([{"type":"function_result","call_id":"call_7","name":"get_weather","result":[{"type":"text","text":"18C, light rain"}]}])
+        json!([{"type":"function_result","call_id":"call_7","name":"get_weather","result":"18C, light rain"}])
     );
     // Interaction-scoped settings travel on every turn.
     assert_eq!(body["system_instruction"], json!("Be terse."));
@@ -238,7 +238,7 @@ async fn a_lost_stored_interaction_falls_back_to_the_whole_transcript() {
         json!([
             {"type":"user_input","content":[{"type":"text","text":"Weather in Paris?"}]},
             {"type":"function_call","id":"call_7","name":"get_weather","arguments":{"city":"Paris"},"signature":"sig-call"},
-            {"type":"function_result","call_id":"call_7","name":"get_weather","result":[{"type":"text","text":"18C, light rain"}]},
+            {"type":"function_result","call_id":"call_7","name":"get_weather","result":"18C, light rain"},
         ])
     );
 }
@@ -466,4 +466,32 @@ async fn stateless_storage_policy_reaches_both_transports() {
         assert!(body.get("previous_interaction_id").is_none());
         assert_eq!(body["input"].as_array().unwrap().len(), 3);
     }
+}
+
+/// Gemini documents the array form as the *multimodal* function response and
+/// only Gemini 3 and later models accept it, so a text-only tool result must go
+/// back as a plain string. Media results keep the content-block array.
+#[test]
+fn a_function_result_is_a_plain_string_unless_it_carries_media() {
+    assert_eq!(
+        tool_result(vec![json!({"type": "text", "text": "18C, light rain"})]),
+        json!("18C, light rain")
+    );
+    assert_eq!(
+        tool_result(vec![
+            json!({"type": "text", "text": "first"}),
+            json!({"type": "text", "text": "second"}),
+        ]),
+        json!("first\nsecond")
+    );
+    assert_eq!(
+        tool_result(vec![
+            json!({"type": "text", "text": "ran"}),
+            json!({"type": "image", "data": "AA==", "mime_type": "image/png"}),
+        ]),
+        json!([
+            {"type": "text", "text": "ran"},
+            {"type": "image", "data": "AA==", "mime_type": "image/png"},
+        ])
+    );
 }

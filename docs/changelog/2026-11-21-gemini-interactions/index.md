@@ -25,12 +25,7 @@ the stored turn's id and only what is new since the model answered:
       "type": "function_result",
       "call_id": "call_7",
       "name": "get_weather",
-      "result": [
-        {
-          "type": "text",
-          "text": "18C, light rain"
-        }
-      ]
+      "result": "18C, light rain"
     }
   ]
 }
@@ -48,3 +43,11 @@ tokens and custom base URLs stay on `generateContent`.
 
 The [Gemini Stateless](/capabilities/gemini-stateless/) capability opts out of
 interaction storage and replays the full signed transcript on each call.
+
+## Update 2026-11-25
+
+A tool result carrying only text now goes back as a plain string instead of a
+one-element content array. Google documents the array form as a *multimodal*
+function response, which only Gemini 3 and later models accept, so Gemini 2.5
+rejected the follow-up turn with a `400 INVALID_ARGUMENT` error. Results that
+carry an image, document or screenshot keep the array.
