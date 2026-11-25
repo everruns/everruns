@@ -128,8 +128,9 @@ impl Cursor {
 #[derive(Debug, Clone, Default)]
 pub struct Filter {
     pub labels: BTreeMap<String, String>,
-    /// Record types (`Usage`, `Session`, ...) or, for `Event` records, the
-    /// session event's own type (`turn.completed`, ...). Empty: every one.
+    /// Record types (`Usage`, `Session`, ...) or a session event's own type
+    /// (`turn.completed`, ...), which an `Events` pointer names among its
+    /// types; its events are read from the session. Empty: every one.
     pub types: Vec<String>,
 }
 
@@ -146,13 +147,14 @@ impl Filter {
             return true;
         }
         let kind = record.record.kind();
-        let event_type = match &record.record {
-            crate::dp::Record::Event { event, .. } => event["type"].as_str(),
-            _ => None,
+        let event_types: Vec<&str> = match &record.record {
+            crate::dp::Record::Event { event, .. } => event["type"].as_str().into_iter().collect(),
+            crate::dp::Record::Events { types, .. } => types.iter().map(String::as_str).collect(),
+            _ => Vec::new(),
         };
         self.types
             .iter()
-            .any(|t| t == kind || Some(t.as_str()) == event_type)
+            .any(|t| t == kind || event_types.contains(&t.as_str()))
     }
 }
 

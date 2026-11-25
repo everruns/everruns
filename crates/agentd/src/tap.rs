@@ -1,12 +1,19 @@
-//! The event tap (data plane v2, step 11.5): a session event its org's
-//! policy asks for goes on the feed as `Record::Event`.
+//! The event tap (data plane v2, step 11.5): when a command commits session
+//! events its org's policy asks for, a pointer to them goes on the feed
+//! (`Record::Events`), and the control plane reads them from the session's
+//! history.
 //!
 //! Decisions:
 //! - The control plane's observers, trace exports and reports work from
 //!   session events, which on v2 live only in the shard. The feed is the
 //!   one channel the control plane already drains exactly once, by
-//!   position, across leader changes and restarts, so the events go there
-//!   rather than over a second, best-effort stream.
+//!   position, across leader changes and restarts, so the pointers go
+//!   there rather than over a second, best-effort stream.
+//! - A pointer, not a copy (agentd vs control plane review, 2026-11-25):
+//!   copies sat in every replica's feed state until the control plane
+//!   drained them, up to half a megabyte each, while the events themselves
+//!   are already in the session's history. One pointer per session per
+//!   command names the range and the tapped types in it.
 //! - The org's policy names the types (`TenantPolicy::events`), so an org
 //!   that uses none of these pays nothing, and one with only observers
 //!   copies three types, not the whole stream. Policies live in the
@@ -15,20 +22,14 @@
 //!   reaches every shard within a poll.
 //! - It taps committed changes, in the state machine, so every replica
 //!   decides the same and a turn's events reach the feed once each.
-//! - An event's payload over [`MAX_EVENT_BYTES`] is left out and named,
-//!   so one large tool output cannot swell replicated state; the envelope
-//!   (type, sequence, context) still goes, so a count stays exact.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use everruns_contracts::dataplane::Record;
+use everruns_contracts::typed_id::SessionId;
 use everruns_core::events::{Event, EventData};
-use serde_json::{Value, json};
 
 use super::{Change, Command, Response, ShardState};
-
-/// The largest event payload copied onto the feed whole.
-pub const MAX_EVENT_BYTES: usize = 512 * 1024;
 
 impl ShardState {
     /// Apply one committed command. Deterministic: same state and command,
@@ -75,6 +76,9 @@ impl ShardState {
 
     fn tap(&mut self, start: usize, changes: &[Change]) {
         let index = self.last_applied.map_or(0, |l| l.index);
+        // One pointer per session per command: the range of its tapped
+        // events and their types, in the order the sessions first appear.
+        let mut tapped: Vec<(SessionId, String, i64, i32, i32, BTreeSet<String>)> = Vec::new();
         for change in changes.iter().skip(start) {
             let Change::Event(session, event) = change else {
                 continue;
@@ -90,13 +94,31 @@ impl ShardState {
             if !wanted {
                 continue;
             }
-            let record = Record::Event {
+            let sequence = event.sequence.unwrap_or(0);
+            match tapped.iter_mut().find(|t| t.0 == *session) {
+                Some(t) => {
+                    t.3 = t.3.min(sequence);
+                    t.4 = t.4.max(sequence);
+                    t.5.insert(event.event_type.clone());
+                }
+                None => tapped.push((
+                    *session,
+                    org.to_owned(),
+                    event.ts.timestamp_millis(),
+                    sequence,
+                    sequence,
+                    BTreeSet::from([event.event_type.clone()]),
+                )),
+            }
+        }
+        for (session, org, at, from, to, types) in tapped {
+            let record = Record::Events {
                 session_id: session.to_string(),
-                event: stream_form(event),
+                from,
+                to,
+                types: types.into_iter().collect(),
             };
-            let org = org.to_owned();
-            self.feed
-                .push(index, &org, event.ts.timestamp_millis(), record);
+            self.feed.push(index, &org, at, record);
         }
     }
 }
@@ -127,17 +149,6 @@ pub(super) fn generation_cost_micros(event: &Event) -> Option<i64> {
         .and_then(|u| u.effective_cost_usd())
         .unwrap_or(0.0);
     Some((usd * 1_000_000.0).ceil() as i64)
-}
-
-/// `event` as the session stream carries it (its public projection), its
-/// payload left out when too large.
-fn stream_form(event: &Event) -> Value {
-    let mut value = serde_json::to_value(event.clone().into_public()).unwrap_or(Value::Null);
-    let size = serde_json::to_string(&value["data"]).map_or(0, |s| s.len());
-    if size > MAX_EVENT_BYTES {
-        value["data"] = json!({ "omitted": "too large for the feed", "bytes": size });
-    }
-    value
 }
 
 #[cfg(test)]
@@ -192,18 +203,52 @@ mod tests {
         let records: Vec<_> = state.feed.records.iter().collect();
         assert_eq!(records.len(), 1, "{records:?}");
         assert_eq!(records[0].org_id, "watched");
-        let Record::Event { session_id, event } = &records[0].record else {
+        let Record::Events {
+            session_id, types, ..
+        } = &records[0].record
+        else {
             panic!("{:?}", records[0].record);
         };
         assert_eq!(*session_id, watched.to_string());
-        assert_eq!(event["type"], "turn.completed");
+        assert_eq!(types, &vec!["turn.completed".to_owned()]);
     }
 
+    /// A command's tapped events of one session make one pointer: their
+    /// range and types, not the events.
     #[test]
-    fn a_large_payload_is_named_not_copied() {
-        let big = "x".repeat(MAX_EVENT_BYTES + 1);
-        let value = stream_form(&event(SessionId::new(), "turn.completed", &big));
-        assert_eq!(value["type"], "turn.completed");
-        assert_eq!(value["data"]["omitted"], "too large for the feed");
+    fn one_pointer_names_a_commands_range_and_types() {
+        let mut state = ShardState::default();
+        let session = SessionId::new();
+        state.sessions.insert(
+            session,
+            SessionState {
+                tenant: Some("o".into()),
+                ..Default::default()
+            },
+        );
+        state.orgs.taps.insert("o".into(), vec!["*".into()]);
+        let at = |kind: &str, sequence: i32| {
+            let mut e = event(session, kind, &"x".repeat(1 << 20));
+            e.sequence = Some(sequence);
+            Change::Event(session, Arc::new(e))
+        };
+        state.tap(0, &[at("turn.started", 7), at("turn.completed", 9)]);
+        let records: Vec<_> = state.feed.records.iter().collect();
+        assert_eq!(records.len(), 1, "{records:?}");
+        let Record::Events {
+            from, to, types, ..
+        } = &records[0].record
+        else {
+            panic!("{:?}", records[0].record);
+        };
+        assert_eq!((*from, *to), (7, 9));
+        assert_eq!(
+            types,
+            &vec!["turn.completed".to_owned(), "turn.started".to_owned()]
+        );
+        assert!(
+            serde_json::to_string(&records[0].record).unwrap().len() < 512,
+            "a pointer, not the events"
+        );
     }
 }
