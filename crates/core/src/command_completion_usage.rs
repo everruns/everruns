@@ -12,7 +12,7 @@ use everruns_contracts::driver_registry::{
 use everruns_contracts::{DriverId, error::Result, typed_id::SessionId};
 use futures::StreamExt;
 
-pub(super) struct CompletionUsage {
+pub(crate) struct CompletionUsage {
     pub emitter: Arc<dyn EventEmitter>,
     pub session: SessionId,
     pub context: EventContext,

@@ -38,9 +38,11 @@ estimate otherwise.
 Tool-less session completions use the same generation ledger as turn calls. They
 retain provider-reported usage and actual cost (or the normal model-price estimate),
 without prompts, answers or conversation steps. Oversized tracing metadata is
-omitted without losing reported usage or rejecting the completion. Automatic reviews belong to the
-reviewed turn; independent host completions have no turn. Missing final provider
-usage stays unknown. Review spend does not consume the logical continuation budget.
+omitted without losing reported usage or rejecting the completion. Automatic reviews
+belong to the reviewed turn; independent host completions have no turn. Reviewed
+public event metadata retains the operation identity so downstream consumers can
+distinguish auxiliary calls. Missing final provider usage stays unknown. Review spend
+does not consume the logical continuation budget.
 
 `wasted_usd` is the cost of calls in failed turns, `current_turn_usd` the asking
 turn's share. `basis` is the weakest basis of any part; `partial` says some part had no

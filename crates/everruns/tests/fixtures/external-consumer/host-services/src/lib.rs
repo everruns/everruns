@@ -566,7 +566,20 @@ mod tests {
                 history,
                 "canonical history unchanged"
             );
-            assert_eq!(session.events_after(0).await.expect("events").len(), events);
+            let after = session.events_after(0).await.expect("events");
+            assert_eq!(
+                after.len(),
+                events + 2,
+                "one accounting observation per review"
+            );
+            for event in &after[events..] {
+                assert_eq!(event.event_type(), "llm.generation");
+                let json = event.canonical_json();
+                assert!(json["metadata"]["completion_operation_id"].is_string());
+                assert_eq!(json["data"]["messages"], serde_json::json!([]));
+                assert!(json["data"]["output"]["text"].is_null());
+                assert!(json["data"]["request_body"].is_null());
+            }
         }
     }
 }

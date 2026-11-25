@@ -6,9 +6,8 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use uuid::Uuid;
 
-mod usage;
+use crate::command_completion_usage::CompletionUsage;
 use crate::{event_emitter::EventEmitter, events::EventContext};
-use usage::CompletionUsage;
 
 use crate::capabilities::CapabilityRegistry;
 use crate::command_host::{
