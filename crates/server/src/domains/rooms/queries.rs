@@ -36,6 +36,7 @@ pub fn row_to_room(row: &RoomRow) -> Room {
         metadata: row.metadata.clone(),
         link_template: row.link_template.clone(),
         loop_limits: LoopLimits::from_settings(&row.settings),
+        auto_facts: super::memory::auto_facts(&row.settings),
         archived: row.archived_at.is_some(),
         last_message_at: row.last_message_at,
         created_at: row.created_at,
@@ -58,6 +59,7 @@ pub fn row_to_member(row: &RoomMemberRow, agent_public_ids: &HashMap<Uuid, Strin
         wake: WakeMode::parse(&row.wake),
         session_scope: SessionScope::parse(&row.session_scope),
         instructions: row.instructions.clone(),
+        memory_recall: row.memory_recall,
         left: row.left_at.is_some(),
         joined_at: row.created_at,
     }
@@ -360,6 +362,7 @@ pub async fn add_person(
             wake: WakeMode::Never.as_str().into(),
             session_scope: SessionScope::Thread.as_str().into(),
             instructions: None,
+            memory_recall: false,
         },
         true,
     )

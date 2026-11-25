@@ -6741,7 +6741,7 @@ export interface paths {
     head?: never;
     /**
      * Change a room's name, topic or settings
-     * @description Change a room's name, topic, metadata, link template or loop limits. Owners and org admins only.
+     * @description Change a room's name, topic, metadata, link template, loop limits or whether it records facts on its own. Owners and org admins only.
      */
     patch: operations["update_room"];
     trace?: never;
@@ -6954,9 +6954,113 @@ export interface paths {
     head?: never;
     /**
      * Change a room member's settings
-     * @description Change a room member's settings. Name, role, wake setting, session scope or instructions; owners and org admins only.
+     * @description Change a room member's settings. Name, role, wake setting, session scope, instructions or memory recall; owners and org admins only.
      */
     patch: operations["update_room_member"];
+    trace?: never;
+  };
+  "/v1/platform/rooms/{room_id}/memory/entries/{entry_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Open one thing a room remembers
+     * @description Get one fact or note with the message it rests on and, for a fact, every fact on its subject in time order.
+     */
+    get: operations["get_room_memory_entry"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/rooms/{room_id}/memory/entries/{entry_id}/forget": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Take a wrong fact or note out of a room's memory
+     * @description Hide a fact or note from recall. A forgotten fact gives its place back to the fact it replaced. The member it came from, room owners and org admins only; nothing is deleted.
+     */
+    post: operations["forget_room_memory_entry"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/rooms/{room_id}/memory/facts": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List what a room has settled
+     * @description List a room's current facts (decisions, rules, claims, deadlines, open questions, observations), newest first, or as they stood at an earlier time.
+     */
+    get: operations["list_room_facts"];
+    put?: never;
+    /**
+     * Record a fact in a room's memory
+     * @description Record a decision, rule, claim, deadline, question or observation in a room's memory. A newer fact on the same subject replaces the older one; both stay.
+     */
+    post: operations["remember_room_fact"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/rooms/{room_id}/memory/notes": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Add outside text to a room's memory
+     * @description Add a note to a room's memory, such as meeting notes or a summary from another tool, so recall finds it next to the room's messages. A caller id makes re-sending safe.
+     */
+    post: operations["ingest_room_note"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/rooms/{room_id}/memory/sessions": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Add a session's conversation to a room's memory
+     * @description Publish a session's conversation into a room's memory as notes: the person's messages and the agent's answers, without tool calls, with secrets scrubbed. Publishing again updates what changed.
+     */
+    post: operations["publish_session_to_room"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
     trace?: never;
   };
   "/v1/platform/rooms/{room_id}/messages": {
@@ -7113,6 +7217,26 @@ export interface paths {
      * @description Mark a room's top level, or a thread, read up to a message. Marks only move forward.
      */
     post: operations["mark_room_read"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/rooms/{room_id}/recall": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Recall what a room knows about something
+     * @description Search a room's messages and memory (facts and notes) together by their words, best match first. Current facts lead; a replaced fact says what replaced it.
+     */
+    get: operations["recall_room"];
+    put?: never;
+    post?: never;
     delete?: never;
     options?: never;
     head?: never;
@@ -28440,6 +28564,12 @@ export interface components {
        */
       archived: boolean;
       /**
+       * @description Whether the room records facts from its messages on its own (room
+       *     memory). On unless turned off.
+       * @example true
+       */
+      auto_facts: boolean;
+      /**
        * Format: date-time
        * @description When the room was created.
        * @example 2026-11-10T15:04:05Z
@@ -28544,7 +28674,9 @@ export interface components {
        * @description `room.created`, `room.updated`, `room.archived`, `room.unarchived`,
        *     `member.joined`, `member.left`, `message.posted`, `message.edited`,
        *     `message.deleted`, `message.pinned`, `message.unpinned`,
-       *     `reaction.added`, `reaction.removed`, `agent.woken`, `agent.limited`.
+       *     `reaction.added`, `reaction.removed`, `agent.woken`, `agent.limited`,
+       *     `agent.considered`, `file.written`, `file.moved`, `file.deleted`,
+       *     `memory.recorded`, `memory.forgotten`, `memory.extraction`.
        * @example message.posted
        */
       type: string;
@@ -28559,6 +28691,11 @@ export interface components {
        * @example 120
        */
       next_after: number;
+    };
+    /** @description A room's facts. */
+    RoomFactListResponse: {
+      /** @description Newest first. */
+      data: components["schemas"]["RoomMemoryEntry"][];
     };
     /** @description A file in a room's shared folder, as it is now. */
     RoomFile: {
@@ -28718,6 +28855,12 @@ export interface components {
        * @example false
        */
       left: boolean;
+      /**
+       * @description For an agent member: whether a wake also carries what the room
+       *     remembers about the message.
+       * @example false
+       */
+      memory_recall: boolean;
       /** @description Owner or member. */
       role: components["schemas"]["RoomMemberRole"];
       /**
@@ -28750,6 +28893,124 @@ export interface components {
      * @enum {string}
      */
     RoomMemberRole: "owner" | "member";
+    /** @description A fact or a note a room remembers. */
+    RoomMemoryEntry: {
+      author?: components["schemas"]["RoomAuthor"] | null;
+      /**
+       * Format: date-time
+       * @description When it was recorded.
+       */
+      created_at: string;
+      /**
+       * @description Whether it is current: not replaced and not forgotten.
+       * @example true
+       */
+      current: boolean;
+      /**
+       * @description For a fact: decision, rule, claim, deadline, question or observation.
+       * @example decision
+       */
+      fact_kind?: string | null;
+      /**
+       * @description Whether it was forgotten (taken out of recall).
+       * @example false
+       */
+      forgotten: boolean;
+      /**
+       * @description Prefixed entry id (`rmm_...`).
+       * @example rmm_01933b5a000070008000000000000004
+       */
+      id: string;
+      /**
+       * @description `fact` or `note`.
+       * @example fact
+       */
+      kind: string;
+      /** @description A short name, such as a session's title. */
+      label?: string | null;
+      /**
+       * Format: date-time
+       * @description When it happened, which is not always when it was recorded.
+       * @example 2026-11-24T15:04:05Z
+       */
+      occurred_at: string;
+      /**
+       * @description The exact words it rests on.
+       * @example let's move deploys to Tuesdays, 3pm Central
+       */
+      quote?: string | null;
+      /**
+       * @description `extraction` (the room read it from a message), `member`, `ingest` or `session`.
+       * @example extraction
+       */
+      recorded_by: string;
+      /**
+       * Format: date-time
+       * @description When the replacing fact happened.
+       */
+      replaced_at?: string | null;
+      /** @description The fact that replaced it. */
+      replaced_by?: string | null;
+      source: components["schemas"]["RoomMemorySource"];
+      /**
+       * @description The fact in one sentence, or the note's text.
+       * @example Deploys happen Tuesdays at 15:00 CT.
+       */
+      statement: string;
+      /**
+       * @description stated, proposed (an option nobody adopted), hypothetical, or retracted.
+       * @example stated
+       */
+      status: string;
+      /**
+       * @description For a fact: what it is about. A newer fact on the same subject
+       *     replaces the older one.
+       * @example deploy window
+       */
+      subject?: string | null;
+    };
+    /** @description One entry with where it came from and, for a fact, its subject's history. */
+    RoomMemoryEntryDetail: {
+      entry: components["schemas"]["RoomMemoryEntry"];
+      /** @description Every live fact on the same subject, oldest first. */
+      history: components["schemas"]["RoomMemoryEntry"][];
+      source_message?: components["schemas"]["RoomMessage"] | null;
+    };
+    /** @description What recording an entry did. */
+    RoomMemoryRecorded: {
+      entry: components["schemas"]["RoomMemoryEntry"];
+      /** @description Facts the new one replaces. */
+      replaced: string[];
+      /**
+       * @description Whether the same content was already recorded under that caller id,
+       *     so nothing changed.
+       * @example false
+       */
+      unchanged: boolean;
+    };
+    /** @description Where a memory entry came from. */
+    RoomMemorySource: {
+      /**
+       * @description `message`, `session`, `ingest` or `member`.
+       * @example message
+       */
+      kind: string;
+      /**
+       * @description The message the entry rests on.
+       * @example rmsg_01933b5a000070008000000000000002
+       */
+      message_id?: string | null;
+      /**
+       * @description The session it was published from.
+       * @example session_01933b5a000070008000000000000003
+       */
+      session_id?: string | null;
+      /**
+       * @description The caller's own id for an ingested note or a session piece.
+       * @example standup-2026-11-24
+       */
+      source_ref?: string | null;
+    };
     /** @description A member a message mentions. */
     RoomMention: {
       /**
@@ -28910,6 +29171,39 @@ export interface components {
       not_read_by: components["schemas"]["RoomAuthor"][];
       /** @description Members who have read up to the message. */
       read_by: components["schemas"]["RoomReader"][];
+    };
+    /** @description One thing recall found: a message or a memory entry. */
+    RoomRecallHit: {
+      entry?: components["schemas"]["RoomMemoryEntry"] | null;
+      /** @description The matching words in context, with matches in `**bold**`. */
+      excerpt?: string | null;
+      /**
+       * @description `message` or `entry`.
+       * @example entry
+       */
+      kind: string;
+      message?: components["schemas"]["RoomMessage"] | null;
+      /**
+       * Format: float
+       * @description How well it matched, higher is better; comparable within one answer.
+       * @example 0.42
+       */
+      score: number;
+    };
+    /** @description What a room remembers about a question. */
+    RoomRecallResponse: {
+      /** @description Best first. */
+      data: components["schemas"]["RoomRecallHit"][];
+    };
+    /** @description What publishing a session did. */
+    RoomSessionPublished: {
+      /** @description The session's conversation, in pieces, as room notes. */
+      notes: components["schemas"]["RoomMemoryEntry"][];
+      /**
+       * @description Pieces already in room memory unchanged.
+       * @example 0
+       */
+      unchanged: number;
     };
     /**
      * @description Messages a member has not read yet, each with its thread root for
@@ -56149,6 +56443,159 @@ export interface operations {
       };
     };
   };
+  get_room_memory_entry: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        room_id: string;
+        /** @description Prefixed public identifier */
+        entry_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RoomMemoryEntryDetail"];
+        };
+      };
+    };
+  };
+  forget_room_memory_entry: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        room_id: string;
+        /** @description Prefixed public identifier */
+        entry_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RoomMemoryEntry"];
+        };
+      };
+    };
+  };
+  list_room_facts: {
+    parameters: {
+      query?: {
+        /** @description Only facts of this kind: decision, rule, claim, deadline, question or observation. */
+        kind?: string;
+        /** @description Only facts on this subject. */
+        subject?: string;
+        /** @description The facts as they stood at this time. */
+        as_of?: string;
+        /** @description Also list facts that were replaced. */
+        include_replaced?: boolean;
+        /** @description Most facts, 50 by default, 200 at most. */
+        limit?: number;
+      };
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        room_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RoomFactListResponse"];
+        };
+      };
+    };
+  };
+  remember_room_fact: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        room_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RoomMemoryRecorded"];
+        };
+      };
+    };
+  };
+  ingest_room_note: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        room_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RoomMemoryRecorded"];
+        };
+      };
+    };
+  };
+  publish_session_to_room: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        room_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RoomSessionPublished"];
+        };
+      };
+    };
+  };
   list_room_messages: {
     parameters: {
       query?: {
@@ -56424,6 +56871,39 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["RoomReadMark"];
+        };
+      };
+    };
+  };
+  recall_room: {
+    parameters: {
+      query: {
+        /** @description What to look for, in plain words: any of them may match. */
+        q: string;
+        /**
+         * @description Recall as of this time: later messages and facts are left out, and a
+         *     fact replaced after it still counts as current.
+         */
+        as_of?: string;
+        /** @description Most results, 10 by default, 50 at most. */
+        limit?: number;
+      };
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        room_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RoomRecallResponse"];
         };
       };
     };

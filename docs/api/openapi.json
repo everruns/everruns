@@ -26022,7 +26022,7 @@
           "rooms"
         ],
         "summary": "Change a room's name, topic or settings",
-        "description": "Change a room's name, topic, metadata, link template or loop limits. Owners and org admins only.",
+        "description": "Change a room's name, topic, metadata, link template, loop limits or whether it records facts on its own. Owners and org admins only.",
         "operationId": "update_room",
         "parameters": [
           {
@@ -26673,7 +26673,7 @@
           "rooms"
         ],
         "summary": "Change a room member's settings",
-        "description": "Change a room member's settings. Name, role, wake setting, session scope or instructions; owners and org admins only.",
+        "description": "Change a room member's settings. Name, role, wake setting, session scope, instructions or memory recall; owners and org admins only.",
         "operationId": "update_room_member",
         "parameters": [
           {
@@ -26702,6 +26702,303 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/RoomMember"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "sessions-workspaces",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/platform/rooms/{room_id}/memory/entries/{entry_id}": {
+      "get": {
+        "tags": [
+          "rooms"
+        ],
+        "summary": "Open one thing a room remembers",
+        "description": "Get one fact or note with the message it rests on and, for a fact, every fact on its subject in time order.",
+        "operationId": "get_room_memory_entry",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "entry_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoomMemoryEntryDetail"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "sessions-workspaces",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/platform/rooms/{room_id}/memory/entries/{entry_id}/forget": {
+      "post": {
+        "tags": [
+          "rooms"
+        ],
+        "summary": "Take a wrong fact or note out of a room's memory",
+        "description": "Hide a fact or note from recall. A forgotten fact gives its place back to the fact it replaced. The member it came from, room owners and org admins only; nothing is deleted.",
+        "operationId": "forget_room_memory_entry",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "entry_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoomMemoryEntry"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "sessions-workspaces",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/platform/rooms/{room_id}/memory/facts": {
+      "get": {
+        "tags": [
+          "rooms"
+        ],
+        "summary": "List what a room has settled",
+        "description": "List a room's current facts (decisions, rules, claims, deadlines, open questions, observations), newest first, or as they stood at an earlier time.",
+        "operationId": "list_room_facts",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "description": "Only facts of this kind: decision, rule, claim, deadline, question or observation.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "subject",
+            "in": "query",
+            "description": "Only facts on this subject.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "as_of",
+            "in": "query",
+            "description": "The facts as they stood at this time.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "include_replaced",
+            "in": "query",
+            "description": "Also list facts that were replaced.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Most facts, 50 by default, 200 at most.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoomFactListResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "sessions-workspaces",
+          "support": "preview"
+        }
+      },
+      "post": {
+        "tags": [
+          "rooms"
+        ],
+        "summary": "Record a fact in a room's memory",
+        "description": "Record a decision, rule, claim, deadline, question or observation in a room's memory. A newer fact on the same subject replaces the older one; both stay.",
+        "operationId": "remember_room_fact",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoomMemoryRecorded"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "sessions-workspaces",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/platform/rooms/{room_id}/memory/notes": {
+      "post": {
+        "tags": [
+          "rooms"
+        ],
+        "summary": "Add outside text to a room's memory",
+        "description": "Add a note to a room's memory, such as meeting notes or a summary from another tool, so recall finds it next to the room's messages. A caller id makes re-sending safe.",
+        "operationId": "ingest_room_note",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoomMemoryRecorded"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "sessions-workspaces",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/platform/rooms/{room_id}/memory/sessions": {
+      "post": {
+        "tags": [
+          "rooms"
+        ],
+        "summary": "Add a session's conversation to a room's memory",
+        "description": "Publish a session's conversation into a room's memory as notes: the person's messages and the agent's answers, without tool calls, with secrets scrubbed. Publishing again updates what changed.",
+        "operationId": "publish_session_to_room",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoomSessionPublished"
                 }
               }
             }
@@ -27248,6 +27545,74 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/RoomReadMark"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "sessions-workspaces",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/platform/rooms/{room_id}/recall": {
+      "get": {
+        "tags": [
+          "rooms"
+        ],
+        "summary": "Recall what a room knows about something",
+        "description": "Search a room's messages and memory (facts and notes) together by their words, best match first. Current facts lead; a replaced fact says what replaced it.",
+        "operationId": "recall_room",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "description": "What to look for, in plain words: any of them may match.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "as_of",
+            "in": "query",
+            "description": "Recall as of this time: later messages and facts are left out, and a\nfact replaced after it still counts as current.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Most results, 10 by default, 50 at most.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoomRecallResponse"
                 }
               }
             }
@@ -71200,6 +71565,7 @@
           "name",
           "metadata",
           "loop_limits",
+          "auto_facts",
           "archived",
           "created_at",
           "updated_at"
@@ -71209,6 +71575,11 @@
             "type": "boolean",
             "description": "Whether the room is archived: it keeps everything but takes no posts and wakes no agents.",
             "example": false
+          },
+          "auto_facts": {
+            "type": "boolean",
+            "description": "Whether the room records facts from its messages on its own (room\nmemory). On unless turned off.",
+            "example": true
           },
           "created_at": {
             "type": "string",
@@ -71354,7 +71725,7 @@
           },
           "type": {
             "type": "string",
-            "description": "`room.created`, `room.updated`, `room.archived`, `room.unarchived`,\n`member.joined`, `member.left`, `message.posted`, `message.edited`,\n`message.deleted`, `message.pinned`, `message.unpinned`,\n`reaction.added`, `reaction.removed`, `agent.woken`, `agent.limited`.",
+            "description": "`room.created`, `room.updated`, `room.archived`, `room.unarchived`,\n`member.joined`, `member.left`, `message.posted`, `message.edited`,\n`message.deleted`, `message.pinned`, `message.unpinned`,\n`reaction.added`, `reaction.removed`, `agent.woken`, `agent.limited`,\n`agent.considered`, `file.written`, `file.moved`, `file.deleted`,\n`memory.recorded`, `memory.forgotten`, `memory.extraction`.",
             "example": "message.posted"
           }
         }
@@ -71379,6 +71750,22 @@
             "format": "int64",
             "description": "Pass as `after` to read on.",
             "example": 120
+          }
+        }
+      },
+      "RoomFactListResponse": {
+        "type": "object",
+        "description": "A room's facts.",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RoomMemoryEntry"
+            },
+            "description": "Newest first."
           }
         }
       },
@@ -71606,6 +71993,7 @@
           "role",
           "wake",
           "session_scope",
+          "memory_recall",
           "left",
           "joined_at"
         ],
@@ -71654,6 +72042,11 @@
           "left": {
             "type": "boolean",
             "description": "Whether the member left. Left members still name their old messages.",
+            "example": false
+          },
+          "memory_recall": {
+            "type": "boolean",
+            "description": "For an agent member: whether a wake also carries what the room\nremembers about the message.",
             "example": false
           },
           "role": {
@@ -71716,6 +72109,225 @@
           "owner",
           "member"
         ]
+      },
+      "RoomMemoryEntry": {
+        "type": "object",
+        "description": "A fact or a note a room remembers.",
+        "required": [
+          "id",
+          "kind",
+          "statement",
+          "status",
+          "occurred_at",
+          "source",
+          "recorded_by",
+          "current",
+          "forgotten",
+          "created_at"
+        ],
+        "properties": {
+          "author": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RoomAuthor",
+                "description": "Who said it, when a member did."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When it was recorded."
+          },
+          "current": {
+            "type": "boolean",
+            "description": "Whether it is current: not replaced and not forgotten.",
+            "example": true
+          },
+          "fact_kind": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "For a fact: decision, rule, claim, deadline, question or observation.",
+            "example": "decision"
+          },
+          "forgotten": {
+            "type": "boolean",
+            "description": "Whether it was forgotten (taken out of recall).",
+            "example": false
+          },
+          "id": {
+            "type": "string",
+            "description": "Prefixed entry id (`rmm_...`).",
+            "example": "rmm_01933b5a000070008000000000000004"
+          },
+          "kind": {
+            "type": "string",
+            "description": "`fact` or `note`.",
+            "example": "fact"
+          },
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A short name, such as a session's title."
+          },
+          "occurred_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When it happened, which is not always when it was recorded.",
+            "example": "2026-11-24T15:04:05Z"
+          },
+          "quote": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The exact words it rests on.",
+            "example": "let's move deploys to Tuesdays, 3pm Central"
+          },
+          "recorded_by": {
+            "type": "string",
+            "description": "`extraction` (the room read it from a message), `member`, `ingest` or `session`.",
+            "example": "extraction"
+          },
+          "replaced_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the replacing fact happened."
+          },
+          "replaced_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The fact that replaced it."
+          },
+          "source": {
+            "$ref": "#/components/schemas/RoomMemorySource"
+          },
+          "statement": {
+            "type": "string",
+            "description": "The fact in one sentence, or the note's text.",
+            "example": "Deploys happen Tuesdays at 15:00 CT."
+          },
+          "status": {
+            "type": "string",
+            "description": "stated, proposed (an option nobody adopted), hypothetical, or retracted.",
+            "example": "stated"
+          },
+          "subject": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "For a fact: what it is about. A newer fact on the same subject\nreplaces the older one.",
+            "example": "deploy window"
+          }
+        }
+      },
+      "RoomMemoryEntryDetail": {
+        "type": "object",
+        "description": "One entry with where it came from and, for a fact, its subject's history.",
+        "required": [
+          "entry",
+          "history"
+        ],
+        "properties": {
+          "entry": {
+            "$ref": "#/components/schemas/RoomMemoryEntry"
+          },
+          "history": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RoomMemoryEntry"
+            },
+            "description": "Every live fact on the same subject, oldest first."
+          },
+          "source_message": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RoomMessage",
+                "description": "The message it rests on, when there is one."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "RoomMemoryRecorded": {
+        "type": "object",
+        "description": "What recording an entry did.",
+        "required": [
+          "entry",
+          "replaced",
+          "unchanged"
+        ],
+        "properties": {
+          "entry": {
+            "$ref": "#/components/schemas/RoomMemoryEntry"
+          },
+          "replaced": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Facts the new one replaces."
+          },
+          "unchanged": {
+            "type": "boolean",
+            "description": "Whether the same content was already recorded under that caller id,\nso nothing changed.",
+            "example": false
+          }
+        }
+      },
+      "RoomMemorySource": {
+        "type": "object",
+        "description": "Where a memory entry came from.",
+        "required": [
+          "kind"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "description": "`message`, `session`, `ingest` or `member`.",
+            "example": "message"
+          },
+          "message_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The message the entry rests on.",
+            "example": "rmsg_01933b5a000070008000000000000002"
+          },
+          "session_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The session it was published from.",
+            "example": "session_01933b5a000070008000000000000003"
+          },
+          "source_ref": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The caller's own id for an ingested note or a session piece.",
+            "example": "standup-2026-11-24"
+          }
+        }
       },
       "RoomMention": {
         "type": "object",
@@ -71988,6 +72600,93 @@
               "$ref": "#/components/schemas/RoomReader"
             },
             "description": "Members who have read up to the message."
+          }
+        }
+      },
+      "RoomRecallHit": {
+        "type": "object",
+        "description": "One thing recall found: a message or a memory entry.",
+        "required": [
+          "kind",
+          "score"
+        ],
+        "properties": {
+          "entry": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RoomMemoryEntry"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "excerpt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The matching words in context, with matches in `**bold**`."
+          },
+          "kind": {
+            "type": "string",
+            "description": "`message` or `entry`.",
+            "example": "entry"
+          },
+          "message": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RoomMessage"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "score": {
+            "type": "number",
+            "format": "float",
+            "description": "How well it matched, higher is better; comparable within one answer.",
+            "example": 0.42
+          }
+        }
+      },
+      "RoomRecallResponse": {
+        "type": "object",
+        "description": "What a room remembers about a question.",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RoomRecallHit"
+            },
+            "description": "Best first."
+          }
+        }
+      },
+      "RoomSessionPublished": {
+        "type": "object",
+        "description": "What publishing a session did.",
+        "required": [
+          "notes",
+          "unchanged"
+        ],
+        "properties": {
+          "notes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RoomMemoryEntry"
+            },
+            "description": "The session's conversation, in pieces, as room notes."
+          },
+          "unchanged": {
+            "type": "integer",
+            "description": "Pieces already in room memory unchanged.",
+            "example": 0,
+            "minimum": 0
           }
         }
       },

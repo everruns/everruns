@@ -563,6 +563,13 @@ impl IdMarker for RoomMessageIdMarker {
     const PREFIX: &'static str = "rmsg";
 }
 
+/// Marker for Room memory entry IDs (a fact or a note a room remembers)
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct RoomMemoryEntryIdMarker;
+impl IdMarker for RoomMemoryEntryIdMarker {
+    const PREFIX: &'static str = "rmm";
+}
+
 /// Marker for Memory IDs (org-scoped named Memories)
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct MemoryIdMarker;
@@ -765,6 +772,8 @@ pub type RoomId = TypedId<RoomIdMarker>;
 pub type RoomMemberId = TypedId<RoomMemberIdMarker>;
 /// Room message ID (`rmsg_` prefix)
 pub type RoomMessageId = TypedId<RoomMessageIdMarker>;
+/// Room memory entry ID (`rmm_` prefix)
+pub type RoomMemoryEntryId = TypedId<RoomMemoryEntryIdMarker>;
 /// Memory ID (org-scoped named Memory)
 pub type MemoryId = TypedId<MemoryIdMarker>;
 /// Workspace ID (org-scoped named Workspace)

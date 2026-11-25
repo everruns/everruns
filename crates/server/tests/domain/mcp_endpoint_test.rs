@@ -424,7 +424,7 @@ async fn test_mcp_tools_list() {
     let tools = resp["result"]["tools"]
         .as_array()
         .expect("Expected tools array");
-    assert_eq!(tools.len(), 31, "9 MCP, 11 MCP Apps and 11 room tools");
+    assert_eq!(tools.len(), 34, "9 MCP, 11 MCP Apps and 14 room tools");
 
     let names: Vec<&str> = tools.iter().map(|t| t["name"].as_str().unwrap()).collect();
     assert!(names.contains(&"me"), "Missing me");

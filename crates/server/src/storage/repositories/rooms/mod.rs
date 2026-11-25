@@ -9,6 +9,7 @@
 //   messages unread again by sending an older position.
 
 mod files;
+pub(super) mod memory;
 pub(super) mod rows;
 use rows::*;
 
@@ -224,8 +225,8 @@ impl Database {
         let row = sqlx::query_as::<_, RoomMemberRow>(sql!(
             r#"
             INSERT INTO room_members (room_id, org_id, kind, user_id, agent_id, handle, display_name,
-                                      role, wake, session_scope, instructions)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                                      role, wake, session_scope, instructions, memory_recall)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
             RETURNING {RoomMemberRow}
             "#
         ))
@@ -240,6 +241,7 @@ impl Database {
         .bind(&input.wake)
         .bind(&input.session_scope)
         .bind(&input.instructions)
+        .bind(input.memory_recall)
         .fetch_one(&mut *tx)
         .await?;
         insert_event(
@@ -340,6 +342,7 @@ impl Database {
                 wake = COALESCE($5, wake),
                 session_scope = COALESCE($6, session_scope),
                 instructions = CASE WHEN $7 THEN $8 ELSE instructions END,
+                memory_recall = COALESCE($9, memory_recall),
                 updated_at = now()
             WHERE room_id = $1 AND id = $2 AND left_at IS NULL
             RETURNING {RoomMemberRow}
@@ -353,6 +356,7 @@ impl Database {
         .bind(&input.session_scope)
         .bind(input.instructions.is_some())
         .bind(input.instructions.clone().flatten())
+        .bind(input.memory_recall)
         .fetch_optional(&self.pool)
         .await?)
     }

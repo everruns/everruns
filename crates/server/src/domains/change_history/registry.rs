@@ -840,6 +840,14 @@ pub fn declared(name: &str) -> Change {
         | "restore_room_file" => {
             Change::Exempt("room files keep their own version history with authors")
         }
+        // Room memory keeps every entry (nothing is purged) and records each
+        // write in the room's event feed.
+        "remember_room_fact"
+        | "forget_room_memory_entry"
+        | "ingest_room_note"
+        | "publish_session_to_room" => {
+            Change::Exempt("room memory keeps every entry and records writes in the room's feed")
+        }
         "mark_room_read" | "read_room_unread" => {
             Change::Exempt("read state of the caller's own room position")
         }

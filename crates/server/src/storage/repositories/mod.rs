@@ -106,6 +106,7 @@ mod oauth_grants;
 mod rooms;
 pub use oauth_grants::OAUTH_GRANT_ACCESS_READ_AND_RUN;
 pub use oauth_grants::rows::*;
+pub use rooms::memory::*;
 pub use rooms::rows::*;
 mod observers;
 pub use observers::rows::*;

@@ -327,6 +327,14 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
         "rooms files",
         "A room's shared files, edited in place with every version kept.",
     ),
+    (
+        "rooms facts",
+        "What a room settled: decisions, rules, deadlines; newer ones replace older.",
+    ),
+    (
+        "rooms memory",
+        "A room's memory entries: open, forget, add notes, publish a session.",
+    ),
     ("rooms members", "People, agents and guests in a room."),
     (
         "rooms messages",

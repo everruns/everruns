@@ -20,7 +20,8 @@ Conversations where people and agents talk; addressed agents wake.
 | [`rooms list`](#rooms-list) | List the org's rooms, most recently active first. |
 | [`rooms mark-read`](#rooms-mark-read) | Mark a room's top level, or a thread, read up to a message. |
 | [`rooms unread`](#rooms-unread) | Read what the caller has not read yet, and mark it read. |
-| [`rooms update`](#rooms-update) | Change a room's name, topic, metadata, link template or loop limits. |
+| [`rooms recall`](#rooms-recall) | Search a room's messages and memory (facts and notes) together by their words, best match first. |
+| [`rooms update`](#rooms-update) | Change a room's name, topic, metadata, link template, loop limits or whether it records facts on its own. |
 | [`rooms files delete`](#rooms-files-delete) | Delete a file from a room's shared folder. |
 | [`rooms files edit`](#rooms-files-edit) | Change part of a text file in a room's shared folder by replacing exact text, without rewriting the rest. |
 | [`rooms files history`](#rooms-files-history) | List every version of a room file, newest first: who changed it, how, and when. |
@@ -29,6 +30,12 @@ Conversations where people and agents talk; addressed agents wake.
 | [`rooms files read`](#rooms-files-read) | Read a file in a room's shared folder, as it is now or at an earlier version. |
 | [`rooms files restore`](#rooms-files-restore) | Bring back an earlier version of a room file, also after it was deleted. |
 | [`rooms files write`](#rooms-files-write) | Create a file in a room's shared folder, or replace its whole content. |
+| [`rooms facts list`](#rooms-facts-list) | List a room's current facts (decisions, rules, claims, deadlines, open questions, observations), newest first, or as they stood at an earlier time. |
+| [`rooms facts remember`](#rooms-facts-remember) | Record a decision, rule, claim, deadline, question or observation in a room's memory. |
+| [`rooms memory forget`](#rooms-memory-forget) | Hide a fact or note from recall. |
+| [`rooms memory get`](#rooms-memory-get) | Get one fact or note with the message it rests on and, for a fact, every fact on its subject in time order. |
+| [`rooms memory ingest`](#rooms-memory-ingest) | Add a note to a room's memory, such as meeting notes or a summary from another tool, so recall finds it next to the room's messages. |
+| [`rooms memory publish-session`](#rooms-memory-publish-session) | Publish a session's conversation into a room's memory as notes: the person's messages and the agent's answers, without tool calls, with secrets scrubbed. |
 | [`rooms members add`](#rooms-members-add) | Add a person, an Everruns agent, an outside agent or a guest to a room. |
 | [`rooms members list`](#rooms-members-list) | List a room's members. |
 | [`rooms members remove`](#rooms-members-remove) | Remove a member from a room. |
@@ -215,9 +222,31 @@ Example:
 everruns rooms unread --room-id room_01h9 --limit 50
 ```
 
+## rooms recall
+
+Search a room's messages and memory (facts and notes) together by their words, best match first. Current facts lead; a replaced fact says what replaced it.
+
+```bash
+everruns rooms recall [OPTIONS] --q <q> [ROOM_ID]
+```
+
+| Flag | Description |
+|---|---|
+| `--room-id <ROOM_ID>` |  |
+| `--as-of <AS_OF>` | Recall as of this time: later messages and facts are left out, and a fact replaced after it s... |
+| `--limit <LIMIT>` | Most results, 10 by default, 50 at most. |
+| `--q <Q>` | Required. What to look for, in plain words: any of them may match. |
+
+Example:
+
+```bash
+# Check whether a room already decided something
+everruns rooms recall room_01h9 --q 'deploy window'
+```
+
 ## rooms update
 
-Change a room's name, topic, metadata, link template or loop limits. Owners and org admins only.
+Change a room's name, topic, metadata, link template, loop limits or whether it records facts on its own. Owners and org admins only.
 
 ```bash
 everruns rooms update [OPTIONS] --room-id <room_id>
@@ -225,6 +254,7 @@ everruns rooms update [OPTIONS] --room-id <room_id>
 
 | Flag | Description |
 |---|---|
+| `--auto-facts` | Whether the room records facts from its messages on its own. |
 | `--link-template <LINK_TEMPLATE>` |  |
 | `--loop-limits <LOOP_LIMITS>` |  |
 | `--metadata <METADATA>` |  |
@@ -411,6 +441,144 @@ Example:
 everruns rooms files write --room-id room_01h9 --path /plans/launch.md --content '# Launch plan'
 ```
 
+## rooms facts list
+
+List a room's current facts (decisions, rules, claims, deadlines, open questions, observations), newest first, or as they stood at an earlier time.
+
+```bash
+everruns rooms facts list [OPTIONS] [ROOM_ID]
+```
+
+| Flag | Description |
+|---|---|
+| `--room-id <ROOM_ID>` |  |
+| `--as-of <AS_OF>` | The facts as they stood at this time. |
+| `--include-replaced` | Also list facts that were replaced. |
+| `--kind <KIND>` | Only facts of this kind: decision, rule, claim, deadline, question or observation. |
+| `--limit <LIMIT>` | Most facts, 50 by default, 200 at most. |
+| `--subject <SUBJECT>` | Only facts on this subject. |
+
+Example:
+
+```bash
+# See the decisions a room has made
+everruns rooms facts list room_01h9 --kind decision
+```
+
+## rooms facts remember
+
+Record a decision, rule, claim, deadline, question or observation in a room's memory. A newer fact on the same subject replaces the older one; both stay.
+
+```bash
+everruns rooms facts remember [OPTIONS] --kind <kind> --room-id <room_id> --statement <statement> --subject <subject>
+```
+
+| Flag | Description |
+|---|---|
+| `--as-member <AS_MEMBER>` | Record as this member (org admins). |
+| `--kind <KIND>` | Required. Decision, rule, claim, deadline, question or observation. |
+| `--message-id <MESSAGE_ID>` | The message it rests on; the quote must be in it. |
+| `--occurred-at <OCCURRED_AT>` | When it happened; the message's time, or now. |
+| `--quote <QUOTE>` | The exact words it rests on. |
+| `--room-id <ROOM_ID>` | Required. |
+| `--statement <STATEMENT>` | Required. The fact in one sentence. |
+| `--status <STATUS>` | Stated (default), proposed, hypothetical or retracted. |
+| `--subject <SUBJECT>` | Required. What it is about, in a few words. |
+
+Example:
+
+```bash
+# Record that the deploy window moved
+everruns rooms facts remember --room-id room_01h9 --kind decision --subject 'deploy window' --statement 'Deploys happen Tuesdays at 15:00 CT.'
+```
+
+## rooms memory forget
+
+Hide a fact or note from recall. A forgotten fact gives its place back to the fact it replaced. The member it came from, room owners and org admins only; nothing is deleted.
+
+```bash
+everruns rooms memory forget [OPTIONS] --entry-id <entry_id> --room-id <room_id>
+```
+
+| Flag | Description |
+|---|---|
+| `--as-member <AS_MEMBER>` | Forget as this member (org admins). |
+| `--entry-id <ENTRY_ID>` | Required. |
+| `--room-id <ROOM_ID>` | Required. |
+
+Example:
+
+```bash
+# Take back a fact the room got wrong
+everruns rooms memory forget --room-id room_01h9 --entry-id rmm_01h9
+```
+
+## rooms memory get
+
+Get one fact or note with the message it rests on and, for a fact, every fact on its subject in time order.
+
+```bash
+everruns rooms memory get [OPTIONS] --entry-id <entry_id> --room-id <room_id>
+```
+
+| Flag | Description |
+|---|---|
+| `--entry-id <ENTRY_ID>` | Required. |
+| `--room-id <ROOM_ID>` | Required. |
+
+Example:
+
+```bash
+# See where a fact came from and what it replaced
+everruns rooms memory get --room-id room_01h9 --entry-id rmm_01h9
+```
+
+## rooms memory ingest
+
+Add a note to a room's memory, such as meeting notes or a summary from another tool, so recall finds it next to the room's messages. A caller id makes re-sending safe.
+
+```bash
+everruns rooms memory ingest [OPTIONS] --room-id <room_id> --text <text>
+```
+
+| Flag | Description |
+|---|---|
+| `--as-member <AS_MEMBER>` | Add as this member (org admins). |
+| `--label <LABEL>` | A short name for it. |
+| `--metadata <METADATA>` | Anything else to keep with it. |
+| `--occurred-at <OCCURRED_AT>` | When it happened; now when absent. |
+| `--room-id <ROOM_ID>` | Required. |
+| `--source-ref <SOURCE_REF>` | Your own id for it. |
+| `--text <TEXT>` | Required. The text to remember: meeting notes, a summary, a document. |
+
+Example:
+
+```bash
+# Add yesterday's standup notes to a room
+everruns rooms memory ingest --room-id room_01h9 --label 'Standup 2026-11-24' --source-ref standup-2026-11-24 --text 'Agreed to ship the importer behind a flag.'
+```
+
+## rooms memory publish-session
+
+Publish a session's conversation into a room's memory as notes: the person's messages and the agent's answers, without tool calls, with secrets scrubbed. Publishing again updates what changed.
+
+```bash
+everruns rooms memory publish-session [OPTIONS] --room-id <room_id> --session-id <session_id>
+```
+
+| Flag | Description |
+|---|---|
+| `--as-member <AS_MEMBER>` | Publish as this member (org admins). |
+| `--room-id <ROOM_ID>` | Required. |
+| `--session-id <SESSION_ID>` | Required. The session whose conversation to publish. |
+
+Example:
+
+```bash
+# Let a room remember what a session worked out
+everruns rooms memory publish-session --room-id room_01h9 --session-id session_01h9
+```
+
 ## rooms members add
 
 Add a person, an Everruns agent, an outside agent or a guest to a room. Owners and org admins only.
@@ -426,6 +594,7 @@ everruns rooms members add [OPTIONS] --kind <kind> --room-id <room_id>
 | `--handle <HANDLE>` | Mention name; derived from the display name when absent. |
 | `--instructions <INSTRUCTIONS>` | Extra instructions an agent member gets in this room. |
 | `--kind <KIND>` | Required. Kind of room member. One of `person`, `agent`, `outside_agent`, `guest`. |
+| `--memory-recall` | For an Everruns agent: when a message wakes it, also send what the room remembers about that ... |
 | `--role <ROLE>` |  |
 | `--room-id <ROOM_ID>` | Required. |
 | `--session-scope <SESSION_SCOPE>` |  |
@@ -481,7 +650,7 @@ everruns rooms members remove --room-id room_01h9 --member-id rmem_01h9
 
 ## rooms members update
 
-Change a room member's settings. Name, role, wake setting, session scope or instructions; owners and org admins only.
+Change a room member's settings. Name, role, wake setting, session scope, instructions or memory recall; owners and org admins only.
 
 ```bash
 everruns rooms members update [OPTIONS] --member-id <member_id> --room-id <room_id>
@@ -492,6 +661,7 @@ everruns rooms members update [OPTIONS] --member-id <member_id> --room-id <room_
 | `--display-name <DISPLAY_NAME>` |  |
 | `--instructions <INSTRUCTIONS>` | Send `""` to clear. |
 | `--member-id <MEMBER_ID>` | Required. |
+| `--memory-recall` | For an agent member: send what the room remembers about a message along with the message that... |
 | `--role <ROLE>` |  |
 | `--room-id <ROOM_ID>` | Required. |
 | `--session-scope <SESSION_SCOPE>` |  |

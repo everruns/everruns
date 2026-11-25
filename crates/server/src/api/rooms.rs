@@ -97,5 +97,12 @@ pub fn routes(state: AppState) -> Router {
         .command::<DeleteRoomFile>()
         .command::<ListRoomFileHistory>()
         .command::<RestoreRoomFile>()
+        .command::<RecallRoom>()
+        .command::<ListRoomFacts>()
+        .command::<RememberRoomFact>()
+        .command::<GetRoomMemoryEntry>()
+        .command::<ForgetRoomMemoryEntry>()
+        .command::<IngestRoomNote>()
+        .command::<PublishSessionToRoom>()
         .with_state(state)
 }
