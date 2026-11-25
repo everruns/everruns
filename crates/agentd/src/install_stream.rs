@@ -197,7 +197,7 @@ async fn expand(gateway: &Arc<Gateway>, records: &mut [StreamRecord]) {
             events
                 .into_iter()
                 .filter(|e| e.sequence.is_some_and(|s| s <= *to))
-                .filter(|e| types.iter().any(|t| *t == e.event_type))
+                .filter(|e| types.contains(&e.event_type))
                 .map(|e| serde_json::to_value(e.into_public()).unwrap_or(Value::Null))
                 .collect(),
         );
