@@ -4,13 +4,12 @@ import {
   FeaturesIcon,
   HealthIcon,
   OrganizationIcon,
-  PluginsIcon,
   ProviderIcon,
   TeamIcon,
   TokenIcon,
   VirtualUserIcon,
 } from "@/components/icons/facet-icons";
-import { ChartGantt, Gauge, Receipt, ShieldCheck, ShieldUser } from "lucide-react";
+import { AppWindow, ChartGantt, Gauge, Receipt, ShieldCheck, ShieldUser } from "lucide-react";
 import { SlackIcon } from "@/components/icons/slack-icon";
 import type { NavigationSection } from "@/lib/navigation";
 import { registryDomainIcons } from "@/lib/registry-navigation";
@@ -169,7 +168,7 @@ export const settingsNavigationSections: NavigationSection[] = [
         name: "AI clients",
         href: "/settings/ai-clients",
         keywords: ["coding agent", "codex", "claude", "cursor", "chatgpt", "connected clients"],
-        icon: PluginsIcon,
+        icon: AppWindow,
         description: "AI apps you approved to use Everruns as you",
       },
       {
