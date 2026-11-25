@@ -44,7 +44,7 @@ pub fn router(node: Arc<Node>) -> Router {
         .route("/shard/snapshot", post(trigger_snapshot))
         .route("/shard/registry", get(registry))
         .route("/shard/load", get(load))
-        .route("/shard/pressure", get(crate::pressure::reading))
+        .route("/shard/pressure", crate::pressure::route())
         .route("/shard/tools", get(tools))
         .route("/shard/movable", get(movable))
         .route("/shard/members", get(members).post(add_member))
