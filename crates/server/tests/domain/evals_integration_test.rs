@@ -1112,13 +1112,13 @@ async fn test_dataset_export_atif_uses_model_view_not_raw_log() {
     assert_eq!(done.status, EvalDatasetStatus::Completed);
     let dataset_body = done.body.expect("completed dataset has body");
 
-    // Model view: the eight oldest tool results are masked out; the two most
-    // recent survive.
+    // Model view: the eight oldest keep an excerpt and a `query_history`
+    // pointer instead of their bulky body; the two most recent survive.
+    assert!(dataset_body.contains("query_history with tool_call_id"));
     for i in 0..8 {
-        assert!(
-            !dataset_body.contains(&format!("BULKY_RESULT_{i}")),
-            "masked tool result {i} must be absent from the ATIF dataset row",
-        );
+        let (excerpt, bulky) = (format!("BULKY_RESULT_{i}"), format!("{:5000}", ""));
+        let kept = dataset_body.contains(&excerpt) && !dataset_body.contains(&(excerpt + &bulky));
+        assert!(kept, "masked result {i} keeps only its excerpt");
     }
     for i in 8..10 {
         assert!(
