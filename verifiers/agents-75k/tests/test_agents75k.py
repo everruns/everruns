@@ -49,16 +49,17 @@ class SoakMemorySignals(unittest.TestCase):
         v = points(out)
         self.assertEqual(v["A4"], 0)
         self.assertEqual(v["C3"], round(633 / 1273, 3))
-        self.assertNotIn("U13", v)  # no controlled restart happened, so no evidence either way
+        self.assertNotIn("U13", v)  # U13 is its own proof's (prove_memory_restart.py)
 
-    def test_a_crash_fails_the_gate_and_a_controlled_restart_is_u13(self):
+    def test_a_crash_fails_the_gate_and_a_controlled_restart_does_not(self):
         s = copy.deepcopy(soak("tip_be9521d3"))
         s["restarts"] = [{"t": 900.0, "node": 2}]
         v = points(local.shard_soak(s, []))
-        self.assertEqual((v["A4"], v["U13"]), (0, True))
+        self.assertEqual(v["A4"], 0)
+        self.assertNotIn("U13", v)
         s["crashes"] = [{"t": 950.0, "node": 3, "code": 101}]
         v = points(local.shard_soak(s, []))
-        self.assertEqual((v["A4"], v["U13"]), (1, False))
+        self.assertEqual(v["A4"], 1)
 
     def test_below_full_density_the_soak_uses_the_calibrated_spacing(self):
         self.assertEqual(local.snapshot_every(1.0), 20_000)
