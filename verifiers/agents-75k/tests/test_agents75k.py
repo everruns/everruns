@@ -191,6 +191,15 @@ class Adapters(unittest.TestCase):
         self.assertEqual(local.scale(rows).entries[0]["value"], 0.0)  # dropped turns are not scaling
         self.assertEqual(local.scale(rows[:1]).entries, [])
 
+    def test_ramp_and_peak(self):
+        out = local.ramp({"created_per_sec": 41.2, "offered_per_sec": 41.67, "errors": 0, "shed": 3})
+        self.assertEqual([(e["point"], e["value"]) for e in out.entries], [("B3", 41.2)])
+        self.assertEqual(local.ramp({"created_per_sec": 41.2, "errors": 2}).entries[0]["value"], 0)
+        served = {"turns_per_sec": 180.0, "offered_turns_per_sec": 625.0, "shed_share": 0.0005, "errors": 0}
+        self.assertEqual(local.peak(served).entries[0]["value"], 180.0)
+        # A peak served by shedding more than 0.1% of requests is not served.
+        self.assertEqual(local.peak({**served, "shed_share": 0.02}).entries[0]["value"], 0)
+
     def test_proof_verdicts(self):
         self.assertEqual(reliability.verdict({"ok": True, "errors": 0}), (True, 0))
         self.assertEqual(reliability.verdict({"load_errors": 2, "check": {"ok": True}}), (False, 2))

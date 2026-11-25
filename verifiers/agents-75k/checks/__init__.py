@@ -35,8 +35,6 @@ def registry(cfg=None):
 # Points no check covers yet, with what would cover them. The climb list
 # offers "build the check" for each; when one is built it moves into a module.
 NOT_BUILT = {
-    "B2": ("L2", "agentd-drive peak profile: 3x rate for 10 minutes, shed share and retries"),
-    "B3": ("L2", "agentd-drive open loop at the ramp rate (sessions created a second)"),
     "B4": ("L2", "drive reports with model time split out of turn time"),
     "F2": ("L1", "long-session gate: turn time flat over 200,000 turns"),
     "G1": ("L2", "memory_bench.py with the coding scenarios"),

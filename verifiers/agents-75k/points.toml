@@ -94,7 +94,7 @@ target = "g.peak_turns_per_sec"
 unit = "turns/s"
 cheapest = "L2"
 scales = "shared"
-built_from = "agentd-drive --rate (peak profile, new)"
+built_from = "load_profile.py peak: goal peak rate for its minutes, shed share and retries"
 watches = ["crates/agentd/src/executor.rs", "crates/agentd/src/gateway_input.rs"]
 
 [[point]]
@@ -106,7 +106,7 @@ target = "g.ramp_per_sec"
 unit = "sessions/s"
 cheapest = "L2"
 scales = "shared"
-built_from = "agentd-drive open loop (new)"
+built_from = "load_profile.py ramp: open-loop creates at the goal ramp rate"
 watches = ["crates/agentd/src/edge.rs", "crates/agentd/src/api_session.rs"]
 
 [[point]]

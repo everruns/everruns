@@ -148,6 +148,29 @@ def scale(results):
     return out
 
 
+def ramp(res):
+    """B3: sessions created a second at the goal's ramp rate. A run with
+    errors scores 0: creates that failed are not a ramp."""
+    out = Output()
+    ok = (res.get("errors") or 0) == 0
+    out.add("B3", "L2", round(res.get("created_per_sec") or 0, 2) if ok else 0,
+            note=f"{res.get('offered_per_sec')}/s offered, create p99 {res.get('create_p99_ms')} ms, "
+                 f"{res.get('shed')} refused and retried, {res.get('errors')} errors")
+    return out
+
+
+def peak(res):
+    """B2: turns served a second at three times the pace. It counts only
+    when under 0.1% of requests were shed and none failed (the point's
+    title): a peak served by refusing work is not served."""
+    out = Output()
+    ok = (res.get("errors") or 0) == 0 and (res.get("shed_share") or 0) <= 0.001
+    out.add("B2", "L2", res.get("turns_per_sec") or 0 if ok else 0,
+            note=f"{res.get('offered_turns_per_sec')} turns/s offered, {res.get('turns_per_sec')} served, "
+                 f"{res.get('shed_share', 0):.3%} shed, {res.get('errors')} errors")
+    return out
+
+
 def rejoin(result):
     held = result.get("sessions_per_shard") or {}
     out = Output(density=min(held.values()) if held else 0)
@@ -233,6 +256,37 @@ def run_scale(ctx):
     return out
 
 
+def goal_rates(ctx):
+    """The goal's full-size ramp (sessions a second) and peak (turns a
+    second, minutes): shared points count only from full-size traffic."""
+    g = ctx.cfg.goal
+    n, pace = g["agents"]["total"], g["pace"]
+    return n / (pace["ramp_minutes"] * 60), n / pace["turn_every_s"] * pace["peak_multiplier"], pace["peak_minutes"]
+
+
+PEAK_THINK_S = 10
+
+
+def run_ramp(ctx):
+    rate, _, _ = goal_rates(ctx)
+    text, cmd = harness(ctx, "load_profile.py", ["ramp", "--rate", round(rate, 2), "--duration", 300], "ramp")
+    out = ramp(last_json(text))
+    for e in out.entries:
+        e["evidence"] = cmd
+    return out
+
+
+def run_peak(ctx):
+    _, turns, minutes = goal_rates(ctx)
+    sessions = int(turns * PEAK_THINK_S)
+    text, cmd = harness(ctx, "load_profile.py", ["peak", "--sessions", sessions, "--think", PEAK_THINK_S,
+                                                 "--minutes", minutes], "peak")
+    out = peak(last_json(text))
+    for e in out.entries:
+        e["evidence"] = cmd
+    return out
+
+
 def run_rejoin(ctx):
     text, cmd = harness(ctx, "prove_rejoin_under_load.py", ["--seed-per-shard", density_sessions(ctx)], "rejoin")
     return rejoin(last_json(text))
@@ -256,6 +310,10 @@ CHECKS = [
           command="scripts/agentd/drill.py --sessions 50000 --shards 2 --inflight 3000"),
     Check("scale", "L2", ["B6"], minutes=30, needs=CARGO, run=run_scale,
           command="scripts/agentd/scale.py --shards 1,2,3 --sessions 20000 --turns 2"),
+    Check("ramp", "L2", ["B3"], minutes=10, needs=CARGO, run=run_ramp,
+          command="scripts/agentd/load_profile.py ramp --rate 41.67 --duration 300"),
+    Check("peak", "L2", ["B2"], minutes=15, needs=CARGO, run=run_peak,
+          command="scripts/agentd/load_profile.py peak --sessions 6250 --think 10 --minutes 10"),
     Check("rejoin", "L2", ["E1", "R3"], minutes=5, needs=CARGO, run=run_rejoin,
           command="scripts/agentd/prove_rejoin_under_load.py"),
     Check("many-sessions", "L2", ["A1"], minutes=40, needs=CARGO, run=run_many_sessions,
