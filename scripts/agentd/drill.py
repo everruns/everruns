@@ -149,9 +149,9 @@ cost = {
     "log_objects_per_shard_per_s": round(log_puts / load_s / a.shards, 2),
     "ship_first_writes": int(ship_first_writes),
     "tool_starts": int(tool_starts),
-    # Creates are ship-first too: one per session.
-    "tool_share_store_path": round(max(0.0, ship_first_writes - load.get("sessions", 0)) / tool_starts, 3)
-    if tool_starts else None,
+    # Ship-first writes per session: its create, its directory entry and
+    # each start of a tool not safe to repeat (the worker agent's tool is).
+    "ship_first_per_session": round(ship_first_writes / max(load.get("sessions") or 1, 1), 2),
 }
 print(json.dumps({"load": {k: load.get(k) for k in ("sessions", "turns_completed", "errors", "turns_per_sec")},
                   "ship_lag": ship_lag, "ship_first": ship_first, "cost": cost}), flush=True)
