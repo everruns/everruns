@@ -4,7 +4,7 @@
 
 use serde_json::{Value, json};
 
-use super::{AppState, JsonRpcResponse, ResolvedOrg};
+use super::{AppState, JsonRpcRequest, JsonRpcResponse, ResolvedOrg, caching};
 use crate::domains::mcp_servers::events::{
     EventsError, McpEventsService, Subscriber, SubscriptionTarget,
 };
@@ -15,16 +15,18 @@ pub(super) fn enabled(_org: &ResolvedOrg, state: &AppState) -> bool {
 }
 
 pub(super) async fn handle_method(
-    method: &str,
-    id: Option<Value>,
-    params: Value,
+    request: JsonRpcRequest,
     org: &ResolvedOrg,
     state: &AppState,
+    protocol_version: &str,
 ) -> JsonRpcResponse {
+    let JsonRpcRequest {
+        method, id, params, ..
+    } = request;
     let Some(service) = state.mcp_events.as_ref().filter(|_| enabled(org, state)) else {
         return JsonRpcResponse::method_not_found(id);
     };
-    let result = match method {
+    let result = match method.as_str() {
         // One page: the catalog is three events.
         "events/list" => Ok(json!({ "events": McpEventsService::event_definitions() })),
         "events/poll" | "events/stream" => match SubscriptionTarget::event_name(&params) {
@@ -47,7 +49,10 @@ pub(super) async fn handle_method(
         _ => return JsonRpcResponse::method_not_found(id),
     };
     match result {
-        Ok(result) => JsonRpcResponse::success(id, result),
+        Ok(mut result) => {
+            caching::mark_complete(&mut result, protocol_version);
+            JsonRpcResponse::success(id, result)
+        }
         Err(error) => {
             let mut response = JsonRpcResponse::error(id, error.code as i32, error.message);
             if let (Some(data), Some(body)) = (error.data, response.error.as_mut()) {
