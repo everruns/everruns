@@ -80,8 +80,11 @@ Source user requirements are passed to the summarizer in full, within the source
 
 Summary generation is a separate, paid model call recorded in the trace and
 usage totals. Input and requested output share the summary model's reported
-context window; smaller models receive a smaller output allowance. Empty,
-truncated and tool-calling responses are rejected. Completed
+context window; smaller models receive a smaller output allowance. A summary
+cut off at its output limit, including one whose hidden reasoning used the whole
+limit, is retried once with a larger limit: the source page always leaves room
+for it. Empty, truncated and tool-calling responses are rejected, and the turn
+fails with `context_summary_failed`. Completed
 candidates are saved before installation, so retrying the same source after an
 installation failure can reuse the candidate. Messages arriving during a summary
 remain in the raw suffix. The first compaction of an existing large session can

@@ -18,6 +18,9 @@ const MIN_RECENT_MESSAGES: usize = 10;
 const CANDIDATE_MODEL: &str = "continuity-candidate-v1";
 /// First-attempt output ceiling for a continuity summary.
 const SUMMARY_MAX_OUTPUT: usize = 16_384;
+/// Most a retried summary may request. Bounds the spend of one retry.
+const SUMMARY_RETRY_MAX_OUTPUT: usize = 32_768;
+use everruns_contracts::user_facing_error::CONTEXT_SUMMARY_FAILED_PREFIX as CONTEXT_SUMMARY_FAILED;
 
 pub(super) fn raw_history_allowed(
     driver: &dyn ChatDriver,
@@ -265,7 +268,9 @@ impl Planner<'_> {
             .emit(EventRequest::new(
                 self.session_id,
                 self.event_context.clone(),
-                LlmGenerationData::success(
+                // Record the provider's finish reason: inferring it from
+                // content reported a summary cut off at its cap as "stop".
+                LlmGenerationData::success_with_metadata(
                     Vec::new(),
                     Vec::new(),
                     None,
@@ -274,6 +279,12 @@ impl Planner<'_> {
                     Some(self.provider.to_string()),
                     usage.clone(),
                     Some(duration_ms),
+                    None,
+                    response
+                        .metadata
+                        .finish_reason
+                        .clone()
+                        .map(|reason| vec![reason]),
                     None,
                 )
                 .with_provider_id(Some(self.provider_id.to_string()))
@@ -322,16 +333,28 @@ fn summary_ran_out_of_output(response: &LlmResponse) -> bool {
         && response.metadata.tool_calls_dropped == 0
 }
 
-/// Most a retried summary may request. Bounds the spend of one retry.
-const SUMMARY_RETRY_MAX_OUTPUT: usize = 32_768;
+/// Output caps for one continuity summary: the first attempt and the single
+/// retry after it ran out of output. The retry is always larger whenever the
+/// window allows more than one token, and the source budget reserves it.
+pub(super) fn summary_output_caps(window: usize) -> (usize, usize) {
+    let first = (window / 4).clamp(1, SUMMARY_MAX_OUTPUT);
+    let retry = (window / 2).clamp(1, SUMMARY_RETRY_MAX_OUTPUT).max(first);
+    (first, retry)
+}
 
 /// Config for the single retry after a summary ran out of output, or `None`
 /// when the window leaves no more room than the first attempt had.
+///
+/// `reserved` is the retry cap the source budget held back. It is a floor:
+/// without it, a source page sized to the budget left the retry exactly the
+/// first attempt's room, so the retry was skipped and the turn failed at the
+/// first cap (Ecosystem Watch, 200k+ history, 2026-11-24).
 pub(super) fn summary_retry_config(
     first: &LlmCallConfig,
     response: &LlmResponse,
     window: usize,
     input_estimate: usize,
+    reserved: usize,
 ) -> Option<LlmCallConfig> {
     if !summary_ran_out_of_output(response) {
         return None;
@@ -339,7 +362,8 @@ pub(super) fn summary_retry_config(
     let first_cap = first.max_tokens.unwrap_or(0) as usize;
     let room = window
         .saturating_sub(input_estimate)
-        .min(SUMMARY_RETRY_MAX_OUTPUT);
+        .min(SUMMARY_RETRY_MAX_OUTPUT)
+        .max(reserved.min(window));
     if room <= first_cap {
         return None;
     }
@@ -352,6 +376,24 @@ pub(super) fn summary_retry_config(
         retry.reasoning_effort = Some(everruns_contracts::model::ReasoningEffort::Low);
     }
     Some(retry)
+}
+
+/// Why `valid_summary` rejected a response, in words for the turn error.
+fn summary_rejection(response: &LlmResponse) -> &'static str {
+    if response
+        .tool_calls
+        .as_ref()
+        .is_some_and(|calls| !calls.is_empty())
+        || response.metadata.tool_calls_dropped > 0
+    {
+        "a tool request"
+    } else if response.text.trim().is_empty() {
+        "empty"
+    } else if summary_ran_out_of_output(response) {
+        "cut off"
+    } else {
+        "unfinished"
+    }
 }
 
 pub(super) fn valid_summary(response: &LlmResponse) -> bool {
@@ -454,9 +496,11 @@ impl Planner<'_> {
         // The ceiling is 16K, not 4K: reasoning models count hidden reasoning
         // against it, and DeepSeek V4.1 Flash spent all of 4K on every summary
         // (2026-11-24). A cap bills only what is used.
-        let summary_output_tokens = (summary_window / 4).clamp(1, SUMMARY_MAX_OUTPUT);
+        // The source budget reserves the retry's larger cap, not the first
+        // attempt's, so a cut-off summary can always retry with more room.
+        let (summary_output_tokens, summary_retry_tokens) = summary_output_caps(summary_window);
         // The two role envelopes also consume estimated request tokens.
-        let summary_input_budget = summary_window.saturating_sub(summary_output_tokens + 32);
+        let summary_input_budget = summary_window.saturating_sub(summary_retry_tokens + 32);
         let mut current = self
             .store
             .get_latest_format(self.session_id, PROVIDER, MODEL, FORMAT)
@@ -755,18 +799,24 @@ impl Planner<'_> {
                 // a truncated or empty summary, which failed long scheduled runs.
                 // One bounded retry with low effort and the room the window
                 // actually leaves; a second rejection still fails closed.
-                let input_estimate =
-                    (summary_prompt.len() + request_text_len(&request)).div_ceil(4) + 32;
-                if let Some(retry) =
-                    summary_retry_config(&config, &response, summary_window, input_estimate)
-                {
+                // The request already carries the prompt as its system message.
+                let input_estimate = request_text_len(&request).div_ceil(4) + 32;
+                if let Some(retry) = summary_retry_config(
+                    &config,
+                    &response,
+                    summary_window,
+                    input_estimate,
+                    summary_retry_tokens,
+                ) {
                     config = retry;
                     (response, usage) = self.summarize(request, &config).await?;
                 }
                 if !valid_summary(&response) {
-                    return Err(AgentLoopError::config(
-                        "continuity summary was empty, truncated, or requested tools; history was not replaced",
-                    ));
+                    return Err(AgentLoopError::config(format!(
+                        "{CONTEXT_SUMMARY_FAILED} the summary of earlier history was {} at {} output tokens; history was not replaced",
+                        summary_rejection(&response),
+                        config.max_tokens.unwrap_or_default(),
+                    )));
                 }
                 let text =
                     crate::attachment_labels::summary_with_attachment_list(&response.text, &wire);

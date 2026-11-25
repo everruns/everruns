@@ -46,7 +46,16 @@ pub mod codes {
     pub const SOFT_LIMIT_REACHED: &str = "soft_limit_reached";
     /// A `user_prompt_submit` hook rejected the inbound user message.
     pub const BLOCKED_BY_HOOK: &str = "blocked_by_hook";
+    /// Compaction could not summarize earlier history: the summary model's
+    /// answer was cut off, empty, or asked for tools, even after its retry
+    /// with more output room. History is unchanged; the turn did not run.
+    pub const CONTEXT_SUMMARY_FAILED: &str = "context_summary_failed";
 }
+
+/// Prefix of the engine error a rejected continuity summary fails the turn
+/// with. [`classify_runtime_error_message`] maps it to
+/// [`codes::CONTEXT_SUMMARY_FAILED`].
+pub const CONTEXT_SUMMARY_FAILED_PREFIX: &str = "Context summary failed:";
 
 pub type UserFacingErrorFields = BTreeMap<String, Value>;
 
@@ -503,6 +512,10 @@ impl UserFacingError {
             codes::DEPENDENCY_UNAVAILABLE => {
                 "Execution stopped because a required dependency is unavailable.".to_string()
             }
+            codes::CONTEXT_SUMMARY_FAILED => {
+                "The conversation history had to be summarized before this turn, but the model's summary came back cut off or empty, even after a retry with more room. Nothing was lost. Send the message again to retry, or use a model with a larger output limit for summaries."
+                    .to_string()
+            }
             codes::INVALID_TOOL_SCHEMA => {
                 "A connected tool uses an input schema that this model provider does not support. Update the integration or choose a different model provider, then try again."
                     .to_string()
@@ -602,6 +615,13 @@ pub fn classify_runtime_error_message(
 
     if normalized.starts_with("Model not configured") || lower.contains("no model configured") {
         return UserFacingError::new(codes::MODEL_NOT_CONFIGURED);
+    }
+
+    // Before the context-length check: the message names history, not overflow.
+    if normalized.contains(CONTEXT_SUMMARY_FAILED_PREFIX) {
+        return UserFacingError::new(codes::CONTEXT_SUMMARY_FAILED)
+            .with_optional_field("provider", context.provider.clone())
+            .with_optional_field("model_id", context.model_id.clone());
     }
 
     if normalized.starts_with("Request too large:")
@@ -1100,6 +1120,25 @@ mod tests {
                 "A connected tool uses an input schema that this model provider does not support. Update the integration or choose a different model provider, then try again."
             );
         }
+    }
+
+    #[test]
+    fn a_rejected_continuity_summary_has_its_own_code() {
+        let error = crate::error::AgentLoopError::config(format!(
+            "{CONTEXT_SUMMARY_FAILED_PREFIX} the summary of earlier history was cut off at 32768 output tokens; history was not replaced"
+        ))
+        .with_provider("openrouter");
+        let typed = error.user_facing_error(UserFacingErrorContext::default());
+        assert_eq!(typed.code, codes::CONTEXT_SUMMARY_FAILED);
+        assert!(typed.fallback_message().contains("Nothing was lost"));
+        // Task errors reach the classifier as strings.
+        let stringly =
+            classify_runtime_error_message(&error.to_string(), &UserFacingErrorContext::default());
+        assert_eq!(stringly.code, codes::CONTEXT_SUMMARY_FAILED);
+        // Other configuration errors stay generic.
+        let other = crate::error::AgentLoopError::config("bad settings")
+            .user_facing_error(UserFacingErrorContext::default());
+        assert_eq!(other.code, codes::PROCESSING_ERROR);
     }
 
     #[test]
