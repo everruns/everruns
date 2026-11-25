@@ -10,7 +10,7 @@ time, leadership moves, and no turn is lost (75k verifier point U13).
 2. Under that load the leader and one follower are driven toward their
    limit together: the test node binary holds as much ballast memory as the
    proof asks (`AGENTD_BALLAST_DIR`, testnode.rs), raised a step at a time
-   until the node reads 98.5%. The shard passes through Full, Shedding and
+   until the node reads 98.3%. The shard passes through Full, Shedding and
    Emergency on the way, and each node's controlled restart is due at 98%
    (`pressure.rs`, level 4).
 3. A node that exits with 75 is started again from its disk, as
@@ -45,7 +45,12 @@ p.add_argument("--turns", type=int, default=6)
 p.add_argument("--think", type=float, default=5.0)
 p.add_argument("--limit-mb", type=int, default=4096, help="each node's memory limit")
 p.add_argument("--warm-s", type=int, default=20, help="load before the pressure starts")
-p.add_argument("--step-share", type=float, default=0.01, help="ballast added per step, share of the limit")
+# Decision: a quarter of a percent a step (half a second), up to 98.3%. At
+# one percent a step the ballast outran the restart: a due restart waits
+# its announcement (3 s, `pressure::ANNOUNCE`) and the node passed its
+# limit first. Real growth near the limit is slower: from 95% a shard
+# starts no turns.
+p.add_argument("--step-share", type=float, default=0.0025, help="ballast added per step, share of the limit")
 p.add_argument("--max-s", type=int, default=900, help="give up waiting for both restarts after this")
 p.add_argument("--seed-per-shard", type=int, default=0, help="sessions the shard holds before the fault (the verifier: goal density)")
 a = p.parse_args()
@@ -190,7 +195,7 @@ while time.time() < deadline:
             pressing.discard(n)
             fleet.start(0, n)
             continue
-        if n in pressing and share < 0.985:
+        if n in pressing and share < 0.983:
             ballast[n] += step
             with open(os.path.join(ballast_dir, str(pid)), "w") as f:
                 f.write(str(ballast[n]))
