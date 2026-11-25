@@ -114,6 +114,8 @@ def snapshot_peak(n):
 
 
 def run(a):
+    if a.coding:
+        os.environ["LLMSIM_INSTANT"] = "1"
     subprocess.run([sys.executable, os.path.join(ROOT, "scripts/agentd/fleet.py"), "down"])
     time.sleep(0.5)
     subprocess.run(["rm", "-rf", fleet.STATE])
@@ -127,6 +129,9 @@ def run(a):
     # mixture has the profile's model calls and tool output sizes
     # (verifiers/agents-75k/workload/generate.py).
     workload = ["--agent", "sim", "--scenarios", ",".join(CODING)] if a.coding else ["--agent", "mix", "--stream", "0.2"]
+    # The coding scenarios replay a real model's pace (about 80 s a turn);
+    # memory follows the history, not the time it took (LLMSIM_INSTANT, the
+    # simulated provider's switch, read by every fleet process started next).
     out = subprocess.run(
         [DRIVE, "load", "--gateways", ",".join(f"http://{fleet.addr(0, n)}" for n in NODES),
          *workload, "--sessions", str(a.sessions), "--turns", str(a.turns),
