@@ -14,7 +14,7 @@ Every Everruns deployment exposes an authenticated MCP endpoint at `/mcp` so ext
 
 - **Transport**: JSON-RPC 2.0 over Streamable HTTP (`POST /mcp`). Protocol versions `2026-07-28`, `2025-06-18` and `2025-03-26` are supported.
 - **Browsers**: opening `/mcp` in a browser shows a page that explains the URL is for MCP clients, with the URL to copy and setup commands. Only a `GET` that accepts `text/html` and not `text/event-stream` gets the page; every other `GET` returns `405 Method Not Allowed`.
-- **Methods**: `initialize`, `server/discover`, `ping`, `tools/list`, `tools/call`, `resources/list`, `resources/templates/list`, `resources/read`; under `2026-07-28`, `skills/list`, `skills/get`, and `resources/directory/read`, plus `tasks/get`, `tasks/update` and `tasks/cancel` for clients that use [Tasks](#long-agent-turns-as-tasks); and, for organizations that turn on MCP Events, `events/list`, `events/subscribe` and `events/unsubscribe`.
+- **Methods**: `initialize`, `server/discover`, `ping`, `tools/list`, `tools/call`, `resources/list`, `resources/templates/list`, `resources/read`; under `2026-07-28`, `skills/list`, `skills/get`, and `resources/directory/read`, plus `tasks/get`, `tasks/update` and `tasks/cancel` for clients that use [Tasks](#long-agent-turns-as-tasks); and, for MCP Events, `events/list`, `events/subscribe` and `events/unsubscribe`.
 - **Auth**: MCP requests authenticate and resolve an organization before dispatch. OAuth 2.1 uses mandatory PKCE, and MCP access tokens are bound to the exact `/mcp` resource so they cannot be reused against the REST API. Unauthenticated requests fail with `401` and protected-resource discovery metadata is served at `/.well-known/oauth-protected-resource/mcp`.
 - **Files**: `agent_run` and `session_send_message` take an optional `files` list, each file as base64 `data` or a public `https` `url`. The files are copied into the session's `/attachments` folder, as for [channels](/features/channels/#files-people-send).
 - **Rooms**: `room_read_unread`, `room_read`, `room_post`, `room_who_read`, `room_mark_read` and the room file tools let a client take part in a [room](/features/rooms/#from-an-mcp-client) like any member.
@@ -133,14 +133,20 @@ Theme and fullscreen changes keep the workspace mounted. If the initial host
 connection times out, choose **Retry connection**. Hosts that do not render
 apps retain structured results and text through the same tools.
 
-### Session events (experimental)
+### Session events
 
-With the **MCP Events** feature flag turned on for an organization, an MCP client
-can subscribe to webhooks for `session.completed`, `session.failed` and
+An authenticated MCP client can subscribe to webhooks for `session.completed`, `session.failed` and
 `session.input_required`, filtered by agent or session. Callbacks must be public
 HTTPS URLs and are verified before the first event. Deliveries are signed per
 [Standard Webhooks](https://www.standardwebhooks.com/) and carry identifiers and
 state, not message content: read the session with `session_get_status`.
+
+Discovery declares `capabilities.extensions["io.modelcontextprotocol/events"]`.
+With protocol `2026-07-28`, send `Mcp-Name` with the event name on
+`events/subscribe` and `events/unsubscribe`; omit it on `events/list`.
+A callback's `410 Gone` response abandons only that delivery. Unsubscribe or
+stop refreshing the TTL to end a subscription. Everruns offers webhook delivery
+without replay; poll and push delivery are unavailable.
 
 ## Everruns as an MCP client
 
@@ -332,10 +338,9 @@ Questions the task asks reach the agent's user the same way as a server's
 [form questions](#when-a-tool-needs-a-person). If the turn is cancelled or the
 wait runs out, Everruns cancels the task on the server.
 
-### Waking an agent on a server's events (experimental)
+### Waking an agent on a server's events
 
-With the **MCP Events** flag on, an agent can also subscribe to events that one
-of its own MCP servers publishes, such as a tracker announcing new issues.
+An agent can subscribe to webhook events that one of its own MCP servers publishes, such as a tracker announcing new issues.
 Create an agent trigger with `trigger_type: "mcp_event"`, the attachment's name
 in `mcp_server`, the event name from the server's `events/list` in `mcp_event`,
 and any subscription arguments in `mcp_event_arguments`:

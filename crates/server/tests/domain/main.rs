@@ -72,6 +72,7 @@ mod mcp_browser_page_test;
 mod mcp_connected_clients_test;
 mod mcp_endpoint_test;
 mod mcp_event_triggers_test;
+mod mcp_events_conformance_test;
 mod mcp_events_test;
 mod mcp_files_test;
 mod mcp_oauth_user_switch_test;

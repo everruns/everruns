@@ -295,18 +295,27 @@ fn validate_routing_headers(headers: &HeaderMap, req: &JsonRpcRequest) -> Result
             req.method
         ));
     }
+    let named_event = matches!(
+        req.method.as_str(),
+        "events/poll" | "events/stream" | "events/subscribe" | "events/unsubscribe"
+    );
+    if named_event
+        && protocol_version_from_headers(headers)? == MCP_PROTOCOL_VERSION_LATEST
+        && single_routing_header(headers, "Mcp-Name")?.is_none()
+    {
+        return Err("Mcp-Name is required for named events requests".to_string());
+    }
     if let Some(header_name) = single_routing_header(headers, "Mcp-Name")? {
-        // `Mcp-Name` identifies the specific tool/resource/prompt. We can only
-        // cross-check it on `tools/call`, where the body carries `params.name`.
+        // Tools and named Events requests both route by params.name.
         // Clients Base64-wrap names that are not header-safe (`=?base64?..?=`).
         let header_name = everruns_core::mcp::param_headers::decode_value(header_name)
             .unwrap_or_else(|| header_name.to_string());
-        if req.method == "tools/call"
+        if (req.method == "tools/call" || named_event)
             && let Some(body_name) = req.params.get("name").and_then(Value::as_str)
             && body_name != header_name
         {
             return Err(format!(
-                "Mcp-Name header ({header_name}) does not match tool name ({body_name})"
+                "Mcp-Name header ({header_name}) does not match request name ({body_name})"
             ));
         }
     }
@@ -485,11 +494,19 @@ async fn handle_mcp_authenticated(
         .into_response();
     }
 
-    // MCP 2026-07-28 routing headers: optional, but must agree with the body.
+    // SEP-3415 requires Mcp-Name on named Events requests in the 2026 era.
     if let Err(msg) = validate_routing_headers(&headers, &req) {
         return (
             StatusCode::BAD_REQUEST,
-            Json(JsonRpcResponse::error(req.id, -32600, msg)),
+            Json(JsonRpcResponse::error(
+                req.id,
+                if req.method.starts_with("events/") {
+                    -32020
+                } else {
+                    -32600
+                },
+                msg,
+            )),
         )
             .into_response();
     }
@@ -612,7 +629,8 @@ async fn handle_mcp_authenticated(
             }
         }
         // MCP Events (draft): outbound session webhooks, org opt-in.
-        "events/list" | "events/subscribe" | "events/unsubscribe" => {
+        "events/list" | "events/subscribe" | "events/unsubscribe" | "events/poll"
+        | "events/stream" => {
             events::handle_method(&req.method, req.id, req.params, &org, &state).await
         }
         "ping" => JsonRpcResponse::success(req.id, json!({})),

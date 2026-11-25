@@ -1,0 +1,33 @@
+# MCP conformance scope
+
+The base job uses released `@modelcontextprotocol/conformance@0.1.16`, with a
+committed npm lockfile, to check `server-initialize` through Everruns' `/mcp`.
+It is a baseline smoke check, not a claim that the full core suite passes.
+
+The Events job uses unmodified upstream revision
+`c8625de3118c2d5dc0561696cddeb0baaf124f2c` from stacked client PR
+[541](https://github.com/modelcontextprotocol/conformance/pull/541), including
+server PR [521](https://github.com/modelcontextprotocol/conformance/pull/521).
+The released runner has no Events scenarios. Install with
+`bash scripts/mcp-events-conformance.sh --setup-only`; omit the flag to run.
+
+Four of the nine optional scenarios run: server discovery and webhook delivery,
+and client webhook refresh and no-extension fallback. The client driver uses the
+production trigger API and refresher. The outbound fixture uses a synthetic PAT,
+production `/mcp`, URL validation, signing and delivery, with only the final egress
+hop mapped to the official loopback receiver. TLS/network egress is not assessed.
+A receiver hook binds its listener to loopback and records its port; upstream
+scenario logic is unchanged. Delayed 503 responses make fresh retry signatures
+observable. No application credentials or provider calls are used.
+
+Every raw upstream check is retained. The discovery scenario's untestable
+`subscriptions/listen` prerequisite is recorded separately; its full scenario
+must not be reported as passing. All other failures fail the job, and named
+required checks must be present and successful. Warnings and skipped checks
+remain unverified in the summary.
+
+Poll and push scenarios (four total) are not run: Everruns offers webhook delivery.
+The separate server subscription-management scenario hardcodes an unresolvable
+`conformance.invalid` callback, incompatible with production callback verification;
+it is not run or claimed. Domain tests cover subscription management, tenant/access
+checks, signed termination, ingress signatures and transport deduplication.
