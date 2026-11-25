@@ -95,9 +95,11 @@ pub struct WorkChatConfig {
 pub struct WorkChatPlugins {
     /// People may add approved plugins the agent does not come with.
     #[serde(default)]
+    #[schema(example = false)]
     pub allow_adding: bool,
     /// People may turn off plugins the agent comes with, for themselves.
     #[serde(default)]
+    #[schema(example = false)]
     pub allow_turning_off: bool,
 }
 

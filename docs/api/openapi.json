@@ -69401,17 +69401,22 @@
         ],
         "properties": {
           "description": {
-            "type": "string"
+            "type": "string",
+            "description": "What the plugin does.",
+            "example": "Publish web pages from the conversation"
           },
           "display_name": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Name to show people, when the manifest gives one.",
+            "example": "Stend"
           },
           "enabled": {
             "type": "boolean",
-            "description": "Whether it is in this person's new conversations."
+            "description": "Whether it is in this person's new conversations.",
+            "example": true
           },
           "environment": {
             "type": "string",
@@ -69420,18 +69425,23 @@
           },
           "fits": {
             "type": "boolean",
-            "description": "Whether the agent provides what the plugin needs. Always true outside\nan agent (Settings > Personal > Plugins)."
+            "description": "Whether the agent provides what the plugin needs. Always true outside\nan agent (Settings > Personal > Plugins).",
+            "example": true
           },
           "id": {
             "type": "string",
-            "description": "Installed plugin id (`plugin_…`)."
+            "description": "Installed plugin id (`plugin_…`).",
+            "example": "plugin_01933b5a00007000800000000000001"
           },
           "name": {
-            "type": "string"
+            "type": "string",
+            "description": "Name from the plugin manifest.",
+            "example": "stend"
           },
           "needs_admin_setup": {
             "type": "boolean",
-            "description": "An admin still has to choose how one of its MCP servers signs in."
+            "description": "An admin still has to choose how one of its MCP servers signs in.",
+            "example": false
           },
           "origin": {
             "$ref": "#/components/schemas/PluginOrigin"
@@ -69440,7 +69450,9 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Installed version.",
+            "example": "1.2.0"
           }
         }
       },
@@ -78602,7 +78614,8 @@
         "properties": {
           "enabled": {
             "type": "boolean",
-            "description": "In this person's new conversations, or not."
+            "description": "In this person's new conversations, or not.",
+            "example": true
           }
         }
       },
@@ -89945,16 +89958,21 @@
         ],
         "properties": {
           "allow_adding": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "The channel lets people add approved plugins.",
+            "example": true
           },
           "allow_turning_off": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "The channel lets people turn off the agent's plugins.",
+            "example": false
           },
           "plugins": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/PluginOption"
-            }
+            },
+            "description": "The agent's plugins, the ones this person added, and ones they could add."
           }
         }
       },

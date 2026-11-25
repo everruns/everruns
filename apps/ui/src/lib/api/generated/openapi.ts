@@ -27402,9 +27402,20 @@ export interface components {
     };
     /** @description One approved plugin as a person sees it. */
     PluginOption: {
+      /**
+       * @description What the plugin does.
+       * @example Publish web pages from the conversation
+       */
       description: string;
+      /**
+       * @description Name to show people, when the manifest gives one.
+       * @example Stend
+       */
       display_name?: string | null;
-      /** @description Whether it is in this person's new conversations. */
+      /**
+       * @description Whether it is in this person's new conversations.
+       * @example true
+       */
       enabled: boolean;
       /**
        * @description What the plugin needs from the agent.
@@ -27414,14 +27425,29 @@ export interface components {
       /**
        * @description Whether the agent provides what the plugin needs. Always true outside
        *     an agent (Settings > Personal > Plugins).
+       * @example true
        */
       fits: boolean;
-      /** @description Installed plugin id (`plugin_…`). */
+      /**
+       * @description Installed plugin id (`plugin_…`).
+       * @example plugin_01933b5a00007000800000000000001
+       */
       id: string;
+      /**
+       * @description Name from the plugin manifest.
+       * @example stend
+       */
       name: string;
-      /** @description An admin still has to choose how one of its MCP servers signs in. */
+      /**
+       * @description An admin still has to choose how one of its MCP servers signs in.
+       * @example false
+       */
       needs_admin_setup: boolean;
       origin: components["schemas"]["PluginOrigin"];
+      /**
+       * @description Installed version.
+       * @example 1.2.0
+       */
       version?: string | null;
     };
     /**
@@ -32281,7 +32307,10 @@ export interface components {
     };
     /** @description Request body for a person's choice about one plugin. */
     SetPluginChoice: {
-      /** @description In this person's new conversations, or not. */
+      /**
+       * @description In this person's new conversations, or not.
+       * @example true
+       */
       enabled: boolean;
     };
     /** @description Request body for setting a preference value. */
@@ -38589,8 +38618,17 @@ export interface components {
     WorkAttentionKind: "approval" | "question" | "action";
     /** @description A person's plugins in one Work Chat channel. */
     WorkChatPluginList: {
+      /**
+       * @description The channel lets people add approved plugins.
+       * @example true
+       */
       allow_adding: boolean;
+      /**
+       * @description The channel lets people turn off the agent's plugins.
+       * @example false
+       */
       allow_turning_off: boolean;
+      /** @description The agent's plugins, the ones this person added, and ones they could add. */
       plugins: components["schemas"]["PluginOption"][];
     };
     /** @description One measured fact. */

@@ -42,29 +42,46 @@ pub enum PluginOrigin {
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct PluginOption {
     /// Installed plugin id (`plugin_…`).
+    #[schema(example = "plugin_01933b5a00007000800000000000001")]
     pub id: String,
+    /// Name from the plugin manifest.
+    #[schema(example = "stend")]
     pub name: String,
+    /// Name to show people, when the manifest gives one.
+    #[schema(example = "Stend")]
     pub display_name: Option<String>,
+    /// What the plugin does.
+    #[schema(example = "Publish web pages from the conversation")]
     pub description: String,
+    /// Installed version.
+    #[schema(example = "1.2.0")]
     pub version: Option<String>,
     /// What the plugin needs from the agent.
     #[schema(value_type = String, example = "workspace")]
     pub environment: PluginEnvironment,
     pub origin: PluginOrigin,
     /// Whether it is in this person's new conversations.
+    #[schema(example = true)]
     pub enabled: bool,
     /// Whether the agent provides what the plugin needs. Always true outside
     /// an agent (Settings > Personal > Plugins).
+    #[schema(example = true)]
     pub fits: bool,
     /// An admin still has to choose how one of its MCP servers signs in.
+    #[schema(example = false)]
     pub needs_admin_setup: bool,
 }
 
 /// A person's plugins in one Work Chat channel.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct WorkChatPluginList {
+    /// The channel lets people add approved plugins.
+    #[schema(example = true)]
     pub allow_adding: bool,
+    /// The channel lets people turn off the agent's plugins.
+    #[schema(example = false)]
     pub allow_turning_off: bool,
+    /// The agent's plugins, the ones this person added, and ones they could add.
     pub plugins: Vec<PluginOption>,
 }
 
@@ -72,6 +89,7 @@ pub struct WorkChatPluginList {
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct SetPluginChoice {
     /// In this person's new conversations, or not.
+    #[schema(example = true)]
     pub enabled: bool,
 }
 
