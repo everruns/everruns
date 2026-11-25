@@ -16,7 +16,13 @@ queued behind each other. Servers now ask the database for its
 `max_connections` when they start, hold back PostgreSQL's reserved slots and a
 share for migrations, workers and operators, and split the rest across
 `EXPECTED_INSTANCES`. The request pool never drops below three connections; a
-database too small for that gets a startup warning.
+database too small for that gets a startup warning:
+
+```bash
+# Two replicas plus two draining during a rollout; a pooler takes 24%.
+EXPECTED_INSTANCES=4
+DATABASE_RESERVED_CONNECTIONS=35%
+```
 
 Pools you size explicitly stay as you set them. With a transaction pooler such
 as PgBouncer on `DATABASE_URL`, point `DATABASE_UNPOOLED_URL` at PostgreSQL
