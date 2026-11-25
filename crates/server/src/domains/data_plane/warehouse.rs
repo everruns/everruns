@@ -68,16 +68,24 @@ pub fn key(org: &str, hour: &str, source: &str, incarnation: u64, first: (u64, u
 }
 
 /// Write the files for `batch`'s events after `stored` (the feed position
-/// already stored) of every org that has the export on.
+/// stored before) through `through` (stored now) of every org that has the
+/// export on. A pointer's events (`Record::Events`) are read from the
+/// session's history.
 pub async fn export(
     cp: &ControlPlane,
     batch: &FeedBatch,
     stored: (u64, u32),
+    through: (u64, u32),
 ) -> anyhow::Result<()> {
     let records: Vec<_> = batch
         .records
         .iter()
-        .filter(|r| (r.index, r.ordinal) > stored && matches!(r.record, Record::Event { .. }))
+        .filter(|r| {
+            let at = (r.index, r.ordinal);
+            at > stored
+                && at <= through
+                && matches!(r.record, Record::Event { .. } | Record::Events { .. })
+        })
         .collect();
     let Some(first) = records.first().map(|r| (r.index, r.ordinal)) else {
         return Ok(());
@@ -85,12 +93,10 @@ pub async fn export(
     let mut wanted: HashMap<i64, bool> = HashMap::new();
     let mut files: BTreeMap<(String, String), Vec<u8>> = BTreeMap::new();
     for record in records {
-        let Record::Event { session_id, event } = &record.record else {
-            continue;
-        };
         let Some(org_id) = org_internal(&record.org_id) else {
             continue;
         };
+        let session_id = record.record.session_id().unwrap_or_default();
         let on = match wanted.get(&org_id) {
             Some(on) => *on,
             None => {
@@ -106,17 +112,26 @@ pub async fn export(
         if !on || cp.db.session_org_id(session).await? != Some(org_id) {
             continue;
         }
-        let hour = event["ts"]
-            .as_str()
-            .and_then(|ts| chrono::DateTime::parse_from_rfc3339(ts).ok())
-            .map_or(record.at_unix_ms, |ts| ts.timestamp_millis());
-        let hour = chrono::DateTime::from_timestamp_millis(hour)
-            .unwrap_or_default()
-            .format("date=%Y-%m-%d/hour=%H")
-            .to_string();
-        let lines = files.entry((record.org_id.clone(), hour)).or_default();
-        serde_json::to_writer(&mut *lines, event)?;
-        lines.push(b'\n');
+        let events = match &record.record {
+            Record::Event { event, .. } => vec![event.clone()],
+            Record::Events {
+                from, to, types, ..
+            } => super::event_tap::read_range(cp, org_id, session_id, *from, *to, types).await?,
+            _ => Vec::new(),
+        };
+        for event in &events {
+            let hour = event["ts"]
+                .as_str()
+                .and_then(|ts| chrono::DateTime::parse_from_rfc3339(ts).ok())
+                .map_or(record.at_unix_ms, |ts| ts.timestamp_millis());
+            let hour = chrono::DateTime::from_timestamp_millis(hour)
+                .unwrap_or_default()
+                .format("date=%Y-%m-%d/hour=%H")
+                .to_string();
+            let lines = files.entry((record.org_id.clone(), hour)).or_default();
+            serde_json::to_writer(&mut *lines, event)?;
+            lines.push(b'\n');
+        }
     }
     if files.is_empty() {
         return Ok(());
