@@ -58,12 +58,12 @@ impl everruns_core::EgressService for WebhookReceiver {
         &self,
         request: everruns_core::EgressRequest,
     ) -> everruns_core::EgressResult<everruns_core::EgressResponse> {
+        self.requests.lock().push(request.clone());
         let forward = self.forward.read().clone();
         if let Some(forward) = forward {
             return forward.send(request).await;
         }
         let body: Value = serde_json::from_slice(&request.body).unwrap_or_default();
-        self.requests.lock().push(request);
         let (status, body) = if body["type"] == "verification" {
             let refuse = self
                 .refuse_verification
