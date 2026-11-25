@@ -28,9 +28,12 @@ Memory, SQLite and PostgreSQL stores do. Host egress governs provider requests a
 file downloads. Channel-wide and user-group notifications are neutralized in agent
 output.
 Slack file attachments also reach agents using Responses models.
+Approval clicks work on data plane v2, with single-use decisions retained across
+shard restarts.
 
 **For operators**, first deploy the protocol-aware compatibility baseline to every
 delivery host and drain older owners, then roll out the Channelkit adapter.
+For data plane v2, pause writes and upgrade the control plane and shards together.
 Reconcile legacy pending rows and keep that compatibility baseline as the rollback
 floor. See
 [Slack services](/framework/slack-services/) and the

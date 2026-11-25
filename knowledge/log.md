@@ -2,6 +2,8 @@
 
 ## 2026-11-25
 
+- [Channelkit migration](integrations/channelkit-migration.md): channel approval claims follow canonical session authority; v2 atomically consumes checked log positions and retains claims through offload and restart, using the existing matched control-plane/shard upgrade contract.
+
 - [Markdown Messages Rendering](ui/markdown-messages.md): Pele renders Mermaid diagrams across the shared UI renderer and Markdown file previews.
 
 ## 2026-11-24

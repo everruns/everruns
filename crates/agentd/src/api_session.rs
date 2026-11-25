@@ -73,6 +73,10 @@ pub fn router(node: Arc<Node>) -> Router {
         .route("/shard/sessions/{session}/push-configs", post(push_configs))
         .route("/shard/sessions/{session}/record", post(record))
         .route(
+            "/shard/sessions/{session}/claim-approval",
+            post(claim_approval),
+        )
+        .route(
             "/shard/sessions/{session}/storage",
             get(storage).post(change_storage),
         )
@@ -363,6 +367,29 @@ pub(crate) async fn platform(
         },
         Err(error) => return Err((StatusCode::SERVICE_UNAVAILABLE, error.to_string())),
     })
+}
+
+#[derive(Deserialize)]
+struct ApprovalClaim {
+    expected_last_sequence: i32,
+    approval_sequence: i32,
+    turn_id: String,
+    claim_id: String,
+}
+
+async fn claim_approval(
+    State(node): State<Arc<Node>>,
+    Path(session): Path<String>,
+    Json(body): Json<ApprovalClaim>,
+) -> Result<Json<ShardReply>, ApiError> {
+    let id = parse(&session)?;
+    let action = crate::platform::Op::ClaimApproval {
+        expected_last_sequence: body.expected_last_sequence,
+        approval_sequence: body.approval_sequence,
+        turn_id: body.turn_id,
+        claim_id: body.claim_id,
+    };
+    Ok(Json(platform(&node, id, action).await?))
 }
 
 #[derive(Deserialize)]

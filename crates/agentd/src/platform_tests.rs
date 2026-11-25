@@ -41,6 +41,154 @@ fn apply(state: &mut ShardState, session: SessionId, action: Op, now_ms: i64) ->
     )
 }
 
+fn claim_position(state: &mut ShardState, id: SessionId) -> i32 {
+    use everruns_core::events::{EventContext, EventData, EventRequest};
+    let reaction = serde_json::from_value(json!({
+        "message_id": "message_1", "emoji": "👍",
+        "actor": {"kind": "user", "id": "user_1"},
+    }))
+    .unwrap();
+    state
+        .sessions
+        .get_mut(&id)
+        .unwrap()
+        .journal(
+            EventRequest::new(
+                id,
+                EventContext::empty(),
+                EventData::message_reaction(reaction, true),
+            ),
+            EventId::new(),
+        )
+        .sequence
+        .unwrap()
+}
+
+fn claim_at(expected: i32, approval: i32, key: &str) -> Op {
+    Op::ClaimApproval {
+        expected_last_sequence: expected,
+        approval_sequence: approval,
+        turn_id: "turn-current".into(),
+        claim_id: key.into(),
+    }
+}
+
+fn claimed(response: Response, yes: bool, retry: bool) {
+    let Response::Value { value } = response else {
+        panic!("claim did not return a decision")
+    };
+    assert_eq!(value, json!({"claimed":yes,"retry":retry}));
+}
+
+#[test]
+fn approval_claims_compare_positions_and_block_rerendered_cards() {
+    let (mut state, id) = session();
+    let first = claim_position(&mut state, id);
+    claimed(
+        apply(&mut state, id, claim_at(first, first, "card-one"), T0),
+        true,
+        false,
+    );
+    // Both callbacks may have read the same snapshot before either writes input.
+    claimed(
+        apply(&mut state, id, claim_at(first, first, "card-two"), T0),
+        false,
+        false,
+    );
+
+    let next_approval = claim_position(&mut state, id);
+    let actual = claim_position(&mut state, id);
+    claimed(
+        apply(
+            &mut state,
+            id,
+            claim_at(next_approval, next_approval, "next"),
+            T0,
+        ),
+        false,
+        true,
+    );
+    assert_eq!(
+        state.sessions[&id]
+            .platform
+            .approval_claim
+            .as_ref()
+            .unwrap()
+            .claim_id,
+        "card-one"
+    );
+    claimed(
+        apply(&mut state, id, claim_at(actual, next_approval, "next"), T0),
+        true,
+        false,
+    );
+    claimed(
+        apply(&mut state, id, claim_at(actual, first, "old"), T0),
+        false,
+        false,
+    );
+}
+
+#[test]
+fn approval_claim_survives_snapshot_and_event_offload_before_decision_input() {
+    let (mut state, id) = session();
+    let sequence = claim_position(&mut state, id);
+    claimed(
+        apply(&mut state, id, claim_at(sequence, sequence, "card"), T0),
+        true,
+        false,
+    );
+    let session = state.sessions.get_mut(&id).unwrap();
+    assert!(!session.platform.is_empty());
+    session.events.clear();
+    session.offloaded = sequence;
+    let restored: SessionState =
+        serde_json::from_value(serde_json::to_value(&*session).unwrap()).unwrap();
+    state.sessions.insert(id, restored);
+    claimed(
+        apply(
+            &mut state,
+            id,
+            claim_at(sequence, sequence, "another-render"),
+            T0,
+        ),
+        false,
+        false,
+    );
+    assert_eq!(
+        state.sessions[&id]
+            .platform
+            .approval_claim
+            .as_ref()
+            .unwrap()
+            .claim_id,
+        "card"
+    );
+}
+
+#[test]
+fn malformed_approval_claims_do_not_consume_the_window() {
+    let (mut state, id) = session();
+    let sequence = claim_position(&mut state, id);
+    for (position, key) in [
+        (0, "card"),
+        (sequence + 1, "card"),
+        (sequence, ""),
+        (sequence, "https://private-handle.invalid"),
+    ] {
+        assert!(matches!(
+            apply(&mut state, id, claim_at(sequence, position, key), T0),
+            Response::Rejected { .. }
+        ));
+        assert!(state.sessions[&id].platform.approval_claim.is_none());
+    }
+    claimed(
+        apply(&mut state, id, claim_at(sequence, sequence, "valid"), T0),
+        true,
+        false,
+    );
+}
+
 fn create(
     state: &mut ShardState,
     session: SessionId,

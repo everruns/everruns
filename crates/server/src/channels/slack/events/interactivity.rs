@@ -512,11 +512,15 @@ async fn handle_block_action(
     }
 
     // THREAT[TM-SLACK-004]: claim the exact pending card before creating the
-    // consent message. Storage serializes this with event creation, so retries,
+    // consent message. The session authority orders this with event creation, so retries,
     // concurrent clicks, prose replies, and superseding asks all fail closed.
-    let claimed = state
-        .db
-        .claim_slack_approval_card(session.id, &binding.card_id, turn_id)
+    let claimed = crate::channels::slack::approvals::claim_card(
+        &state.db,
+        app.org_id,
+        session.id,
+        &binding.card_id,
+        turn_id,
+    )
         .await
         .map_err(|error| {
             tracing::error!(app_id = %app_id, %session_id, %error, "Failed to claim Slack approval card");

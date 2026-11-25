@@ -4,6 +4,7 @@ Command cancel-turn v1
 Command seed v1
 Command tool-results v1
 Command record v1
+Command claim-approval v1
 Command storage v1
 Command fs v1
 Command sqldb v1

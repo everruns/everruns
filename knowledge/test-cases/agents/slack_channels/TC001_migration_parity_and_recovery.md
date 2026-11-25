@@ -41,6 +41,13 @@ Verifies real-model Slack replies, requester-bound approvals and retained output
 5. In the controlled transport fixture, accept the first split part and fail the next ambiguously. Record the confirmed reference and pending output. Restart the host against the same store. Verify it retains the uncertain operation without reposting the accepted prefix or whole reply. Close only a known stream handle when applicable.
 6. Seed an isolated unaudited legacy pending row with no ledger. Restart with the checkpoint-requiring adapter: verify the row is retained and no provider write or event replay occurs. Make its channel unavailable and repeat; the row must remain for reconciliation. Complete the reconciliation explicitly using the cutover runbook.
 7. Repeat the server turn checks with v1 workers and data plane v2 in separate isolated stacks. Exercise the Framework/serve bridge with the same real model and checkpoint store. Label signed loopback requests as synthetic; they do not satisfy step 1's provider-origin evidence.
+   On v2, render a pending card before the matched control-plane/shard upgrade,
+   then send concurrent valid callbacks after upgrading. Verify exactly one
+   decision input and completed turn. Replay after restart; neither the input nor
+   provider output may repeat. Verify consumption survives event offload and
+   snapshot restore even before a decision input is recorded, and an intervening
+   input invalidates the checked log position. Missing canonical history or v2
+   authority must fail closed without querying v1 approval events.
 8. Unpublish the test channel, drain admitted turns and reconcile test-owned pending output. Remove only the run's own Slack messages/files and stop the test processes.
 
 ## Expected Result

@@ -41,6 +41,15 @@ The server retains response policy, durable approvals and explicit-action claims
 New approval cards bind the original reply destination for both public and private
 placement, checked before the durable claim. Older signed public cards retain their
 previous wire format; private cards still require the original destination.
+Approval freshness and consumption follow the session's authority: v1 uses its
+database transaction; v2 reads the canonical log and atomically claims its checked
+position on the shard. All renderings of one request share that claim, retained
+through event offload, snapshots and moves. A concurrent input invalidates the
+read, and missing or unavailable v2 authority never falls back to v1.
+The internal claim command requires the existing
+[matched control-plane/shard upgrade contract](../execution/data-plane-v2/design.md#upgrading-code):
+pause v2 writes and upgrade both together; an older shard cannot consume the new
+claim records. Follow the [cutover runbook](../../docs/sre/runbooks/channel-delivery-cutover.md).
 Native history context preserves subtype filtering. Identity and thread reads use
 Slack GET query parameters; native files and standalone actions retain host-scoped egress. Explicit posts use the single
 message API, including full plain fallback only when it fits, and never retry an

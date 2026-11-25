@@ -1,6 +1,6 @@
 //! Slack approvals: the card, the click, and who may click it (EVE-1025).
 //!
-//! # No new protocol
+//! # Reuse soft approval
 //!
 //! The `soft_approval` capability already pauses a turn: `request_approval` is
 //! a real tool call, the model ends its turn on it, and the pause is answered by
@@ -46,6 +46,29 @@ use serde_json::Value;
 #[cfg(test)]
 use serde_json::json;
 use uuid::Uuid;
+
+/// Claims follow the session's authority. A missing or unavailable v2 plane
+/// never falls back to the unrelated v1 event log.
+pub(crate) async fn claim_card(
+    db: &std::sync::Arc<crate::storage::StorageBackend>,
+    org_id: i64,
+    session: SessionId,
+    card_id: &str,
+    turn_id: &str,
+) -> anyhow::Result<bool> {
+    // THREAT[TM-SLACK-004]: never consult a second authority after a failed claim.
+    // Ownership is a per-session fact, not the cached organization routing hint.
+    if db.dp_session_on_data_plane(&session.to_string()).await? {
+        let plane =
+            crate::domains::data_plane::session_plane::SessionPlane::of(db, org_id, session)
+                .await?
+                .ok_or_else(|| anyhow::anyhow!("channel approval authority unavailable"))?;
+        plane.claim_channel_approval(card_id, turn_id).await
+    } else {
+        db.claim_slack_approval_card(session, card_id, turn_id)
+            .await
+    }
+}
 
 /// Session hint a Slack endpoint declares when it can draw approval cards.
 ///
