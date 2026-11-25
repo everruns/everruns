@@ -482,6 +482,12 @@ struct QueryHistoryParams {
     #[serde(default)]
     message_id: Option<crate::typed_id::MessageId>,
     #[serde(default)]
+    tool_call_id: Option<String>,
+    #[serde(default)]
+    tool_name: Option<String>,
+    #[serde(default)]
+    offset: usize,
+    #[serde(default)]
     message_range: Option<MessageRange>,
     #[serde(default = "default_query_limit")]
     limit: usize,
@@ -530,6 +536,9 @@ impl Tool for QueryHistoryTool {
             "type": "object",
             "properties": {
                 "message_id": {"type": "string", "description": "Retrieve a matching message by the ID returned by search"},
+                "tool_call_id": {"type": "string", "description": "Retrieve the full result of an earlier tool call, such as one hidden to save context"},
+                "tool_name": {"type": "string", "description": "With tool_call_id: the tool's name, which narrows the lookup"},
+                "offset": {"type": "integer", "minimum": 0, "default": 0, "description": "With message_id or tool_call_id: character offset to continue a long result from"},
                 "query": {
                     "type": "string",
                     "description": "Search earlier messages with a distinctive word or exact phrase. Results show matching excerpts; use message_id to retrieve the original message."
@@ -594,12 +603,24 @@ impl Tool for QueryHistoryTool {
         let limit = params.limit.clamp(1, 50);
         if let Some(id) = params.message_id {
             return match retriever.get(context.session_id, id).await {
-                Ok(Some(message)) => ToolExecutionResult::success(json!({
-                    "message_id": message.id, "role": message.role.to_string(),
-                    "content": truncate_content(&extract_text_content(&message), 16000),
-                    "truncated": extract_text_content(&message).chars().count() > 16000,
-                })),
+                Ok(Some(message)) => message_page(&message, params.offset),
                 Ok(None) => ToolExecutionResult::tool_error("Message not found in this session"),
+                Err(error) => ToolExecutionResult::internal_error(error),
+            };
+        }
+        if let Some(tool_call_id) = params.tool_call_id.as_deref() {
+            return match find_tool_result(
+                retriever.as_ref(),
+                context.session_id,
+                tool_call_id,
+                params.tool_name.as_deref(),
+            )
+            .await
+            {
+                Ok(Some(message)) => message_page(&message, params.offset),
+                Ok(None) => ToolExecutionResult::tool_error(
+                    "No result for that tool call among recent tool results; search with query instead",
+                ),
                 Err(error) => ToolExecutionResult::internal_error(error),
             };
         }
@@ -724,6 +745,59 @@ fn extract_text_content(message: &RuntimeMessage) -> String {
         })
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+/// Characters of one message returned per `query_history` read.
+const MESSAGE_PAGE_CHARS: usize = 16_000;
+
+/// Tool results scanned for a `tool_call_id` lookup, newest first. Stores have
+/// no tool-call-id index; a masked result is recent, so a bounded scan finds it.
+const TOOL_RESULT_SCAN: i64 = 500;
+
+/// One page of a message's text, with where the next page starts.
+fn message_page(message: &RuntimeMessage, offset: usize) -> ToolExecutionResult {
+    let text = extract_text_content(message);
+    let total = text.chars().count();
+    let content: String = text.chars().skip(offset).take(MESSAGE_PAGE_CHARS).collect();
+    let end = offset.saturating_add(MESSAGE_PAGE_CHARS).min(total);
+    let mut value = json!({
+        "message_id": message.id,
+        "role": message.role.to_string(),
+        "content": content,
+        "truncated": end < total,
+        "total_chars": total,
+    });
+    if end < total {
+        value["next_offset"] = json!(end);
+    }
+    ToolExecutionResult::success(value)
+}
+
+async fn find_tool_result(
+    retriever: &dyn crate::message_retriever::MessageRetriever,
+    session_id: crate::typed_id::SessionId,
+    tool_call_id: &str,
+    tool_name: Option<&str>,
+) -> crate::error::Result<Option<RuntimeMessage>> {
+    let mut query = MessageQuery::new(session_id).with_limit(TOOL_RESULT_SCAN);
+    query
+        .filters
+        .push(crate::message_filter::MessageFilter::EventTypes(vec![
+            "tool.completed".to_string(),
+        ]));
+    if let Some(name) = tool_name {
+        query
+            .filters
+            .push(crate::message_filter::MessageFilter::ToolName(
+                name.to_string(),
+            ));
+    }
+    let messages = retriever.load_filtered(query).await?;
+    Ok(messages.into_iter().find(|message| {
+        message.content.iter().any(|part| {
+            matches!(part, ContentPart::ToolResult(result) if result.tool_call_id == tool_call_id)
+        })
+    }))
 }
 
 fn truncate_content(content: &str, max_len: usize) -> String {

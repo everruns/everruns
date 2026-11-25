@@ -704,6 +704,75 @@ mod lifecycle_tests {
         }
     }
 
+    /// Ecosystem Watch, 2026-11-24: a few answered 30-60 KiB web pages put
+    /// the raw history over budget on every call, and each call bought a
+    /// summary although masking them already fit.
+    #[tokio::test]
+    async fn answered_oversized_results_are_masked_instead_of_buying_a_summary() {
+        let mut messages = vec![RuntimeMessage::user("check the ecosystem")];
+        for index in 0..3 {
+            let id = format!("call_{index}");
+            messages.push(RuntimeMessage::assistant_with_tools(
+                "",
+                vec![crate::builtins::tool_types::ToolCall {
+                    id: id.clone(),
+                    name: "web_fetch".into(),
+                    arguments: serde_json::json!({"url": "https://example.com"}),
+                }],
+            ));
+            messages.push(RuntimeMessage::tool_result(
+                id,
+                Some(serde_json::json!({"content": "release ".repeat(4_000)})),
+                None,
+            ));
+        }
+        messages.push(RuntimeMessage::assistant("Two items worth a look."));
+        let journal = Journal(messages);
+        let auto = crate::builtins::CompactionCapability
+            .compaction_policy(&serde_json::json!({
+                "strategy": "auto", "context_budget_tokens": 4096
+            }))
+            .unwrap();
+        async fn summary_calls(journal: &Journal, policy: &dyn CompactionPolicy) -> usize {
+            let store: Arc<dyn CompactionCheckpointStore> =
+                Arc::new(InMemoryCompactionCheckpointStore::default());
+            let driver = Summarizer {
+                calls: AtomicUsize::new(0),
+                finish: "stop",
+            };
+            let emitter = TestEventEmitter::new();
+            Planner {
+                store: &store,
+                retriever: journal,
+                driver: &driver,
+                policy,
+                emitter: &emitter,
+                event_context: &EventContext::default(),
+                session_id: SessionId::new(),
+                provider: "openrouter",
+                provider_id: "configured-provider",
+                model: "model-a",
+                reason: crate::events::CompactionReason::ProactiveBudget,
+                source_sequence: 8,
+                budget: 4096,
+                fallback_summary_window: 128_000,
+            }
+            .run()
+            .await
+            .unwrap();
+            driver.calls.load(Ordering::SeqCst)
+        }
+        assert_eq!(
+            summary_calls(&journal, auto.as_ref()).await,
+            0,
+            "masking fits the budget"
+        );
+        assert!(
+            summary_calls(&journal, policy().as_ref()).await > 0,
+            "a summarization-only policy has no masking to rely on"
+        );
+    }
+
     #[tokio::test]
     async fn a_cut_off_summary_of_a_long_history_retries_with_a_larger_cap() {
         for window in [6_000, 9_000, 16_000, 40_000] {

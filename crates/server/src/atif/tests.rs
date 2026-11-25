@@ -752,15 +752,18 @@ fn message_fold_reflects_model_view_masking() {
     let masked =
         build_case_record_from_messages(&run, &result, &masked_messages, AtifOptions::default());
     let masked_str = serde_json::to_string(&masked).unwrap();
+    // A masked result keeps only a short excerpt (and a query_history
+    // pointer), never its bulky body.
+    let body = |i: usize| format!("BULKY_RESULT_{i} {}", "x".repeat(1024));
     for i in 0..8 {
         assert!(
-            !masked_str.contains(&format!("BULKY_RESULT_{i}")),
+            !masked_str.contains(&body(i)),
             "masked result {i} must be absent from the model-view fold",
         );
     }
     for i in 8..10 {
         assert!(
-            masked_str.contains(&format!("BULKY_RESULT_{i}")),
+            masked_str.contains(&body(i)),
             "recent result {i} must survive in the model-view fold",
         );
     }

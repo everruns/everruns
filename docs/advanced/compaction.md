@@ -162,7 +162,9 @@ Two summary formats:
 | `one_line` (default) | `[read_file → 47 lines, 2340 bytes]` | Most cases, minimal footprint |
 | `head_tail` | First 3 lines + `... (14 lines omitted) ...` + last 3 lines | When partial output context helps |
 
-The most recent N tool outputs are kept verbatim (default: 2). Runtime masking advances in batches, skips small outputs and only reports effective reductions. Reapplying a masked view is not an additional model call.
+The most recent N tool outputs are kept verbatim (default: 2), unless an output is larger than 24 KiB and the model has already answered it. Runtime masking advances in batches, skips small outputs and only reports effective reductions. Reapplying a masked view is not an additional model call.
+
+A masked output is hidden, not deleted. Its placeholder keeps the first few hundred characters and the tool call ID, and `query_history` with that `tool_call_id` returns the original from the session record, 16,000 characters at a time (pass `offset` for the next part). When masking alone brings the history under budget, no summary is generated.
 
 ### Native Provider Compaction
 

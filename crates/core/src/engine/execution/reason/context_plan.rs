@@ -242,6 +242,35 @@ fn tokens(messages: &[RuntimeMessage]) -> usize {
 }
 
 impl Planner<'_> {
+    /// Tokens the request's observation masking removes from this history.
+    ///
+    /// A paid summary is the last resort: when masking answered and stale
+    /// tool results already brings the history under budget, the request
+    /// masks them (`apply_proactive_compaction`) and no summary is bought. A
+    /// long scheduled session fetching 60 KiB pages paid for a summary every
+    /// few calls without this (Ecosystem Watch, 2026-11-24). Masked results
+    /// stay readable through `query_history`.
+    fn masking_savings(&self, messages: &[RuntimeMessage]) -> usize {
+        use crate::compaction_policy::CompactionStrategy;
+        if !matches!(
+            self.policy.settings().strategy,
+            CompactionStrategy::Auto | CompactionStrategy::ObservationMasking
+        ) {
+            return 0;
+        }
+        let wire: Vec<_> = messages
+            .iter()
+            .map(crate::llm_conversions::llm_message_from_message)
+            .collect();
+        let masked = self.policy.apply_observation_masking(&wire);
+        if masked.masked_count == 0 {
+            return 0;
+        }
+        self.policy
+            .estimate_total_tokens(&wire)
+            .saturating_sub(self.policy.estimate_total_tokens(&masked.messages))
+    }
+
     /// One paid summary call, recorded as a generation even when validation
     /// later rejects it.
     async fn summarize(
@@ -566,6 +595,7 @@ impl Planner<'_> {
             let previous_pinned_tokens = pinned.iter().map(|p| p.len().div_ceil(4)).sum::<usize>();
             if !has_more
                 && working_tokens(&history.messages)
+                    .saturating_sub(self.masking_savings(&history.messages))
                     + previous.len().div_ceil(4)
                     + previous_pinned_tokens
                     <= self.budget

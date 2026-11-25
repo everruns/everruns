@@ -1033,8 +1033,12 @@ fn apply_cost_control_masking_owned(
         .map(|index| message_tool_result_len(&messages[*index]))
         .sum();
 
+    // An oversized result the model already answered is masked even among
+    // the recent ones (see `answered_oversized`).
+    let answered_oversized = answered_oversized_results(&messages, &tool_indices, cost_config);
     if !cost_config.enabled
-        || tool_indices.len() <= cost_config.keep_recent_tool_results
+        || (tool_indices.len() <= cost_config.keep_recent_tool_results
+            && answered_oversized.is_empty())
         || !should_apply_cost_control_masking(
             tool_indices.len(),
             tool_result_bytes_before,
@@ -1062,6 +1066,7 @@ fn apply_cost_control_masking_owned(
         .iter()
         .copied()
         .filter(|index| !related_recent_reads.contains(index))
+        .chain(answered_oversized)
         .filter(|index| {
             message_tool_result_len(&messages[*index]) >= cost_config.min_masked_tool_result_bytes
         })
@@ -1099,6 +1104,36 @@ fn apply_cost_control_masking_owned(
         tool_result_bytes_before,
         tool_result_bytes_after,
     }
+}
+
+/// Tool results at least `max_live_tool_result_bytes` long that an assistant
+/// message has already followed.
+///
+/// Keeping the newest results verbatim regardless of size held two 60 KiB web
+/// pages in every request of a long scheduled session and forced a paid
+/// summary every few calls (Ecosystem Watch, 2026-11-24). Once answered, such
+/// a result is masked like a stale one; the stub keeps an excerpt and the way
+/// to read the original back through `query_history`. Answered stays
+/// answered, so the masked view only moves forward and stays cache-stable.
+fn answered_oversized_results(
+    messages: &[RuntimeMessage],
+    tool_indices: &[usize],
+    config: &CostControlConfig,
+) -> Vec<usize> {
+    let Some(last_assistant) = messages
+        .iter()
+        .rposition(|message| message.role == RuntimeMessageRole::Agent)
+    else {
+        return Vec::new();
+    };
+    tool_indices
+        .iter()
+        .copied()
+        .filter(|index| {
+            *index < last_assistant
+                && message_tool_result_len(&messages[*index]) >= config.max_live_tool_result_bytes
+        })
+        .collect()
 }
 
 fn should_apply_cost_control_masking(
@@ -1257,6 +1292,19 @@ fn mask_tool_result_message(message: &RuntimeMessage, tool_name: &str) -> Runtim
     };
     let summary = summarize_tool_result(tool_name, result.result.as_ref(), result.error.as_ref());
     let was_error = result.error.is_some();
+    let summary = if was_error {
+        summary
+    } else {
+        let original = result
+            .result
+            .as_ref()
+            .map(|value| match value {
+                serde_json::Value::String(text) => text.clone(),
+                other => other.to_string(),
+            })
+            .unwrap_or_default();
+        with_recovery_hint(summary, &original, tool_name, Some(&result.tool_call_id))
+    };
     let mut masked = message.clone();
     for part in &mut masked.content {
         if let ContentPart::ToolResult(tool_result) = part {
@@ -1604,6 +1652,33 @@ fn format_one_line_summary(tool_name: &str, content: &MessageContent) -> String 
     } else {
         format!("[{tool_name} → {line_count} lines, {byte_len} bytes]")
     }
+}
+
+/// Characters of the original kept in a masked stub, so the model still sees
+/// what the result was about.
+const MASKED_EXCERPT_CHARS: usize = 400;
+
+/// A masked tool result keeps a short excerpt and says how to read it back:
+/// the session journal holds the original, and `query_history` returns it by
+/// tool call id, page by page. Masking hides a result; it does not lose it.
+fn with_recovery_hint(
+    summary: String,
+    original: &str,
+    tool_name: &str,
+    tool_call_id: Option<&str>,
+) -> String {
+    let Some(tool_call_id) = tool_call_id else {
+        return summary;
+    };
+    let excerpt: String = original.chars().take(MASKED_EXCERPT_CHARS).collect();
+    let more = if original.chars().count() > MASKED_EXCERPT_CHARS {
+        "…"
+    } else {
+        ""
+    };
+    format!(
+        "{summary}\nHidden to save context. Starts: {excerpt}{more}\nFull output: query_history with tool_call_id \"{tool_call_id}\" (tool_name \"{tool_name}\")."
+    )
 }
 
 fn format_head_tail_summary(content: &MessageContent) -> String {

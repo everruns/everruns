@@ -83,22 +83,42 @@ impl CompactionPolicy for ConfiguredCompactionPolicy {
         let mut config = self.config.cost_control.clone();
         config.keep_recent_tool_results = self.config.observation_masking.keep_recent_tool_outputs;
         let boundary = mask_boundary(&sizes, &config);
+        // An oversized result the model has already answered is masked even
+        // among the recent ones: keeping two 60 KiB web pages verbatim forced a
+        // paid summary every few calls in a long scheduled session
+        // (Ecosystem Watch, 2026-11-24). Answered stays answered, so the
+        // masked view still only moves forward. The stub says how to read the
+        // original back, so nothing leaves the model's reach.
+        let last_assistant = messages
+            .iter()
+            .rposition(|message| message.role == MessageRole::Assistant);
         let mut result = messages.to_vec();
         let mut masked_count = 0;
-        for index in indices.into_iter().take(boundary) {
+        for (position, index) in indices.into_iter().enumerate() {
             let original = extract_text(&messages[index].content);
+            let answered_and_oversized = last_assistant.is_some_and(|last| last > index)
+                && original.len() >= config.max_live_tool_result_bytes;
+            if position >= boundary && !answered_and_oversized {
+                continue;
+            }
             if original.len() < config.min_masked_tool_result_bytes {
                 continue;
             }
+            let tool_name = find_tool_call_name(messages, &messages[index]);
             let summary = match self.config.observation_masking.summary_format {
-                MaskingSummaryFormat::OneLine => format_one_line_summary(
-                    &find_tool_call_name(messages, &messages[index]),
-                    &messages[index].content,
-                ),
+                MaskingSummaryFormat::OneLine => {
+                    format_one_line_summary(&tool_name, &messages[index].content)
+                }
                 MaskingSummaryFormat::HeadTail => {
                     format_head_tail_summary(&messages[index].content)
                 }
             };
+            let summary = with_recovery_hint(
+                summary,
+                &original,
+                &tool_name,
+                messages[index].tool_call_id.as_deref(),
+            );
             if summary.len() < original.len() {
                 result[index].content = MessageContent::Text(summary);
                 masked_count += 1;
