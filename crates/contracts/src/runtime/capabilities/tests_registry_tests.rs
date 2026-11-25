@@ -11,10 +11,9 @@ use super::tests_support::*;
 /// call carries no usable `target.type` yet.
 #[test]
 fn unified_spawn_agent_narration_names_the_agent() {
-    let tool = UnifiedSpawnAgentTool::new(vec![DelegationTargetProvider {
-        target_type: "subagent",
-        tool: Box::new(StubSubagentSpawnTool),
-    }]);
+    let tool = UnifiedSpawnAgentTool::new(vec![
+        DelegationTargetProvider::new("subagent", Box::new(StubSubagentSpawnTool)).with_self(true),
+    ]);
     let ctx = crate::runtime::tool_narration::ToolNarrationContext::default();
 
     assert_eq!(
@@ -53,9 +52,7 @@ fn unified_spawn_agent_rejects_subagent_fields_for_configured_targets() {
         });
         assert_eq!(
             validate_spawn_agent_target_fields(&arguments, target_type),
-            Err(format!(
-                "blueprint is only valid for subagent targets, not {target_type}."
-            ))
+            Err("blueprint is only valid when the agent spawns itself (agent \"self\").".into())
         );
 
         let arguments = serde_json::json!({
@@ -64,9 +61,7 @@ fn unified_spawn_agent_rejects_subagent_fields_for_configured_targets() {
         });
         assert_eq!(
             validate_spawn_agent_target_fields(&arguments, target_type),
-            Err(format!(
-                "config is only valid for subagent targets, not {target_type}."
-            ))
+            Err("config is only valid when the agent spawns itself (agent \"self\").".into())
         );
     }
 }
@@ -770,36 +765,41 @@ async fn collect_drops_every_member_of_a_conflicting_group() {
     assert_eq!(collected.applied_ids, vec!["current_time".to_string()]);
 }
 
-/// An `external_ag_ui` provider is advertised, opens the tool to the world,
-/// and gets the same external-target refusals as `external_a2a`.
+/// An `external_ag_ui` agent is listed by name, opens the tool to the world,
+/// and gets the same external-agent refusals as `external_a2a`.
 #[tokio::test]
 async fn unified_spawn_agent_advertises_and_guards_external_ag_ui() {
-    let tool = UnifiedSpawnAgentTool::new(vec![DelegationTargetProvider {
-        target_type: "external_ag_ui",
-        tool: Box::new(StubSubagentSpawnTool),
-    }]);
-    assert_eq!(tool.target_types(), vec!["external_ag_ui"]);
-    assert_eq!(
-        tool.parameters_schema()["properties"]["target"]["oneOf"][0]["required"],
-        serde_json::json!(["type", "id"])
-    );
+    let tool = UnifiedSpawnAgentTool::new(vec![
+        DelegationTargetProvider::new("external_ag_ui", Box::new(StubSubagentSpawnTool))
+            .with_agents(vec![DelegationAgent {
+                id: "partner".into(),
+                name: "Partner".into(),
+                description: None,
+                target_type: "external_ag_ui",
+            }]),
+    ]);
+    let schema = tool.parameters_schema();
+    assert!(schema["properties"]["agent"].is_object(), "{schema}");
+    assert!(schema["properties"].get("target").is_none(), "{schema}");
+    assert!(tool.description().contains("Partner"));
     assert_eq!(tool.hints().open_world, Some(true));
 
     let ctx = crate::runtime::tool_context::ToolContext::new(SessionId::new());
     for (extra, needle) in [
         (
-            serde_json::json!({ "lifetime": "detached" }),
-            "not external_ag_ui",
+            serde_json::json!({ "blueprint": "github_scout" }),
+            "only valid when the agent spawns itself",
         ),
         (
             serde_json::json!({ "message_schema": { "type": "object" } }),
-            "message_schema is not supported for external_ag_ui",
+            "message_schema is not supported for external agents",
         ),
+        (serde_json::json!({ "agent": "someone-else" }), "Partner"),
     ] {
         let mut arguments = serde_json::json!({
             "name": "Partner",
             "instructions": "x",
-            "target": { "type": "external_ag_ui", "id": "partner" },
+            "agent": "partner",
         });
         if let (Some(arguments), Some(extra)) = (arguments.as_object_mut(), extra.as_object()) {
             arguments.extend(extra.clone());
@@ -811,4 +811,54 @@ async fn unified_spawn_agent_advertises_and_guards_external_ag_ui() {
             other => panic!("expected a tool error containing {needle}, got {other:?}"),
         }
     }
+}
+
+/// Calls in the retired `target`/`mode` form still resolve, and invite is
+/// refused in favour of `invite_agent`.
+#[tokio::test]
+async fn unified_spawn_agent_accepts_the_retired_target_form() {
+    let arguments = legacy_arguments(serde_json::json!({
+        "name": "Review",
+        "instructions": "x",
+        "target": { "type": "agent", "id": "reviewer" },
+        "mode": "foreground",
+        "lifetime": "task",
+    }))
+    .unwrap();
+    assert_eq!(arguments["agent"], "reviewer");
+    assert_eq!(arguments["wait"], true);
+    assert!(arguments.get("target").is_none() && arguments.get("lifetime").is_none());
+    let own = legacy_arguments(serde_json::json!({ "target": { "type": "subagent" } })).unwrap();
+    assert_eq!(own["agent"], "self");
+    assert!(
+        legacy_arguments(serde_json::json!({ "agent": "reviewer", "mode": "invite" }))
+            .unwrap_err()
+            .contains("invite_agent")
+    );
+}
+
+/// The schema check sees the upgraded call, so a retired-form call reaches the
+/// tool instead of failing on `target`/`mode`.
+#[test]
+fn unified_spawn_agent_retired_form_passes_the_schema_check() {
+    let tool = UnifiedSpawnAgentTool::new(vec![
+        DelegationTargetProvider::new("subagent", Box::new(StubSubagentSpawnTool)).with_self(true),
+    ]);
+    for arguments in [
+        serde_json::json!({"name": "Review", "instructions": "x", "target": {"type": "subagent"}, "mode": "foreground"}),
+        serde_json::json!({"name": "Review", "instructions": "x", "agent": "self", "mode": "invite"}),
+    ] {
+        let call = spawn_agent_call(arguments);
+        assert_eq!(
+            crate::runtime::tools::validate_tool_arguments(&tool, &call).unwrap(),
+            None
+        );
+    }
+    let bad =
+        spawn_agent_call(serde_json::json!({"name": "R", "instructions": "x", "colour": "red"}));
+    assert!(
+        crate::runtime::tools::validate_tool_arguments(&tool, &bad)
+            .unwrap()
+            .is_some()
+    );
 }

@@ -35,7 +35,7 @@ pub async fn features(
         if !flags.is_capability_enabled(id) {
             continue;
         }
-        if id == "coordination"
+        if id == everruns_capabilities::capabilities::THREADS_CAPABILITY_ID
             && let Some(capability) = registry.get(id)
         {
             capability
@@ -47,7 +47,7 @@ pub async fn features(
                 "message_thread",
                 "list_threads",
                 "get_thread",
-                "resolve_thread",
+                "close_thread",
             ]
             .iter()
             .all(|name| tools.iter().any(|tool| tool.name() == *name));

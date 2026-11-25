@@ -387,7 +387,7 @@ cargo run -p serve-example-a2a --bin writer -- "tide pools"
 
 ## See also
 
-- [Sub-agents](/capabilities/sub-agents/), the shared `spawn_agent` tool.
+- [Spawn agents](/capabilities/spawn-agents/), the shared `spawn_agent` tool.
 - [ARD Discovery](/integrations/ard/), for finding A2A agents at runtime.
 - [Channels](/features/channels/), for channel lifecycle and legacy routes.
 

@@ -60,7 +60,7 @@ storage or orchestration cross into [custom backends](/framework/custom-backends
 - [Lifecycle hooks](/framework/lifecycle-hooks/), run awaited application behavior at execution boundaries.
 - [Answer agent questions](/framework/ask-user/), implement `AskUser` so your application answers the agent's structured questions.
 - [Session work and wakes](/framework/background-work/), immediate and scheduled work with explicit delivery and restart semantics.
-- [Coordinator agents](/framework/coordination/), one session that hands work to threads and hears back from them.
+- [Agents that start agents](/framework/coordination/), one-off `spawn_agent` calls with `SpawnAgents`, or followed work in threads with `Threads` and `Coordinator`.
 
 ## Extend
 

@@ -8,7 +8,7 @@ sidebar:
 An **agent blueprint** is a code-defined specialist agent: a baked-in prompt, a set
 of private tools, a model-selection strategy, an iteration bound, and a narrow
 configuration surface. A host agent delegates to it through the ordinary
-[sub-agents](/capabilities/sub-agents/) tool without gaining access to its
+[spawn agents](/capabilities/spawn-agents/) tool without gaining access to its
 internals.
 
 Reach for a blueprint when work needs different tools, instructions, or model
@@ -141,7 +141,7 @@ Two blueprints ship in-tree and are worth reading as references:
 
 ## Related
 
-- [Sub-agents](/capabilities/sub-agents/) — the delegation tool blueprints are
+- [Spawn agents](/capabilities/spawn-agents/) — the delegation tool blueprints are
   invoked through
 - [GitHub Scout](/capabilities/github-scout/) — a shipped blueprint from the
   caller's side

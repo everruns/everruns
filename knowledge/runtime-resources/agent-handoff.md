@@ -8,6 +8,8 @@ tags:
 ---
 # Agent Handoff
 
+> Superseded in part (2026-11-25): agents start other agents through Spawn agents or Threads, never both; see [Threads: How Agents Hand Off Work](threads.md). This page keeps the executor details.
+
 ## Abstract
 
 Agent handoff lets one agent delegate work to another configured first-party

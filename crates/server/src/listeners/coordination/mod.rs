@@ -1,20 +1,19 @@
-//! Thread turn listener for the coordination capability
-//! (knowledge/runtime-resources/coordination.md).
+//! Thread turn listener for the threads capability
+//! (knowledge/runtime-resources/threads.md).
 //!
-//! A thread finishes an assignment by calling `complete_assignment`. When its
-//! turn ends without that call, the coordinator would otherwise never hear
-//! back, so this listener watches thread turns and keeps the coordinator's
-//! assignment honest:
+//! A thread finishes an assignment by calling `finish`. When its turn ends
+//! without that call, the parent would otherwise never hear back, so this
+//! listener watches thread turns and keeps the parent's assignment honest:
 //!
 //! - a thread turn that completes or is cancelled while the assignment is still
 //!   running flags it as needing attention (`awaiting_input`), which wakes the
-//!   coordinator with the reason;
+//!   parent with the reason;
 //! - a thread turn that fails fails the assignment;
 //! - a thread turn that starts while the assignment waits on an answer puts it
 //!   back to running.
 //!
 //! The settlement rules live with the capability
-//! (`coordination::settle_thread_turn`) so the framework applies the same ones;
+//! (`threads::settle_thread_turn`) so the framework applies the same ones;
 //! this listener maps server turn events onto them.
 //!
 //! Decision: the work is spawned off the event path and is best-effort, like
@@ -24,7 +23,7 @@
 
 use std::sync::{Arc, OnceLock};
 
-use everruns_capabilities::capabilities::coordination::{self, ThreadTurn};
+use everruns_capabilities::capabilities::threads::{self, ThreadTurn};
 use everruns_contracts::typed_id::SessionId;
 use everruns_core::session_task::SessionTaskRegistry;
 
@@ -123,7 +122,7 @@ pub(crate) async fn settle_thread_turn(
     else {
         return Ok(());
     };
-    coordination::settle_thread_turn(registry, coordinator, thread, turn).await?;
+    threads::settle_thread_turn(registry, coordinator, thread, turn).await?;
     Ok(())
 }
 

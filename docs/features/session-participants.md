@@ -30,7 +30,7 @@ To add an agent:
 
 The agent joins as a member. The rail also shows participants who have left. Use the remove action on an active member to make it leave; the host cannot leave through the ordinary participant action. If a user who left sends another message, that user rejoins automatically with a new participation interval.
 
-Agents can perform the same operation with invite-mode handoff. An agent with the `agent_handoff` capability calls `spawn_agent` with `mode = invite`. Unlike foreground or background handoff, invite mode joins the target agent to the current session instead of creating a child session.
+Agents can perform the same operation with `invite_agent`. An agent whose [Spawn agents](/capabilities/spawn-agents/) capability lists other agents calls `invite_agent` with one of their names. Unlike `spawn_agent`, it joins the agent to the current session instead of creating a child session.
 
 ## Address an agent for one turn
 
@@ -58,5 +58,5 @@ The participant list is the source of truth for join and leave history. Join and
 ## See also
 
 - [Agent triggers](/features/agent-triggers/), proactive runs start sessions with the trigger's agent as host.
-- [Sub Agents capability](/capabilities/sub-agents/), foreground, background, and invite handoff modes.
+- [Spawn agents capability](/capabilities/spawn-agents/), foreground, background, and invite handoff modes.
 - [Core concepts](/getting-started/concepts/), sessions, turns, and agents.

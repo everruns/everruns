@@ -109,8 +109,7 @@ let agent = Agent::builder()
     .name("writer")
     .instructions(
         "Before writing, ask the `researcher` agent for notes with `spawn_agent` \
-         (target type `external_a2a`, id `researcher`, mode `foreground`). \
-         Then write one paragraph from its notes.",
+         (agent `researcher`, wait `true`). Then write one paragraph from its notes.",
     )
     .provider(OpenAI::from_env()?)
     .model("gpt-6.2-sol")
@@ -129,13 +128,14 @@ let agent = Agent::builder()
 let session = Engine::new().create(agent);
 ```
 
-The model sees one `spawn_agent` tool with an `external_a2a` target. It can
-only reach the agents in `agents`; it never supplies a URL.
+The model sees one `spawn_agent` tool and passes the remote agent's `id` or
+name as `agent`. It can only reach the agents in `agents`; it never supplies a
+URL.
 
 - `base_url` is where the Agent Card is resolved
   (`{base_url}/.well-known/agent-card.json`).
-- `mode: "foreground"` waits for the remote task and returns its reply as the
-  tool result. `mode: "background"` returns a `task_id` at once and wakes the
+- `wait: true` waits for the remote task and returns its reply as the tool
+  result. Without it, the call returns a `task_id` at once and wakes the
   session when the remote task finishes.
 - `result_schema` on `spawn_agent` requires a structured result and validates
   the remote agent's first data part against it.

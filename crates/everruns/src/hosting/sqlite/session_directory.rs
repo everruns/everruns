@@ -869,10 +869,9 @@ mod tests {
         assert_eq!(schedules[0].id, schedule.id);
         assert!(target.status(a).await.unwrap().runnable);
         assert!(target.receipt(a, pending_id).await.unwrap().is_some());
-        let target_events =
-            crate::coordination::platform_messages(target.reader(a).event_log, a, None)
-                .await
-                .unwrap();
+        let target_events = crate::threads::platform_messages(target.reader(a).event_log, a, None)
+            .await
+            .unwrap();
         assert!(target_events.iter().any(|message| {
             serde_json::to_string(&message.content)
                 .unwrap()

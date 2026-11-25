@@ -247,16 +247,17 @@ export function buildSessionNavigation({
   // created. A count covers a recording whose capability was removed later.
   // A data plane keeps subagent tasks and schedules (step 11.4) but no
   // leased resources, and the platform's task count does not see its tasks.
+  const startsAgents = hasFeature("spawn_agents") || hasFeature("threads");
   const hasWork = dataPlane
-    ? hasFeature("schedules") || hasFeature("subagents") || (activeScheduleCount ?? 0) > 0
+    ? hasFeature("schedules") || startsAgents || (activeScheduleCount ?? 0) > 0
     : hasFeature("leased_resources") ||
       hasFeature("schedules") ||
       (taskCount ?? 0) > 0 ||
       (activeScheduleCount ?? 0) > 0;
   const hasFiles = dataPlane || sessionShowsFiles(features, fileCount);
-  // Agents shows the whole run: on a session that can hand work to other
-  // agents, and on one another agent handed work to.
-  const hasAgents = hasFeature("agent_handoffs") || !!inRun;
+  // Agents shows the whole run: on a session that can start other agents
+  // (Spawn agents or Threads), and on one another agent started.
+  const hasAgents = startsAgents || !!inRun;
 
   return [
     {

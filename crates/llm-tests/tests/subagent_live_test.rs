@@ -22,7 +22,7 @@ use llm_test_matrix::*;
 
 use async_trait::async_trait;
 use everruns::local::{LocalPlatformStore, LocalSessionRunner, LocalSessionTaskRegistry, SqliteDb};
-use everruns_capabilities::capabilities::SubagentCapability;
+use everruns_capabilities::capabilities::SpawnAgentsCapability;
 use everruns_capabilities::{PlatformHostBackendsExt, PlatformMessage, PlatformStore};
 use everruns_contracts::error::Result;
 use everruns_contracts::typed_id::{AgentId, HarnessId, SessionId};
@@ -140,7 +140,7 @@ async fn background_spawn_agent_subagent_live_end_to_end() {
     };
 
     let mut capabilities = CapabilityRegistry::new();
-    capabilities.register(SubagentCapability);
+    capabilities.register(SpawnAgentsCapability);
     let platform = HostComposition::new(capabilities, all_providers_registry());
 
     let harness_id = HarnessId::from_seed(535);
@@ -148,7 +148,7 @@ async fn background_spawn_agent_subagent_live_end_to_end() {
     let parent_id = SessionId::from_seed(535);
     let harness = HarnessBuilder::new("host", "You are a precise assistant that uses tools.")
         .id(harness_id)
-        .capability("subagents")
+        .capability("spawn_agents")
         .build();
     let agent = AgentBuilder::new("host-agent", "Use tools exactly as instructed.")
         .id(agent_id)

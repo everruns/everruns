@@ -583,8 +583,9 @@ mod tests {
         assert!(disabled.is_capability_enabled("unrelated"));
         // Adding the capability to an agent is the opt-in; no flag on top.
         for capability in [
-            "coordination",
-            "agent_handoff",
+            "spawn_agents",
+            "threads",
+            "coordinator",
             "a2a_agent_delegation",
             "ag_ui_delegation",
         ] {

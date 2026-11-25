@@ -64,6 +64,9 @@ export default defineConfig({
     [`${LEGACY_GALLERY_ROOT}/`]: `${GALLERY_ROOT}/`,
     // The experimental Docker Container capability was removed; Container sandbox replaces it.
     "/capabilities/docker/": "/capabilities/container-sandbox/",
+    // subagents and agent_handoff folded into spawn_agents (2026-11-25).
+    "/capabilities/sub-agents/": "/capabilities/spawn-agents/",
+    "/capabilities/agent-handoff/": "/capabilities/spawn-agents/",
     // virtual_bash capability renamed to bashkit_shell
     "/capabilities/virtual-bash/": "/capabilities/bashkit-shell/",
     // tools_in_shell capability renamed to shell_code_mode
@@ -562,7 +565,10 @@ export default defineConfig({
                           label: "Auto-Continue After Usage Limit",
                           slug: "capabilities/usage-limit-auto-continue",
                         },
-                        { label: "Sub Agents", slug: "capabilities/sub-agents" },
+                        { label: "Spawn agents", slug: "capabilities/spawn-agents" },
+                        { label: "Threads", slug: "capabilities/threads" },
+                        { label: "Coordinator", slug: "capabilities/coordinator" },
+                        { label: "Sibling communication", slug: "capabilities/sibling-communication" },
                         { label: "AGENTS.md", slug: "capabilities/agent-instructions" },
                         { label: "Agent Skills", slug: "capabilities/agent-skills" },
                       ],
@@ -723,7 +729,6 @@ export default defineConfig({
                   collapsed: true,
                   items: [
                     { label: "A2A Agent Delegation", slug: "capabilities/a2a-agent-delegation" },
-                    { label: "Agent Handoff", slug: "capabilities/agent-handoff" },
                     { label: "AgentID Sign-In", slug: "integrations/agentid" },
                     { label: "ARD", slug: "integrations/ard" },
                     { label: "boxd", slug: "integrations/boxd" },

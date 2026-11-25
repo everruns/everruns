@@ -328,8 +328,8 @@ async fn worker_assignment_checks_inherited_high_risk_capabilities() {
         .await
         .unwrap_err();
     assert!(shell_error.to_string().contains("bashkit_shell"));
-    let error = check_harness_assignment(&ctx, worker.id).await.unwrap_err();
-    assert!(error.to_string().contains("subagents"));
+    // Worker no longer brings Spawn agents, so it holds no high-risk default.
+    assert!(check_harness_assignment(&ctx, worker.id).await.is_ok());
     let ctx = Ctx::minimal_for_test(Caller::internal(DEFAULT_ORG_ID), db, None);
     assert!(check_harness_assignment(&ctx, worker.id).await.is_ok());
 }

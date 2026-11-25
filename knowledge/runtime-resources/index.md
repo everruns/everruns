@@ -17,6 +17,7 @@
 * [Subagents Specification](subagents.md) - Subagent orchestration.
 * [Session titles](session-titles.md) - Automatic naming, sparse admission, model defaults, and explicit ownership.
 * [Session Tasks](session-tasks.md) - Session task registry for background work.
+* [Threads: How Agents Hand Off Work](threads.md) - Spawn agents for one-off calls, Threads for followed work, never both; parent and sibling communication, Coordinator, `/shared`.
 * [Coordination](coordination.md) - Coordinator agents hand work to threads and keep the person's view of it.
 * [Rooms](rooms.md) - Org-owned spaces where people and agents talk; messages that address an agent wake it, and it answers through send_message.
 * [Session Participants](session-participants.md) - Session participants (host/member agents and users, addressed-turn routing, invite-mode handoff).

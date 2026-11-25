@@ -31,113 +31,88 @@ Give each one a narrow prompt and only the capabilities it needs. "Reviews Rust
 diffs for correctness bugs" routes better than "helps with code", because the
 foreman picks targets from their descriptions.
 
-Note each worker's agent id (`agent_...`) and harness id (`harness_...`). Both
-are required for a handoff target: the harness determines the capabilities and
-mounts available to the worker's child session.
+Note each worker's agent id (`agent_...`). Its name and description are what
+the foreman sees when it picks one.
 
-## Step 2 — Give the foreman the `agent_handoff` capability
+## Step 2 — Give the foreman Threads and Coordinator
 
-Delegation targets are an explicit allowlist on the foreman. Configure the
-`agent_handoff` capability with one entry per worker:
+A foreman follows the work it hands out: it hears when a worker finishes or
+asks something, sends follow-ups, and closes the work when the requester is
+happy. That is [Threads](/capabilities/threads/). Add
+[Coordinator](/capabilities/coordinator/) next to it, so the foreman routes
+instead of doing the work itself:
 
 ```json
-{
-  "targets": [
-    {
-      "id": "code_reviewer",
-      "name": "Code Reviewer",
-      "description": "Reviews diffs and pull requests for correctness bugs",
-      "agent_id": "agent_...",
-      "harness_id": "harness_...",
-      "required_connections": [],
-      "required_scopes": []
-    },
-    {
-      "id": "incident_responder",
-      "name": "Incident Responder",
-      "description": "Investigates alerts and production incidents",
-      "agent_id": "agent_...",
-      "harness_id": "harness_..."
+[
+  {
+    "ref": "threads",
+    "config": {
+      "self": false,
+      "agents": [
+        { "agent_id": "agent_...code_reviewer", "required_connections": ["github"] },
+        { "agent_id": "agent_...incident_responder" }
+      ],
+      "max_open": 6
     }
-  ]
-}
+  },
+  { "ref": "coordinator" }
+]
 ```
 
-`description` is the field the model reads when choosing a target, so write it
-for that purpose. `id` is the stable key the foreman passes back in tool calls;
-keep it short.
+`agents` is an explicit allowlist; the platform fills each entry's name and
+description from the agent when it saves. In the UI, add workers from the
+foreman's **Team** tab. `"self": false` keeps the foreman from working
+threads itself; leave it on if it should also take generalist work.
 
-Two properties worth knowing, because they shape what the foreman can do:
+Two properties shape what the foreman can do:
 
-- The foreman **does not inherit the target's tools**, and never receives the
-  target's provider credentials. It can ask a worker to act; it cannot act as
-  the worker.
-- `required_connections` gates a handoff on a provider connection existing
-  before the run starts, which turns a mid-run credential failure into an
-  up-front refusal.
+- The foreman **does not inherit a worker's tools** and never receives its
+  provider credentials. It can ask a worker to act; it cannot act as the
+  worker. Each worker runs as itself, resolved for the person who asked.
+- `required_connections` refuses a thread up front when a provider connection
+  is missing, instead of failing mid-run.
 
-`required_scopes` are audit labels in the current implementation, not enforced
-grants — a tool that needs hard authorization checks its own scopes before
-acting.
+Do not also give the foreman Spawn agents: an agent has one or the other.
 
 ## Step 3 — Write the foreman's prompt
 
-This is the part that decides whether the thing works, and the part no
-configuration can do for you. A foreman's prompt needs four things:
+Coordinator already tells the foreman to put real work in threads, one thread
+per piece of work, follow-ups to the thread that owns it, and to relay results.
+Your prompt adds what only you know:
 
-1. **When to delegate and when to answer.** Without this, a foreman either
-   delegates trivia or answers things it should have routed. Be concrete: "If
-   the request names a file, a diff, or a PR, hand off to `code_reviewer`."
-2. **How to choose between overlapping targets**, and what to do when none fits
-   — usually ask a clarifying question rather than guessing.
-3. **What to do while work is running.** Background handoffs return
-   immediately; the foreman must know to report that it has dispatched, not to
-   invent a result.
-4. **How to report back.** A foreman that delegates silently is worse than no
-   foreman, because the requester cannot tell whether anything is happening.
+1. **When to delegate and when to answer.** Be concrete: "If the request names
+   a file, a diff, or a PR, start a thread on code_reviewer."
+2. **How to choose between overlapping workers**, and what to do when none
+   fits: usually ask a clarifying question rather than guessing.
+3. **How to report back**: one line in the Slack thread when work starts and
+   when it finishes. A foreman that delegates silently is worse than none.
 
 Keep it short. A long routing prompt tends to produce a foreman that reasons
 about routing out loud in your Slack channel.
 
-## Step 4 — Understand what `spawn_agent` gives you
+## Step 4 — Understand the thread tools
 
-The foreman delegates with `spawn_agent`, using `target.type = "agent"` and the
-`target.id` from your config. The parameters that matter for a foreman:
-
-| Parameter | Why a foreman cares |
+| Tool | Why a foreman cares |
 |---|---|
-| `mode` | `background` (default) returns a `task_id` immediately so the foreman can dispatch several workers and stay responsive. `foreground` blocks until the child finishes. `invite` joins the target into the *current* session instead of a child one. |
-| `result_schema` | A JSON Schema the child must satisfy. Turns "whatever the worker said" into a structured result the foreman can act on rather than re-parse. |
-| `public_context` | Non-secret context appended to the child task. Use it for the Slack thread reference so the worker knows where the request came from. |
-| `instructions` | The work request. **Must not contain credentials** — the child has its own. |
+| `start_thread` | `title`, a complete `brief` (the worker sees nothing else), and `agent`: the worker's name. Returns a `thread_id` at once, so the foreman stays responsive. **The brief must not contain credentials.** |
+| `message_thread` | Relays a follow-up from Slack to the thread that owns the work, even after it finished. |
+| `list_threads`, `get_thread` | Where each piece of work stands, and the workers available. |
+| `close_thread` | Closes the work once the requester accepts it; `cancel` stops it. |
 
-Background handoffs create a task with `wake_policy = on_terminal`, so the
-foreman is woken when a worker finishes. It does not poll, and you should not
-prompt it to.
+A worker keeps a checklist, asks with `ask_parent`, and ends with `finish`.
+Each of those wakes the foreman with an automatic update; it does not poll,
+and you should not prompt it to. Workers write long output to `shared/`,
+which the foreman reads.
 
-While work is in flight the foreman manages it with the generic task tools:
-`list_tasks`, `get_task`, `message_task` to steer a worker mid-run, and
-`cancel_task`. These work identically for subagents, so a foreman can mix both
-kinds of delegation.
+### Threads or spawned agents?
 
-### Subagent or handoff?
-
-Both go through `spawn_agent`; the difference is what the child *is*.
-
-| | `target.type = "subagent"` | `target.type = "agent"` |
+| | Threads | [Spawn agents](/capabilities/spawn-agents/) |
 |---|---|---|
-| Child config | Inherits the foreman's harness and agent configuration | The target Agent's own prompt, capabilities, MCP servers, model |
-| Set-up cost | None — spawn by name | Build and allowlist the Agent first |
-| Use when | The work is the same kind of work, just parallel | The work needs different tools, a different model, or different authority |
+| Shape | Followed work the foreman steers and closes | One call: brief in, result out |
+| Use when | The requester will come back, steer, or accept the work | Quick parallel checks inside one answer |
 
-A foreman that fans out "review these six files" wants subagents. A foreman that
-routes "is this a code question or an incident?" wants handoff. Most real ones
-use both.
-
-Subagent fan-out needs the separate `subagents` capability on the foreman — see
-[Sub Agents](/capabilities/sub-agents/). Nesting is depth-governed
-(`max_subagent_depth`) with root-tree caps on live and total descendant tasks, so
-a foreman cannot fork-bomb your org by accident.
+A foreman in front of people wants Threads. A worker that fans out "review
+these six files" inside its own thread wants Spawn agents on the worker.
 
 ## Step 5 — Put it in front of Slack
 
@@ -184,14 +159,15 @@ it.
   cannot ask "approve this?" with a button and act on the click. It can only ask
   in prose and read the reply. For a foreman that dispatches consequential work,
   this is the real constraint.
-- **Progress is per-turn, not per-task.** The Slack status line reflects the
-  foreman's current turn. "3 of 5 workers finished" is available to the foreman
-  via `list_tasks` but is not rendered into Slack for you; the foreman has to
+- **Progress is per-turn, not per-thread.** The Slack status line reflects the
+  foreman's current turn. "3 of 5 threads finished" is available to the foreman
+  via `list_threads` but is not rendered into Slack for you; the foreman has to
   say it.
 - **Two identities** if you use a Slack MCP server, as above.
 
 ## See also
 
-- [Sub Agents](/capabilities/sub-agents/) — the `subagents` capability and the shared `spawn_agent` dispatcher
+- [Threads](/capabilities/threads/) and [Coordinator](/capabilities/coordinator/)
+- [Spawn agents](/capabilities/spawn-agents/) — one-off calls
 - [Publish an agent as a Slack app](/how-to/publish-to-slack/)
 - [Orchestrate multi-agent pipelines](/how-to/orchestrate-multi-agent-pipelines/) — the client-side alternative

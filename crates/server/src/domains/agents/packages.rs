@@ -462,16 +462,22 @@ async fn export_inner(
                     ..Default::default()
                 },
             );
-        } else if cap.capability_id() == AGENTS_CAPABILITY {
+        } else if is_agents_capability(cap.capability_id()) {
             // ZIPs snapshot every direct team agent. Source exports retain
             // links to agents owned elsewhere rather than taking ownership.
+            // The capability itself stays, without its `agents` list: the
+            // package's `agents` and `members` carry them.
             let targets = cap
                 .config_value()
-                .get("targets")
-                .or_else(|| cap.config_value().get("members"))
+                .get("agents")
                 .and_then(Value::as_array)
                 .cloned()
                 .unwrap_or_default();
+            let mut stripped = cap.clone();
+            if let Some(config) = stripped.config_mut().as_object_mut() {
+                config.remove("agents");
+            }
+            caps.push(stripped);
             // Enforce the one-level format before traversing another team.
             // Rejecting here also bounds cycles and recursive export work.
             if team == TeamExport::Leaf && !targets.is_empty() {
@@ -831,9 +837,49 @@ async fn destination(
     Ok(existing)
 }
 
-/// The capability that lists the agents an agent hands work to ("Agents").
-const AGENTS_CAPABILITY: &str =
-    everruns_capabilities::capabilities::agent_handoff::AGENT_HANDOFF_CAPABILITY_ID;
+/// The capabilities that list the agents an agent starts: Spawn agents and
+/// Threads (never both on one agent).
+fn is_agents_capability(id: &str) -> bool {
+    use everruns_contracts::capability::delegation::{
+        SPAWN_AGENTS_CAPABILITY_ID, THREADS_CAPABILITY_ID,
+    };
+    id == SPAWN_AGENTS_CAPABILITY_ID || id == THREADS_CAPABILITY_ID
+}
+
+/// Put package `members` (agent refs) on the lead's Threads when it has them,
+/// else on its Spawn agents (added without `self` when absent).
+fn attach_members(capabilities: &mut Vec<CapabilityRef>, members: Vec<Value>) {
+    use everruns_contracts::capability::delegation::{
+        SPAWN_AGENTS_CAPABILITY_ID, THREADS_CAPABILITY_ID, canonicalize_delegation_capabilities,
+    };
+    *capabilities = canonicalize_delegation_capabilities(capabilities);
+    let owner = if capabilities
+        .iter()
+        .any(|cap| cap.capability_id() == THREADS_CAPABILITY_ID)
+    {
+        THREADS_CAPABILITY_ID
+    } else {
+        SPAWN_AGENTS_CAPABILITY_ID
+    };
+    match capabilities
+        .iter_mut()
+        .find(|cap| cap.capability_id() == owner)
+    {
+        Some(cap) => {
+            if !cap.config_value().is_object() {
+                cap.set_config(json!({}));
+            }
+            cap.config_mut()
+                .as_object_mut()
+                .expect("object config")
+                .insert("agents".to_string(), Value::Array(members));
+        }
+        None => capabilities.push(CapabilityRef::with_config(
+            SPAWN_AGENTS_CAPABILITY_ID,
+            json!({ "self": false, "agents": members }),
+        )),
+    }
+}
 
 /// Agents a package hands work to, checked before anything is written.
 struct Members {
@@ -918,8 +964,7 @@ pub async fn apply(
         created_here.push(agent);
     }
     targets.extend(linked.iter().map(member_ref));
-    let agents = CapabilityRef::with_config(AGENTS_CAPABILITY, json!({ "targets": targets }));
-    let (lead, created) = Box::pin(apply_agent(ctx, package, target, Some(agents))).await?;
+    let (lead, created) = Box::pin(apply_agent(ctx, package, target, Some(targets))).await?;
     for agent in created_here {
         ctx.db
             .set_agent_owner(
@@ -936,13 +981,11 @@ async fn apply_agent(
     ctx: &Ctx,
     package: &AgentPackage,
     target: Option<&str>,
-    agents: Option<CapabilityRef>,
+    members: Option<Vec<Value>>,
 ) -> Result<(Agent, bool), CommandError> {
     let mut req = request(ctx, package).await?;
-    if let Some(agents) = agents {
-        req.capabilities
-            .retain(|cap| cap.capability_id() != AGENTS_CAPABILITY);
-        req.capabilities.push(agents);
+    if let Some(members) = members {
+        attach_members(&mut req.capabilities, members);
     }
     let resolved = destination(ctx, package, target).await?;
     let destination = resolved.as_ref().map(|a| a.public_id).or(package.legacy_id);

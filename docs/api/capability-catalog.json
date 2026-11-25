@@ -57,26 +57,6 @@
       "tools": []
     },
     {
-      "category": "Orchestration",
-      "dependencies": [],
-      "docs_slug": "agent-handoff",
-      "feature_flag": null,
-      "features": [
-        "agent_handoffs"
-      ],
-      "grades": [
-        "prod",
-        "dev"
-      ],
-      "id": "agent_handoff",
-      "name": "Agents",
-      "status": "available",
-      "tools": [
-        "message_agent",
-        "read_run_conversation"
-      ]
-    },
-    {
       "category": "Core",
       "dependencies": [],
       "docs_slug": "agent-instructions",
@@ -532,27 +512,21 @@
       ]
     },
     {
-      "category": "Core",
-      "dependencies": [],
-      "docs_slug": null,
-      "feature_flag": null,
-      "features": [
-        "coordination"
+      "category": "Orchestration",
+      "dependencies": [
+        "threads"
       ],
+      "docs_slug": "coordinator",
+      "feature_flag": null,
+      "features": [],
       "grades": [
         "prod",
         "dev"
       ],
-      "id": "coordination",
-      "name": "Coordination",
+      "id": "coordinator",
+      "name": "Coordinator",
       "status": "available",
-      "tools": [
-        "get_thread",
-        "list_threads",
-        "message_thread",
-        "resolve_thread",
-        "start_thread"
-      ]
+      "tools": []
     },
     {
       "category": "Core",
@@ -775,7 +749,7 @@
     {
       "category": "Integrations",
       "dependencies": [
-        "subagents"
+        "spawn_agents"
       ],
       "docs_slug": "github-scout",
       "feature_flag": null,
@@ -1359,24 +1333,6 @@
       ]
     },
     {
-      "category": "Session",
-      "dependencies": [],
-      "docs_slug": null,
-      "feature_flag": null,
-      "features": [],
-      "grades": [
-        "prod",
-        "dev"
-      ],
-      "id": "run_conversation",
-      "name": "Run conversation",
-      "status": "available",
-      "tools": [
-        "message_agent",
-        "read_run_conversation"
-      ]
-    },
-    {
       "category": "Sandboxes",
       "dependencies": [
         "session_storage"
@@ -1618,6 +1574,24 @@
       ]
     },
     {
+      "category": "Orchestration",
+      "dependencies": [],
+      "docs_slug": "sibling-communication",
+      "feature_flag": null,
+      "features": [],
+      "grades": [
+        "prod",
+        "dev"
+      ],
+      "id": "sibling_communication",
+      "name": "Sibling communication",
+      "status": "available",
+      "tools": [
+        "message_agent",
+        "read_run_conversation"
+      ]
+    },
+    {
       "category": "Core",
       "dependencies": [
         "session_file_system"
@@ -1694,6 +1668,25 @@
       ]
     },
     {
+      "category": "Orchestration",
+      "dependencies": [
+        "session_tasks"
+      ],
+      "docs_slug": "spawn-agents",
+      "feature_flag": null,
+      "features": [
+        "spawn_agents"
+      ],
+      "grades": [
+        "prod",
+        "dev"
+      ],
+      "id": "spawn_agents",
+      "name": "Spawn agents",
+      "status": "available",
+      "tools": []
+    },
+    {
       "category": "Core",
       "dependencies": [],
       "docs_slug": "task-management",
@@ -1712,23 +1705,6 @@
       ]
     },
     {
-      "category": "Core",
-      "dependencies": [],
-      "docs_slug": "sub-agents",
-      "feature_flag": null,
-      "features": [
-        "subagents"
-      ],
-      "grades": [
-        "prod",
-        "dev"
-      ],
-      "id": "subagents",
-      "name": "Subagents",
-      "status": "available",
-      "tools": []
-    },
-    {
       "category": "System",
       "dependencies": [],
       "docs_slug": null,
@@ -1742,6 +1718,29 @@
       "name": "System Commands",
       "status": "available",
       "tools": []
+    },
+    {
+      "category": "Orchestration",
+      "dependencies": [],
+      "docs_slug": "threads",
+      "feature_flag": null,
+      "features": [
+        "threads"
+      ],
+      "grades": [
+        "prod",
+        "dev"
+      ],
+      "id": "threads",
+      "name": "Threads",
+      "status": "available",
+      "tools": [
+        "close_thread",
+        "get_thread",
+        "list_threads",
+        "message_thread",
+        "start_thread"
+      ]
     },
     {
       "category": "Safety",

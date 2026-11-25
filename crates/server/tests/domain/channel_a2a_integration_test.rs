@@ -976,7 +976,7 @@ async fn seed_structured_result(server: &TestServer, session_id: &str, result: V
         .expect("session exists");
 
     // Create the owning task in a non-terminal state, then set `result_path`
-    // via an update — mirroring how `report_result` records the pointer.
+    // via an update — mirroring how `finish` records the pointer.
     let task = new_session_task(
         CreateSessionTask {
             session_id: sid,
@@ -1012,7 +1012,7 @@ async fn seed_structured_result(server: &TestServer, session_id: &str, result: V
         .expect("set result_path");
 
     // The VFS is keyed by the owning session's workspace id (that's the key
-    // `report_result` writes with, and the key the reader reads back with).
+    // `finish` writes with, and the key the reader reads back with).
     server
         .db
         .create_session_file(CreateSessionFileRow {

@@ -48,7 +48,7 @@ impl Fixture {
     }
 
     async fn start(&self, config: Value, arguments: Value) -> ToolExecutionResult {
-        let config = Arc::new(CoordinationConfig::parse(&config).unwrap());
+        let config = Arc::new(ThreadsConfig::parse(&config).unwrap());
         StartThreadTool(config)
             .execute_with_context(arguments, &self.context(self.coordinator()))
             .await
@@ -143,7 +143,7 @@ async fn start_thread_creates_a_child_session_with_a_tracked_assignment() {
     let sent = fixture.sent_to(thread).await;
     assert_eq!(sent.len(), 1);
     assert!(sent[0].contains("Weekly report") && sent[0].contains("Do the thing."));
-    assert!(sent[0].contains("complete_assignment"));
+    assert!(sent[0].contains("finish"));
 }
 
 #[tokio::test]
@@ -171,7 +171,7 @@ async fn self_threads_run_on_the_agents_current_harness() {
 async fn threads_cannot_start_threads() {
     let fixture = Fixture::new();
     let (thread, _) = fixture.start_ok("Parent work").await;
-    let config = Arc::new(CoordinationConfig::default());
+    let config = Arc::new(ThreadsConfig::default());
     let result = StartThreadTool(config)
         .execute_with_context(
             json!({"title": "Nested", "brief": "x"}),
@@ -184,7 +184,7 @@ async fn threads_cannot_start_threads() {
 #[tokio::test]
 async fn start_thread_enforces_the_active_thread_cap() {
     let fixture = Fixture::new();
-    let config = json!({"max_active_threads": 1});
+    let config = json!({"max_open": 1});
     let first = fixture
         .start(config.clone(), json!({"title": "One", "brief": "x"}))
         .await;
@@ -199,21 +199,24 @@ async fn start_thread_enforces_the_active_thread_cap() {
 }
 
 #[tokio::test]
-async fn start_thread_only_uses_allowed_workers() {
+async fn start_thread_only_uses_allowed_agents() {
     let fixture = Fixture::new();
     let agent = AgentId::new();
     let refused = fixture
         .start(
             Value::Null,
-            json!({"title": "T", "brief": "x", "worker": agent.to_string()}),
+            json!({"title": "T", "brief": "x", "agent": agent.to_string()}),
         )
         .await;
-    assert!(error_text(&refused).contains("not an allowed worker"));
+    assert!(
+        error_text(&refused).contains("is not one of the agents"),
+        "{refused:?}"
+    );
 
     let allowed = fixture
         .start(
-            json!({"workers": [{"id": "any"}]}),
-            json!({"title": "T", "brief": "x", "worker": agent.to_string()}),
+            json!({"self": false, "any_agent": true}),
+            json!({"title": "T", "brief": "x", "agent": agent.to_string()}),
         )
         .await;
     let ToolExecutionResult::Success(value) = allowed else {
@@ -230,37 +233,32 @@ async fn start_thread_only_uses_allowed_workers() {
 
     let self_refused = fixture
         .start(
-            json!({"workers": [{"id": "any"}]}),
+            json!({"self": false, "any_agent": true}),
             json!({"title": "T", "brief": "x"}),
         )
         .await;
-    assert!(error_text(&self_refused).contains("not configured to work threads itself"));
+    assert!(error_text(&self_refused).contains("does not work threads itself"));
 }
 
 #[tokio::test]
-async fn team_members_are_workers_by_name_or_agent_id() {
-    let mut store = MockPlatformStore::new();
+async fn listed_agents_work_threads_by_name_or_agent_id() {
+    let fixture = Fixture::new();
     let member = AgentId::new();
-    store.session.agent_id = Some(store.agent.id);
-    store.agent.capabilities = vec![everruns_contracts::CapabilityRef::with_config(
-        "agent_handoff",
-        json!({"members": [{"id": "everruns-developer", "name": "Everruns Developer", "agent_id": member.to_string()}]}),
-    )];
-    let fixture = Fixture::with_store(store);
+    let config = json!({"agents": [{"id": "everruns-developer", "name": "Everruns Developer", "agent_id": member.to_string()}]});
 
-    for worker in [
+    for agent in [
         "everruns-developer".to_string(),
         "Everruns Developer".to_string(),
         member.to_string(),
     ] {
         let started = fixture
             .start(
-                Value::Null,
-                json!({"title": "Bump serde", "brief": "x", "worker": worker}),
+                config.clone(),
+                json!({"title": "Bump serde", "brief": "x", "agent": agent}),
             )
             .await;
         let ToolExecutionResult::Success(value) = started else {
-            panic!("{worker}: expected success, got {started:?}");
+            panic!("{agent}: expected success, got {started:?}");
         };
         let thread: SessionId = value["thread_id"].as_str().unwrap().parse().unwrap();
         let session = fixture
@@ -269,35 +267,25 @@ async fn team_members_are_workers_by_name_or_agent_id() {
             .await
             .unwrap()
             .unwrap();
-        assert_eq!(session.agent_id, Some(member), "{worker}");
-        assert_eq!(value["worker"], worker);
+        assert_eq!(session.agent_id, Some(member), "{agent}");
+        assert_eq!(value["agent"], agent);
     }
 
     let outsider = fixture
         .start(
-            Value::Null,
-            json!({"title": "T", "brief": "x", "worker": AgentId::new().to_string()}),
+            config,
+            json!({"title": "T", "brief": "x", "agent": AgentId::new().to_string()}),
         )
         .await;
-    assert!(error_text(&outsider).contains("not an allowed worker"));
-    let unknown = fixture
-        .start(
-            Value::Null,
-            json!({"title": "T", "brief": "x", "worker": "nobody"}),
-        )
-        .await;
-    assert!(
-        error_text(&unknown).contains("team member's name"),
-        "{unknown:?}"
-    );
+    assert!(error_text(&outsider).contains("is not one of the agents"));
 }
 
 #[tokio::test]
-async fn worker_tools_update_the_checklist_and_complete_the_assignment() {
+async fn parent_tools_update_the_checklist_and_finish_the_assignment() {
     let fixture = Fixture::new();
     let (thread, task_id) = fixture.start_ok("Fix the bug").await;
     let assignment = fixture.assignment(thread).await;
-    let tools = worker_tools(&assignment);
+    let tools = parent_tools(&assignment);
     let tool = |name: &str| {
         tools
             .iter()
@@ -307,7 +295,7 @@ async fn worker_tools_update_the_checklist_and_complete_the_assignment() {
     let context = fixture.context(thread);
 
     let result = run(
-        tool("update_checklist").as_ref(),
+        tool("report_progress").as_ref(),
         json!({"steps": [
             {"title": "Reproduce", "status": "done"},
             {"title": "Fix", "status": "in_progress"},
@@ -328,7 +316,7 @@ async fn worker_tools_update_the_checklist_and_complete_the_assignment() {
 
     // Only the thread itself may report on its assignment.
     let foreign = run(
-        tool("complete_assignment").as_ref(),
+        tool("finish").as_ref(),
         json!({"summary": "done"}),
         &fixture.context(fixture.coordinator()),
     )
@@ -336,7 +324,7 @@ async fn worker_tools_update_the_checklist_and_complete_the_assignment() {
     assert!(error_text(&foreign).contains("only works inside the thread"));
 
     let result = run(
-        tool("complete_assignment").as_ref(),
+        tool("finish").as_ref(),
         json!({
             "summary": "Fixed the off-by-one.",
             "validation": "cargo test passes",
@@ -372,11 +360,11 @@ async fn worker_tools_update_the_checklist_and_complete_the_assignment() {
 }
 
 #[tokio::test]
-async fn coordinator_answers_a_question_through_message_thread() {
+async fn parent_answers_a_question_through_message_thread() {
     let fixture = Fixture::new();
     let (thread, task_id) = fixture.start_ok("Pick a name").await;
     let assignment = fixture.assignment(thread).await;
-    let ask = AskDecisionTool(assignment);
+    let ask = AskParentTool(assignment);
     let result = run(
         &ask,
         json!({"question": "Which name?", "options": ["A", "B"], "recommended": 0}),
@@ -414,7 +402,7 @@ async fn coordinator_answers_a_question_through_message_thread() {
     let sent = fixture.sent_to(thread).await;
     assert!(
         sent.iter()
-            .any(|text| text.contains("Message from the coordinator") && text.contains("Use A."))
+            .any(|text| text.contains("Message from your parent") && text.contains("Use A."))
     );
 }
 
@@ -464,13 +452,13 @@ async fn message_thread_refuses_sessions_that_are_not_its_threads() {
 }
 
 #[tokio::test]
-async fn resolve_refuses_working_threads_and_hides_resolved_ones() {
+async fn close_refuses_working_threads_and_hides_closed_ones() {
     let fixture = Fixture::new();
     let (thread, task_id) = fixture.start_ok("Cleanup").await;
     let context = fixture.context(fixture.coordinator());
 
     let refused = run(
-        &ResolveThreadTool,
+        &CloseThreadTool,
         json!({"thread_id": thread.to_string()}),
         &context,
     )
@@ -478,7 +466,7 @@ async fn resolve_refuses_working_threads_and_hides_resolved_ones() {
     assert!(error_text(&refused).contains("still working"));
 
     let resolved = run(
-        &ResolveThreadTool,
+        &CloseThreadTool,
         json!({"thread_id": thread.to_string(), "cancel": true}),
         &context,
     )
@@ -491,13 +479,14 @@ async fn resolve_refuses_working_threads_and_hides_resolved_ones() {
     assert_eq!(task.state, SessionTaskState::Canceled);
     assert_eq!(task.state_detail.as_deref(), Some(THREAD_RESOLVED_DETAIL));
 
-    let ToolExecutionResult::Success(listed) = run(&ListThreadsTool, json!({}), &context).await
+    let ToolExecutionResult::Success(listed) =
+        run(&ListThreadsTool(Arc::default()), json!({}), &context).await
     else {
         panic!("list failed");
     };
     assert_eq!(listed["threads"].as_array().unwrap().len(), 0);
     let ToolExecutionResult::Success(listed) = run(
-        &ListThreadsTool,
+        &ListThreadsTool(Arc::default()),
         json!({"include_resolved": true}),
         &context,
     )
@@ -508,7 +497,7 @@ async fn resolve_refuses_working_threads_and_hides_resolved_ones() {
     assert_eq!(listed["threads"][0]["status"], "resolved");
 
     let reopened = run(
-        &ResolveThreadTool,
+        &CloseThreadTool,
         json!({"thread_id": thread.to_string(), "reopen": true}),
         &context,
     )
@@ -539,10 +528,10 @@ async fn get_thread_returns_assignments_and_recent_messages() {
 }
 
 #[tokio::test]
-async fn redirect_posts_a_structured_message_to_the_coordinator() {
+async fn hand_back_posts_a_structured_message_to_the_parent() {
     let fixture = Fixture::new();
     let (thread, task_id) = fixture.start_ok("Docs").await;
-    let tool = RedirectToCoordinatorTool(fixture.assignment(thread).await);
+    let tool = HandBackTool(fixture.assignment(thread).await);
     let result = run(
         &tool,
         json!({"request": "Also fix billing", "reason": "billing is another topic"}),
@@ -567,19 +556,12 @@ async fn redirect_posts_a_structured_message_to_the_coordinator() {
 }
 
 #[tokio::test]
-async fn list_threads_names_the_team_a_coordinator_can_hand_threads_to() {
-    // A coordinator supersedes agent_handoff, so its prompt never lists the
-    // team; list_threads is where the model finds the worker names.
-    let mut store = MockPlatformStore::new();
+async fn list_threads_names_the_agents_that_may_work_threads() {
+    let fixture = Fixture::new();
     let member = AgentId::new();
-    store.session.agent_id = Some(store.agent.id);
-    store.agent.capabilities = vec![everruns_contracts::CapabilityRef::with_config(
-        "agent_handoff",
-        json!({"members": [{"id": "everruns-developer", "name": "Everruns Developer", "description": "Ships pull requests", "agent_id": member.to_string()}]}),
-    )];
-    let fixture = Fixture::with_store(store);
+    let config = ThreadsConfig::parse(&json!({"agents": [{"id": "everruns-developer", "name": "Everruns Developer", "description": "Ships pull requests", "agent_id": member.to_string()}]})).unwrap();
     let result = run(
-        &ListThreadsTool,
+        &ListThreadsTool(Arc::new(config)),
         json!({}),
         &fixture.context(fixture.coordinator()),
     )
@@ -588,57 +570,49 @@ async fn list_threads_names_the_team_a_coordinator_can_hand_threads_to() {
         panic!("expected success, got {result:?}");
     };
     assert_eq!(
-        value["team"],
-        json!([{"worker": "everruns-developer", "name": "Everruns Developer", "description": "Ships pull requests"}])
+        value["agents"],
+        json!([
+            {"agent": "self", "description": "This agent."},
+            {"agent": "everruns-developer", "description": "Ships pull requests"}
+        ])
     );
+    assert_eq!(value["any_agent"], false);
 }
 
 #[test]
-fn a_coordinator_supersedes_agent_handoff_so_threads_are_the_only_handoff() {
-    let capability = CoordinationCapability;
-    assert_eq!(
-        capability.supersedes_with_config(&Value::Null),
-        vec!["agent_handoff"]
-    );
-    assert!(
-        capability
-            .supersedes_with_config(&json!({"role": "worker"}))
-            .is_empty()
-    );
+fn threads_supersede_a_harness_default_of_spawn_agents() {
+    assert_eq!(ThreadsCapability.supersedes(), vec!["spawn_agents"]);
+    assert_eq!(CoordinatorCapability.dependencies(), vec!["threads"]);
+    assert!(CoordinatorCapability.tools().is_empty());
+    assert!(CoordinatorCapability.system_prompt_addition().is_some());
 }
 
 #[test]
-fn config_validation_and_roles() {
-    let capability = CoordinationCapability;
+fn config_validation() {
+    let capability = ThreadsCapability;
     assert!(capability.validate_config(&Value::Null).is_ok());
     assert!(
         capability
-            .validate_config(&json!({"workers": [{"id": "self"}, {"id": "any"}]}))
+            .validate_config(&json!({"self": false, "any_agent": true}))
             .is_ok()
     );
-    assert!(capability.validate_config(&json!({"workers": []})).is_err());
+    assert!(capability.validate_config(&json!({"self": false})).is_err());
+    assert!(capability.validate_config(&json!({"max_open": 0})).is_err());
     assert!(
         capability
-            .validate_config(&json!({"workers": [{"id": "someone"}]}))
+            .validate_config(&json!({"max_total": 5000}))
             .is_err()
     );
     assert!(
         capability
-            .validate_config(&json!({"max_active_threads": 0}))
+            .validate_config(&json!({"agents": [{"name": "no id"}]}))
             .is_err()
     );
-    assert!(capability.validate_config(&json!({"unknown": 1})).is_err());
 
-    let names = |config: Value| {
-        capability
-            .tools_with_config(&config)
-            .iter()
-            .map(|tool| tool.name().to_string())
-            .collect::<Vec<_>>()
-    };
-    assert_eq!(
-        names(Value::Null),
-        COORDINATOR_TOOL_NAMES.map(str::to_string)
-    );
-    assert!(names(json!({"role": "worker"})).is_empty());
+    let names = capability
+        .tools_with_config(&Value::Null)
+        .iter()
+        .map(|tool| tool.name().to_string())
+        .collect::<Vec<_>>();
+    assert_eq!(names, THREAD_TOOL_NAMES.map(str::to_string));
 }

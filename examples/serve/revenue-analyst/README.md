@@ -62,7 +62,7 @@ steer it toward (1) a cheap query, (2) a full scan that waits for approval,
 | `serve.toml` | name, deploy target |
 | `agent/instructions.md` | the always-on prompt |
 | `agent/skills/sql-style/SKILL.md` | a skill; no code needed |
-| `src/agent.rs` | Bashkit selection, `#[agent(default)] fn analyst()`, with `.member("reviewer")` |
+| `src/agent.rs` | Bashkit selection, `#[agent(default)] fn analyst()`, with `.spawns("reviewer")` |
 | `src/tools/run_sql.rs` | `#[tool(needs_approval = …)] async fn run_sql` |
 | `src/connections/warehouse.rs` | `#[connection]`, a typed value tools reach via `cx.connection::<Warehouse>()` |
 | `src/connections/linear.rs` | `#[connection]`, an MCP server (skipped until `LINEAR_TOKEN` is set) |

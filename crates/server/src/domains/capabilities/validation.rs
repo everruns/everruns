@@ -265,6 +265,12 @@ pub(crate) async fn validate_resolved_capability_refs(
         }
     }
 
+    // One way to start other agents per agent (knowledge/runtime-resources/
+    // threads.md): one-off calls or followed threads, never both.
+    if let Some(conflict) = delegation_conflict(capabilities) {
+        return Err(conflict.into());
+    }
+
     // Capabilities that provide the same tool (the computer-use backends) are
     // rejected together instead of one silently replacing the other.
     if let Some(reg) = registry.as_ref()
@@ -274,6 +280,22 @@ pub(crate) async fn validate_resolved_capability_refs(
     }
 
     Ok(())
+}
+
+/// Spawn agents and Threads set on one agent (after retired ids are
+/// rewritten). A harness default of Spawn agents is fine: Threads supersedes
+/// it at runtime.
+pub fn delegation_conflict(capabilities: &[AgentCapabilityConfig]) -> Option<BadRequestError> {
+    use everruns_contracts::capability::delegation::{
+        SPAWN_AGENTS_CAPABILITY_ID, THREADS_CAPABILITY_ID, canonicalize_delegation_capabilities,
+    };
+    let canonical = canonicalize_delegation_capabilities(capabilities);
+    let has = |id: &str| canonical.iter().any(|cap| cap.capability_id() == id);
+    (has(SPAWN_AGENTS_CAPABILITY_ID) && has(THREADS_CAPABILITY_ID)).then(|| {
+        BadRequestError::new(
+            "An agent starts other agents one way: Spawn agents (one-off calls) or Threads (followed work), not both. Remove one; list the agents on the one you keep.",
+        )
+    })
 }
 
 /// A `BadRequestError` naming the capabilities in `capabilities` that share an
@@ -301,13 +323,17 @@ pub async fn normalize_capability_refs(
     org_id: i64,
     capabilities: Vec<AgentCapabilityConfig>,
 ) -> Result<Vec<AgentCapabilityConfig>> {
+    use everruns_contracts::capability::delegation::{
+        SPAWN_AGENTS_CAPABILITY_ID, THREADS_CAPABILITY_ID, canonicalize_delegation_capabilities,
+    };
     let registry = crate::platform::oss_capability_registry();
+    // Retired delegation ids are stored under the current ones.
+    let capabilities = canonicalize_delegation_capabilities(&capabilities);
     let mut normalized = Vec::with_capacity(capabilities.len());
 
     for cap in capabilities {
         let cap_id = cap.capability_id();
-        if cap_id == everruns_capabilities::capabilities::agent_handoff::AGENT_HANDOFF_CAPABILITY_ID
-        {
+        if cap_id == SPAWN_AGENTS_CAPABILITY_ID || cap_id == THREADS_CAPABILITY_ID {
             normalized.push(AgentCapabilityConfig::with_config(
                 cap_id.to_string(),
                 canonical_members(db, org_id, cap.config_value()).await?,
@@ -342,7 +368,7 @@ pub async fn normalize_capability_refs(
     Ok(normalized)
 }
 
-/// Members of the Agents capability are stored by agent and named by it: the
+/// The `agents` of Spawn agents and Threads are stored by agent and named by it: the
 /// name the model addresses, the label and the description come from the
 /// agent itself, so renaming or re-describing an agent updates every list it
 /// is on at the next save. A member that is not an active agent of this
@@ -355,11 +381,7 @@ async fn canonical_members(
     let Some(object) = config.as_object() else {
         return Ok(config.clone());
     };
-    let Some(entries) = object
-        .get("targets")
-        .or_else(|| object.get("members"))
-        .and_then(serde_json::Value::as_array)
-    else {
+    let Some(entries) = object.get("agents").and_then(serde_json::Value::as_array) else {
         return Ok(config.clone());
     };
     let mut targets = Vec::with_capacity(entries.len());
@@ -378,7 +400,7 @@ async fn canonical_members(
             .await?
             .filter(|agent| agent.status == "active")
             .ok_or_else(|| {
-                BadRequestError::new(format!("Agents: agent {agent_id} is not an active agent"))
+                BadRequestError::new(format!("agents: agent {agent_id} is not an active agent"))
             })?;
         let mut target = entry.clone();
         let object = target.as_object_mut().expect("member entries are objects");
@@ -394,8 +416,7 @@ async fn canonical_members(
         targets.push(target);
     }
     let mut config = object.clone();
-    config.remove("members");
-    config.insert("targets".into(), targets.into());
+    config.insert("agents".into(), targets.into());
     Ok(config.into())
 }
 
@@ -500,7 +521,9 @@ mod tests {
     fn delegation_needs_no_feature_flag() {
         // Adding the capability to an agent is the opt-in.
         let capabilities = vec![
-            AgentCapabilityConfig::new("agent_handoff"),
+            AgentCapabilityConfig::new("spawn_agents"),
+            AgentCapabilityConfig::new("threads"),
+            AgentCapabilityConfig::new("coordinator"),
             AgentCapabilityConfig::new("a2a_agent_delegation"),
         ];
         validate_feature_gated_capability_refs(
@@ -511,14 +534,26 @@ mod tests {
     }
 
     #[test]
-    fn coordination_needs_no_feature_flag() {
-        // Adding the capability to an agent is the opt-in.
-        let capabilities = vec![AgentCapabilityConfig::new("coordination")];
-        validate_feature_gated_capability_refs(
-            &crate::records::FeatureFlags::default(),
-            &capabilities,
-        )
-        .unwrap();
+    fn an_agent_never_has_spawn_agents_and_threads() {
+        let both = vec![
+            AgentCapabilityConfig::new("spawn_agents"),
+            AgentCapabilityConfig::new("threads"),
+        ];
+        assert!(delegation_conflict(&both).is_some());
+        assert!(delegation_conflict(&both[..1]).is_none());
+        assert!(delegation_conflict(&both[1..]).is_none());
+        // Retired ids count after the rewrite: coordination absorbs hand-off.
+        let legacy = vec![
+            AgentCapabilityConfig::new("subagents"),
+            AgentCapabilityConfig::new("coordination"),
+        ];
+        assert!(delegation_conflict(&legacy).is_none());
+        // A retired spawn id beside Threads is dropped by the rewrite.
+        let mixed = vec![
+            AgentCapabilityConfig::new("subagents"),
+            AgentCapabilityConfig::new("threads"),
+        ];
+        assert!(delegation_conflict(&mixed).is_none());
     }
 
     #[tokio::test]

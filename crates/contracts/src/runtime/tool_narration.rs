@@ -1206,14 +1206,14 @@ pub fn narrate_spawn_background(
     localized_labeled_phrase(locale, verbs.0, verbs.1, verbs.2, target, phase)
 }
 
-/// Delegation-result family narration: `report_result`, `report_task_progress`.
+/// Parent communication narration for spawned agents: `finish`, `report_progress`.
 pub fn narrate_delegation_result(
     tool_name: &str,
     phase: ToolNarrationPhase,
     locale: Option<&str>,
 ) -> Option<String> {
     let verbs = match tool_name {
-        "report_result" => pick(
+        "finish" => pick(
             locale,
             (
                 "Reporting result",
@@ -1226,7 +1226,7 @@ pub fn narrate_delegation_result(
                 "Не вдалося повідомити результат",
             ),
         ),
-        "report_task_progress" => pick(
+        "report_progress" => pick(
             locale,
             (
                 "Reporting progress",

@@ -1,4 +1,4 @@
-//! Agents that hand work to other agents (`AgentBuilder::member`) under the
+//! Agents that hand work to other agents (`AgentBuilder::spawns`) under the
 //! coherent SQLite authority: a member runs as itself, in its own session,
 //! and its session resumes after a restart with only the lead registered.
 use super::*;
@@ -33,7 +33,7 @@ fn lead() -> Agent {
             }]),
             SimTurn::Assistant("The reviewer says ship it.".into()),
         ])))
-        .member(reviewer())
+        .spawns(reviewer())
         .build()
         .unwrap()
 }

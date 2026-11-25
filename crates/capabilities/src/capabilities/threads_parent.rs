@@ -1,16 +1,18 @@
-//! Worker side of the coordination capability: the tools a thread gets while it
-//! works an assignment. Split from `coordination.rs` to keep both files small.
+//! Parent communication for threads: the tools a thread gets while it works an
+//! assignment (`report_progress`, `ask_parent`, `finish`, `hand_back`). Split
+//! from `threads.rs` to keep both files small. Spawned agents get tools of the
+//! same names from `delegation_result.rs`.
 
 use super::*;
 
 // =============================================================================
-// Worker tools (injected into threads by PlatformToolAugmentor)
+// Parent tools (injected into threads by PlatformToolAugmentor)
 // =============================================================================
 
 /// The open assignment a thread session is working on.
 #[derive(Debug, Clone)]
 pub struct ThreadAssignment {
-    coordinator: SessionId,
+    parent: SessionId,
     thread: SessionId,
     task_id: String,
     attempt: i32,
@@ -36,7 +38,7 @@ impl ThreadAssignment {
     ) -> Result<SessionTask, ToolExecutionResult> {
         registry
             .update(
-                self.coordinator,
+                self.parent,
                 &self.task_id,
                 SessionTaskUpdate {
                     expected_attempt: Some(self.attempt),
@@ -55,7 +57,7 @@ impl ThreadAssignment {
     ) -> Result<TaskMessage, ToolExecutionResult> {
         registry
             .record_message(
-                self.coordinator,
+                self.parent,
                 &self.task_id,
                 NewTaskMessage {
                     direction: TaskMessageDirection::Outbound,
@@ -79,12 +81,12 @@ pub async fn open_assignment_for_thread(
     let Some(session) = session_store.get_session(thread).await? else {
         return Ok(None);
     };
-    let Some(coordinator) = session.parent_session_id else {
+    let Some(parent) = session.parent_session_id else {
         return Ok(None);
     };
     let latest = task_registry
         .list(
-            coordinator,
+            parent,
             Some(&SessionTaskFilter {
                 kind: Some(TASK_KIND_ASSIGNMENT.to_string()),
                 state: None,
@@ -95,36 +97,35 @@ pub async fn open_assignment_for_thread(
         .filter(|task| task.links.child_session_id == Some(thread) && !task.state.is_terminal())
         .max_by_key(|task| task.created_at);
     Ok(latest.map(|task| ThreadAssignment {
-        coordinator,
+        parent,
         thread,
         task_id: task.id,
         attempt: task.attempt,
     }))
 }
 
-/// Worker tools bound to one open assignment.
-pub fn worker_tools(assignment: &ThreadAssignment) -> Vec<Box<dyn Tool>> {
+/// Parent tools bound to one open assignment.
+pub fn parent_tools(assignment: &ThreadAssignment) -> Vec<Box<dyn Tool>> {
     vec![
-        Box::new(UpdateChecklistTool(assignment.clone())),
-        Box::new(CompleteAssignmentTool(assignment.clone())),
-        Box::new(AskDecisionTool(assignment.clone())),
-        Box::new(ReportToCoordinatorTool(assignment.clone())),
-        Box::new(RedirectToCoordinatorTool(assignment.clone())),
+        Box::new(ReportProgressTool(assignment.clone())),
+        Box::new(FinishTool(assignment.clone())),
+        Box::new(AskParentTool(assignment.clone())),
+        Box::new(HandBackTool(assignment.clone())),
     ]
 }
 
 /// Tool definitions a thread's reason step sees.
-pub fn worker_tool_definitions(assignment: &ThreadAssignment) -> Vec<ToolDefinition> {
-    worker_tools(assignment)
+pub fn parent_tool_definitions(assignment: &ThreadAssignment) -> Vec<ToolDefinition> {
+    parent_tools(assignment)
         .iter()
         .map(|tool| tool.to_definition())
         .collect()
 }
 
-struct UpdateChecklistTool(ThreadAssignment);
+struct ReportProgressTool(ThreadAssignment);
 
 #[async_trait]
-impl Tool for UpdateChecklistTool {
+impl Tool for ReportProgressTool {
     fn narrate(
         &self,
         tool_call: &everruns_contracts::tool_types::ToolCall,
@@ -135,14 +136,14 @@ impl Tool for UpdateChecklistTool {
         narrate_coordination(&tool_call.name, &tool_call.arguments, phase, locale)
     }
 
-    context_tool!("update_checklist", "Update Checklist");
+    context_tool!("report_progress", "Report Progress");
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
-        ToolExecutionResult::tool_error("update_checklist requires session context.")
+        ToolExecutionResult::tool_error("report_progress requires session context.")
     }
 
     fn description(&self) -> &str {
-        "Replace this assignment's checklist. The person and the coordinator see it live. Plan the steps first, then mark each in_progress and done as you go."
+        "Tell your parent where the work stands. steps replaces this assignment's checklist (the person and your parent see it live): plan the steps first, then mark each in_progress and done as you go. message tells your parent something it should know before you finish: a finding that changes the plan, or news another thread needs."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -161,9 +162,9 @@ impl Tool for UpdateChecklistTool {
                         "required": ["title", "status"],
                         "additionalProperties": false
                     }
-                }
+                },
+                "message": { "type": "string", "description": "Something your parent should know now. Not for routine progress: keep the checklist for that." }
             },
-            "required": ["steps"],
             "additionalProperties": false
         })
     }
@@ -177,65 +178,88 @@ impl Tool for UpdateChecklistTool {
             Ok(registry) => registry,
             Err(error) => return error,
         };
-        let steps: Vec<ProgressStep> =
-            match serde_json::from_value(arguments.get("steps").cloned().unwrap_or(Value::Null)) {
+        let message = match optional_bounded_text(&arguments, "message", MAX_REPORT_BYTES) {
+            Ok(message) => message,
+            Err(error) => return error,
+        };
+        let steps = arguments.get("steps").filter(|steps| !steps.is_null());
+        if steps.is_none() && message.is_none() {
+            return ToolExecutionResult::tool_error("Pass steps, message, or both.");
+        }
+        let mut result = serde_json::Map::new();
+        if let Some(steps) = steps {
+            let steps: Vec<ProgressStep> = match serde_json::from_value(steps.clone()) {
                 Ok(steps) => steps,
                 Err(error) => {
                     return ToolExecutionResult::tool_error(format!("Invalid steps: {error}"));
                 }
             };
-        if steps.len() > MAX_STEPS {
-            return ToolExecutionResult::tool_error(format!(
-                "A checklist holds at most {MAX_STEPS} steps."
-            ));
+            if steps.len() > MAX_STEPS {
+                return ToolExecutionResult::tool_error(format!(
+                    "A checklist holds at most {MAX_STEPS} steps."
+                ));
+            }
+            if steps
+                .iter()
+                .any(|step| step.title.trim().is_empty() || step.title.len() > MAX_TITLE_BYTES)
+            {
+                return ToolExecutionResult::tool_error(format!(
+                    "Each step needs a title of 1 to {MAX_TITLE_BYTES} bytes."
+                ));
+            }
+            let done = steps
+                .iter()
+                .filter(|step| step.status == ProgressStepStatus::Done)
+                .count() as u64;
+            let current = steps
+                .iter()
+                .find(|step| step.status == ProgressStepStatus::InProgress)
+                .map(|step| step.title.clone());
+            let total = steps.len() as u64;
+            if let Err(error) = self
+                .0
+                .update(
+                    registry.as_ref(),
+                    SessionTaskUpdate {
+                        state_detail: current,
+                        progress: Some(BackgroundProgress {
+                            current: Some(done),
+                            total: Some(total),
+                            unit: Some("steps".to_string()),
+                            label: None,
+                            steps,
+                        }),
+                        ..Default::default()
+                    },
+                )
+                .await
+            {
+                return error;
+            }
+            result.insert("done".to_string(), json!(done));
+            result.insert("total".to_string(), json!(total));
         }
-        if steps
-            .iter()
-            .any(|step| step.title.trim().is_empty() || step.title.len() > MAX_TITLE_BYTES)
-        {
-            return ToolExecutionResult::tool_error(format!(
-                "Each step needs a title of 1 to {MAX_TITLE_BYTES} bytes."
-            ));
+        if let Some(message) = message {
+            match self
+                .0
+                .post(registry.as_ref(), vec![TaskMessagePart::text(message)])
+                .await
+            {
+                Ok(stored) => {
+                    result.insert("message_id".to_string(), json!(stored.id));
+                }
+                Err(error) => return error,
+            }
         }
-        let done = steps
-            .iter()
-            .filter(|step| step.status == ProgressStepStatus::Done)
-            .count() as u64;
-        let current = steps
-            .iter()
-            .find(|step| step.status == ProgressStepStatus::InProgress)
-            .map(|step| step.title.clone());
-        let total = steps.len() as u64;
-        match self
-            .0
-            .update(
-                registry.as_ref(),
-                SessionTaskUpdate {
-                    state_detail: current,
-                    progress: Some(BackgroundProgress {
-                        current: Some(done),
-                        total: Some(total),
-                        unit: Some("steps".to_string()),
-                        label: None,
-                        steps,
-                    }),
-                    ..Default::default()
-                },
-            )
-            .await
-        {
-            Ok(_) => ToolExecutionResult::success(
-                json!({ "status": "updated", "done": done, "total": total }),
-            ),
-            Err(error) => error,
-        }
+        result.insert("status".to_string(), json!("updated"));
+        ToolExecutionResult::success(Value::Object(result))
     }
 }
 
-struct CompleteAssignmentTool(ThreadAssignment);
+struct FinishTool(ThreadAssignment);
 
 #[async_trait]
-impl Tool for CompleteAssignmentTool {
+impl Tool for FinishTool {
     fn narrate(
         &self,
         tool_call: &everruns_contracts::tool_types::ToolCall,
@@ -246,14 +270,14 @@ impl Tool for CompleteAssignmentTool {
         narrate_coordination(&tool_call.name, &tool_call.arguments, phase, locale)
     }
 
-    context_tool!("complete_assignment", "Complete Assignment");
+    context_tool!("finish", "Finish");
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
-        ToolExecutionResult::tool_error("complete_assignment requires session context.")
+        ToolExecutionResult::tool_error("finish requires session context.")
     }
 
     fn description(&self) -> &str {
-        "Finish this assignment and report to the coordinator. Call it once the work is done (outcome done) or cannot be done (outcome failed). Say what you did, how you checked it, and link what you produced."
+        "Finish this assignment and report to your parent. Call it once the work is done (outcome done) or cannot be done (outcome failed). Say what you did, how you checked it, and link what you produced."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -343,7 +367,7 @@ impl Tool for CompleteAssignmentTool {
         {
             Ok(task) if task.state.is_terminal() => ToolExecutionResult::success(json!({
                 "status": task.state.to_string(),
-                "note": "The coordinator was told. Reply to the person in a sentence, then stop.",
+                "note": "Your parent was told. Reply to the person in a sentence, then stop.",
             })),
             Ok(_) => ToolExecutionResult::tool_error("The assignment was already closed."),
             Err(error) => error,
@@ -351,10 +375,10 @@ impl Tool for CompleteAssignmentTool {
     }
 }
 
-pub(super) struct AskDecisionTool(pub(super) ThreadAssignment);
+pub(super) struct AskParentTool(pub(super) ThreadAssignment);
 
 #[async_trait]
-impl Tool for AskDecisionTool {
+impl Tool for AskParentTool {
     fn narrate(
         &self,
         tool_call: &everruns_contracts::tool_types::ToolCall,
@@ -365,14 +389,14 @@ impl Tool for AskDecisionTool {
         narrate_coordination(&tool_call.name, &tool_call.arguments, phase, locale)
     }
 
-    context_tool!("ask_decision", "Ask for a Decision");
+    context_tool!("ask_parent", "Ask Parent");
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
-        ToolExecutionResult::tool_error("ask_decision requires session context.")
+        ToolExecutionResult::tool_error("ask_parent requires session context.")
     }
 
     fn description(&self) -> &str {
-        "Ask the person a decision only they can make. Ask once: a short question naming the action, up to four options, one recommended. Keep working on the recommended option when you can; otherwise end your turn and wait."
+        "Ask a decision only the person can make; your parent relays it. Ask once: a short question naming the action, up to four options, one recommended. Keep working on the recommended option when you can; otherwise end your turn and wait."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -445,10 +469,10 @@ impl Tool for AskDecisionTool {
     }
 }
 
-struct ReportToCoordinatorTool(ThreadAssignment);
+pub(super) struct HandBackTool(pub(super) ThreadAssignment);
 
 #[async_trait]
-impl Tool for ReportToCoordinatorTool {
+impl Tool for HandBackTool {
     fn narrate(
         &self,
         tool_call: &everruns_contracts::tool_types::ToolCall,
@@ -459,73 +483,14 @@ impl Tool for ReportToCoordinatorTool {
         narrate_coordination(&tool_call.name, &tool_call.arguments, phase, locale)
     }
 
-    context_tool!("report_to_coordinator", "Report to Coordinator");
+    context_tool!("hand_back", "Hand Back");
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
-        ToolExecutionResult::tool_error("report_to_coordinator requires session context.")
+        ToolExecutionResult::tool_error("hand_back requires session context.")
     }
 
     fn description(&self) -> &str {
-        "Tell the coordinator something it should know before you finish: a finding that changes the plan, or news another thread needs. Not for routine progress; keep the checklist for that."
-    }
-
-    fn parameters_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": { "message": { "type": "string" } },
-            "required": ["message"],
-            "additionalProperties": false
-        })
-    }
-
-    async fn execute_with_context(
-        &self,
-        arguments: Value,
-        context: &ToolContext,
-    ) -> ToolExecutionResult {
-        let registry = match self.0.check(context) {
-            Ok(registry) => registry,
-            Err(error) => return error,
-        };
-        let message = match bounded_text(&arguments, "message", MAX_REPORT_BYTES) {
-            Ok(message) => message,
-            Err(error) => return error,
-        };
-        match self
-            .0
-            .post(registry.as_ref(), vec![TaskMessagePart::text(message)])
-            .await
-        {
-            Ok(stored) => {
-                ToolExecutionResult::success(json!({ "status": "sent", "message_id": stored.id }))
-            }
-            Err(error) => error,
-        }
-    }
-}
-
-pub(super) struct RedirectToCoordinatorTool(pub(super) ThreadAssignment);
-
-#[async_trait]
-impl Tool for RedirectToCoordinatorTool {
-    fn narrate(
-        &self,
-        tool_call: &everruns_contracts::tool_types::ToolCall,
-        phase: ToolNarrationPhase,
-        locale: Option<&str>,
-        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
-    ) -> Option<String> {
-        narrate_coordination(&tool_call.name, &tool_call.arguments, phase, locale)
-    }
-
-    context_tool!("redirect_to_coordinator", "Redirect to Coordinator");
-
-    async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
-        ToolExecutionResult::tool_error("redirect_to_coordinator requires session context.")
-    }
-
-    fn description(&self) -> &str {
-        "Hand a request back to the coordinator when it does not belong in this thread (other work, another thread's topic, or out of your scope). The coordinator routes it; you keep working on your own assignment."
+        "Hand a request back to your parent when it does not belong in this thread (other work, another thread's topic, or out of your scope). Your parent routes it; you keep working on your own assignment."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -569,7 +534,7 @@ impl Tool for RedirectToCoordinatorTool {
             Ok(stored) => ToolExecutionResult::success(json!({
                 "status": "redirected",
                 "message_id": stored.id,
-                "note": "Tell the person the coordinator will pick this up.",
+                "note": "Tell the person it was handed back and will be picked up.",
             })),
             Err(error) => error,
         }
@@ -591,19 +556,18 @@ pub enum ThreadTurn {
 
 /// Apply one thread turn to the thread's open assignment, if it has one.
 ///
-/// A thread finishes an assignment with `complete_assignment`. A turn that ends
-/// without it flags the assignment as needing attention, which wakes the
-/// coordinator; a failed turn fails it; a turn that starts while the
+/// A thread finishes an assignment with `finish`. A turn that ends without it
+/// flags the assignment as needing attention, which wakes the parent; a failed turn fails it; a turn that starts while the
 /// assignment waits on an answer puts it back to running.
 pub async fn settle_thread_turn(
     registry: &dyn SessionTaskRegistry,
-    coordinator: SessionId,
+    parent: SessionId,
     thread: SessionId,
     turn: ThreadTurn,
 ) -> everruns_contracts::error::Result<()> {
     let Some(assignment) = registry
         .list(
-            coordinator,
+            parent,
             Some(&SessionTaskFilter {
                 kind: Some(TASK_KIND_ASSIGNMENT.to_string()),
                 state: None,
@@ -654,7 +618,7 @@ pub async fn settle_thread_turn(
     };
     registry
         .update(
-            coordinator,
+            parent,
             &assignment.id,
             SessionTaskUpdate {
                 expected_attempt: Some(assignment.attempt),

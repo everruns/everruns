@@ -386,7 +386,7 @@ name = "workspace_heads"
 required-features = ["local", "openai"]
 
 [[example]]
-name = "subagents"
+name = "custom_child_agents"
 required-features = ["openai"]
 
 [[example]]
@@ -523,5 +523,5 @@ required-features = ["openai", "local", "triggers"]
 name = "slack_channel"
 required-features = ["openai", "channels"]
 [[example]]
-name = "named_members"
+name = "spawn_agents"
 required-features = ["openai", "local"]

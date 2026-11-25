@@ -47,6 +47,7 @@
 
 #![deny(missing_docs)]
 
+pub mod delegation;
 mod error;
 mod id;
 pub mod presets;

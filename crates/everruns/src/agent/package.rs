@@ -52,8 +52,19 @@ impl Agent {
                     .map(|package| package.manifest().clone())
             })
             .collect::<Result<_, _>>()?;
-        m.capabilities
-            .retain(|c| self.members.is_empty() || c.id() != super::members::AGENTS_CAPABILITY);
+        // Added agents export as bundled agents; their derived ids are not
+        // portable, so the capability keeps its settings without them.
+        if !self.members.is_empty() {
+            for capability in m
+                .capabilities
+                .iter_mut()
+                .filter(|c| super::members::carries_agents(c.id()))
+            {
+                if let Some(config) = capability.config_mut().as_object_mut() {
+                    config.remove("agents");
+                }
+            }
+        }
         m.max_iterations = self.max_iterations;
         m.parallel_tool_calls = self.parallel_tool_calls;
         m.communication = self
@@ -105,7 +116,8 @@ impl AgentBuilder {
             ));
         }
         // Bundled agents are built with this agent's providers in `build`;
-        // linked agents (by name) must be added with `AgentBuilder::member`.
+        // linked agents (by name) must be added with `AgentBuilder::spawns` or
+        // `AgentBuilder::threads_with`.
         for bundled in &m.agents {
             let bundled = crate::AgentPackage::new(bundled.clone())
                 .map_err(|error| failure(&format!("agents.{}", bundled.name), error.to_string()))?;

@@ -1,16 +1,16 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 //! Scripted proof (test-only model, see `team_sim`): the coordinator starts real threads, each thread runs its
 //! own turns and finishes its assignment, the finished work wakes the
-//! coordinator, and resolving goes through the coordinator.
+//! coordinator, and closing goes through the coordinator.
 
 mod team_sim;
 
 use std::time::Duration;
 
-use everruns::coordination::{self, ThreadStatus};
+use everruns::threads::{self, ThreadStatus};
 use everruns::{Engine, MessageRole};
 use everruns_coordinator_agent::{
-    LAUNCH_REQUEST, RESOLVE_REQUEST, all_ready, coordinator, replies, wait_for_threads,
+    CLOSE_REQUEST, LAUNCH_REQUEST, all_ready, coordinator, replies, wait_for_threads,
 };
 use team_sim::simulated_model;
 
@@ -42,7 +42,7 @@ async fn coordinator_hands_work_to_threads_and_hears_back() {
         let first = history.iter().next().unwrap();
         assert_eq!(first.role, MessageRole::User);
         assert!(first.text().contains(&format!(
-            "New assignment from the coordinator: {}",
+            "New assignment from your parent: {}",
             thread.title
         )));
         assert!(
@@ -91,11 +91,11 @@ async fn coordinator_hands_work_to_threads_and_hears_back() {
         "one automatic update per finished thread"
     );
 
-    // Resolving goes through the coordinator.
-    session.run(RESOLVE_REQUEST).await.unwrap();
-    let threads = coordination::threads(&session).await.unwrap();
+    // Closing goes through the coordinator.
+    session.run(CLOSE_REQUEST).await.unwrap();
+    let threads = threads::list(&session).await.unwrap();
     let status = |title: &str| threads.iter().find(|t| t.title == title).unwrap().status;
-    assert_eq!(status("Announcement"), ThreadStatus::Resolved);
+    assert_eq!(status("Announcement"), ThreadStatus::Closed);
     assert_eq!(status("Pricing FAQ"), ThreadStatus::ReadyForReview);
 }
 
@@ -103,5 +103,5 @@ async fn coordinator_hands_work_to_threads_and_hears_back() {
 async fn a_session_without_threads_has_an_empty_board() {
     let dir = tempfile::tempdir().unwrap();
     let session = Engine::new().create(coordinator(simulated_model(), dir.path()).unwrap());
-    assert!(coordination::threads(&session).await.unwrap().is_empty());
+    assert!(threads::list(&session).await.unwrap().is_empty());
 }

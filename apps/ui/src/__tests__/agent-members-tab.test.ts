@@ -6,27 +6,44 @@ function agent(capabilities: Agent["capabilities"]): Agent {
 }
 
 describe("agentMembers", () => {
-  it("is null without the Agents capability, so the tab stays hidden", () => {
+  it("is null without Spawn agents or Threads, so the tab stays hidden", () => {
     expect(agentMembers(agent([{ ref: "web_fetch", config: {} }]))).toBeNull();
   });
 
-  it("reads members saved as targets or members and skips malformed entries", () => {
+  it("reads agents from Spawn agents or Threads and skips malformed entries", () => {
     expect(
       agentMembers(
         agent([
           {
-            ref: "agent_handoff",
+            ref: "spawn_agents",
+            config: {
+              self: true,
+              agents: [{ agent_id: "agent_a", id: "review" }, { id: "broken" }],
+            },
+          },
+        ]),
+      ),
+    ).toEqual([{ agent_id: "agent_a", id: "review" }]);
+    expect(
+      agentMembers(agent([{ ref: "threads", config: { agents: [{ agent_id: "agent_c" }] } }])),
+    ).toEqual([{ agent_id: "agent_c" }]);
+    expect(agentMembers(agent([{ ref: "spawn_agents", config: {} }]))).toEqual([]);
+  });
+
+  it("still reads lists saved as targets or members", () => {
+    expect(
+      agentMembers(
+        agent([
+          {
+            ref: "spawn_agents",
             config: { targets: [{ agent_id: "agent_a", id: "review" }, { id: "broken" }] },
           },
         ]),
       ),
     ).toEqual([{ agent_id: "agent_a", id: "review" }]);
     expect(
-      agentMembers(
-        agent([{ ref: "agent_handoff", config: { members: [{ agent_id: "agent_b" }] } }]),
-      ),
+      agentMembers(agent([{ ref: "threads", config: { members: [{ agent_id: "agent_b" }] } }])),
     ).toEqual([{ agent_id: "agent_b" }]);
-    expect(agentMembers(agent([{ ref: "agent_handoff", config: {} }]))).toEqual([]);
   });
 });
 

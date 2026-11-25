@@ -8,6 +8,8 @@ tags:
 ---
 # Subagents Specification
 
+> Superseded in part (2026-11-25): agents start other agents through Spawn agents or Threads, never both; see [Threads: How Agents Hand Off Work](threads.md). This page keeps the executor details.
+
 Each spawned subagent is also tracked as a session task (`kind = subagent`,
 `links.child_session_id` pointing at the child) with lifecycle `task.*`
 events and a message channel, see

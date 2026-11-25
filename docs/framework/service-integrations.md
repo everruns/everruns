@@ -12,7 +12,7 @@ Framework applications can bind their own credentials, persistence, and retrieva
 | 1 | Slack reactions, message edits, user lookup and external file uploads | `.slack_actions(SlackActions)` | `slack-actions`; [Slack](/framework/slack-services/) |
 | 1 | Slack agent pane, streaming, status/title, approvals, progress, history and participation | `Channel::slack(Slack)` | `channels`; [Slack](/framework/slack-services/) |
 | 2 | Event filters, changes-only checks, durable dedupe/outbox and session routing | `triggers::Dispatcher` | `triggers`; [Event triggers](/framework/event-triggers/) |
-| 2 | Named agent coordination | `.member(Agent)` | [Coordinator agents](/framework/coordination/) |
+| 2 | Agents that start agents | `.spawns(Agent)`, `.threads_with(Agent)` | [Agents that start agents](/framework/coordination/) |
 | 2 | Cursor, Browserless and image generation | `.cursor(...)`, `.browserless(...)`, `images` | `cursor`, `browserless`, `images`; [Native services](/framework/native-services/) |
 | 3 | Persistent, session-scoped SQL | `.sql_database(SqlDatabase)` | `sql-database`; [Data services](/framework/data-services/) |
 | 3 | Named read-only or writable directory memory | `.memory(MemoryDirectory)` | [Data services](/framework/data-services/) |

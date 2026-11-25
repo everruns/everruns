@@ -243,12 +243,24 @@ impl Capability for AgUiDelegationCapability {
         &self,
         config: &Value,
     ) -> Option<super::DelegationTargetProvider> {
-        Some(super::DelegationTargetProvider {
-            target_type: AG_UI_TARGET_TYPE,
-            tool: Box::new(SpawnAgUiAgentTool::new(
-                AgUiDelegationConfig::from_value(config).unwrap_or_default(),
-            )),
-        })
+        let parsed = AgUiDelegationConfig::from_value(config).unwrap_or_default();
+        let agents = parsed
+            .agents
+            .iter()
+            .map(|agent| everruns_core::capabilities::DelegationAgent {
+                id: agent.id.clone(),
+                name: agent.name.clone(),
+                description: agent.description.clone(),
+                target_type: AG_UI_TARGET_TYPE,
+            })
+            .collect();
+        Some(
+            super::DelegationTargetProvider::new(
+                AG_UI_TARGET_TYPE,
+                Box::new(SpawnAgUiAgentTool::new(parsed)),
+            )
+            .with_agents(agents),
+        )
     }
 
     fn dependencies(&self) -> Vec<&'static str> {
@@ -283,8 +295,8 @@ impl Capability for AgUiDelegationCapability {
 
         Some(format!(
             "<capability id=\"{}\">\n\
-Delegate work to configured external AG-UI agents with spawn_agent (target.type=\"{AG_UI_TARGET_TYPE}\").\n\
-Use mode=\"background\" for long-running work and wait_task (from session_tasks) later for results; use mode=\"foreground\" when blocked on the result.\n\
+Delegate work to configured external AG-UI agents with spawn_agent: pass the agent's name as agent.\n\
+Spawns run in the background; read results with wait_task (from session_tasks). Set wait to true only when blocked on the result.\n\
 When a run stops with status input_required, the remote agent is asking something: answer with message_task. To answer several open interrupts differently, send a JSON object keyed by interrupt id. Use cancel_task to stop a run.\n\
 Available external agents:\n{}\n\
 </capability>",
@@ -530,7 +542,7 @@ impl Tool for SpawnAgUiAgentTool {
             .is_some_and(|schema| !schema.is_null())
         {
             return ToolExecutionResult::tool_error(format!(
-                "message_schema is not supported for {AG_UI_TARGET_TYPE} targets because remote agents cannot receive report_task_progress."
+                "message_schema is not supported for {AG_UI_TARGET_TYPE} targets because remote agents cannot receive report_progress."
             ));
         }
         // THREAT[TM-AGENT-030]: the model names a configured agent; the URL

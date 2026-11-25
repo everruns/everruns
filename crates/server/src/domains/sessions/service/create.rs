@@ -444,12 +444,15 @@ impl SessionService {
                 &merge_capabilities(&effective_harness.capabilities, &agent_capabilities),
                 resolved_sandbox.as_ref().map(|sandbox| &sandbox.spec),
             );
-        // Decision: an agent handed work in a run can talk to the others in it
-        // (knowledge/runtime-resources/agents-using-agents.md, Run
-        // conversation). The host attaches the conversation to the session,
-        // not the agent: the same agent on its own has no run to talk in.
-        if req.parent_session_id.is_some() {
-            attach_run_conversation(
+        // Decision (2026-11-25): children talk to each other only when their
+        // parent's agent turned on Sibling communication
+        // (knowledge/runtime-resources/threads.md). The host attaches it to
+        // the child session, not the child's agent: the same agent on its own
+        // has no run to talk in.
+        if let Some(parent_id) = req.parent_session_id
+            && self.parent_allows_sibling_talk(org_id, parent_id).await?
+        {
+            attach_sibling_communication(
                 &mut session_capabilities,
                 &[&effective_harness.capabilities, &agent_capabilities],
             );
@@ -929,20 +932,46 @@ impl SessionService {
         crate::domains::models::catalog::require_chat(model.provider_metadata.as_ref())?;
         Ok(Some(model_id))
     }
+
+    /// Whether the agent of `parent` has Sibling communication, so its
+    /// children may talk to each other.
+    async fn parent_allows_sibling_talk(&self, org_id: i64, parent: SessionId) -> Result<bool> {
+        use everruns_capabilities::capabilities::SIBLING_COMMUNICATION_CAPABILITY_ID;
+        let Some(agent_id) = self
+            .db
+            .get_session(org_id, parent)
+            .await?
+            .and_then(|session| session.agent_id)
+        else {
+            return Ok(false);
+        };
+        Ok(self
+            .db
+            .get_agent_capabilities(agent_id.uuid())
+            .await?
+            .iter()
+            .any(|row| {
+                row.capability_id == SIBLING_COMMUNICATION_CAPABILITY_ID
+                    || row.capability_id
+                        == everruns_contracts::capability::delegation::LEGACY_RUN_CONVERSATION_ID
+            }))
+    }
 }
 
-/// Add the run conversation to a session started under another one, unless
-/// its harness or agent already has it.
-fn attach_run_conversation(
+/// Add Sibling communication to a child session, unless its harness or agent
+/// already has it.
+fn attach_sibling_communication(
     session_capabilities: &mut Vec<AgentCapabilityConfig>,
     inherited: &[&[AgentCapabilityConfig]],
 ) {
-    use everruns_capabilities::capabilities::run_conversation::RUN_CONVERSATION_CAPABILITY_ID;
+    use everruns_capabilities::capabilities::SIBLING_COMMUNICATION_CAPABILITY_ID;
     let present = session_capabilities
         .iter()
         .chain(inherited.iter().flat_map(|caps| caps.iter()))
-        .any(|capability| capability.id() == RUN_CONVERSATION_CAPABILITY_ID);
+        .any(|capability| capability.id() == SIBLING_COMMUNICATION_CAPABILITY_ID);
     if !present {
-        session_capabilities.push(AgentCapabilityConfig::new(RUN_CONVERSATION_CAPABILITY_ID));
+        session_capabilities.push(AgentCapabilityConfig::new(
+            SIBLING_COMMUNICATION_CAPABILITY_ID,
+        ));
     }
 }

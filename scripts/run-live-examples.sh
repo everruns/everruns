@@ -24,7 +24,8 @@ DEFAULT_EXAMPLES=(
   hello:openai
   production_agent:openai
   observe_and_cancel:openai
-  subagents:openai
+  custom_child_agents:openai
+  spawn_agents:openai,local
   lifecycle_hooks:macros,openai
   advanced_capability:capabilities,openai
   lua_code_mode_agent:lua,openai

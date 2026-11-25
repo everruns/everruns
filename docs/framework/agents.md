@@ -228,13 +228,14 @@ let agent = Agent::builder()
 `FunctionTool::needs_approval(|args: &Value| ..)` and
 `FunctionTool::always_needs_approval()` are the dynamic forms.
 
-## Agents that hand work to other agents
+## Agents that start other agents
 
-Add the agents this one can hand work to with `.member(agent)`. Each member
-keeps its own instructions, model and capabilities. The lead gets the
-`spawn_agent` tool and sees each member by its name and description; work it
-hands over runs as the member's own session in the same Engine, in the
-foreground or as a background task.
+Add the agents this one can call with `.spawns(agent)` (one-off calls, the
+`spawn_agent` tool) or hand followed work to with `.threads_with(agent)`
+(Threads); never both on one agent. Each added agent keeps its own
+instructions, model and capabilities. The lead sees each by its name and
+description; work it hands over runs as that agent's own session in the same
+Engine. See [Agents that start agents](/framework/coordination/).
 
 ```rust
 use everruns::hosting::{AgentBuild, SqliteHosting};
@@ -249,9 +250,9 @@ let reviewer = Agent::builder()
     .build()?;
 let lead = Agent::builder()
     .name("lead")
-    .instructions("Hand each change to reviewer before you answer.")
+    .instructions("Spawn reviewer on each change before you answer.")
     .model(Model::simulated("Done."))
-    .member(reviewer)
+    .spawns(reviewer)
     .build()?;
 
 let build = AgentBuild::new("lead", "v1");
@@ -265,11 +266,11 @@ session.send_and_wait("Review the login change.").await?;
 # }
 ```
 
-Members need a host that keeps child sessions: an Engine with
-`SqliteHosting`, or a local profile. Registering the lead is enough; a
-member's sessions resume after a restart under a build derived from the
-lead's. Members nest one level. Inviting a member into the lead's own session
-is Platform-only.
+Spawned agents need a host that keeps child sessions: an Engine with
+`SqliteHosting`, or a local profile; threads need a local profile.
+Registering the lead is enough; an added agent's sessions resume after a
+restart under a build derived from the lead's. Added agents nest one level.
+Inviting one into the lead's own session is Platform-only.
 
 ## File-based agents
 

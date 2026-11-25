@@ -5,7 +5,7 @@ description: The worker kit with no compute, for agents that work through tools,
 
 Worker inherits [Base](/built-ins/harnesses/base/) and adds everything a working agent needs except
 a shell: session files, project instructions (`AGENTS.md`), session tools, durable and distilled tool
-output, skills, history retrieval, automatic tool discovery, budget awareness, todo lists, subagents,
+output, skills, history retrieval, automatic tool discovery, budget awareness, todo lists,
 task controls, [Web Search](/capabilities/web-search/) on the organization's default provider, and
 [Image Generation](/capabilities/image-generation/) on the organization's default image model.
 
@@ -21,7 +21,7 @@ Worker is also the parent of the two shell workers:
 An Agent on Worker may still set a Sandbox policy; the selected Sandbox Template then supplies the
 shell. Pick one of the shell workers when the agent always needs one.
 
-Subagents create separate child sessions. Ordinary children inherit the parent configuration; blueprints provide specialist behavior. Depth and root-tree task limits bound delegation. Assigning this harness requires permission to assign its high-risk capabilities.
+Worker does not start other agents on its own. Add [Spawn agents](/capabilities/spawn-agents/) for one-off calls or [Threads](/capabilities/threads/) for followed work to the agent that needs it; an agent uses one or the other, never both.
 
 Web fetch, secret/KV tools, organization memory mounts and session scheduling remain opt-in. Recurring agent execution is configured with Agent Triggers.
 

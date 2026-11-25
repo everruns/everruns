@@ -11,17 +11,21 @@ fn agent(name: &str) -> AgentBuilder {
 fn reason(result: Result<Agent, BuildError>) -> String {
     match result {
         Err(BuildError::InvalidCapability { id, reason }) => {
-            assert_eq!(id, AGENTS_CAPABILITY);
+            assert!(carries_agents(&id), "unexpected capability {id}");
             reason
         }
-        other => panic!("expected an Agents error, got {:?}", other.map(|_| ())),
+        other => panic!("expected a delegation error, got {:?}", other.map(|_| ())),
     }
 }
 
+fn capability<'a>(agent: &'a Agent, id: &str) -> Option<&'a everruns_contracts::CapabilityRef> {
+    agent.capabilities.iter().find(|c| c.id() == id)
+}
+
 #[test]
-fn members_become_hand_off_targets_by_name() {
+fn spawned_agents_are_listed_by_name_on_spawn_agents() {
     let lead = agent("lead")
-        .member(
+        .spawns(
             agent("reviewer")
                 .description("Reviews changes.")
                 .build()
@@ -29,16 +33,13 @@ fn members_become_hand_off_targets_by_name() {
         )
         .build()
         .unwrap();
-    let agents = lead
-        .capabilities
-        .iter()
-        .find(|c| c.id() == AGENTS_CAPABILITY)
-        .expect("members add the Agents capability");
-    let target = &agents.config_value()["targets"][0];
-    assert_eq!(target["id"], "reviewer");
-    assert_eq!(target["description"], "Reviews changes.");
+    let spawn = capability(&lead, SPAWN_AGENTS_CAPABILITY_ID).expect("spawns adds Spawn agents");
+    assert_eq!(spawn.config_value()["self"], true);
+    let listed = &spawn.config_value()["agents"][0];
+    assert_eq!(listed["name"], "reviewer");
+    assert_eq!(listed["description"], "Reviews changes.");
     assert_eq!(
-        target["agent_id"],
+        listed["agent_id"],
         serde_json::json!(member_agent_id("reviewer"))
     );
     assert!(lead.member_on_host(member_agent_id("reviewer")).is_some());
@@ -46,36 +47,71 @@ fn members_become_hand_off_targets_by_name() {
         lead.member_on_host(member_agent_id("someone-else"))
             .is_none()
     );
+    let solo = agent("solo").build().unwrap();
     assert!(
-        agent("solo")
-            .build()
-            .unwrap()
-            .capabilities
-            .iter()
-            .all(|c| c.id() != AGENTS_CAPABILITY),
-        "no members, no capability"
+        capability(&solo, SPAWN_AGENTS_CAPABILITY_ID).is_none(),
+        "no agents, no capability"
     );
 }
 
 #[test]
-fn invalid_member_sets_are_refused() {
-    let member = || agent("reviewer").build().unwrap();
-    assert!(reason(agent("lead").member(member()).member(member()).build()).contains("two agents"));
-    assert!(reason(agent("reviewer").member(member()).build()).contains("itself"));
-    let nested = agent("reviewer")
-        .member(agent("helper").build().unwrap())
+fn a_spawn_agents_capability_added_by_hand_keeps_its_settings() {
+    let lead = agent("lead")
+        .capability(crate::SpawnAgents::new().run_self(false).max_open(2))
+        .spawns(agent("reviewer").build().unwrap())
         .build()
         .unwrap();
-    assert!(reason(agent("lead").member(nested).build()).contains("one level"));
+    let spawn = capability(&lead, SPAWN_AGENTS_CAPABILITY_ID).unwrap();
+    assert_eq!(spawn.config_value()["self"], false);
+    assert_eq!(spawn.config_value()["max_open"], 2);
+    assert_eq!(spawn.config_value()["agents"][0]["name"], "reviewer");
+}
+
+#[cfg(feature = "local")]
+#[test]
+fn threads_with_lists_agents_on_threads() {
+    let lead = agent("lead")
+        .capability(crate::threads::Threads::new().max_open(3))
+        .threads_with(agent("writer").build().unwrap())
+        .build()
+        .unwrap();
+    let threads = capability(&lead, THREADS_CAPABILITY_ID).unwrap();
+    assert_eq!(threads.config_value()["max_open"], 3);
+    assert_eq!(threads.config_value()["agents"][0]["name"], "writer");
+    assert!(capability(&lead, SPAWN_AGENTS_CAPABILITY_ID).is_none());
+}
+
+#[test]
+fn invalid_agent_sets_are_refused() {
+    let member = || agent("reviewer").build().unwrap();
+    assert!(reason(agent("lead").spawns(member()).spawns(member()).build()).contains("two agents"));
+    assert!(reason(agent("reviewer").spawns(member()).build()).contains("itself"));
+    let nested = agent("reviewer")
+        .spawns(agent("helper").build().unwrap())
+        .build()
+        .unwrap();
+    assert!(reason(agent("lead").spawns(nested).build()).contains("one level"));
     assert!(
         reason(
             agent("lead")
-                .capability(crate::CapabilityRef::new(AGENTS_CAPABILITY))
-                .member(member())
+                .capability(crate::CapabilityRef::new(THREADS_CAPABILITY_ID))
+                .spawns(member())
                 .build()
         )
-        .contains("not both")
+        .contains("never both")
     );
+}
+
+#[cfg(feature = "local")]
+#[test]
+fn spawns_and_threads_with_are_never_both() {
+    let error = reason(
+        agent("lead")
+            .spawns(agent("reviewer").build().unwrap())
+            .threads_with(agent("writer").build().unwrap())
+            .build(),
+    );
+    assert!(error.contains("never both"));
 }
 
 #[test]
@@ -105,7 +141,7 @@ fn packages_bring_bundled_agents_and_need_linked_ones() {
     assert!(reason(builder().build()).contains("links agent everruns-review"));
 
     let lead = builder()
-        .member(agent("everruns-review").build().unwrap())
+        .spawns(agent("everruns-review").build().unwrap())
         .build()
         .unwrap();
     let mut names: Vec<_> = lead.members().iter().map(Agent::name).collect();
@@ -126,8 +162,9 @@ fn packages_bring_bundled_agents_and_need_linked_ones() {
         manifest
             .capabilities
             .iter()
-            .all(|c| c.id() != AGENTS_CAPABILITY),
-        "member ids are not portable"
+            .filter(|c| carries_agents(c.id()))
+            .all(|c| c.config_value().get("agents").is_none()),
+        "derived agent ids are not portable"
     );
 }
 
@@ -146,14 +183,14 @@ async fn a_member_runs_as_itself_on_a_local_profile() {
                 arguments: serde_json::json!({
                     "name": "Review",
                     "instructions": "Review it.",
-                    "target": {"type": "agent", "id": "reviewer"},
-                    "mode": "foreground",
+                    "agent": "reviewer",
+                    "wait": true,
                 }),
                 id: Some("review_1".into()),
             }]),
             SimTurn::Assistant("Reviewed.".into()),
         ])))
-        .member(
+        .spawns(
             Agent::builder()
                 .name("reviewer")
                 .instructions("Review.")
@@ -177,4 +214,17 @@ async fn a_member_runs_as_itself_on_a_local_profile() {
     )
     .unwrap();
     assert!(rendered.contains("REVIEWED locally"), "{rendered}");
+}
+
+#[test]
+fn an_added_agent_gets_file_tools_for_the_workspace_it_shares() {
+    let dir = tempfile::tempdir().unwrap();
+    let lead = agent("lead")
+        .workspace(dir.path())
+        .spawns(agent("writer").build().unwrap())
+        .build()
+        .unwrap();
+    let writer = lead.member_on_host(member_agent_id("writer")).unwrap();
+    assert!(writer.capability_ids().contains("session_file_system"));
+    assert_eq!(writer.workspace_root.as_deref(), Some(dir.path()));
 }

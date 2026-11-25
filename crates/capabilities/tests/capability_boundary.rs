@@ -1,6 +1,4 @@
-use everruns_capabilities::capabilities::{
-    AgentHandoffCapability, SubagentCapability, register_hosted_capabilities,
-};
+use everruns_capabilities::capabilities::{SpawnAgentsCapability, register_hosted_capabilities};
 #[cfg(feature = "environment-capabilities")]
 use everruns_contracts::tool_types::ToolCall;
 use everruns_contracts::typed_id::{AgentId, HarnessId, SessionId};
@@ -144,25 +142,22 @@ fn retired_capabilities_stay_registered_and_inert() {
 }
 
 #[tokio::test]
-async fn hosted_delegation_providers_share_one_spawn_agent_tool() {
+async fn spawn_agents_offers_one_spawn_agent_tool_for_self_and_named_agents() {
     let mut registry = CapabilityRegistry::new();
-    registry.register(SubagentCapability);
-    registry.register(AgentHandoffCapability);
+    registry.register(SpawnAgentsCapability);
 
-    let configs = vec![
-        AgentCapabilityConfig::with_config(CapabilityId::new("subagents"), serde_json::json!({})),
-        AgentCapabilityConfig::with_config(
-            CapabilityId::new("agent_handoff"),
-            serde_json::json!({
-                "targets": [{
-                    "id": "operator",
-                    "name": "Operator",
-                    "agent_id": AgentId::new(),
-                    "harness_id": HarnessId::new()
-                }]
-            }),
-        ),
-    ];
+    let configs = vec![AgentCapabilityConfig::with_config(
+        CapabilityId::new("spawn_agents"),
+        serde_json::json!({
+            "self": true,
+            "agents": [{
+                "id": "operator",
+                "name": "Operator",
+                "agent_id": AgentId::new(),
+                "harness_id": HarnessId::new()
+            }]
+        }),
+    )];
     let collected = collect_capabilities_with_configs(
         &configs,
         &registry,
@@ -176,10 +171,10 @@ async fn hosted_delegation_providers_share_one_spawn_agent_tool() {
         .filter(|tool| tool.name() == "spawn_agent")
         .collect();
     assert_eq!(definitions.len(), 1);
-    assert_eq!(
-        definitions[0].parameters()["properties"]["target"]["properties"]["type"]["enum"],
-        serde_json::json!(["subagent", "agent"]),
-    );
+    let properties = &definitions[0].parameters()["properties"];
+    assert!(properties.get("agent").is_some(), "{properties}");
+    assert!(properties.get("wait").is_some(), "{properties}");
+    assert!(properties.get("target").is_none(), "{properties}");
 }
 
 #[path = "capability_boundary/slack_narration.rs"]
