@@ -37,6 +37,7 @@ pub struct CommandTurnContext {
 }
 
 /// Request for a tool-less, out-of-band completion against the session model.
+/// Hosts retain usage observations without persisting its private envelope or answer.
 #[derive(Debug, Clone, Default)]
 pub struct SessionCompletionRequest {
     /// System prompts sent in order; empty entries are skipped.
@@ -208,8 +209,9 @@ impl SessionCompletionError {
 
 /// Host facilities available to capability command implementations.
 ///
-/// Completions are out-of-band: this contract does not persist messages or
-/// events. Hosts without these facilities use [`DisabledCommandHost`].
+/// Completions are out-of-band: they do not persist conversation messages.
+/// Hosts may retain metadata-only usage events. Hosts without these facilities
+/// use [`DisabledCommandHost`].
 #[async_trait]
 pub trait CommandHost: Send + Sync {
     async fn dreaming_proposals(&self, _accept: bool, _discard: bool) -> Result<String> {

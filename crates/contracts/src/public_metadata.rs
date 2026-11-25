@@ -33,6 +33,14 @@ fn identity(value: &Value) -> Value {
 /// envelopes. This is also used by the SDK's reviewed event envelope.
 pub fn event(value: &Value) -> Value {
     let mut public = strings(value, &["participant_id", "dreaming_operation_id"]);
+    // THREAT[TM-API-023]: public correlation is a UUID, never an authority grant.
+    if let Some(id) = value
+        .get("completion_operation_id")
+        .and_then(Value::as_str)
+        .filter(|id| uuid::Uuid::parse_str(id).is_ok())
+    {
+        public.insert("completion_operation_id".into(), Value::String(id.into()));
+    }
     if let Some(client) = value.get("mcp_client").filter(|v| v.is_object()) {
         public.insert(
             "mcp_client".into(),
@@ -184,6 +192,21 @@ mod tests {
         for value in [Value::Null, json!([]), json!("CANARY"), json!(42)] {
             assert_eq!(message(&value), json!({}));
             assert_eq!(event(&value), json!({}));
+        }
+    }
+
+    #[test]
+    fn completion_provenance_is_public_only_as_a_uuid() {
+        let id = "11111111-1111-4111-8111-111111111111";
+        assert_eq!(
+            event(&json!({"completion_operation_id":id,"private":"CANARY"})),
+            json!({"completion_operation_id":id})
+        );
+        for invalid in [json!("CANARY"), json!({"secret":"CANARY"}), json!([id])] {
+            assert_eq!(
+                event(&json!({"completion_operation_id":invalid})),
+                json!({})
+            );
         }
     }
 

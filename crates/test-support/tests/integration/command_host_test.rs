@@ -277,7 +277,10 @@ async fn store_host_completion_runs_against_session_model() {
 
 #[tokio::test]
 async fn store_host_completion_stream_emits_progressive_deltas() {
-    let host = llmsim_host("streamed side answer with several tokens").await;
+    let ledger = Arc::new(everruns_test_support::InMemoryEventEmitter::new());
+    let host = llmsim_host("streamed side answer with several tokens")
+        .await
+        .with_usage_emitter(ledger.clone(), Default::default());
 
     let turn = host.turn_context().await.unwrap();
     let stream = host
@@ -300,12 +303,30 @@ async fn store_host_completion_stream_emits_progressive_deltas() {
     while let Some(event) = events.next().await {
         match event.unwrap() {
             LlmStreamEvent::TextDelta(delta) => deltas.push(delta),
-            LlmStreamEvent::Done(_) => done = true,
+            LlmStreamEvent::Done(metadata) => {
+                done = true;
+                // A caller may stop polling at Done. Usage must already be durable.
+                let recorded = ledger.events().await;
+                assert_eq!(recorded.len(), 1);
+                let everruns_core::EventData::LlmGeneration(data) = &recorded[0].data else {
+                    panic!("expected usage observation")
+                };
+                assert_eq!(
+                    data.metadata.usage.as_ref().unwrap().input_tokens,
+                    metadata.prompt_tokens.unwrap()
+                );
+                assert!(data.messages.is_empty());
+                assert!(data.output.text.is_none());
+                assert!(data.request_body.is_none());
+                break;
+            }
             _ => {}
         }
     }
 
     assert!(done, "stream must terminate with Done");
+    assert!(events.next().await.is_none());
+    assert_eq!(ledger.event_count().await, 1);
     assert!(
         deltas.len() > 1,
         "expected progressive deltas, got {deltas:?}"

@@ -228,7 +228,12 @@ pub use everruns_contracts::runtime::llm_error_hook;
 // Adapters from core domain types to provider driver types. Lives on the core
 // side to keep the crate dependency one-directional (core -> everruns-contracts).
 pub(crate) mod attachment_labels;
+// Shared by native and portable command hosts.
+#[cfg(any(feature = "host", feature = "execution-host"))]
+mod command_completion_usage;
 pub mod llm_conversions;
+#[cfg(feature = "engine")]
+mod llm_usage;
 pub use everruns_contracts::runtime::message;
 pub use everruns_contracts::runtime::message_filter;
 pub use everruns_contracts::runtime::message_retriever;
