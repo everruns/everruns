@@ -1,6 +1,6 @@
 ---
-title: Add to Slack no longer fails with a server error on small database pools
-description: One-click Slack install, its OAuth return and channel removal now hold one database connection for their locks, so a server with a two-connection pool finishes them.
+title: Add to Slack no longer fails with a server error on small pools
+description: One-click Slack install, its OAuth return and channel removal hold one database connection for their locks, so a two-connection pool is enough.
 date: 2026-11-25
 kind: fix
 significance: minor
