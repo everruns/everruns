@@ -23,7 +23,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { EntityStatus } from "@/components/ui/entity-status";
-import { describeCronExpression } from "@/components/apps/cron-label";
+import { describeCronExpression } from "@/components/schedules/cron-label";
 import { githubEventsLabel } from "@/components/agents/github-trigger-form";
 import { lastUsedLabel } from "@/components/agents/channels/channel-summary";
 import { useAgentTriggerRuns } from "@/hooks/use-agent-triggers";

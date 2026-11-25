@@ -371,6 +371,30 @@ mod tests {
         );
     }
 
+    #[test]
+    fn application_publication_parses_the_resource_version() {
+        let root = augment(crate::Cli::command());
+        let matches = root
+            .try_get_matches_from([
+                "everruns",
+                "applications",
+                "status",
+                "--application-id",
+                "application_1",
+                "--status",
+                "published",
+                "--version",
+                "3",
+            ])
+            .unwrap();
+        let (contract, leaf) = selected(&matches).unwrap();
+        assert_eq!(contract.wire_name, "set_application_status");
+        assert_eq!(
+            everruns_cli_contract::params_from(contract, leaf)["version"],
+            3
+        );
+    }
+
     /// Regression: the selection used to be checked against the augmented
     /// tree, where every mounted spelling is defined, so no contract command
     /// ever dispatched.

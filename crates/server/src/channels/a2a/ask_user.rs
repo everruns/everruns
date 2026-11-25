@@ -711,7 +711,7 @@ mod tests {
         let projection = project_ask_user(
             &pending(vec![secret_question()]),
             "session_1",
-            "https://app.example.test/",
+            "https://ingress.example.test/",
         );
         assert_eq!(projection.state, "auth-required");
         let rendered = projection.message.to_string();
@@ -729,7 +729,7 @@ mod tests {
         assert_eq!(auth["reason"], "secret_question");
         assert_eq!(
             auth["url"],
-            "https://app.example.test/sessions/session_1/chat"
+            "https://ingress.example.test/sessions/session_1/chat"
         );
     }
 

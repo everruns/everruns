@@ -1,4 +1,4 @@
-//! Installations, schedules, leased resources, session tasks, and apps.
+//! Installations, schedules, leased resources, session tasks, and agent channels.
 
 use super::*;
 

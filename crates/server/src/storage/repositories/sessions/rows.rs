@@ -46,12 +46,8 @@ pub struct SessionRow {
     /// decode; all session-detail/list queries select it explicitly.
     #[sqlx(default)]
     pub workspace_id: Uuid,
-    #[sqlx(default)]
-    pub app_id: Option<Uuid>,
-    /// Endpoint whose ingress created this session (EVE-1004). `app_id` says
-    /// which bundle; this says which door. NULL for user, API, and
-    /// platform-created sessions, and for app-channel sessions predating the
-    /// routing tag the backfill reads.
+    /// Channel whose ingress created this session. Null for direct sessions
+    /// and historical sessions without unambiguous channel attribution.
     #[sqlx(default)]
     pub channel_id: Option<Uuid>,
     /// Agent trigger whose ingress created this session (EVE-1138). The
@@ -294,7 +290,6 @@ pub struct CreateSessionRow {
     /// taken from untrusted client input except for client-declarable
     /// variants (see `SessionSource::is_client_declarable`).
     pub source: crate::domains::sessions::record::SessionSource,
-    pub app_id: Option<Uuid>,
     /// The two ingress pointers (EVE-1004, EVE-1138): the endpoint, set by the
     /// app-channel paths that all know theirs, and the trigger, set by the
     /// trigger invocation path. Both `None` for every other way in.
@@ -351,7 +346,7 @@ impl Default for CreateSessionRow {
             mcp_creator: None,
             org_id: 0,
             source: crate::domains::sessions::record::SessionSource::Api,
-            app_id: None,
+
             channel_id: None,
             trigger_id: None,
             harness_id: None,

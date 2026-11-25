@@ -55,7 +55,6 @@ const VOLATILE: &[&str] = &[
     "links",
     // Derived from other entities, not part of this one's configuration.
     "session_count",
-    "app_count",
     "channels",
     "exposed",
     "exposures_suspended",
@@ -81,6 +80,8 @@ fn derived(kind: EntityKind) -> &'static [&'static str] {
         EntityKind::Organization => &["effective_research_model_id"],
         // Computed from agents and the org's current models.
         EntityKind::ModelPreset => &["agent_count", "fallback_jobs"],
+        // The version guards writes; the URL follows deployment settings.
+        EntityKind::Application => &["version", "public_url"],
         _ => &[],
     }
 }
@@ -563,6 +564,7 @@ pub fn restore_command(kind: EntityKind) -> Option<(&'static str, &'static str)>
         EntityKind::Knowledge => ("update_knowledge", "collection_id"),
         EntityKind::KnowledgeIndexer => return None,
         EntityKind::Memory => ("update_memory", "memory_id"),
+        EntityKind::Application => ("update_application", "application_id"),
         EntityKind::Provider => ("update_provider", "id"),
         EntityKind::Model => ("update_model", "id"),
         EntityKind::McpServer => ("update_mcp_server", "id"),
@@ -580,10 +582,11 @@ pub fn restore_command(kind: EntityKind) -> Option<(&'static str, &'static str)>
     })
 }
 
-/// Immutable parent identifiers required by nested update commands. They locate
-/// the resource and must survive a selected-field restore, never be restored.
+/// Immutable locators and current concurrency tokens required by updates.
+/// They survive a selected-field restore and cannot themselves be restored.
 pub(super) fn restore_locators(kind: EntityKind) -> &'static [&'static str] {
     match kind {
+        EntityKind::Application => &["slug", "version"],
         EntityKind::AgentChannel
         | EntityKind::AgentTrigger
         | EntityKind::AgentScript
@@ -620,7 +623,10 @@ pub(super) fn preserve_replacement_fields(
     current: &Value,
     fields: &[String],
 ) -> Result<(), CommandError> {
-    if !matches!(kind, EntityKind::Knowledge | EntityKind::TracingPolicy) {
+    if !matches!(
+        kind,
+        EntityKind::Knowledge | EntityKind::TracingPolicy | EntityKind::Application
+    ) {
         return Ok(());
     }
     let (_, preserved) = restore_call(kind, entity_ref, current, current)?;

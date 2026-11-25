@@ -15,7 +15,7 @@ okf_version: "0.2"
 * [runtime-resources/](runtime-resources/) - Agents, sessions, workspaces, knowledge, memory, and runtime-owned resources.
 * [docs/](docs/) - Public documentation structure, diagrams, and visual artifact contracts.
 * [ui/](ui/) - User interface, message rendering, generative UI, and product presentation.
-* [integrations/](integrations/) - MCP, external integrations, apps, plugins, and messaging channels.
+* [integrations/](integrations/) - MCP, external integrations, Applications, plugins, and messaging channels.
 * [operations/](operations/) - Deployment, persistence, scheduling, observability, networking, and operations.
 * [security/](security/) - Authentication, authorization, multitenancy, security, and governance.
 * [evaluation/](evaluation/) - Evaluation, testing, datasets, and quality systems.

@@ -4129,6 +4129,205 @@
     "read_only": false
   },
   {
+    "category": "applications",
+    "cli": "applications create",
+    "description": "Create an Application with a permanently reserved stable name.",
+    "input_schema": {
+      "$defs": {
+        "ApplicationConfig": {
+          "additionalProperties": false,
+          "description": "Audience admission and optional workspace features.",
+          "properties": {
+            "automations": {
+              "description": "Reserved until the automation runtime is available. Enabling is rejected.",
+              "type": "boolean"
+            },
+            "invites": {
+              "description": "Verified email addresses admitted when membership is invites.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "membership": {
+              "$ref": "#/$defs/WorkChatMembership",
+              "description": "Who may sign in: organization members by default, invited people, or anyone."
+            },
+            "show_in_sidebar": {
+              "description": "Show a launcher for published Applications in the organization sidebar.",
+              "type": "boolean"
+            }
+          },
+          "type": "object"
+        },
+        "ApplicationInput": {
+          "additionalProperties": false,
+          "description": "Author-editable Application presentation, audience and resource bindings.",
+          "properties": {
+            "config": {
+              "$ref": "#/$defs/ApplicationConfig",
+              "description": "Audience and optional sidebar configuration."
+            },
+            "description": {
+              "description": "Overview text for participants, up to 2000 characters.",
+              "type": "string"
+            },
+            "name": {
+              "description": "Display name, between 1 and 120 characters after trimming.",
+              "type": "string"
+            },
+            "resources": {
+              "description": "Ordered resource bindings; at most 50, with unique paths and IDs.",
+              "items": {
+                "$ref": "#/$defs/ApplicationResource"
+              },
+              "type": "array"
+            },
+            "slug": {
+              "description": "Permanent hostname label, globally unique and reserved after archival.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "slug"
+          ],
+          "type": "object"
+        },
+        "ApplicationResource": {
+          "additionalProperties": false,
+          "description": "One named navigation entry and its explicitly shared resource.",
+          "properties": {
+            "kind": {
+              "$ref": "#/$defs/ApplicationResourceKind",
+              "description": "The existing resource type exposed by this navigation entry."
+            },
+            "name": {
+              "description": "Display label shown to participants.",
+              "type": "string"
+            },
+            "resource_id": {
+              "description": "Public ID of a Chat channel, Room, or organization Memory.",
+              "type": "string"
+            },
+            "slug": {
+              "description": "Unique navigation path within the Application.",
+              "type": "string"
+            },
+            "writable": {
+              "description": "Allow Memory writes; false for read-only Memory and all other resource kinds.",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "slug",
+            "name",
+            "kind",
+            "resource_id"
+          ],
+          "type": "object"
+        },
+        "ApplicationResourceKind": {
+          "description": "Existing runtime resource exposed through the Application.",
+          "enum": [
+            "chat",
+            "room",
+            "memory"
+          ],
+          "type": "string"
+        },
+        "WorkChatMembership": {
+          "description": "Who may sign in. Further modes, such as a publisher-chosen identity\nprovider, are additional variants.",
+          "enum": [
+            "open",
+            "invites",
+            "org_users"
+          ],
+          "type": "string"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/ApplicationInput"
+        }
+      ]
+    },
+    "method": "POST",
+    "name": "create_application",
+    "output_shape": "unknown",
+    "path": "/v1/platform/applications",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
+    "category": "applications",
+    "cli": "applications resources create",
+    "description": "Create and attach a Chat, Room or Memory atomically to an Application.",
+    "input_schema": {
+      "$defs": {
+        "ApplicationResourceKind": {
+          "description": "Existing runtime resource exposed through the Application.",
+          "enum": [
+            "chat",
+            "room",
+            "memory"
+          ],
+          "type": "string"
+        },
+        "applicationId": {
+          "description": "Prefixed identifier with 'application' prefix",
+          "example": "application_01933b5a000070008000000000000001",
+          "pattern": "^application_[0-9a-f]{32}$",
+          "type": "string"
+        }
+      },
+      "properties": {
+        "agent_id": {
+          "description": "Existing Agent to use for a new Chat; required only for Chat resources.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "application_id": {
+          "$ref": "#/$defs/applicationId",
+          "description": "Public ID of the Application that will own the resource binding."
+        },
+        "kind": {
+          "$ref": "#/$defs/ApplicationResourceKind",
+          "description": "Create a Work Chat, Room, or organization Memory."
+        },
+        "name": {
+          "description": "Navigation label and initial name for a new Room or Memory.",
+          "type": "string"
+        },
+        "slug": {
+          "description": "Unique navigation path within the Application.",
+          "type": "string"
+        },
+        "version": {
+          "description": "Current Application version; creation and binding are one transaction.",
+          "format": "int64",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "application_id",
+        "version",
+        "kind",
+        "name",
+        "slug"
+      ],
+      "type": "object"
+    },
+    "method": "POST",
+    "name": "create_application_resource",
+    "output_shape": "unknown",
+    "path": "/v1/platform/applications/{application_id}/resources",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
     "category": "budgets",
     "cli": "budgets create",
     "description": "Create a budget for a subject (session, agent, user, org). Sets a spending cap in the given currency.",
@@ -4420,7 +4619,7 @@
     "input_schema": {
       "$defs": {
         "EvalTarget": {
-          "description": "Defines how to instantiate a session for an eval case.\n\nTwo modes:\n- `Session`: mirrors `CreateSessionRequest` — full control over session creation parameters.\n- `App`: references a deployed app by ID.\n\nResolution order: EvalRun.target → EvalCase.target → Eval.target → org default harness.",
+          "description": "Defines how to instantiate a session for an eval case.\n\nTwo modes:\n- `Session`: mirrors `CreateSessionRequest` — full control over session creation parameters.\n- `External`: labels imported results.\n\nResolution order: EvalRun.target → EvalCase.target → Eval.target → org default harness.",
           "oneOf": [
             {
               "description": "Session creation parameters (mirrors CreateSessionRequest).",
@@ -4476,25 +4675,6 @@
                 }
               },
               "required": [
-                "type"
-              ],
-              "type": "object"
-            },
-            {
-              "description": "Reference to a deployed app.",
-              "properties": {
-                "app_id": {
-                  "type": "string"
-                },
-                "type": {
-                  "enum": [
-                    "app"
-                  ],
-                  "type": "string"
-                }
-              },
-              "required": [
-                "app_id",
                 "type"
               ],
               "type": "object"
@@ -4782,7 +4962,7 @@
           "type": "object"
         },
         "EvalTarget": {
-          "description": "Defines how to instantiate a session for an eval case.\n\nTwo modes:\n- `Session`: mirrors `CreateSessionRequest` — full control over session creation parameters.\n- `App`: references a deployed app by ID.\n\nResolution order: EvalRun.target → EvalCase.target → Eval.target → org default harness.",
+          "description": "Defines how to instantiate a session for an eval case.\n\nTwo modes:\n- `Session`: mirrors `CreateSessionRequest` — full control over session creation parameters.\n- `External`: labels imported results.\n\nResolution order: EvalRun.target → EvalCase.target → Eval.target → org default harness.",
           "oneOf": [
             {
               "description": "Session creation parameters (mirrors CreateSessionRequest).",
@@ -4838,25 +5018,6 @@
                 }
               },
               "required": [
-                "type"
-              ],
-              "type": "object"
-            },
-            {
-              "description": "Reference to a deployed app.",
-              "properties": {
-                "app_id": {
-                  "type": "string"
-                },
-                "type": {
-                  "enum": [
-                    "app"
-                  ],
-                  "type": "string"
-                }
-              },
-              "required": [
-                "app_id",
                 "type"
               ],
               "type": "object"
@@ -5486,7 +5647,7 @@
           "type": "object"
         },
         "EvalTarget": {
-          "description": "Defines how to instantiate a session for an eval case.\n\nTwo modes:\n- `Session`: mirrors `CreateSessionRequest` — full control over session creation parameters.\n- `App`: references a deployed app by ID.\n\nResolution order: EvalRun.target → EvalCase.target → Eval.target → org default harness.",
+          "description": "Defines how to instantiate a session for an eval case.\n\nTwo modes:\n- `Session`: mirrors `CreateSessionRequest` — full control over session creation parameters.\n- `External`: labels imported results.\n\nResolution order: EvalRun.target → EvalCase.target → Eval.target → org default harness.",
           "oneOf": [
             {
               "description": "Session creation parameters (mirrors CreateSessionRequest).",
@@ -5542,25 +5703,6 @@
                 }
               },
               "required": [
-                "type"
-              ],
-              "type": "object"
-            },
-            {
-              "description": "Reference to a deployed app.",
-              "properties": {
-                "app_id": {
-                  "type": "string"
-                },
-                "type": {
-                  "enum": [
-                    "app"
-                  ],
-                  "type": "string"
-                }
-              },
-              "required": [
-                "app_id",
                 "type"
               ],
               "type": "object"
@@ -5715,7 +5857,7 @@
           "type": "object"
         },
         "EvalTarget": {
-          "description": "Defines how to instantiate a session for an eval case.\n\nTwo modes:\n- `Session`: mirrors `CreateSessionRequest` — full control over session creation parameters.\n- `App`: references a deployed app by ID.\n\nResolution order: EvalRun.target → EvalCase.target → Eval.target → org default harness.",
+          "description": "Defines how to instantiate a session for an eval case.\n\nTwo modes:\n- `Session`: mirrors `CreateSessionRequest` — full control over session creation parameters.\n- `External`: labels imported results.\n\nResolution order: EvalRun.target → EvalCase.target → Eval.target → org default harness.",
           "oneOf": [
             {
               "description": "Session creation parameters (mirrors CreateSessionRequest).",
@@ -5771,25 +5913,6 @@
                 }
               },
               "required": [
-                "type"
-              ],
-              "type": "object"
-            },
-            {
-              "description": "Reference to a deployed app.",
-              "properties": {
-                "app_id": {
-                  "type": "string"
-                },
-                "type": {
-                  "enum": [
-                    "app"
-                  ],
-                  "type": "string"
-                }
-              },
-              "required": [
-                "app_id",
                 "type"
               ],
               "type": "object"
@@ -12927,6 +13050,37 @@
     "read_only": true
   },
   {
+    "category": "applications",
+    "cli": "applications get",
+    "description": "Get an Application's configuration and resources.",
+    "input_schema": {
+      "$defs": {
+        "applicationId": {
+          "description": "Prefixed identifier with 'application' prefix",
+          "example": "application_01933b5a000070008000000000000001",
+          "pattern": "^application_[0-9a-f]{32}$",
+          "type": "string"
+        }
+      },
+      "properties": {
+        "application_id": {
+          "$ref": "#/$defs/applicationId",
+          "description": "Public ID of the Application in the current organization."
+        }
+      },
+      "required": [
+        "application_id"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "get_application",
+    "output_shape": "unknown",
+    "path": "/v1/platform/applications/{application_id}",
+    "positional_arg": null,
+    "read_only": true
+  },
+  {
     "category": "budgets",
     "cli": "budgets get",
     "description": "Get a single budget by ID.",
@@ -16188,6 +16342,26 @@
     "name": "list_all_eval_experiments",
     "output_shape": "unknown",
     "path": "/v1/platform/evals/experiments",
+    "positional_arg": null,
+    "read_only": true
+  },
+  {
+    "category": "applications",
+    "cli": "applications list",
+    "description": "List Applications in the current organization.",
+    "input_schema": {
+      "properties": {
+        "include_archived": {
+          "description": "Include archived Applications so their owners can restore them as drafts.",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "list_applications",
+    "output_shape": "unknown",
+    "path": "/v1/platform/applications",
     "positional_arg": null,
     "read_only": true
   },
@@ -21786,7 +21960,7 @@
   {
     "category": "organizations",
     "cli": "orgs resolve",
-    "description": "Resolve the owning organization for a prefixed entity id (agent, session, harness, app, skill, mcp server, identity, eval). Requires an authenticated user; returns NotFound when the caller is not a member of the owning org or the id does not resolve.",
+    "description": "Resolve the owning organization for a prefixed entity id (agent, session, harness, application, skill, mcp server, identity, eval). Requires an authenticated user; returns NotFound when the caller is not a member of the owning org or the id does not resolve.",
     "input_schema": {
       "properties": {
         "id": {
@@ -22646,6 +22820,56 @@
     "output_shape": "unknown",
     "path": "/v1/platform/agents/{agent_id}/avatar/set",
     "positional_arg": "agent_id",
+    "read_only": false
+  },
+  {
+    "category": "applications",
+    "cli": "applications status",
+    "description": "Publish, unpublish or archive an Application. Archiving retains its stable name.",
+    "input_schema": {
+      "$defs": {
+        "ApplicationStatus": {
+          "enum": [
+            "draft",
+            "published",
+            "archived"
+          ],
+          "type": "string"
+        },
+        "applicationId": {
+          "description": "Prefixed identifier with 'application' prefix",
+          "example": "application_01933b5a000070008000000000000001",
+          "pattern": "^application_[0-9a-f]{32}$",
+          "type": "string"
+        }
+      },
+      "properties": {
+        "application_id": {
+          "$ref": "#/$defs/applicationId",
+          "description": "Public ID of the Application whose publication state should change."
+        },
+        "status": {
+          "$ref": "#/$defs/ApplicationStatus",
+          "description": "Publish, unpublish as a draft, or archive while retaining the stable name."
+        },
+        "version": {
+          "description": "Current version from the latest read.",
+          "format": "int64",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "application_id",
+        "version",
+        "status"
+      ],
+      "type": "object"
+    },
+    "method": "POST",
+    "name": "set_application_status",
+    "output_shape": "unknown",
+    "path": "/v1/platform/applications/{application_id}/status",
+    "positional_arg": null,
     "read_only": false
   },
   {
@@ -25831,6 +26055,161 @@
     "read_only": false
   },
   {
+    "category": "applications",
+    "cli": "applications update",
+    "description": "Update an Application and its resource bindings, checking its version.",
+    "input_schema": {
+      "$defs": {
+        "ApplicationConfig": {
+          "additionalProperties": false,
+          "description": "Audience admission and optional workspace features.",
+          "properties": {
+            "automations": {
+              "description": "Reserved until the automation runtime is available. Enabling is rejected.",
+              "type": "boolean"
+            },
+            "invites": {
+              "description": "Verified email addresses admitted when membership is invites.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "membership": {
+              "$ref": "#/$defs/WorkChatMembership",
+              "description": "Who may sign in: organization members by default, invited people, or anyone."
+            },
+            "show_in_sidebar": {
+              "description": "Show a launcher for published Applications in the organization sidebar.",
+              "type": "boolean"
+            }
+          },
+          "type": "object"
+        },
+        "ApplicationInput": {
+          "additionalProperties": false,
+          "description": "Author-editable Application presentation, audience and resource bindings.",
+          "properties": {
+            "config": {
+              "$ref": "#/$defs/ApplicationConfig",
+              "description": "Audience and optional sidebar configuration."
+            },
+            "description": {
+              "description": "Overview text for participants, up to 2000 characters.",
+              "type": "string"
+            },
+            "name": {
+              "description": "Display name, between 1 and 120 characters after trimming.",
+              "type": "string"
+            },
+            "resources": {
+              "description": "Ordered resource bindings; at most 50, with unique paths and IDs.",
+              "items": {
+                "$ref": "#/$defs/ApplicationResource"
+              },
+              "type": "array"
+            },
+            "slug": {
+              "description": "Permanent hostname label, globally unique and reserved after archival.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "slug"
+          ],
+          "type": "object"
+        },
+        "ApplicationResource": {
+          "additionalProperties": false,
+          "description": "One named navigation entry and its explicitly shared resource.",
+          "properties": {
+            "kind": {
+              "$ref": "#/$defs/ApplicationResourceKind",
+              "description": "The existing resource type exposed by this navigation entry."
+            },
+            "name": {
+              "description": "Display label shown to participants.",
+              "type": "string"
+            },
+            "resource_id": {
+              "description": "Public ID of a Chat channel, Room, or organization Memory.",
+              "type": "string"
+            },
+            "slug": {
+              "description": "Unique navigation path within the Application.",
+              "type": "string"
+            },
+            "writable": {
+              "description": "Allow Memory writes; false for read-only Memory and all other resource kinds.",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "slug",
+            "name",
+            "kind",
+            "resource_id"
+          ],
+          "type": "object"
+        },
+        "ApplicationResourceKind": {
+          "description": "Existing runtime resource exposed through the Application.",
+          "enum": [
+            "chat",
+            "room",
+            "memory"
+          ],
+          "type": "string"
+        },
+        "WorkChatMembership": {
+          "description": "Who may sign in. Further modes, such as a publisher-chosen identity\nprovider, are additional variants.",
+          "enum": [
+            "open",
+            "invites",
+            "org_users"
+          ],
+          "type": "string"
+        },
+        "applicationId": {
+          "description": "Prefixed identifier with 'application' prefix",
+          "example": "application_01933b5a000070008000000000000001",
+          "pattern": "^application_[0-9a-f]{32}$",
+          "type": "string"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/ApplicationInput"
+        },
+        {
+          "properties": {
+            "application_id": {
+              "$ref": "#/$defs/applicationId",
+              "description": "Public ID of the Application to update."
+            },
+            "version": {
+              "description": "Current version from the latest read; stale edits are rejected.",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "application_id",
+            "version"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "method": "PATCH",
+    "name": "update_application",
+    "output_shape": "unknown",
+    "path": "/v1/platform/applications/{application_id}",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
     "category": "budgets",
     "cli": "budgets update",
     "description": "Update a budget limit, status, or metadata.",
@@ -26033,7 +26412,7 @@
     "input_schema": {
       "$defs": {
         "EvalTarget": {
-          "description": "Defines how to instantiate a session for an eval case.\n\nTwo modes:\n- `Session`: mirrors `CreateSessionRequest` — full control over session creation parameters.\n- `App`: references a deployed app by ID.\n\nResolution order: EvalRun.target → EvalCase.target → Eval.target → org default harness.",
+          "description": "Defines how to instantiate a session for an eval case.\n\nTwo modes:\n- `Session`: mirrors `CreateSessionRequest` — full control over session creation parameters.\n- `External`: labels imported results.\n\nResolution order: EvalRun.target → EvalCase.target → Eval.target → org default harness.",
           "oneOf": [
             {
               "description": "Session creation parameters (mirrors CreateSessionRequest).",
@@ -26089,25 +26468,6 @@
                 }
               },
               "required": [
-                "type"
-              ],
-              "type": "object"
-            },
-            {
-              "description": "Reference to a deployed app.",
-              "properties": {
-                "app_id": {
-                  "type": "string"
-                },
-                "type": {
-                  "enum": [
-                    "app"
-                  ],
-                  "type": "string"
-                }
-              },
-              "required": [
-                "app_id",
                 "type"
               ],
               "type": "object"
@@ -26260,7 +26620,7 @@
           "type": "object"
         },
         "EvalTarget": {
-          "description": "Defines how to instantiate a session for an eval case.\n\nTwo modes:\n- `Session`: mirrors `CreateSessionRequest` — full control over session creation parameters.\n- `App`: references a deployed app by ID.\n\nResolution order: EvalRun.target → EvalCase.target → Eval.target → org default harness.",
+          "description": "Defines how to instantiate a session for an eval case.\n\nTwo modes:\n- `Session`: mirrors `CreateSessionRequest` — full control over session creation parameters.\n- `External`: labels imported results.\n\nResolution order: EvalRun.target → EvalCase.target → Eval.target → org default harness.",
           "oneOf": [
             {
               "description": "Session creation parameters (mirrors CreateSessionRequest).",
@@ -26316,25 +26676,6 @@
                 }
               },
               "required": [
-                "type"
-              ],
-              "type": "object"
-            },
-            {
-              "description": "Reference to a deployed app.",
-              "properties": {
-                "app_id": {
-                  "type": "string"
-                },
-                "type": {
-                  "enum": [
-                    "app"
-                  ],
-                  "type": "string"
-                }
-              },
-              "required": [
-                "app_id",
                 "type"
               ],
               "type": "object"

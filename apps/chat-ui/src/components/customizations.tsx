@@ -1,4 +1,6 @@
 "use client";
+
+import { apiPath } from "./api-path";
 // Customizations: the plugins in this person's conversations with the agent.
 // A plugin is one row; its skills and MCP servers are never listed on their
 // own. Choices apply to new conversations. The channel decides whether people
@@ -28,7 +30,7 @@ const ENVIRONMENT: Record<string, string> = {
 };
 
 async function request(path: string, init?: RequestInit): Promise<PluginList> {
-  const response = await fetch(`/api/chat/plugins${path}`, { cache: "no-store", ...init });
+  const response = await fetch(apiPath(`chat/plugins${path}`), { cache: "no-store", ...init });
   if (response.status === 401) throw new Error("Sign in to continue");
   if (!response.ok) {
     const data = await response.json().catch(() => null);

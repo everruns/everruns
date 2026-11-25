@@ -21,62 +21,6 @@ fn contains_key(value: &Value, needle: &str) -> bool {
 fn retired_cost_tier_extension_is_not_emitted() {
     assert!(!contains_key(&spec_value(), "x-cost-tier"));
 }
-#[test]
-fn app_openapi_surface_is_read_only_and_deprecated() {
-    let spec = spec_value();
-    let paths = spec
-        .pointer("/paths")
-        .and_then(Value::as_object)
-        .expect("OpenAPI paths exist");
-
-    assert_eq!(
-        paths
-            .get("/v1/platform/apps")
-            .and_then(|item| item.pointer("/get/deprecated"))
-            .and_then(Value::as_bool),
-        Some(true)
-    );
-    assert_eq!(
-        paths
-            .get("/v1/platform/apps/{app_id}")
-            .and_then(|item| item.pointer("/get/deprecated"))
-            .and_then(Value::as_bool),
-        Some(true)
-    );
-
-    for path in ["/v1/platform/apps", "/v1/platform/apps/{app_id}"] {
-        let operations = paths[path].as_object().expect("path item is an object");
-        assert_eq!(operations.len(), 1, "{path} has only one operation");
-        assert!(operations.contains_key("get"), "{path} is read-only");
-    }
-    for retired in [
-        "/v1/platform/apps/{app_id}/publish",
-        "/v1/platform/apps/{app_id}/unpublish",
-        "/v1/platform/apps/{app_id}/run",
-        "/v1/platform/apps/{app_id}/runs",
-        "/v1/platform/apps/{app_id}/channels",
-        "/v1/platform/apps/{app_id}/channels/{channel_id}",
-    ] {
-        assert!(
-            !paths.contains_key(retired),
-            "stale management path {retired}"
-        );
-    }
-
-    let schemas = spec
-        .pointer("/components/schemas")
-        .and_then(Value::as_object)
-        .expect("OpenAPI schemas exist");
-    for retired in [
-        "CreateAppRequest",
-        "UpdateAppRequest",
-        "AddChannelRequest",
-        "UpdateChannelRequest",
-        "RunAppRequest",
-    ] {
-        assert!(!schemas.contains_key(retired), "stale schema {retired}");
-    }
-}
 
 #[test]
 fn scoped_mcp_schema_uses_public_wire_names() {
@@ -224,9 +168,7 @@ fn channels_keep_deprecated_route_and_schema_aliases() {
         }
     }
     for (canonical, legacy) in [
-        ("AgentChannel", "AppChannel"),
         ("ChannelStatus", "EndpointStatus"),
-        ("ChannelAuthConfig", "AppEndpointAuthConfig"),
         ("CreateAgentChannelRequest", "CreateAgentEndpointRequest"),
     ] {
         let schemas = &spec["components"]["schemas"];
@@ -244,5 +186,19 @@ fn channel_auth_example_survives_server_record_move() {
         "requirements": {"audiences": ["everruns-api"], "scopes": ["app:invoke"]}
     });
     assert_eq!(schemas["ChannelAuthConfig"]["example"], expected);
-    assert_eq!(schemas["AppEndpointAuthConfig"]["example"], expected);
+}
+
+#[test]
+fn retired_apps_are_absent_from_openapi() {
+    let spec = spec_value();
+    for path in spec["paths"].as_object().unwrap().keys() {
+        assert!(
+            !path.starts_with("/v1/apps") && !path.starts_with("/v1/platform/apps"),
+            "{path}"
+        );
+    }
+    let schemas = spec["components"]["schemas"].as_object().unwrap();
+    for name in ["App", "AppStatus", "AppChannel", "AppEndpointAuthConfig"] {
+        assert!(!schemas.contains_key(name), "{name}");
+    }
 }

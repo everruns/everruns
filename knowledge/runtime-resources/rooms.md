@@ -54,6 +54,10 @@ Settled with the owner, 2026-11-02 to 2026-11-10:
    [Explicit Communication](../integrations/explicit-communication.md) decision 1
    (the agent owns the mode): in a room, every completed message being posted
    would wake the other agents, so a room cannot work in `direct` mode.
+   Data plane v2 carries this setting into the session declaration and forwards
+   explicit conversation messages to the same Room posting listener. Its Room
+   file route is installed before the wake binds the session, with access checked
+   against that binding on every call.
 3. **Native rooms in Everruns; Styk stays separate**, with a guide for running
    Everruns agents on a Styk channel through MCP and an MCP-event trigger.
 4. **Agent teams:** a run's team conversation becomes a private room for that
@@ -220,6 +224,10 @@ acts.
   member, in the thread of the message that woke it, one hop further. The
   session message id is the post's `source_ref`, so a redelivered event posts
   once. The post then wakes whoever it addresses, by the same rules.
+  On data plane v2, explicit conversation messages always enter the control-plane
+  feed, including before the first tenant-policy poll. The REST/data-plane context
+  shares the server's registered event service, so the Room posting listener runs
+  on these events too.
 
 ### Relevance checks
 
@@ -339,3 +347,7 @@ chain, the facilitator, and cost per room (usage does not carry a room id).
   comes with step 5.
 - A per-room spend cap and `room_id` on usage records come with step 5.
 - Content parts other than text, and file attachments.
+
+## Application publication
+
+[Applications](../integrations/applications.md) can publish a Room to an external audience. The consumer adapter assigns guest members server-side, retains ordinary Room message/reply and agent-mention behavior, and strips management-only session links and member instructions.

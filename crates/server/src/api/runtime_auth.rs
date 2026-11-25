@@ -39,6 +39,15 @@ async fn exchange(
     if super::channel_ingress::channel_liveness(&context, &channel).is_err() {
         return Err(StatusCode::NOT_FOUND);
     }
+    if state
+        .db
+        .application_for_channel(channel.internal_id)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .is_some()
+    {
+        return Err(StatusCode::FORBIDDEN);
+    }
     let principal = if matches!(
         channel.channel_type,
         ChannelType::Api | ChannelType::WorkChat

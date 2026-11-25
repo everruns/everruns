@@ -28,6 +28,11 @@ pub struct Answers {
     pub database: Option<Database>,
     pub public_url: Option<String>,
     pub ingress_class: Option<String>,
+    pub applications_domain: Option<String>,
+    pub applications_oidc_issuer: Option<String>,
+    pub applications_oidc_client_id: Option<String>,
+    pub applications_secret: Option<String>,
+    pub applications_tls_secret: Option<String>,
     /// Chart key under `providerKeys` (openai, anthropic, gemini, openrouter) and the key.
     pub provider_key: Option<(&'static str, String)>,
     pub image_tag: Option<String>,
@@ -134,6 +139,26 @@ pub fn build(current: &Value, answers: &Answers) -> Value {
     if let Some(class) = &answers.ingress_class {
         set(&mut v, &["ingress", "className"], json!(class));
     }
+    if let Some(domain) = &answers.applications_domain {
+        set(&mut v, &["applications", "enabled"], json!(true));
+        set(&mut v, &["applications", "domain"], json!(domain));
+    }
+    for (key, value) in [
+        ("oidcIssuer", &answers.applications_oidc_issuer),
+        ("oidcClientId", &answers.applications_oidc_client_id),
+        ("existingSecret", &answers.applications_secret),
+    ] {
+        if let Some(value) = value {
+            set(&mut v, &["applications", key], json!(value));
+        }
+    }
+    if let Some(secret) = &answers.applications_tls_secret {
+        set(
+            &mut v,
+            &["applications", "ingress", "tlsSecret"],
+            json!(secret),
+        );
+    }
     if let Some((provider, key)) = &answers.provider_key {
         set(&mut v, &["providerKeys", provider], json!(key));
     }
@@ -238,6 +263,7 @@ mod tests {
             provider_key: Some(("openai", "sk-test".into())),
             image_tag: None,
             data_plane: None,
+            ..Default::default()
         };
         let v = build(&Value::Null, &answers);
         assert_eq!(v["auth"]["mode"], "admin");
@@ -323,5 +349,36 @@ mod tests {
         assert_eq!(host_of("https://a.example.com:8443/x"), "a.example.com");
         assert_eq!(host_of("http://localhost:9300"), "localhost");
         assert_eq!(host_of("a.example.com"), "a.example.com");
+    }
+}
+
+#[cfg(test)]
+mod application_tests {
+    use super::*;
+    #[test]
+    fn applications_enablement_and_credentials_survive_later_up() {
+        let answers = Answers {
+            applications_domain: Some("work.example.com".into()),
+            applications_oidc_issuer: Some("https://id.example.com".into()),
+            applications_oidc_client_id: Some("work".into()),
+            applications_secret: Some("identity-secret".into()),
+            applications_tls_secret: Some("wildcard-tls".into()),
+            ..Default::default()
+        };
+        let values = build(&Value::Null, &answers);
+        assert_eq!(
+            values["applications"],
+            json!({"enabled":true,"domain":"work.example.com","oidcIssuer":"https://id.example.com","oidcClientId":"work","existingSecret":"identity-secret","ingress":{"tlsSecret":"wildcard-tls"}})
+        );
+        assert_eq!(build(&values, &Answers::default()), values);
+        let changed = build(
+            &values,
+            &Answers {
+                applications_oidc_client_id: Some("new-client".into()),
+                ..Default::default()
+            },
+        );
+        assert_eq!(changed["applications"]["existingSecret"], "identity-secret");
+        assert_eq!(changed["applications"]["oidcClientId"], "new-client");
     }
 }

@@ -23,13 +23,12 @@ pub const VIRTUAL_USER_MANAGE: Policy = Policy {
     rules: &[Rule::UserHasPermission(Permission::OrgVirtualUsersManage)],
 };
 
-// Dangerous virtual-user ops reuse OrgAppsDangerous (Owner-only) as the danger
-// tier — a pre-existing choice kept here to preserve the Owner-only gate.
+// Destructive virtual-user operations retain their explicit Owner-only gate.
 pub const VIRTUAL_USER_DANGEROUS: Policy = Policy {
     id: "virtual_user.dangerous",
     rules: &[
         Rule::UserHasPermission(Permission::OrgVirtualUsersManage),
-        Rule::UserHasPermission(Permission::OrgAppsDangerous),
+        Rule::UserHasPermission(Permission::OrgVirtualUsersDangerous),
     ],
 };
 

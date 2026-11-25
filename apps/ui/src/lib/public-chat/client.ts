@@ -7,7 +7,7 @@
 // and parses the SSE stream into simple message callbacks.
 
 export interface PublicChatBootstrap {
-  app_id: string;
+  channel_id: string;
   name: string;
   logo_url?: string;
   primary_color?: string;
@@ -23,14 +23,13 @@ export interface ChatMessage {
   content: string;
 }
 
-function endpointBase(appId: string): string {
-  const resource = appId.startsWith("appchan_") ? "channels" : "apps";
-  return `/api/v1/${resource}/${encodeURIComponent(appId)}/public-chat`;
+function endpointBase(channelId: string): string {
+  return `/api/v1/channels/${encodeURIComponent(channelId)}/public-chat`;
 }
 
 /** Fetch the non-secret bootstrap config (branding, sign-in, captcha). */
-export async function fetchBootstrap(appId: string): Promise<PublicChatBootstrap> {
-  const res = await fetch(`${endpointBase(appId)}/config`, {
+export async function fetchBootstrap(channelId: string): Promise<PublicChatBootstrap> {
+  const res = await fetch(`${endpointBase(channelId)}/config`, {
     headers: { Accept: "application/json" },
   });
   if (!res.ok) {
@@ -51,7 +50,7 @@ export interface RunCallbacks {
 }
 
 export interface RunOptions {
-  appId: string;
+  channelId: string;
   threadId: string;
   /** Full conversation; the last entry must be the new user message. */
   messages: ChatMessage[];
@@ -76,7 +75,7 @@ function statusMessage(status: number): string {
  * can keep the conversation usable.
  */
 export async function runPublicChat(options: RunOptions): Promise<void> {
-  const { appId, threadId, messages, turnstileToken, bearerToken, signal, callbacks } = options;
+  const { channelId, threadId, messages, turnstileToken, bearerToken, signal, callbacks } = options;
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -97,7 +96,7 @@ export async function runPublicChat(options: RunOptions): Promise<void> {
 
   let res: Response;
   try {
-    res = await fetch(endpointBase(appId), {
+    res = await fetch(endpointBase(channelId), {
       method: "POST",
       headers,
       body: JSON.stringify(body),

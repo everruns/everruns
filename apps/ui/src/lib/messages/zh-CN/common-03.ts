@@ -270,8 +270,7 @@ export const messages: Readonly<Record<string, string>> = {
   "Execution pressure": "执行压力",
   Executions: "处决",
   Exhausted: "筋疲力尽",
-  "Existing App channels keep working. New external integrations will use agent-owned endpoints as they become available.":
-    "现有的应用程序渠道继续工作。新的外部集成将在可用时使用智能体拥有的端点。",
+  "Publish agent channels to connect external integrations.": "发布智能体通道以连接外部集成。",
   "Expanded Thinking": "拓展思维",
   Experimental: "实验性",
   Expired: "已过期",

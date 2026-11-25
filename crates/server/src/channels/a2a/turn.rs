@@ -39,7 +39,6 @@ const SHARED_CONVERSATION: &str = "a2a:shared";
 /// A message for an A2A channel.
 #[derive(Debug, Clone)]
 pub(super) struct A2aTurnRequest {
-    pub legacy_app_id: String,
     pub channel_id: String,
     /// Verbatim A2A `params` object from the JSON-RPC envelope.
     pub params: Value,
@@ -88,18 +87,15 @@ where
     )
     .await?
     .ok_or_else(|| CommandError::not_found("Channel"))?;
-    if !ingress.matches_legacy_app_id(&req.legacy_app_id) {
-        return Err(CommandError::not_found("Channel"));
-    }
     if !channel.status.is_live() {
-        return Err(CommandError::forbidden("App is not published".to_string()));
+        return Err(CommandError::forbidden("Channel is not live".to_string()));
     }
     let config = channel
         .a2a_config()
         .ok_or_else(|| CommandError::bad_request("Invalid A2A channel configuration"))?;
     let template_context = json!({
-        "app": {
-            "id": ingress.public_id.to_string(),
+        "agent": {
+            "id": ingress.agent_id,
             "name": ingress.name.clone(),
         },
         "channel": {

@@ -495,6 +495,12 @@ mod reference_pages {
     use super::*;
     use clap::CommandFactory;
 
+    #[test]
+    fn application_reference_lists_the_required_resource_version() {
+        let pages = reference::pages(&contract::augment(Cli::command()));
+        assert!(pages["applications.md"].contains("| `--version <VERSION>` | Required."));
+    }
+
     /// The generated CLI reference in `docs/reference/cli/` matches this binary.
     ///
     /// The pages are what a web search for an `everruns` command lands on, so

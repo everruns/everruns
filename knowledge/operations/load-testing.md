@@ -35,7 +35,7 @@ All benchmark runs must report turn latency. It is the primary indicator of user
 
 ### AG-UI Ingress Latency (sub-metric)
 
-For the public AG-UI ingress path (`POST /v1/apps/{app_id}/ag-ui`), the
+For the public AG-UI ingress path (`POST /v1/channels/{channel_id}/ag-ui`), the
 handler emits a structured log event `phase = "ag_ui.ingress_complete"` after
 finishing its synchronous work (validation, app/channel resolution, session
 resolution, history seed, event subscription, and the synchronous part of

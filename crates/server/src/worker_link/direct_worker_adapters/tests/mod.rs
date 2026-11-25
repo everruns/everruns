@@ -244,7 +244,7 @@ async fn scoped_mcp_lookup_uses_current_agent_config_in_direct_and_grpc_paths() 
             source: crate::domains::sessions::record::SessionSource::Api,
             workspace_id: None,
             org_id,
-            app_id: None,
+
             channel_id: None,
             harness_id: Some(harness_id),
             agent_id: Some(agent_id),
@@ -428,7 +428,7 @@ async fn seed_platform_session(
             source: crate::domains::sessions::record::SessionSource::Api,
             workspace_id: None,
             org_id,
-            app_id: None,
+
             channel_id: None,
             harness_id: Some(harness_id),
             agent_id: None,
@@ -1317,7 +1317,7 @@ async fn get_session_carries_org_public_id() {
             source: crate::domains::sessions::record::SessionSource::Api,
             workspace_id: None,
             org_id: everruns_core::DEFAULT_ORG_ID,
-            app_id: None,
+
             channel_id: None,
             agent_id: Some(AgentId::from_uuid(agent_id)),
             agent_revision: None,

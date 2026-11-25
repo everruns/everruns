@@ -1,3 +1,4 @@
+import { apiPath } from "./api-path";
 /**
  * Emoji reactions in Work Chat (knowledge/execution/message-reactions.md).
  *
@@ -44,12 +45,16 @@ export function applyReaction(
   const next = add
     ? existing
       ? current.map((reaction) =>
-          reaction.emoji === emoji ? { ...reaction, me: true, count: reaction.count + 1 } : reaction,
+          reaction.emoji === emoji
+            ? { ...reaction, me: true, count: reaction.count + 1 }
+            : reaction,
         )
       : [...current, { emoji, count: 1, me: true, agent: false }]
     : current
         .map((reaction) =>
-          reaction.emoji === emoji ? { ...reaction, me: false, count: reaction.count - 1 } : reaction,
+          reaction.emoji === emoji
+            ? { ...reaction, me: false, count: reaction.count - 1 }
+            : reaction,
         )
         .filter((reaction) => reaction.count > 0);
   const out = new Map(map);
@@ -59,7 +64,7 @@ export function applyReaction(
 }
 
 export async function loadReactions(sessionId: string): Promise<ReactionsByMessage> {
-  const response = await fetch(`/api/sessions/${sessionId}/reactions`, { cache: "no-store" });
+  const response = await fetch(apiPath(`sessions/${sessionId}/reactions`), { cache: "no-store" });
   if (!response.ok) throw new Error("Reactions could not be loaded");
   return reactionsByMessage((await response.json()) as MessageReactionsRow[]);
 }
@@ -71,7 +76,7 @@ export async function saveReaction(
   add: boolean,
 ): Promise<void> {
   const response = await fetch(
-    `/api/sessions/${sessionId}/messages/${messageId}/reactions/${encodeURIComponent(emoji)}`,
+    apiPath(`sessions/${sessionId}/messages/${messageId}/reactions/${encodeURIComponent(emoji)}`),
     { method: add ? "PUT" : "DELETE", cache: "no-store" },
   );
   if (!response.ok) throw new Error("The reaction could not be saved");

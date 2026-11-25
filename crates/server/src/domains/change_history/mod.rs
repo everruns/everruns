@@ -16,6 +16,8 @@
 #[cfg(test)]
 mod account_tests;
 #[cfg(test)]
+mod application_tests;
+#[cfg(test)]
 mod command_tests;
 pub mod commands;
 pub mod context;

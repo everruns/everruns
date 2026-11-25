@@ -216,7 +216,6 @@ export interface Harness {
   /** Number of sessions using this harness. Present on list/detail API responses. */
   session_count?: number;
   /** Number of non-deleted apps using this harness. Present on list/detail API responses. */
-  app_count?: number;
 }
 
 export interface CreateHarnessRequest {
@@ -291,8 +290,7 @@ export interface PreviewHarnessRequest {
   capabilities?: AgentCapabilityConfig[];
 }
 
-// From legacy app-types.ts; retained as UI compatibility over generated OpenAPI schemas.
-export type AppStatus = "draft" | "published" | "archived" | "deleted";
+// Channel UI aliases over generated OpenAPI schemas.
 
 import type { ChannelType } from "./schema-types";
 import type { VoiceChannelConfig } from "./channel-types";
@@ -554,35 +552,13 @@ export interface AgentChannel {
     | Record<string, unknown>;
   enabled: boolean;
   /**
-   * Per-endpoint lifecycle (EVE-1007), authoritative for ingress; `enabled` is
-   * retained for the App API's existing shape. Typed from the generated schema
-   * so the two cannot drift.
+   * Channel lifecycle, authoritative for ingress. Typed from the generated schema.
    */
   status?: ChannelStatus;
   next_run_at?: string | null;
   last_invoked_at?: string | null;
   created_at: string;
   updated_at: string;
-}
-
-export interface App {
-  id: string;
-  name: string;
-  description: string | null;
-  harness_id: string;
-  agent_id: string | null;
-  virtual_user_id?: string | null;
-  owner_principal_id: string;
-  resolved_owner_user_id?: string | null;
-  owner?: PrincipalSummary | null;
-  effective_owner?: PrincipalSummary | null;
-  channels: AgentChannel[];
-  status: AppStatus;
-  published_at: string | null;
-  created_at: string;
-  updated_at: string;
-  archived_at: string | null;
-  deleted_at: string | null;
 }
 
 // From legacy auth-types.ts: auth, user, and org types kept as UI compatibility over OpenAPI.
@@ -1459,10 +1435,6 @@ export type EvalTarget =
       model_id?: string;
       system_prompt?: string;
       max_iterations?: number;
-    }
-  | {
-      type: "app";
-      app_id: string;
     }
   | {
       // Label-only target for externally-executed (imported) runs.

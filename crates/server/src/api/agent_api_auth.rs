@@ -79,6 +79,24 @@ pub(crate) async fn resolve_caller(
     let Some(bearer) = extract_bearer(headers) else {
         return Ok(Err(ApiAuthError::Unauthorized));
     };
+    if checks
+        .db
+        .application_for_channel(channel.internal_id)
+        .await?
+        .is_some()
+    {
+        // No agent key, PAT, standalone channel token or raw OIDC token may
+        // bypass the owning Application's audience and publication checks.
+        if headers.contains_key(END_USER_HEADER) {
+            return Ok(Err(ApiAuthError::Forbidden));
+        }
+        return Ok(
+            match runtime_token_user(checks, context, channel, bearer).await? {
+                Some(user) => Ok(ApiCaller::end_user(None, user, config)),
+                None => Err(ApiAuthError::Unauthorized),
+            },
+        );
+    }
     if bearer.starts_with(PAT_PREFIX) {
         if headers.contains_key(END_USER_HEADER) {
             return Ok(Err(ApiAuthError::Forbidden));
@@ -242,9 +260,19 @@ async fn runtime_token_user(
     let Ok(account) = crate::auth::runtime::RuntimeAccount::from_token(auth, token).await else {
         return Ok(None);
     };
-    if account.org_id != context.org_id
-        || account.channel_id.as_deref() != Some(&channel.public_id.to_string())
-    {
+    if account.org_id != context.org_id {
+        return Ok(None);
+    }
+    if let Some(application) = account.application_id {
+        if !checks
+            .db
+            .application_for_channel(channel.internal_id)
+            .await?
+            .is_some_and(|row| row.id == application.uuid() && row.org_id == account.org_id)
+        {
+            return Ok(None);
+        }
+    } else if account.channel_id.as_deref() != Some(&channel.public_id.to_string()) {
         return Ok(None);
     }
     runtime_user(checks.db, account.org_id, account.id).await

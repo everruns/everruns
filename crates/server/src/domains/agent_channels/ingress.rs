@@ -7,7 +7,7 @@ use crate::domains::agent_channels::record::{
 };
 use crate::domains::agent_channels::record::{ScheduleChannelConfig, WebhookChannelConfig};
 use crate::records::AgentChannelId;
-use everruns_contracts::typed_id::{AgentId, AppId, HarnessId, PrincipalId, VirtualUserId};
+use everruns_contracts::typed_id::{AgentId, HarnessId, PrincipalId, VirtualUserId};
 use uuid::Uuid;
 
 use crate::storage::{EncryptionService, IngressChannelRow, StorageBackend};
@@ -20,10 +20,8 @@ impl IngressContext {
 
 #[derive(Debug, Clone)]
 pub struct IngressContext {
-    pub public_id: AppId,
+    pub public_id: AgentChannelId,
     pub internal_id: Uuid,
-    pub historical_app_id: Option<Uuid>,
-    legacy_alias_id: Option<String>,
     pub org_id: i64,
     pub name: String,
     pub description: Option<String>,
@@ -37,34 +35,12 @@ pub struct IngressContext {
     exposures_suspended: bool,
 }
 
-impl IngressContext {
-    /// The id [`Self::matches_legacy_app_id`] accepts for this context.
-    pub fn legacy_app_id(&self) -> String {
-        self.legacy_alias_id
-            .clone()
-            .unwrap_or_else(|| self.public_id.to_string())
-    }
-
-    pub fn matches_legacy_app_id(&self, legacy_app_id: &str) -> bool {
-        match self.legacy_alias_id.as_deref() {
-            Some(legacy) => legacy == legacy_app_id,
-            // A channel created through `/v1/platform/agents/{id}/channels` never had
-            // an App. Its canonical `/v1/channels/{channel_id}` routes pass the
-            // synthetic `public_id` derived from the channel, which must match
-            // or every such channel answers 404.
-            None => self.public_id.to_string() == legacy_app_id,
-        }
-    }
-}
-
 #[cfg(test)]
 impl IngressContext {
     pub(crate) fn for_test(name: &str, description: Option<&str>) -> Self {
         Self {
-            public_id: AppId::from_seed(1),
+            public_id: AgentChannelId::from_seed(1),
             internal_id: Uuid::nil(),
-            historical_app_id: Some(Uuid::nil()),
-            legacy_alias_id: Some(AppId::from_seed(1).to_string()),
             org_id: 1,
             name: name.to_string(),
             description: description.map(str::to_string),
@@ -160,25 +136,6 @@ pub async fn resolve_channel(
         .transpose()
 }
 
-pub async fn resolve_legacy_channel(
-    db: &StorageBackend,
-    encryption: Option<&Arc<EncryptionService>>,
-    legacy_app_id: &str,
-    channel_type: ChannelType,
-) -> anyhow::Result<LegacyChannelMatch> {
-    let rows = db
-        .list_ingress_channels_by_legacy_alias(legacy_app_id, &channel_type.to_string())
-        .await?;
-    let mut channels = rows.into_iter().map(|row| row_to_ingress(encryption, row));
-    let Some(channel) = channels.next() else {
-        return Ok(LegacyChannelMatch::NotFound);
-    };
-    if channels.next().is_some() {
-        return Ok(LegacyChannelMatch::Ambiguous);
-    }
-    Ok(LegacyChannelMatch::One(Box::new(channel?)))
-}
-
 pub(crate) fn row_to_ingress(
     encryption: Option<&Arc<EncryptionService>>,
     row: IngressChannelRow,
@@ -206,16 +163,9 @@ pub(crate) fn row_to_ingress(
     } else {
         legacy_auth.map(channel_auth_fail_closed)
     };
-    let app_public_id = row
-        .legacy_alias_id
-        .as_deref()
-        .and_then(|value| value.parse().ok())
-        .unwrap_or_else(|| AppId::from_uuid(row.channel_id));
     let context = IngressContext {
-        public_id: app_public_id,
-        internal_id: row.legacy_app_id.unwrap_or(row.channel_id),
-        historical_app_id: row.legacy_app_id,
-        legacy_alias_id: row.legacy_alias_id,
+        public_id: channel_public_id,
+        internal_id: row.channel_id,
         org_id: row.org_id,
         name: row.agent_name,
         description: row.agent_description,
@@ -300,10 +250,4 @@ pub fn channel_liveness(context: &IngressContext, channel: &IngressChannel) -> R
         return Err(NotLive::ExposuresSuspended);
     }
     Ok(())
-}
-
-pub enum LegacyChannelMatch {
-    NotFound,
-    One(Box<(IngressContext, IngressChannel)>),
-    Ambiguous,
 }

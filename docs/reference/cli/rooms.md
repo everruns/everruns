@@ -388,6 +388,7 @@ everruns rooms files read [OPTIONS] --path <path> [ROOM_ID]
 |---|---|
 | `--room-id <ROOM_ID>` |  |
 | `--path <PATH>` | Required. The file, such as `/plans/launch.md`. |
+| `--version <VERSION>` | An earlier version to read; the current one when absent. |
 
 Example:
 
@@ -409,6 +410,7 @@ everruns rooms files restore [OPTIONS] --path <path> --room-id <room_id> --versi
 | `--as-member <AS_MEMBER>` | Restore as this member (org admins). |
 | `--path <PATH>` | Required. The file, as it is now or was when deleted. |
 | `--room-id <ROOM_ID>` | Required. |
+| `--version <VERSION>` | Required. The version to bring back. |
 
 Example:
 

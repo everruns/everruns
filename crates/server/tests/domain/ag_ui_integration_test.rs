@@ -1,7 +1,7 @@
-//! AG-UI app channel integration tests.
+//! AG-UI channel channel integration tests.
 //!
 //! These tests cover AG-UI endpoints at the route boundary:
-//! - published app gating
+//! - published channel gating
 //! - request validation for the AG-UI contract
 
 use crate::test_harness;
@@ -10,7 +10,7 @@ use axum::http::{Method, StatusCode};
 use serde_json::{Value, json};
 use test_harness::TestServer;
 
-use everruns_server::domains::apps::record::App;
+use crate::test_harness::ChannelBundle;
 use everruns_server::storage::EncryptionService;
 
 fn unique_id(prefix: &str) -> String {
@@ -24,88 +24,6 @@ fn unique_id(prefix: &str) -> String {
     format!("{prefix}_{now}_{seq}")
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_ag_ui_channel_routes_distinguish_channels_and_legacy_alias_rejects_ambiguity() {
-    let server = TestServer::in_memory().await;
-    let agent_id = create_llmsim_agent(&server).await;
-    let app: App = serde_json::from_value(
-        server
-            .seed_app_channel(
-                &unique_id("Multi AG-UI App"),
-                &agent_id,
-                "ag_ui",
-                json!({
-                    "anonymous": true,
-                    "token": "first-channel-token"
-                }),
-            )
-            .await,
-    )
-    .expect("fixture App");
-    let first_channel_id = app.channels[0].public_id.to_string();
-    let second_channel = server
-        .seed_channel_for_app(
-            &app.public_id.to_string(),
-            "ag_ui",
-            json!({
-                "anonymous": true,
-                "token": "second-channel-token"
-            }),
-        )
-        .await;
-    let second_channel_id = second_channel["id"].as_str().unwrap();
-    server
-        .set_app_channels_live(&app.public_id.to_string(), true)
-        .await;
-
-    let payload = json!({
-        "threadId": raw_uuid(),
-        "runId": raw_uuid(),
-        "state": {},
-        "messages": [],
-        "tools": [],
-        "context": [],
-        "forwardedProps": {}
-    });
-
-    send_ag_ui_run_to_path(
-        &server,
-        &format!("/v1/channels/{first_channel_id}/ag-ui"),
-        &payload,
-        vec![("authorization", "Bearer first-channel-token")],
-    )
-    .await
-    .assert_status(StatusCode::BAD_REQUEST);
-    send_ag_ui_run_to_path(
-        &server,
-        &format!("/v1/channels/{first_channel_id}/ag-ui"),
-        &payload,
-        vec![("authorization", "Bearer second-channel-token")],
-    )
-    .await
-    .assert_status(StatusCode::UNAUTHORIZED);
-    send_ag_ui_run_to_path(
-        &server,
-        &format!("/v1/channels/{second_channel_id}/ag-ui"),
-        &payload,
-        vec![("authorization", "Bearer second-channel-token")],
-    )
-    .await
-    .assert_status(StatusCode::BAD_REQUEST);
-    let legacy = send_ag_ui_run_to_path(
-        &server,
-        &format!("/v1/apps/{}/ag-ui", app.public_id),
-        &payload,
-        vec![("authorization", "Bearer first-channel-token")],
-    )
-    .await
-    .assert_status(StatusCode::CONFLICT);
-    assert_eq!(
-        legacy.json::<Value>()["detail"],
-        "Multiple enabled AG-UI channels; use an endpoint-scoped /v1/channels/{channel_id}/ag-ui URL"
-    );
-}
-
 /// Seed a live AG-UI endpoint whose inline `auth.mode` is `anonymous`.
 async fn seed_inline_anonymous_ag_ui_channel(
     server: &TestServer,
@@ -113,9 +31,9 @@ async fn seed_inline_anonymous_ag_ui_channel(
 ) -> String {
     let agent_id = create_llmsim_agent(server).await;
     channel_config["auth"] = json!({ "mode": "anonymous" });
-    let app: App = serde_json::from_value(
+    let bundle: ChannelBundle = serde_json::from_value(
         server
-            .seed_app_channel(
+            .seed_channel_bundle(
                 &unique_id("Inline Anonymous AG-UI"),
                 &agent_id,
                 "ag_ui",
@@ -123,11 +41,11 @@ async fn seed_inline_anonymous_ag_ui_channel(
             )
             .await,
     )
-    .expect("fixture App");
+    .expect("fixture channel");
     server
-        .set_app_channels_live(&app.public_id.to_string(), true)
+        .set_bundle_live(&bundle.public_id.to_string(), true)
         .await;
-    app.channels[0].public_id.to_string()
+    bundle.channels[0].public_id.to_string()
 }
 
 // EVE-1177: inline `auth.mode = anonymous` is anonymous traffic, so the
@@ -259,12 +177,12 @@ async fn create_llmsim_agent(server: &TestServer) -> String {
     agent["id"].as_str().unwrap().to_string()
 }
 
-async fn create_published_ag_ui_app(server: &TestServer) -> App {
+async fn create_published_ag_ui_channel(server: &TestServer) -> ChannelBundle {
     let agent_id = create_llmsim_agent(server).await;
 
-    let app: App = serde_json::from_value(
+    let bundle: ChannelBundle = serde_json::from_value(
         server
-            .seed_app_channel(
+            .seed_channel_bundle(
                 &unique_id("AG-UI App"),
                 &agent_id,
                 "ag_ui",
@@ -272,14 +190,14 @@ async fn create_published_ag_ui_app(server: &TestServer) -> App {
             )
             .await,
     )
-    .expect("fixture App");
+    .expect("fixture channel");
 
     serde_json::from_value(
         server
-            .set_app_channels_live(&app.public_id.to_string(), true)
+            .set_bundle_live(&bundle.public_id.to_string(), true)
             .await,
     )
-    .expect("published fixture App")
+    .expect("published fixture channel")
 }
 
 async fn create_published_native_ag_ui_channel(server: &TestServer) -> String {
@@ -320,8 +238,8 @@ fn ag_ui_payload_without_messages() -> Value {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_encrypted_legacy_auth_without_encryption_denies_anonymous_ingress() {
     let server = TestServer::postgres_without_encryption().await;
-    let app = create_published_ag_ui_app(&server).await;
-    let channel_id = app.channels[0].public_id.to_string();
+    let bundle = create_published_ag_ui_channel(&server).await;
+    let channel_id = bundle.channels[0].public_id.to_string();
     let row = server
         .db
         .get_channel_row_by_public_id(&channel_id)
@@ -366,8 +284,8 @@ async fn test_encrypted_legacy_auth_without_encryption_denies_anonymous_ingress(
 }
 async fn assert_malformed_legacy_auth_denies_anonymous_ingress(encrypted: bool) {
     let server = TestServer::new().await;
-    let app = create_published_ag_ui_app(&server).await;
-    let channel_id = app.channels[0].public_id.to_string();
+    let bundle = create_published_ag_ui_channel(&server).await;
+    let channel_id = bundle.channels[0].public_id.to_string();
     let row = server
         .db
         .get_channel_row_by_public_id(&channel_id)
@@ -425,21 +343,21 @@ async fn test_malformed_encrypted_legacy_auth_denies_anonymous_ingress() {
 
 async fn send_ag_ui_run(
     server: &TestServer,
-    app_id: impl std::fmt::Display,
+    ingress_id: impl std::fmt::Display,
     payload: &Value,
 ) -> test_harness::TestResponse {
-    send_ag_ui_run_with_headers(server, app_id, payload, vec![]).await
+    send_ag_ui_run_with_headers(server, ingress_id, payload, vec![]).await
 }
 
 async fn send_ag_ui_run_with_headers(
     server: &TestServer,
-    app_id: impl std::fmt::Display,
+    ingress_id: impl std::fmt::Display,
     payload: &Value,
     headers: Vec<(&str, &str)>,
 ) -> test_harness::TestResponse {
     send_ag_ui_run_to_path(
         server,
-        &format!("/v1/apps/{}/ag-ui", app_id),
+        &format!("/v1/channels/{}/ag-ui", ingress_id),
         payload,
         headers,
     )
@@ -509,12 +427,12 @@ async fn sessions_with_tag(server: &TestServer, tag: &str) -> Vec<Value> {
 
 async fn upload_ag_ui_image(
     server: &TestServer,
-    app_id: impl std::fmt::Display,
+    ingress_id: impl std::fmt::Display,
     headers: Vec<(&str, &str)>,
 ) -> test_harness::TestResponse {
     upload_ag_ui_image_to_path(
         server,
-        &format!("/v1/apps/{}/ag-ui/images", app_id),
+        &format!("/v1/channels/{}/ag-ui/images", ingress_id),
         headers,
     )
     .await
@@ -559,7 +477,7 @@ async fn upload_ag_ui_image_to_path(
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_ag_ui_rejects_missing_messages() {
     let server = TestServer::in_memory().await;
-    let app = create_published_ag_ui_app(&server).await;
+    let bundle = create_published_ag_ui_channel(&server).await;
 
     let payload = json!({
         "threadId": raw_uuid(),
@@ -572,7 +490,7 @@ async fn test_ag_ui_rejects_missing_messages() {
         "forwardedProps": {}
     });
 
-    send_ag_ui_run(&server, &app.public_id, &payload)
+    send_ag_ui_run(&server, &bundle.public_id, &payload)
         .await
         .assert_status(StatusCode::BAD_REQUEST);
 }
@@ -580,11 +498,11 @@ async fn test_ag_ui_rejects_missing_messages() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_ag_ui_public_image_upload_returns_image_id() {
     let server = TestServer::in_memory().await;
-    let app = create_published_ag_ui_app(&server).await;
+    let bundle = create_published_ag_ui_channel(&server).await;
 
     let body: Value = upload_ag_ui_image_to_path(
         &server,
-        &format!("/v1/channels/{}/ag-ui/images", app.channels[0].public_id),
+        &format!("/v1/channels/{}/ag-ui/images", bundle.channels[0].public_id),
         vec![],
     )
     .await
@@ -606,15 +524,15 @@ async fn test_ag_ui_public_image_upload_returns_image_id() {
         .await
         .unwrap()
         .unwrap();
-    assert_eq!(image.metadata["_app_id"], app.public_id.to_string());
+    assert_eq!(image.metadata["_ingress_id"], bundle.public_id.to_string());
     assert_eq!(image.metadata["source"], "ag_ui");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_ag_ui_run_rejects_image_uploaded_for_other_app() {
+async fn test_ag_ui_run_rejects_image_uploaded_for_other_channel() {
     let server = TestServer::in_memory().await;
-    let first_app = create_published_ag_ui_app(&server).await;
-    let second_app = create_published_ag_ui_app(&server).await;
+    let first_app = create_published_ag_ui_channel(&server).await;
+    let second_app = create_published_ag_ui_channel(&server).await;
     let upload: Value = upload_ag_ui_image(&server, &first_app.public_id, vec![])
         .await
         .assert_status(StatusCode::CREATED)
@@ -645,7 +563,7 @@ async fn test_ag_ui_same_thread_id_reuses_session() {
     let channel_id = create_published_native_ag_ui_channel(&server).await;
     let thread_id = raw_uuid();
     // The channel's sessions: the thread is bound to one of them.
-    let expected_tag = format!("app_channel:{channel_id}");
+    let expected_tag = format!("channel:{channel_id}");
 
     let first_payload = json!({
         "threadId": thread_id,
@@ -703,8 +621,7 @@ async fn test_ag_ui_same_thread_id_reuses_session() {
     start_ag_ui_run_at_channel(&server, &other_channel_id, &second_payload)
         .await
         .assert_status(StatusCode::OK);
-    let other_sessions =
-        sessions_with_tag(&server, &format!("app_channel:{other_channel_id}")).await;
+    let other_sessions = sessions_with_tag(&server, &format!("channel:{other_channel_id}")).await;
     assert_eq!(
         other_sessions.len(),
         1,
@@ -720,7 +637,7 @@ async fn test_ag_ui_same_thread_id_reuses_session() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_ag_ui_rejects_non_user_final_message() {
     let server = TestServer::in_memory().await;
-    let app = create_published_ag_ui_app(&server).await;
+    let bundle = create_published_ag_ui_channel(&server).await;
     let payload = json!({
         "threadId": raw_uuid(),
         "runId": raw_uuid(),
@@ -737,7 +654,7 @@ async fn test_ag_ui_rejects_non_user_final_message() {
         "forwardedProps": {}
     });
 
-    send_ag_ui_run(&server, &app.public_id, &payload)
+    send_ag_ui_run(&server, &bundle.public_id, &payload)
         .await
         .assert_status(StatusCode::BAD_REQUEST);
 }
@@ -745,7 +662,7 @@ async fn test_ag_ui_rejects_non_user_final_message() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_ag_ui_rejects_privileged_message_roles() {
     let server = TestServer::in_memory().await;
-    let app = create_published_ag_ui_app(&server).await;
+    let bundle = create_published_ag_ui_channel(&server).await;
 
     // A `tool` message is accepted only as a frontend tool result and never
     // reaches the LLM otherwise; see ag_ui_interrupts_test.
@@ -772,7 +689,7 @@ async fn test_ag_ui_rejects_privileged_message_roles() {
             "forwardedProps": {}
         });
 
-        let resp = send_ag_ui_run(&server, &app.public_id, &payload).await;
+        let resp = send_ag_ui_run(&server, &bundle.public_id, &payload).await;
         assert_eq!(
             resp.status(),
             StatusCode::BAD_REQUEST,
@@ -792,7 +709,7 @@ async fn test_ag_ui_rejects_privileged_message_roles() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_ag_ui_rejects_duplicate_message_ids() {
     let server = TestServer::in_memory().await;
-    let app = create_published_ag_ui_app(&server).await;
+    let bundle = create_published_ag_ui_channel(&server).await;
 
     let dup = raw_uuid();
     let payload = json!({
@@ -808,7 +725,7 @@ async fn test_ag_ui_rejects_duplicate_message_ids() {
         "forwardedProps": {}
     });
 
-    let resp = send_ag_ui_run(&server, &app.public_id, &payload).await;
+    let resp = send_ag_ui_run(&server, &bundle.public_id, &payload).await;
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
     let body: Value = resp.json();
     assert_eq!(body["detail"], "invalid_request");

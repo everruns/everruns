@@ -271,7 +271,6 @@ async fn resolve_trigger_execution_context_preserves_migrated_app_context() {
     let virtual_user_id = Some(everruns_contracts::typed_id::VirtualUserId::from_uuid(
         uuid::Uuid::from_u128(50),
     ));
-    let app_id = Some(uuid::Uuid::from_u128(60));
     let now = chrono::Utc::now();
     let agent = crate::storage::AgentRow {
         model_role: None,
@@ -335,9 +334,6 @@ async fn resolve_trigger_execution_context_preserves_migrated_app_context() {
         execution_owner_principal_id: Some(owner_principal_id),
         execution_resolved_owner_user_id: resolved_owner_user_id,
         execution_virtual_user_id: virtual_user_id,
-        execution_app_id: app_id,
-        legacy_alias_id: Some("app_frozen".to_string()),
-        legacy_alias_name: Some("Frozen App".to_string()),
         status: "active".to_string(),
         created_at: now,
         updated_at: now,
@@ -353,7 +349,6 @@ async fn resolve_trigger_execution_context_preserves_migrated_app_context() {
     assert_eq!(context.owner_principal_id, owner_principal_id);
     assert_eq!(context.resolved_owner_user_id, resolved_owner_user_id);
     assert_eq!(context.virtual_user_id, virtual_user_id);
-    assert_eq!(context.app_id, app_id);
 }
 
 #[tokio::test]
@@ -399,7 +394,7 @@ async fn dispatch_trigger_message_uses_preserved_harness() {
             playground_user_id: None,
             source: crate::domains::sessions::record::SessionSource::Api,
             org_id: DEFAULT_ORG_ID,
-            app_id: None,
+
             channel_id: None,
             trigger_id: None,
             harness_id: Some(preserved_harness.id),

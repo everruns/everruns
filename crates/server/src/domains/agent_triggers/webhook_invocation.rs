@@ -3,7 +3,7 @@
 //! `api::channel_webhooks`; everything after normalization is the shared pipeline
 //! in [`super::events`].
 
-use super::commands::{WebhookCompatibilityContext, parse_agent_id};
+use super::commands::parse_agent_id;
 use super::events;
 use super::queries as q;
 use crate::domains::agent_channels::invocation::render_message_template;
@@ -86,31 +86,7 @@ pub(super) async fn dispatch_webhook(
         .webhook_config()
         .map_err(|_| CommandError::bad_request("Invalid webhook trigger configuration"))?;
 
-    let webhook_context = if trigger_row.execution_app_id.is_some() {
-        Some(WebhookCompatibilityContext {
-            app_public_id: trigger_row
-                .legacy_alias_id
-                .clone()
-                .ok_or_else(|| CommandError::not_found("App channel"))?,
-            app_name: trigger_row
-                .legacy_alias_name
-                .clone()
-                .ok_or_else(|| CommandError::not_found("App channel"))?,
-            ingress_id: req.ingress_id.clone(),
-        })
-    } else {
-        None
-    };
     let source = super::manual::source_name(manual, "webhook");
-    let legacy_app = webhook_context
-        .as_ref()
-        .map(|context| {
-            json!({
-                "id": context.app_public_id,
-                "name": context.app_name,
-            })
-        })
-        .unwrap_or_else(|| json!({"id": "", "name": ""}));
     let context = json!({
         "agent": {
             "id": agent.public_id,
@@ -124,7 +100,6 @@ pub(super) async fn dispatch_webhook(
             "id": req.ingress_id,
             "type": "webhook",
         },
-        "app": legacy_app,
         "channel": {
             "id": req.ingress_id,
             "type": "webhook",
@@ -173,7 +148,6 @@ pub(super) async fn dispatch_webhook(
             session_mode: config.session_mode,
             filter: config.filter.as_ref(),
             session_source: crate::domains::sessions::record::SessionSource::Webhook,
-            webhook_compat: webhook_context.as_ref(),
             script: config.script.as_ref(),
             channel: None,
         },

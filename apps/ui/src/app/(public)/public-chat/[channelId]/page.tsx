@@ -1,0 +1,304 @@
+"use client";
+
+// Isolated Public Chat page. Renders a branded, chrome-free chat bound to a
+// single agent channel and talks only to its public endpoints. No
+// console navigation, no other channels or agents reachable from here.
+// See knowledge/integrations/public-chat.md.
+
+import { useUiTranslations } from "@/providers/locale-provider";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useParams } from "next/navigation";
+import { Loader2, Send } from "lucide-react";
+
+import {
+  type ChatMessage,
+  type PublicChatBootstrap,
+  fetchBootstrap,
+  runPublicChat,
+} from "@/lib/public-chat/client";
+import { TurnstileWidget } from "@/components/auth/turnstile-widget";
+import { GoogleSignInButton } from "./google-signin";
+import { AgentIdSignInButton, useAgentIdSession } from "./agentid-signin";
+
+function threadStorageKey(channelId: string): string {
+  return `everruns_public_chat_thread:${channelId}`;
+}
+
+export default function PublicChatPage() {
+  const ui = useUiTranslations();
+  const params = useParams<{ channelId: string }>();
+  const channelId = String(params.channelId);
+
+  const [bootstrap, setBootstrap] = useState<PublicChatBootstrap | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [input, setInput] = useState("");
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [threadId, setThreadId] = useState<string | null>(null);
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  // Bumped after each send to force a fresh single-use Turnstile token.
+  const [captchaNonce, setCaptchaNonce] = useState(0);
+  // Google ID token (JWT) once the visitor signs in.
+  const [googleIdToken, setGoogleIdToken] = useState<string | null>(null);
+
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+
+  const googleSignIn = bootstrap?.sign_in?.mode === "google_oidc" ? bootstrap.sign_in : undefined;
+  const googleClientId = googleSignIn?.google_client_id;
+  // AgentID sign-in runs through this deployment's server, so the page offers
+  // it only when the bootstrap says the browser flow is available.
+  const agentIdSignIn =
+    bootstrap?.sign_in?.mode === "agentid" && channelId.startsWith("appchan_")
+      ? bootstrap.sign_in
+      : undefined;
+  const agentId = useAgentIdSession(channelId);
+  const bearerToken = googleIdToken ?? agentId.token;
+  const signedIn = Boolean(bearerToken);
+  // When the channel configures sign-in, the server requires a verified
+  // credential on every request, so sign-in is always mandatory here.
+  const signInRequired = Boolean(googleSignIn ?? agentIdSignIn);
+  // Turnstile only gates the anonymous path: it never applies when sign-in is
+  // configured, and signed-in visitors are exempt.
+  const captchaRequired = Boolean(bootstrap?.captcha?.site_key) && !signInRequired && !signedIn;
+
+  // Load bootstrap config + restore/create the per-browser thread id.
+  useEffect(() => {
+    let cancelled = false;
+    fetchBootstrap(channelId)
+      .then((config) => {
+        if (cancelled) return;
+        setBootstrap(config);
+        const key = threadStorageKey(channelId);
+        let existing = window.localStorage.getItem(key);
+        if (!existing) {
+          existing = crypto.randomUUID();
+          window.localStorage.setItem(key, existing);
+        }
+        setThreadId(existing);
+      })
+      .catch((e: unknown) => {
+        if (!cancelled) setLoadError(e instanceof Error ? e.message : "Failed to load chat.");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [channelId]);
+
+  // Keep the latest message in view.
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+  }, [messages]);
+
+  const handleTurnstileVerify = useCallback((token: string) => setTurnstileToken(token), []);
+
+  const startNewConversation = useCallback(() => {
+    const fresh = crypto.randomUUID();
+    window.localStorage.setItem(threadStorageKey(channelId), fresh);
+    setThreadId(fresh);
+    setMessages([]);
+    setError(null);
+  }, [channelId]);
+
+  const send = useCallback(async () => {
+    const text = input.trim();
+    if (!text || sending || !threadId) return;
+    if (signInRequired && !signedIn) {
+      setError("Please sign in to start chatting.");
+      return;
+    }
+    if (captchaRequired && !turnstileToken) {
+      setError("Please complete the verification below before sending.");
+      return;
+    }
+
+    const userMsg: ChatMessage = { id: crypto.randomUUID(), role: "user", content: text };
+    const next = [...messages, userMsg];
+    setMessages(next);
+    setInput("");
+    setSending(true);
+    setError(null);
+
+    // Turnstile tokens are single-use; consume it and request a fresh one.
+    const tokenForRun = turnstileToken ?? undefined;
+    setTurnstileToken(null);
+    if (captchaRequired) setCaptchaNonce((n) => n + 1);
+
+    await runPublicChat({
+      channelId,
+      threadId,
+      messages: next,
+      turnstileToken: tokenForRun,
+      bearerToken: bearerToken ?? undefined,
+      callbacks: {
+        onAssistantStart: (id) =>
+          setMessages((cur) =>
+            cur.some((m) => m.id === id) ? cur : [...cur, { id, role: "assistant", content: "" }],
+          ),
+        onAssistantDelta: (id, delta) =>
+          setMessages((cur) => {
+            if (!cur.some((m) => m.id === id)) {
+              return [...cur, { id, role: "assistant", content: delta }];
+            }
+            return cur.map((m) => (m.id === id ? { ...m, content: m.content + delta } : m));
+          }),
+        onError: (msg) => setError(msg),
+      },
+    });
+
+    setSending(false);
+  }, [
+    channelId,
+    threadId,
+    messages,
+    input,
+    sending,
+    captchaRequired,
+    turnstileToken,
+    signInRequired,
+    signedIn,
+    bearerToken,
+  ]);
+
+  const handleGoogleCredential = useCallback((idToken: string) => {
+    setGoogleIdToken(idToken);
+    setError(null);
+  }, []);
+
+  const onComposerKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      void send();
+    }
+  };
+
+  if (loadError) {
+    return (
+      <div className="flex min-h-screen items-center justify-center p-6 text-center">
+        <p className="text-muted-foreground">{loadError}</p>
+      </div>
+    );
+  }
+
+  if (!bootstrap) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  const accent = bootstrap.primary_color;
+
+  return (
+    <div className="mx-auto flex h-screen max-w-3xl flex-col">
+      {/* Header */}
+      <header className="flex items-center gap-3 border-b border-border px-4 py-3">
+        {bootstrap.logo_url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={bootstrap.logo_url} alt="" className="h-8 w-8 rounded object-contain" />
+        ) : null}
+        <h1 className="flex-1 truncate text-base font-semibold text-foreground">
+          {bootstrap.name}
+        </h1>
+        {messages.length > 0 ? (
+          <button
+            type="button"
+            onClick={startNewConversation}
+            className="text-xs text-muted-foreground hover:text-foreground"
+          >
+            {ui("New conversation")}
+          </button>
+        ) : null}
+      </header>
+
+      {/* Messages */}
+      <div ref={scrollRef} className="flex-1 space-y-4 overflow-y-auto px-4 py-6">
+        {messages.length === 0 && bootstrap.welcome_message ? (
+          <p className="text-center text-sm text-muted-foreground">{bootstrap.welcome_message}</p>
+        ) : null}
+        {messages.map((m) => (
+          <div key={m.id} className={m.role === "user" ? "flex justify-end" : "flex justify-start"}>
+            <div
+              className={
+                m.role === "user"
+                  ? "max-w-[85%] whitespace-pre-wrap rounded bg-primary px-3 py-2 text-sm text-primary-foreground"
+                  : "max-w-[85%] whitespace-pre-wrap rounded bg-muted px-3 py-2 text-sm text-foreground"
+              }
+              style={m.role === "user" && accent ? { backgroundColor: accent } : undefined}
+            >
+              {m.content || (m.role === "assistant" && sending ? "…" : "")}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Composer */}
+      <div className="border-t border-border px-4 py-3">
+        {error ? <p className="mb-2 text-xs text-destructive">{error}</p> : null}
+        {!error && agentId.error ? (
+          <p className="mb-2 text-xs text-destructive">{agentId.error}</p>
+        ) : null}
+        {googleSignIn && googleClientId && !signedIn ? (
+          <div className="mb-2 space-y-1">
+            {signInRequired ? (
+              <p className="text-center text-xs text-muted-foreground">
+                {ui("Sign in to start chatting.")}
+              </p>
+            ) : null}
+            <GoogleSignInButton
+              clientId={googleClientId}
+              onCredential={handleGoogleCredential}
+              onError={() => setError("Sign-in is unavailable right now.")}
+            />
+          </div>
+        ) : null}
+        {agentIdSignIn && !signedIn ? (
+          <div className="mb-2 space-y-1">
+            <p className="text-center text-xs text-muted-foreground">
+              {agentIdSignIn.agentid_login
+                ? ui("Sign in with your agent's AgentID to start chatting.")
+                : ui("This chat accepts AgentID tokens from agents.")}
+            </p>
+            {agentIdSignIn.agentid_login ? <AgentIdSignInButton channelId={channelId} /> : null}
+          </div>
+        ) : null}
+        {captchaRequired && bootstrap.captcha ? (
+          <div className="mb-2">
+            <TurnstileWidget
+              key={captchaNonce}
+              siteKey={bootstrap.captcha.site_key}
+              onVerify={handleTurnstileVerify}
+              onExpire={() => setTurnstileToken(null)}
+              onError={() => setTurnstileToken(null)}
+            />
+          </div>
+        ) : null}
+        <div className="flex items-end gap-2">
+          <textarea
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={onComposerKeyDown}
+            rows={1}
+            aria-label={ui("Message")}
+            disabled={signInRequired && !signedIn}
+            placeholder={
+              signInRequired && !signedIn ? ui("Sign in to chat…") : ui("Type a message…")
+            }
+            className="max-h-40 min-h-[40px] flex-1 resize-none rounded border border-input bg-background px-3 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+          />
+          <button
+            type="button"
+            onClick={() => void send()}
+            disabled={sending || !input.trim() || (signInRequired && !signedIn)}
+            className="flex h-10 w-10 items-center justify-center rounded bg-primary text-primary-foreground disabled:opacity-50"
+            style={accent ? { backgroundColor: accent } : undefined}
+            aria-label={ui("Send message")}
+          >
+            {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

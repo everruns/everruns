@@ -51,15 +51,6 @@ GET  /v1/channels/{channel_id}/fcp
 POST /v1/channels/{channel_id}/fcp
 ```
 
-Permanent compatibility aliases:
-
-```
-GET  /v1/apps/{legacy_app_id}/fcp
-POST /v1/apps/{legacy_app_id}/fcp
-```
-
-Aliases resolve from channel-owned legacy identity without reading `apps` or
-`app_channels`.
 
 Both routes always respond with `Content-Type: text/markdown; charset=utf-8`.
 
@@ -166,15 +157,9 @@ FCP sessions are reused via the `fcp_session` cookie:
 - Expired sessions return `410 Gone` with body instructing the client to
   drop the cookie.
 
-All sessions adopt the endpoint's owner principal. Frozen App attribution and
-historical `fcp:app:` tags remain alongside endpoint tags for compatibility.
-See `knowledge/integrations/app-invocation-channels.md`.
-
-## Migration
-
-`043_app_channel_type_fcp.sql` extends the `channel_type` CHECK
-constraints on `apps` and `app_channels` to include `'fcp'`. No data
-migration is needed, existing rows are unaffected.
+All sessions adopt the channel’s owner principal and structural channel identity.
+The native invocation tags identify the channel for protocol continuation.
+See `knowledge/integrations/channel-invocation.md`.
 
 ## Testing
 
@@ -197,9 +182,9 @@ Core coverage ensures the FCP transport type and configuration round-trip.
 ## Related
 
 - Upstream FCP specification: <https://github.com/everruns/fcp>
-- `knowledge/integrations/app-invocation-channels.md`, retained compatibility
+- `knowledge/integrations/channel-invocation.md`, retained compatibility
   invariants for session ownership and reserved tag prefixes.
 - `knowledge/execution/public-endpoints.md`, error-sanitization contract used by all
-  unauthenticated app channels.
+  unauthenticated channels.
 - `knowledge/security/threat-model.md`, TM-AUTHZ-005, TM-AUTHZ-006, TM-DOS-010,
   TM-LLM-020 mitigations apply to FCP via the same shape AG-UI uses.

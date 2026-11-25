@@ -29,12 +29,11 @@ mod agent_api_channel_test;
 mod agent_api_end_user_test;
 mod agent_api_retry_cors_test;
 mod agent_api_spend_members_test;
-mod agent_channels_migration_test;
 mod agent_trigger_invocation_integration_test;
 mod agent_versions_retirement_migration_test;
 mod api_endpoint_check_migration_test;
 mod api_endpoint_conversion_test;
-mod app_invocation_channels_integration_test;
+mod applications_test;
 mod auth_integration_test;
 mod automated_coordination_test;
 mod change_history_test;
@@ -46,7 +45,7 @@ mod channel_a2a_pact_delegation_test;
 mod channel_a2a_pact_test;
 mod channel_a2a_protocol_test;
 mod channel_a2a_reactions_test;
-mod channel_attribution_test;
+mod channel_invocation_integration_test;
 mod channel_poppy_test;
 mod channel_rename_test;
 mod cli_auth_no_org_test;
@@ -120,3 +119,5 @@ mod health_issues_test;
 mod agent_packages_test;
 
 mod user_mcp_servers_from_grants_migration_test;
+
+mod retired_apps_removal_test;

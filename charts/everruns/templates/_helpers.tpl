@@ -179,6 +179,17 @@ appears in the manifest.
 
 {{/* Stop with a clear message before anything is created. */}}
 {{- define "everruns.validate" -}}
+{{- if .Values.applications.enabled -}}
+{{- if or (not (regexMatch "^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$" .Values.applications.domain)) (contains ".." .Values.applications.domain) -}}
+{{- fail "applications.domain must be a DNS domain without a scheme or wildcard" -}}
+{{- end -}}
+{{- if or (not (hasPrefix "https://" .Values.applications.oidcIssuer)) (empty .Values.applications.oidcClientId) (empty .Values.applications.existingSecret) -}}
+{{- fail "Applications require an HTTPS oidcIssuer, oidcClientId and existingSecret with CHAT_OIDC_CLIENT_SECRET and CHAT_SESSION_KEY" -}}
+{{- end -}}
+{{- if and .Values.applications.ingress.enabled (empty .Values.applications.ingress.tlsSecret) -}}
+{{- fail "Applications require applications.ingress.tlsSecret with a wildcard certificate" -}}
+{{- end -}}
+{{- end -}}
 {{- if not (include "everruns.proxyEnabled" .) }}
 {{- if not .Values.ingress.enabled }}
 {{- fail "proxy.enabled=false needs ingress.enabled=true" }}
@@ -328,7 +339,7 @@ capabilities and Memory there (INJECTED_CAPABILITIES_BASE_URL). */}}
 {{- if eq .Values.dataPlane.version "v2" }}
 - { name: EVERRUNS_DEFAULT_DATA_PLANE, value: local }
 - { name: EVERRUNS_DEFAULT_DATA_PLANE_URL, value: {{ printf "http://%s-gateway:7000" (include "everruns.name" (list . "agentd")) | quote }} }
-- { name: INJECTED_CAPABILITIES_BASE_URL, value: {{ printf "http://%s:9000/api" (include "everruns.name" (list . "server")) | quote }} }
+- { name: INJECTED_CAPABILITIES_BASE_URL, value: {{ printf "http://%s:9000/api/v1" (include "everruns.name" (list . "server")) | quote }} }
 {{- end }}
 {{- $internal := include "everruns.internalSecretName" . }}
 - name: EVERRUNS_DP_TOKEN

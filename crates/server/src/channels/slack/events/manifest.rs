@@ -13,22 +13,6 @@ use crate::api::common::ErrorResponse;
 
 use super::*;
 
-/// GET /v1/apps/{app_id}/slack/manifest — Generate a Slack App manifest.
-///
-/// Returns a pre-filled YAML manifest and a URL that opens Slack's "Create app
-/// from manifest" flow. The manifest carries bot scopes *and*
-/// `event_subscriptions`, so no hand-editing is needed after creation.
-///
-/// Slack verifies `request_url` when the manifest is saved, which is why this
-/// endpoint serves only published apps: the webhook has to be answering before
-/// the Slack app is created from the manifest.
-pub(crate) async fn handle_slack_manifest_legacy(
-    State(state): State<SlackState>,
-    Path(app_id): Path<String>,
-) -> Result<Json<ManifestResponse>, (StatusCode, Json<ErrorResponse>)> {
-    handle_slack_manifest(state, SlackTarget::LegacyApp(app_id)).await
-}
-
 pub(crate) async fn handle_slack_manifest_channel(
     State(state): State<SlackState>,
     Path(channel_id): Path<String>,

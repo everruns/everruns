@@ -1,5 +1,4 @@
-// Agent channel query helpers — shared by commands, ingress and the frozen
-// App archival domain.
+// Agent channel query helpers shared by commands and ingress.
 //
 // No policy checks, no input validation. Pure data access + mapping.
 
@@ -263,7 +262,7 @@ pub async fn update_channel_config_unscoped(
     config: &serde_json::Value,
 ) -> anyhow::Result<()> {
     // Ingress writes transport config only; first-class channel auth remains
-    // untouched. Native channels have no archival App row to decode.
+    // untouched.
     let (plaintext, encrypted) = prepare_channel_config(encryption, config)?;
     anyhow::ensure!(
         db.update_channel_config_by_id(channel_internal_id, plaintext, encrypted)
@@ -287,7 +286,6 @@ mod tests {
     ) -> AgentChannelRow {
         AgentChannelRow {
             id: Uuid::now_v7(),
-            app_id: Uuid::now_v7(),
             public_id: AgentChannelId::new().to_string(),
             channel_type: "ag_ui".to_string(),
             channel_config,

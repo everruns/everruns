@@ -162,25 +162,6 @@ async fn verify_upgrade(db: Arc<StorageBackend>, opted_in: bool) {
         )
         .await
         .unwrap();
-    let app = db
-        .create_app(
-            org_id,
-            CreateAppRow {
-                public_id: format!("app_{}", Uuid::now_v7().simple()),
-                name: "Preview app".to_string(),
-                description: None,
-                harness_id: preview.id.uuid(),
-                agent_id: Some(agent.id.uuid()),
-                virtual_user_id: None,
-                owner_principal_id: owner,
-                resolved_owner_user_id: None,
-                channel_type: None,
-                channel_config: json!({}),
-                channel_config_encrypted: None,
-            },
-        )
-        .await
-        .unwrap();
     let trigger = db
         .create_agent_trigger(CreateAgentTriggerRow {
             org_id,
@@ -196,9 +177,6 @@ async fn verify_upgrade(db: Arc<StorageBackend>, opted_in: bool) {
             execution_owner_principal_id: Some(owner),
             execution_resolved_owner_user_id: None,
             execution_virtual_user_id: None,
-            execution_app_id: Some(app.id),
-            legacy_alias_id: None,
-            legacy_alias_name: None,
         })
         .await
         .unwrap();
@@ -350,14 +328,6 @@ async fn verify_upgrade(db: Arc<StorageBackend>, opted_in: bool) {
             .unwrap()
             .default_harness_id,
         Some(canonical.id)
-    );
-    assert_eq!(
-        db.get_app_by_id(org_id, app.id)
-            .await
-            .unwrap()
-            .unwrap()
-            .harness_id,
-        canonical.id.uuid()
     );
     assert_eq!(
         db.get_agent_trigger(org_id, trigger.id)

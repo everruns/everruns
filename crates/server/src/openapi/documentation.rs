@@ -21,6 +21,7 @@ const GROUPS: &[(&str, &str, &str, &[&str])] = &[
         "Configure agents, harnesses, capabilities, skills and channels. Manage keys, triggers and recorded changes.",
         &[
             "agents",
+            "applications",
             "agent-channels",
             "harnesses",
             "capabilities",
@@ -31,7 +32,6 @@ const GROUPS: &[(&str, &str, &str, &[&str])] = &[
             "agent-examples",
             "harness-examples",
             "history",
-            "apps",
             "voice",
         ],
     ),
@@ -200,6 +200,11 @@ impl Modify for DocumentationMetadata {
             .schemas
             .insert("CreatePlatformAgentSessionRequest".to_owned(), platform);
         components.security_schemes.insert(
+            "ApplicationCredential".to_owned(),
+            serde_json::from_value(json!({"type":"http","scheme":"bearer",
+                "description":"Application runtime token. Only runtime-auth accepts a fresh identity token from the deployment OIDC provider; Application tokens cannot renew themselves."})).expect("Application bearer scheme"),
+        );
+        components.security_schemes.insert(
             "AgentCredential".to_owned(),
             serde_json::from_value(
                 value["components"]["securitySchemes"]["AgentCredential"].clone(),
@@ -316,9 +321,16 @@ fn apply(spec: &mut Value) {
                         "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
                     };
                     operation["x-deprecation"] = json!({"migration": migration});
-                } else {
-                    operation["x-deprecation"] = json!({"migration": "Read-only archival App records. Use agent channels for new integrations; there is no drop-in replacement."});
                 }
+            }
+            if path.starts_with("/v1/applications/") || path.starts_with("/v1/application-hosts/") {
+                let public_read = method == "get"
+                    && (path.ends_with("/config") || path.starts_with("/v1/application-hosts/"));
+                operation["security"] = if public_read {
+                    json!([])
+                } else {
+                    json!([{"ApplicationCredential": []}])
+                };
             }
             if group == &"agent-api" {
                 let public_read = method == "get"

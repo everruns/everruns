@@ -341,3 +341,29 @@ egressProxy:
   nodeSelector: {}
   tolerations: []
   affinity: {}
+
+# Published Applications and standalone Work Chat browser host. DNS for
+# *.domain must point at the ingress, with a wildcard TLS certificate. Register
+# https://login.<domain>/auth/callback at your OIDC provider (e.g. Everruns ID).
+applications:
+  enabled: false
+  domain: ""
+  oidcIssuer: ""
+  oidcClientId: ""
+  # Required keys: CHAT_DATABASE_URL (restricted credential-table role),
+  # CHAT_OIDC_CLIENT_SECRET and CHAT_SESSION_KEY (64 hex chars).
+  # Keep the session key stable: it encrypts provider tokens in PostgreSQL.
+  existingSecret: ""
+  replicas: 2
+  image: "" # defaults to everruns-chat-ui at the chart's release tag
+  ingress:
+    enabled: true
+    className: "" # falls back to ingress.className
+    tlsSecret: ""
+    annotations: {}
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { memory: 1Gi }
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}

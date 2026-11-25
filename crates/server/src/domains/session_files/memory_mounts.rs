@@ -135,7 +135,20 @@ impl MemoryMountRouter {
 
     /// The mounts of one workspace, resolved from its session row.
     pub async fn mounts_for(&self, workspace_id: Uuid) -> Arc<Vec<MemoryMount>> {
-        if let Some(cached) = self.cache.read().get(&workspace_id) {
+        // Application bindings can change after session creation, including
+        // on an ancestor or Room. Re-resolve those before using a mount cache.
+        let session = self
+            .db
+            .get_session_unscoped(everruns_contracts::typed_id::SessionId::from_uuid(
+                workspace_id,
+            ))
+            .await
+            .ok()
+            .flatten();
+        let mutable = session.as_ref().is_some_and(|s| {
+            s.channel_id.is_some() || s.parent_session_id.is_some() || s.source == "room"
+        });
+        if !mutable && let Some(cached) = self.cache.read().get(&workspace_id) {
             return cached.clone();
         }
         let (mounts, cacheable) = self.resolve(workspace_id).await.unwrap_or_else(|error| {
@@ -149,7 +162,7 @@ impl MemoryMountRouter {
             (Vec::new(), true)
         });
         let resolved = Arc::new(mounts);
-        if cacheable {
+        if cacheable && !mutable {
             self.cache.write().insert(workspace_id, resolved.clone());
         }
         resolved
@@ -232,6 +245,35 @@ impl MemoryMountRouter {
                 });
             }
             None => cacheable = session.source != "room",
+        }
+
+        if let Some(application) = self
+            .db
+            .application_for_session(session.org_id, session.id)
+            .await?
+        {
+            cacheable = false;
+            if application.status == "published" {
+                for resource in self.db.application_resources(application.id).await? {
+                    if resource.kind
+                        != crate::domains::applications::ApplicationResourceKind::Memory
+                    {
+                        continue;
+                    }
+                    let memory = self
+                        .db
+                        .get_memory(session.org_id, resource.resource_id.parse()?)
+                        .await?
+                        .ok_or_else(|| anyhow!("Application memory unavailable"))?;
+                    if memory.status != "active" || memory.scope != "org" {
+                        continue;
+                    }
+                    let mut mount =
+                        mount_from_row(&memory, &format!("/application/memory/{}", resource.slug));
+                    mount.readonly = memory.is_readonly || !resource.writable;
+                    mounts.push(mount);
+                }
+            }
         }
 
         // Longest mount path first so resolution is unambiguous if one ever

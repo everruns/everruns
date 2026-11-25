@@ -112,7 +112,7 @@ mod files_server {
                 .push((who.clone(), op.to_string(), params.clone()));
             let path = params["path"].as_str().unwrap().to_string();
             anyhow::ensure!(
-                path.starts_with("/memory/user"),
+                path.starts_with("/memory/user") || path.starts_with("/application/memory/"),
                 "{path} is not in this session's Memory"
             );
             let key = (who, path.clone());
@@ -268,13 +268,14 @@ mod files_server {
                 mounts: vec![
                     "/memory/user".into(),
                     "/memory/shared".into(),
+                    "/application/memory".into(),
                     "/etc".into(),
                 ],
                 server: Some(URL.into()),
             },
         );
         // A path that is no Memory mount is never mounted.
-        assert_eq!(backends.memory_mounts.len(), 2);
+        assert_eq!(backends.memory_mounts.len(), 3);
         let mut fs = MountFs::new(Arc::new(InMemorySessionFileStore::new()));
         for (point, backend, scope) in backends.memory_mounts {
             fs = fs.with_memory_mount(point, backend, scope);
@@ -342,6 +343,28 @@ mod files_server {
             error.to_string().contains("not in this session's Memory"),
             "{error}"
         );
+    }
+
+    #[tokio::test]
+    async fn application_memory_routes_to_the_control_plane_not_the_workspace() {
+        let (files, _, executor) = setup();
+        let session = SessionId::new();
+        let fs = mounted(&executor, session);
+        let path = "/application/memory/handbook/brand.md";
+        fs.write_file(session, path, "Use plain words", "text")
+            .await
+            .unwrap();
+        assert_eq!(
+            fs.read_file(session, path)
+                .await
+                .unwrap()
+                .unwrap()
+                .content
+                .as_deref(),
+            Some("Use plain words")
+        );
+        assert_eq!(files.asked.lock()[0].2["path"], path);
+        assert_eq!(files.asked.lock()[1].1, "read");
     }
 
     #[tokio::test]

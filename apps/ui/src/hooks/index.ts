@@ -2,7 +2,6 @@
 export * from "./use-agent-examples";
 export * from "./use-agents";
 export * from "./use-agent-triggers";
-export * from "./use-apps";
 export * from "./use-harnesses";
 export * from "./use-harness-examples";
 export * from "./use-capabilities";

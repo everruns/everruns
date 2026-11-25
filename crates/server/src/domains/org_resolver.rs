@@ -146,13 +146,6 @@ inventory::submit! {
 
 inventory::submit! {
     ResourceOrgResolver {
-        prefix: "app",
-        resolve: |db, id| Box::pin(async move { db.get_app_organization_id(id).await }),
-    }
-}
-
-inventory::submit! {
-    ResourceOrgResolver {
         prefix: "skill",
         resolve: |db, id| Box::pin(async move { db.get_skill_organization_id(id).await }),
     }
@@ -345,5 +338,12 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(org, Some(43));
+    }
+}
+
+inventory::submit! {
+    ResourceOrgResolver {
+        prefix: "application",
+        resolve: |db, id| Box::pin(async move { db.get_application_organization_id(id).await }),
     }
 }

@@ -7,6 +7,8 @@ const resources: Record<string, { type: string; roots: string[] }> = {
   // Home registers its attention rows explicitly; the cache fallback covers its lists.
   home: { type: "home", roots: ["agents", "sessions", "sandboxes"] },
   approvals: { type: "approval", roots: [] },
+  // Audience addresses remain in the authoring form, outside the generic Chat cache projection.
+  applications: { type: "application", roots: [] },
   exposures: { type: "exposure", roots: [] },
   // Extraction input/results stay private to the form; Chat cannot run paid requests.
   extractions: { type: "extraction", roots: [] },

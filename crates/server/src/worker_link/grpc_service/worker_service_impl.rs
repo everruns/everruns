@@ -186,8 +186,8 @@ delegate! {
 
     // Platform session management and messaging.
 
-    invoke_scheduled_app_channel => handle_invoke_scheduled_app_channel(InvokeScheduledAppChannelRequest)
-        -> InvokeScheduledAppChannelResponse;
+    invoke_scheduled_channel => handle_invoke_scheduled_channel(InvokeScheduledChannelRequest)
+        -> InvokeScheduledChannelResponse;
     invoke_agent_trigger => handle_invoke_agent_trigger(InvokeAgentTriggerRequest)
         -> InvokeAgentTriggerResponse;
 

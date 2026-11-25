@@ -267,7 +267,6 @@ pub fn classify_anyhow(e: anyhow::Error) -> CommandError {
         "could not find a unique name",
         // EVE-437: eval target validation
         "eval target must specify",
-        "app targets not yet supported",
         "harness_id and harness_name are mutually exclusive",
         // EVE-437: MCP server config validation (auth-mode and key checks)
         "only api key mcp servers can store an api key",
@@ -507,7 +506,7 @@ impl Ctx {
     /// Construct a Ctx for an HTTP request.
     ///
     /// `encryption` may be `None` for domains that never need it (agents,
-    /// harnesses, skills). Domains that encrypt secrets (apps, mcp_servers)
+    /// harnesses, skills). Domains that encrypt secrets (agent channels, MCP servers)
     /// must pass `Some`.
     ///
     /// `permission_resolver` is required — pass `auth.permission_resolver`

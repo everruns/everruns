@@ -15,7 +15,7 @@ import {
   DropdownMenuPositioner,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { CronLabel } from "@/components/apps/cron-label";
+import { CronLabel } from "@/components/schedules/cron-label";
 import type {
   AgUiChannelConfig,
   AgentChannel,

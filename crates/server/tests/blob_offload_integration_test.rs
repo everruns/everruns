@@ -158,7 +158,7 @@ async fn create_test_session(backend: &StorageBackend) -> everruns_contracts::ty
             source: everruns_server::domains::sessions::record::SessionSource::Api,
             workspace_id: None,
             org_id: TEST_ORG_ID,
-            app_id: None,
+
             channel_id: None,
             trigger_id: None,
             harness_id: None,

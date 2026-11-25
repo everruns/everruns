@@ -256,7 +256,7 @@ class Lab:
             verify=str(self.cert_path),
         )
 
-    def start_platform(self):
+    def start_platform(self, *, start_worker=True):
         env = {
             **self.env,
             "CAPACITY_ISOLATED": "1",
@@ -300,6 +300,8 @@ class Lab:
             if time.monotonic() > deadline:
                 raise RuntimeError("identity fixture did not finish")
             time.sleep(0.25)
+        if not start_worker:
+            return
         worker_env = {
             **env,
             "SERVER_GRPC_ADDRESS": f"127.0.0.1:{self.grpc}",

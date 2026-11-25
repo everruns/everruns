@@ -1,23 +1,15 @@
-// Per-app, per-IP rate limiter shared by public app channels.
+// Per-channel, per-IP rate limiter shared by public channels.
 //
-// Decision: Public app channels (AG-UI, A2A) can configure a stricter
+// Decision: Public channels (AG-UI, A2A) can configure a stricter
 // per-IP cap than the global API limit via the channel config's
 // `rate_limit_per_minute`. This module owns the enforcement primitive shared
 // across requests.
 // Decision: Two backends mirror `auth::rate_limit::ApiRateLimiter` —
 //   in-memory (governor) for single-instance/dev, Valkey for distributed.
-// Decision: In-memory limiters are stored per opaque `scope` (caller
-//   composes it: AG-UI passes the app id; A2A passes `app_id:channel_id`
-//   so multiple A2A channels on the same app keep independent buckets and
-//   cannot reset each other's state by alternating limits) and remember the
-//   active `limit` next to the limiter. When the configured limit changes
-//   we replace the entry in place rather than inserting a new bucket,
-//   which previously allowed an attacker who could cycle
-//   `rate_limit_per_minute` to grow the cache without bound (TM-DOS-010,
-//   TM-A2A-013).
-// Decision: Channel kind is captured as a `namespace` so distinct channels
-//   land in distinct Valkey keys (`rl:{namespace}:{scope}:{ip}`) and never
-//   share buckets, even when both are enabled on the same app.
+// Decision: In-memory limiters are keyed by caller-provided channel scope and
+// remember the active limit. Replacing the entry when limits change prevents
+// unbounded per-limit growth (TM-DOS-010, TM-A2A-013).
+// Channel kind namespaces distributed keys: `rl:{namespace}:{scope}:{ip}`.
 
 use std::collections::HashMap;
 use std::net::IpAddr;
@@ -41,7 +33,7 @@ type LimiterCache = RwLock<HashMap<String, CachedLimiter>>;
 
 const WINDOW_SECS: u64 = 60;
 
-/// Per-app channel rate limiter, keyed by `(app_id, ip)`.
+/// Channel rate limiter, keyed by `(scope, ip)`.
 #[derive(Clone)]
 pub struct ChannelRateLimiter {
     namespace: &'static str,
@@ -51,7 +43,7 @@ pub struct ChannelRateLimiter {
 #[derive(Clone)]
 enum Backend {
     InMemory {
-        // Key: app_id. Each entry stores the active limit and limiter; when the
+        // Key: channel scope. Each entry stores the active limit and limiter; when the
         // limit changes we replace the entry to avoid unbounded per-limit growth.
         cache: Arc<LimiterCache>,
     },
@@ -76,10 +68,8 @@ impl ChannelRateLimiter {
     }
 
     /// Check the per-scope, per-IP limit. `scope` is an opaque caller-chosen
-    /// identifier — typically the app public id for kinds with one channel
-    /// per app (AG-UI), or `app_id:channel_id` for kinds that allow multiple
-    /// channels per app (A2A). `limit` is requests per minute; a `limit` of
-    /// zero is treated as "no per-channel limit" and always allows.
+    /// identifier for the channel. `limit` is requests per minute; zero
+    /// means no per-channel limit.
     pub async fn check(&self, scope: &str, ip: IpAddr, limit: u32) -> Result<(), RateLimitError> {
         if limit == 0 {
             return Ok(());

@@ -326,7 +326,8 @@ fn platform_namespace_preserves_agent_execution_addresses() {
                 || [
                     "/v1/channels/",
                     "/v1/e/",
-                    "/v1/apps/",
+                    "/v1/application-hosts/",
+                    "/v1/applications/",
                     "/v1/avatars/",
                     "/v1/avatar-presets",
                     "/v1/virtual-users/",

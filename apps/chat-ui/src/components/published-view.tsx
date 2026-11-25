@@ -1,5 +1,7 @@
 "use client";
 
+import { apiPath } from "./api-path";
+
 import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
 import type { AgentViewLayout, PublishedAgentView } from "@everruns/generative-ui";
@@ -11,7 +13,9 @@ export const PublishedView = dynamic(
 );
 
 export function useWorkChatView(enabled: boolean, session?: string | null) {
-  const url = session ? "/api/chat/view?session=" + encodeURIComponent(session) : "/api/chat/view";
+  const url = session
+    ? apiPath("chat/view?session=" + encodeURIComponent(session))
+    : apiPath("chat/view");
   const [result, setResult] = useState<{
     url: string;
     status: number;

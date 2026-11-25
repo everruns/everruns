@@ -520,15 +520,6 @@ pub const ENCRYPTED_COLUMNS: &[EncryptedColumn] = &[
         column: "refresh_token_encrypted",
         id_column: "id",
     },
-    // App channel config contains secrets (e.g. Slack signing_secret, bot_token)
-    EncryptedColumn {
-        table: "apps",
-        column: "channel_config_encrypted",
-        id_column: "id",
-    },
-    // Endpoint channel config (multi-channel) — same secrets, per-endpoint.
-    // Re-parented from `app_channels` onto `agent_channels` (EVE-1003); the
-    // `app_channels` view is read-only and cannot be rotated through.
     EncryptedColumn {
         table: "agent_channels",
         column: "channel_config_encrypted",

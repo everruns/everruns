@@ -1,8 +1,8 @@
 // Agent channel webhook ingress — channel-scoped token-authenticated invocation.
 //
-// Design Decision: Webhooks use `POST /v1/channels/{channel_id}/webhook` so one app
+// Design Decision: Webhooks use `POST /v1/channels/{channel_id}/webhook` so one ingress
 // can expose multiple entry points with different tokens and invocation
-// behavior. App-and-channel routes remain permanent aliases.
+// behavior.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -121,10 +121,6 @@ pub struct WebhookInvocationResponse {
 pub fn routes(state: ChannelWebhookState) -> Router {
     Router::new()
         .route(
-            "/v1/apps/{app_id}/webhooks/{channel_id}",
-            post(invoke_webhook_legacy),
-        )
-        .route(
             "/v1/channels/{channel_id}/webhook",
             post(invoke_webhook_channel),
         )
@@ -132,43 +128,6 @@ pub fn routes(state: ChannelWebhookState) -> Router {
         .with_state(state.clone())
         .merge(super::github_webhooks::routes(state.clone()))
         .merge(super::mcp_event_webhooks::routes(state))
-}
-
-#[utoipa::path(
-    description = "Invoke a webhook channel for a published App. The body is forwarded to the agent as a message.",
-    post,
-    path = "/v1/apps/{app_id}/webhooks/{channel_id}",
-    params(
-        ("app_id" = String, Path, description = "App ID"),
-        ("channel_id" = String, Path, description = "Webhook channel ID")
-    ),
-    request_body(content = String, content_type = "application/octet-stream"),
-    responses(
-        (status = 202, description = "Webhook accepted", body = WebhookInvocationResponse),
-        (status = 401, description = "Invalid or missing webhook token", body = ErrorResponse),
-        (status = 404, description = "App or channel not found, not published, or channel disabled (collapsed to a single generic 404 to prevent app-existence enumeration)", body = ErrorResponse),
-        (status = 500, description = "Internal server error", body = ErrorResponse)
-    ),
-    tag = "apps"
-)]
-pub async fn invoke_webhook_legacy(
-    State(state): State<ChannelWebhookState>,
-    Path((app_id, channel_id)): Path<(String, String)>,
-    req_id: Option<axum::Extension<RequestId>>,
-    connect_info: Option<Extension<ConnectInfo<std::net::SocketAddr>>>,
-    headers: HeaderMap,
-    body: Bytes,
-) -> Result<(StatusCode, Json<WebhookInvocationResponse>), (StatusCode, Json<ErrorResponse>)> {
-    invoke_webhook(
-        state,
-        Some(app_id),
-        channel_id,
-        req_id,
-        connect_info,
-        headers,
-        body,
-    )
-    .await
 }
 
 #[utoipa::path(
@@ -180,11 +139,11 @@ pub async fn invoke_webhook_legacy(
     responses(
         (status = 202, description = "Webhook accepted", body = WebhookInvocationResponse),
         (status = 401, description = "Invalid or missing webhook token", body = ErrorResponse),
-        (status = 404, description = "Channel not found, app not published, or channel disabled", body = ErrorResponse),
+        (status = 404, description = "Channel not found, ingress not published, or channel disabled", body = ErrorResponse),
         (status = 429, description = "Per-channel rate limit exceeded", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
-    tag = "apps"
+    tag = "agent-channels"
 )]
 pub async fn invoke_webhook_channel(
     State(state): State<ChannelWebhookState>,
@@ -201,14 +160,13 @@ pub async fn invoke_webhook_channel(
         .map_err(internal_error)?
         .is_some()
     {
-        return invoke_webhook(state, None, channel_id, req_id, connect_info, headers, body).await;
+        return invoke_webhook(state, channel_id, req_id, connect_info, headers, body).await;
     }
-    invoke_webhook(state, None, channel_id, req_id, connect_info, headers, body).await
+    invoke_webhook(state, channel_id, req_id, connect_info, headers, body).await
 }
 
 async fn invoke_webhook(
     state: ChannelWebhookState,
-    app_id: Option<String>,
     channel_id: String,
     req_id: Option<axum::Extension<RequestId>>,
     connect_info: Option<Extension<ConnectInfo<std::net::SocketAddr>>>,
@@ -221,13 +179,6 @@ async fn invoke_webhook(
         .await
         .map_err(internal_error)?
     {
-        let legacy_alias_matches = match app_id.as_deref() {
-            Some(app_id) => trigger.legacy_alias_id.as_deref() == Some(app_id),
-            None => true,
-        };
-        if !legacy_alias_matches {
-            return Err(not_found());
-        }
         return invoke_trigger_webhook(
             state,
             channel_id,
@@ -239,7 +190,7 @@ async fn invoke_webhook(
         )
         .await;
     }
-    let (app, channel) = crate::api::channel_ingress::resolve_channel(
+    let (ingress, channel) = crate::api::channel_ingress::resolve_channel(
         &state.db,
         state.encryption.as_ref(),
         &channel_id,
@@ -247,16 +198,10 @@ async fn invoke_webhook(
     .await
     .map_err(internal_error)?
     .ok_or_else(not_found)?;
-    if app_id
-        .as_deref()
-        .is_some_and(|legacy_app_id| !app.matches_legacy_app_id(legacy_app_id))
-    {
-        return Err(not_found());
-    }
-    let app_id = app.public_id.to_string();
+    let ingress_id = ingress.public_id.to_string();
 
     // THREAT[TM-TENANT-002]: An unauthenticated caller must not be able to tell
-    // "app does not exist" apart from "app exists but is not published / the
+    // "ingress does not exist" apart from "ingress exists but is not published / the
     // channel is disabled / misconfigured". Every such case collapses to a
     // single generic 404 (matching the FCP channel in `channels/fcp.rs`); the real
     // reason is logged server-side only.
@@ -267,9 +212,9 @@ async fn invoke_webhook(
     // non-live endpoint, and every request must present the per-channel shared
     // secret before session creation. Liveness is resolved before auth so a
     // caller cannot distinguish a misconfigured endpoint from a bad token.
-    if let Err(reason) = crate::api::channel_ingress::channel_liveness(&app, &channel) {
+    if let Err(reason) = crate::api::channel_ingress::channel_liveness(&ingress, &channel) {
         tracing::debug!(
-            app_id = %app.public_id,
+            ingress_id = %ingress.public_id,
             channel_id = %channel.public_id,
             reason = reason.as_str(),
             "Webhook request rejected: endpoint not live"
@@ -277,7 +222,7 @@ async fn invoke_webhook(
         return Err(not_found());
     }
     let Some(config) = channel.webhook_config() else {
-        tracing::error!(app_id = %app.public_id, "Webhook channel config did not deserialize");
+        tracing::error!(ingress_id = %ingress.public_id, "Webhook channel config did not deserialize");
         return Err(not_found());
     };
     let provided_token = extract_webhook_token(&headers).ok_or_else(unauthorized)?;
@@ -291,13 +236,13 @@ async fn invoke_webhook(
     // EVE-627 (TM-DOS-010): per-channel, per-IP rate limit after the secret is
     // verified (so rejected traffic costs nothing) and before any session/LLM
     // work. Scope includes the channel id so multiple webhook channels on one
-    // app keep independent buckets. `None`/`0` disables (global limit applies).
+    // ingress keep independent buckets. `None`/`0` disables (global limit applies).
     if let Some(limit) = config.rate_limit_per_minute
         && limit > 0
     {
         let peer_addr = connect_info.map(|Extension(ConnectInfo(addr))| addr);
         let client_ip = extract_client_ip_from_parts(peer_addr, &headers);
-        let scope = format!("{app_id}:{channel_id}");
+        let scope = format!("{ingress_id}:{channel_id}");
         if state
             .rate_limiter
             .check(&scope, client_ip, limit)
@@ -305,13 +250,13 @@ async fn invoke_webhook(
             .is_err()
         {
             return Err(too_many_requests(
-                "Webhook rate limit exceeded for this app channel",
+                "Webhook rate limit exceeded for this ingress channel",
             ));
         }
     }
 
-    let Some(resolved) = state.channels.resolver.channel(&app, &channel) else {
-        tracing::error!(app_id = %app.public_id, "Webhook channel config did not deserialize");
+    let Some(resolved) = state.channels.resolver.channel(&ingress, &channel) else {
+        tracing::error!(ingress_id = %ingress.public_id, "Webhook channel config did not deserialize");
         return Err(not_found());
     };
     // Credential headers are redacted before the template can echo them.
@@ -346,7 +291,7 @@ async fn invoke_webhook(
     let created_session = response.body["created"] == true;
     crate::domains::agent_channels::emit_channel_invocation_audit_event(
         state.db.clone(),
-        &app,
+        &ingress,
         &channel,
         session_id,
         crate::domains::agent_channels::ChannelInvocationSource::Webhook,
@@ -416,7 +361,7 @@ async fn invoke_trigger_webhook(
             .is_err()
         {
             return Err(too_many_requests(
-                "Webhook rate limit exceeded for this app channel",
+                "Webhook rate limit exceeded for this ingress channel",
             ));
         }
     }
@@ -519,11 +464,11 @@ fn unauthorized() -> (StatusCode, Json<ErrorResponse>) {
 }
 
 fn not_found() -> (StatusCode, Json<ErrorResponse>) {
-    ErrorResponse::new("App channel not found".to_string()).into_response(StatusCode::NOT_FOUND)
+    ErrorResponse::new("Channel not found".to_string()).into_response(StatusCode::NOT_FOUND)
 }
 
 fn internal_error(error: anyhow::Error) -> (StatusCode, Json<ErrorResponse>) {
-    tracing::error!(error = %error, "Failed to invoke app webhook");
+    tracing::error!(error = %error, "Failed to invoke ingress webhook");
     ErrorResponse::new("Internal server error".to_string())
         .into_response(StatusCode::INTERNAL_SERVER_ERROR)
 }

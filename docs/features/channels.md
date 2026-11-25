@@ -10,7 +10,10 @@ Use a channel when an external peer sends a request and waits for a reply. Use a
 
 ![How work enters an Agent: channels (Slack, AG-UI, A2A, FCP, Public Chat) route a caller's message to the Agent and return its reply; triggers (schedule, webhook, GitHub, MCP events) send a configured message with no reply channel. Either way the message lands in a session and the turn runs on the Agent's Harness.](../images/features/agent-entry-points.svg)
 
-![Agent Channel Architecture](../images/apps/architecture.svg)
+![Agent Channel Architecture](../images/channels/architecture.svg)
+
+For a named workspace with several Work Chats, Rooms and shared Memory, publish an
+[Application](/features/applications/). Its audience and navigation cover all attached resources.
 
 ## Channel types
 
@@ -173,11 +176,13 @@ The same channel model also carries transports that do not need a reply channel:
 
 Channels replace the former **Agent Endpoint** name. Existing channel IDs and configuration stay the same. CLI commands now use `everruns agents channels`; the management API uses `/v1/platform/agents/{agent_id}/channels`. The former `/v1/platform/agents/{agent_id}/endpoints` routes remain aliases, and console bookmarks under `/agents/{agent_id}/endpoints` redirect to the channel pages.
 
-## Retired Apps
+## Migrating older ingress URLs
 
-Apps are retired from Everruns management. Everruns keeps existing App records for historical attribution and compatibility, and existing installs continue to serve traffic, but the App list, detail page, create flow, and management API are retired.
-
-The old `/v1/e/{channel_id}/…` and `/v1/platform/apps/{app_id}/…` ingress paths remain permanent aliases. They resolve to the migrated channel and continue to work. Do not rewrite a working existing installation only to change its URL. New integrations use the channel-scoped canonical routes above.
+The retired Apps aggregate and its ingress aliases have been removed. Existing
+channels retain their IDs, keys and configuration. Update external integrations to
+the channel-scoped URLs shown above before upgrading. The coordinated migration
+requires stopping old servers and workers; see the
+[upgrade instructions](/sre/runbooks/applications/#upgrade-from-the-retired-app-aggregate).
 
 ## See also
 

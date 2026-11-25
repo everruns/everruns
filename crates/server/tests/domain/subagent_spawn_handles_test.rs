@@ -32,7 +32,7 @@ impl Fixture {
                 source: everruns_server::domains::sessions::record::SessionSource::Api,
                 workspace_id: None,
                 org_id: 1,
-                app_id: None,
+
                 channel_id: None,
                 trigger_id: None,
                 harness_id: None,

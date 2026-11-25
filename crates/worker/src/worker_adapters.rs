@@ -756,12 +756,11 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
         None
     }
 
-    /// Invoke a schedule endpoint addressed by its legacy App alias when a
-    /// durable schedule fires. Carried over gRPC as `InvokeScheduledAppChannel`.
+    /// Invoke a schedule channel by its canonical ID when a
+    /// durable schedule fires. Carried over gRPC as `InvokeScheduledChannel`.
     async fn invoke_scheduled_channel(
         &self,
         org_id: i64,
-        app_id: &str,
         channel_id: &str,
     ) -> Result<serde_json::Value>;
 

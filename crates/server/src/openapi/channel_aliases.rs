@@ -99,12 +99,7 @@ pub(super) fn add_route_aliases(openapi: &mut OpenApi) {
 
 pub(super) fn add_schema_aliases(components: &mut Components) {
     for (canonical, legacy) in [
-        ("AgentChannel", "AppChannel"),
         ("ChannelStatus", "EndpointStatus"),
-        ("ChannelAuthConfig", "AppEndpointAuthConfig"),
-        ("ChannelAuthMode", "AppEndpointAuthMode"),
-        ("ChannelAuthProviderConfig", "AppEndpointAuthProviderConfig"),
-        ("ChannelAuthRequirements", "AppEndpointAuthRequirements"),
         ("CreateAgentChannelRequest", "CreateAgentEndpointRequest"),
         ("UpdateAgentChannelRequest", "UpdateAgentEndpointRequest"),
         ("TriggerAgentChannelOutput", "TriggerAgentEndpointOutput"),

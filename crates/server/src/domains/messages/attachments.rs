@@ -185,7 +185,7 @@ mod tests {
             workspace_id: None,
             org_id,
             harness_id: None,
-            app_id: None,
+
             channel_id: None,
             trigger_id: None,
             agent_id: None,

@@ -1,6 +1,6 @@
 import { buildSlackChannelConfig } from "@/components/agents/channels/slack-form-config";
 import { fireEvent, render, screen } from "@testing-library/react";
-import { SlackConversationSettings } from "@/components/apps/slack-conversation-settings";
+import { SlackConversationSettings } from "@/components/agents/channels/slack-conversation-settings";
 import {
   getDefaultChannelFormState,
   buildChannelConfig,

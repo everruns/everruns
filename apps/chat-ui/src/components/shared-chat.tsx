@@ -1,4 +1,6 @@
 "use client";
+
+import { apiPath } from "./api-path";
 import { useEffect, useRef, useState } from "react";
 import { MessageContent } from "./message-content";
 import { conversationMessages, originLabel, type ChatEvent } from "./transcript";
@@ -13,7 +15,7 @@ export function SharedChat({ token, name }: { token: string; name: string }) {
     setLoading(true);
     try {
       const response = await fetch(
-        `/api/chat/shared/${encodeURIComponent(token)}${cursor ? `?before=${cursor}` : ""}`,
+        apiPath(`chat/shared/${encodeURIComponent(token)}${cursor ? `?before=${cursor}` : ""}`),
         { cache: "no-store" },
       );
       if (!response.ok)

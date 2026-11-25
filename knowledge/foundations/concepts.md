@@ -42,7 +42,7 @@ graph LR
 
 - **Solid arrows**: configuration references: Agent uses a Harness, Harness has Capabilities, Agent has Capabilities
 - **Dashed arrows**: runtime assembly: each entity produces an `AgentConfigOverlay`, overlays fold into a single effective config, which resolves into a TurnAgent (see [AgentConfigOverlay](#agentconfigoverlay))
-- **Purple**: deployment: an Agent Channel exposes an Agent on an external channel and creates sessions from incoming messages. It replaced the App, which bound a Harness and an Agent to a channel and is now frozen compatibility data — see [Archived Apps](../integrations/apps.md)
+- **Purple**: deployment: an Agent Channel exposes an Agent on an external channel and creates sessions from incoming messages. See [Agent exposure](../integrations/agent-exposure.md)
 
 ### Harness
 
@@ -261,18 +261,10 @@ A remote server that exposes tools via the Model Context Protocol. Integrated as
 - Tool names are prefixed to avoid conflicts: `mcp_{server}__{tool}`
 - Execution happens via HTTP JSON-RPC
 
-### App
+### Agent Channel
 
-A frozen archival compatibility record. Apps and their historical channel relationship remain in
-storage, but App management, publishing, command discovery, and UI are retired.
-
-- Only deprecated archival reads remain.
-- `agent_channels` owns live ingress identity and liveness.
-- Permanent App-shaped route aliases resolve from channel-owned legacy identity without reading
-  `apps` or `app_channels`.
-- Existing session attribution, budget subject values, owner semantics, and reserved routing tags
-  remain compatible.
-- See [apps.md](../integrations/apps.md) for the full freeze contract.
+An agent-owned ingress surface with independent authentication, identity and lifecycle.
+Sessions carry structural channel attribution. See [Agent exposure](../integrations/agent-exposure.md).
 
 ### User Connection
 

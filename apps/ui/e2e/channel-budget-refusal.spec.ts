@@ -127,12 +127,12 @@ test.describe("channel budget refusal", () => {
     const seededChannel = runSql(
       `WITH seeded AS (
          INSERT INTO agent_channels (
-           id, agent_id, app_id, legacy_alias_id, public_id, channel_type,
+           id, agent_id, public_id, channel_type,
            channel_config, enabled, status, virtual_user_id, owner_principal_id,
            resolved_owner_user_id
          )
          SELECT
-           :'channel_uuid'::uuid, agent_id, NULL, NULL, :'channel_id', 'schedule',
+           :'channel_uuid'::uuid, agent_id, :'channel_id', 'schedule',
            :'channel_config'::jsonb, true, 'live', virtual_user_id, owner_principal_id,
            resolved_owner_user_id
          FROM agent_channels
@@ -166,7 +166,9 @@ test.describe("channel budget refusal", () => {
       }),
     );
     const consumed = await jsonResponse<{ session_id: string; created_session: boolean }>(
-      await request.post(`${apiBaseUrl}/api/v1/platform/agents/${agent.id}/channels/${channelId}/trigger`),
+      await request.post(
+        `${apiBaseUrl}/api/v1/platform/agents/${agent.id}/channels/${channelId}/trigger`,
+      ),
     );
     expect(consumed.created_session).toBe(true);
     expect(
@@ -212,7 +214,9 @@ test.describe("channel budget refusal", () => {
     ]);
 
     const refused = await jsonResponse<{ session_id: string; created_session: boolean }>(
-      await request.post(`${apiBaseUrl}/api/v1/platform/agents/${agent.id}/channels/${channelId}/trigger`),
+      await request.post(
+        `${apiBaseUrl}/api/v1/platform/agents/${agent.id}/channels/${channelId}/trigger`,
+      ),
     );
     expect(refused.created_session).toBe(true);
     expect(refused.session_id).not.toBe(consumed.session_id);
@@ -231,7 +235,11 @@ test.describe("channel budget refusal", () => {
       budget_id: string;
       error_code: string;
       error_fields: Record<string, unknown>;
-    }>(await request.get(`${apiBaseUrl}/api/v1/platform/sessions/${refused.session_id}/budget-check`));
+    }>(
+      await request.get(
+        `${apiBaseUrl}/api/v1/platform/sessions/${refused.session_id}/budget-check`,
+      ),
+    );
     expect(refusal).toMatchObject({
       action: "stop",
       budget_id: budget.id,

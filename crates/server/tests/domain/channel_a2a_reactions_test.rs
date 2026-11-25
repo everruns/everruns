@@ -12,11 +12,11 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use test_harness::TestServer;
 
-async fn create_app_with_a2a(server: &TestServer, name: &str, message: &str) -> (Value, String) {
-    create_app_with_a2a_mode(server, name, message, "shared_session").await
+async fn create_a2a_bundle(server: &TestServer, name: &str, message: &str) -> (Value, String) {
+    create_a2a_bundle_mode(server, name, message, "shared_session").await
 }
 
-async fn create_app_with_a2a_mode(
+async fn create_a2a_bundle_mode(
     server: &TestServer,
     name: &str,
     message: &str,
@@ -37,8 +37,8 @@ async fn create_app_with_a2a_mode(
 
     let api_key = format!("evr_app_{}", uuid::Uuid::new_v4().simple());
     let api_key_hash = hex::encode(Sha256::digest(api_key.as_bytes()));
-    let app = server
-        .seed_app_channel(
+    let bundle = server
+        .seed_channel_bundle(
             name,
             agent["id"].as_str().unwrap(),
             "a2a",
@@ -52,17 +52,17 @@ async fn create_app_with_a2a_mode(
             }),
         )
         .await;
-    (app, api_key)
+    (bundle, api_key)
 }
 
-async fn publish_app(server: &TestServer, app_id: &str) {
-    server.set_app_channels_live(app_id, true).await;
+async fn publish_channel(server: &TestServer, ingress_id: &str) {
+    server.set_bundle_live(ingress_id, true).await;
 }
 
 /// Send a JSON-RPC request to an A2A channel and return the parsed envelope.
 async fn a2a_rpc(
     server: &TestServer,
-    app_id: &str,
+    _ingress_id: &str,
     channel_id: &str,
     api_key: &str,
     method: &str,
@@ -78,7 +78,7 @@ async fn a2a_rpc(
     server
         .request_raw(
             Method::POST,
-            &format!("/v1/apps/{app_id}/a2a/{channel_id}"),
+            &format!("/v1/channels/{channel_id}/a2a"),
             vec![
                 ("content-type", "application/json"),
                 ("authorization", &format!("Bearer {api_key}")),
@@ -95,13 +95,13 @@ async fn task_with_a_message(
     server: &TestServer,
     name: &str,
 ) -> (String, String, String, String, String) {
-    let (app, api_key) = create_app_with_a2a(server, name, "{{a2a.text}}").await;
-    let app_id = app["id"].as_str().unwrap().to_string();
-    let channel_id = app["channels"][0]["id"].as_str().unwrap().to_string();
-    publish_app(server, &app_id).await;
+    let (bundle, api_key) = create_a2a_bundle(server, name, "{{a2a.text}}").await;
+    let ingress_id = bundle["id"].as_str().unwrap().to_string();
+    let channel_id = bundle["channels"][0]["id"].as_str().unwrap().to_string();
+    publish_channel(server, &ingress_id).await;
     let send = a2a_rpc(
         server,
-        &app_id,
+        &ingress_id,
         &channel_id,
         &api_key,
         "message/send",
@@ -115,7 +115,7 @@ async fn task_with_a_message(
         .assert_status(StatusCode::OK)
         .json();
     let message_id = messages["data"][0]["id"].as_str().unwrap().to_string();
-    (app_id, channel_id, api_key, task_id, message_id)
+    (ingress_id, channel_id, api_key, task_id, message_id)
 }
 
 fn reaction(task_id: Option<&str>, message_id: &str, emoji: &str, action: &str) -> Value {
@@ -146,7 +146,7 @@ async fn reactions_on(server: &TestServer, task_id: &str) -> Value {
 #[tokio::test]
 async fn a2a_reaction_is_stored_by_the_remote_caller_and_starts_no_turn() {
     let server = TestServer::in_memory().await;
-    let (app_id, channel_id, api_key, task_id, message_id) =
+    let (ingress_id, channel_id, api_key, task_id, message_id) =
         task_with_a_message(&server, "a2a-reaction").await;
     let before: Value = server
         .get(&format!("/v1/platform/sessions/{task_id}/messages"))
@@ -155,7 +155,7 @@ async fn a2a_reaction_is_stored_by_the_remote_caller_and_starts_no_turn() {
 
     let added = a2a_rpc(
         &server,
-        &app_id,
+        &ingress_id,
         &channel_id,
         &api_key,
         "message/send",
@@ -192,7 +192,7 @@ async fn a2a_reaction_is_stored_by_the_remote_caller_and_starts_no_turn() {
 
     a2a_rpc(
         &server,
-        &app_id,
+        &ingress_id,
         &channel_id,
         &api_key,
         "message/send",
@@ -213,12 +213,12 @@ async fn a2a_reaction_is_stored_by_the_remote_caller_and_starts_no_turn() {
 #[tokio::test]
 async fn a2a_reaction_needs_its_task_a_real_message_and_one_emoji() {
     let server = TestServer::in_memory().await;
-    let (app_id, channel_id, api_key, task_id, message_id) =
+    let (ingress_id, channel_id, api_key, task_id, message_id) =
         task_with_a_message(&server, "a2a-reaction-refused").await;
     let send = |params: Value| {
         a2a_rpc(
             &server,
-            &app_id,
+            &ingress_id,
             &channel_id,
             &api_key,
             "message/send",
@@ -264,13 +264,13 @@ async fn a2a_reaction_needs_its_task_a_real_message_and_one_emoji() {
 #[tokio::test]
 async fn a2a_agent_card_advertises_the_reactions_extension() {
     let server = TestServer::in_memory().await;
-    let (app, _api_key) = create_app_with_a2a(&server, "a2a-reaction-card", "{{a2a.text}}").await;
-    let app_id = app["id"].as_str().unwrap();
-    let channel_id = app["channels"][0]["id"].as_str().unwrap();
-    publish_app(&server, app_id).await;
+    let (bundle, _api_key) = create_a2a_bundle(&server, "a2a-reaction-card", "{{a2a.text}}").await;
+    let ingress_id = bundle["id"].as_str().unwrap();
+    let channel_id = bundle["channels"][0]["id"].as_str().unwrap();
+    publish_channel(&server, ingress_id).await;
     let card: Value = server
         .get(&format!(
-            "/v1/apps/{app_id}/a2a/{channel_id}/.well-known/agent-card.json"
+            "/v1/channels/{channel_id}/a2a/.well-known/agent-card.json"
         ))
         .await
         .assert_status(StatusCode::OK)

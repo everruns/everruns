@@ -182,7 +182,7 @@ pub(super) fn card_json(mut card: Value, delegation: Option<&PactDelegationConfi
 
 /// A delegation-enabled endpoint, before any authentication.
 struct Endpoint {
-    app: IngressContext,
+    ingress: IngressContext,
     channel: IngressChannel,
     config: crate::domains::agent_channels::record::A2aChannelConfig,
     pact: crate::domains::agent_channels::record::PactProfileConfig,
@@ -203,15 +203,15 @@ impl Endpoint {
         self.delegation
             .brand_name
             .as_deref()
-            .unwrap_or(&self.app.name)
+            .unwrap_or(&self.ingress.name)
     }
 }
 
 async fn endpoint(state: &ChannelA2aState, channel_id: &str) -> Result<Endpoint, Response> {
     match pact::pact_channel(state, channel_id).await? {
-        Some((app, channel, config, pact)) => match pact.delegation.clone() {
+        Some((ingress, channel, config, pact)) => match pact.delegation.clone() {
             Some(delegation) => Ok(Endpoint {
-                app,
+                ingress,
                 channel,
                 config,
                 pact,
@@ -239,7 +239,7 @@ async fn admit_client(
         .map_err(|()| pact::unauthorized())?;
     pact::rate_limit(
         state,
-        &endpoint.app,
+        &endpoint.ingress,
         &endpoint.channel,
         &endpoint.config,
         headers,

@@ -15,11 +15,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-#[cfg(test)]
-use crate::domains::apps::record::{App, AppStatus};
 use everruns_contracts::typed_id::{AgentChannelId, AgentId};
-#[cfg(test)]
-use everruns_contracts::typed_id::{AppId, HarnessId, PrincipalId};
 pub use everruns_core::channel::SessionBinding;
 use exposure::{DEFAULT_PUBLIC_TOOL_ACTIVITY_TEXT, PublicToolVisibility};
 
@@ -27,10 +23,7 @@ use utoipa::ToSchema;
 
 /// Per-channel lifecycle (EVE-1007).
 ///
-/// This is the authority for whether an exposure accepts traffic. It replaced
-/// the two-dimensional `App.status × AppChannel.enabled` matrix, which could
-/// express "published App, disabled channel" and forced publishing a whole App —
-/// and therefore every sibling channel on it — to make one endpoint reachable.
+/// Authoritative lifecycle for whether this channel accepts traffic.
 ///
 /// Liveness also depends on agent-level conditions, which are folded in at
 /// resolution time rather than stored here.
@@ -91,7 +84,7 @@ pub enum ChannelType {
     /// optional handshake.
     Fcp,
     /// Public Chat channel — an isolated, public-facing chat web app bound to a
-    /// single App's agent. Anonymous by default, with optional Google sign-in
+    /// single Channel's agent. Anonymous by default, with optional Google sign-in
     /// and Cloudflare Turnstile bot mitigation. Reuses AG-UI streaming and the
     /// shared channel auth verifier.
     #[serde(rename = "public_chat")]
@@ -214,7 +207,7 @@ pub struct AgentChannel {
     #[serde(default = "default_true")]
     pub enabled: bool,
     /// Per-channel lifecycle. Authoritative for ingress (EVE-1007); `enabled`
-    /// is retained for the App API's existing shape.
+    /// is retained for the Channel API's existing shape.
     #[serde(default)]
     pub status: ChannelStatus,
     /// Timestamp when this channel was created.
@@ -339,7 +332,7 @@ pub use everruns_core::channel_auth::{
 
 /// Typed AG-UI channel configuration.
 ///
-/// Parsed from the `channel_config` JSON field on App.
+/// Parsed from the `channel_config` JSON field on Channel.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct AgUiChannelConfig {
     /// Whether anonymous access is allowed for this channel (default on).
@@ -354,7 +347,7 @@ pub struct AgUiChannelConfig {
     #[serde(default = "default_session_expiration_seconds")]
     pub session_expiration_seconds: u32,
     /// Optional per-IP rate limit in requests per minute; `None` or `Some(0)`
-    /// disables the per-app limit (the global API limit still applies).
+    /// disables the per-channel limit (the global API limit still applies).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rate_limit_per_minute: Option<u32>,
     /// Public tool activity visibility for anonymous AG-UI streams.
@@ -440,7 +433,7 @@ pub struct FcpChannelConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub token: Option<String>,
     /// Markdown body returned for `GET` requests (the FCP handshake). When
-    /// omitted, a generic handshake derived from the app's name and
+    /// omitted, a generic handshake derived from the agent's name and
     /// description is used.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub handshake: Option<String>,
@@ -450,7 +443,7 @@ pub struct FcpChannelConfig {
     #[serde(default = "default_session_expiration_seconds")]
     pub session_expiration_seconds: u32,
     /// Optional per-IP rate limit (requests per minute) for the FCP endpoint.
-    /// `None` or `Some(0)` disables the per-app limit; the global API limit
+    /// `None` or `Some(0)` disables the per-channel limit; the global API limit
     /// still applies. Counted in an FCP-specific limiter namespace so it
     /// cannot be shared or exhausted by other channels.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -496,7 +489,7 @@ pub struct WebhookChannelConfig {
     pub session_mode: SessionBinding,
     /// Message content or template sent when the webhook arrives.
     pub message: String,
-    /// Optional per-IP rate limit applied to this app's webhook endpoint, in
+    /// Optional per-IP rate limit applied to this agent's webhook endpoint, in
     /// requests per minute. `None` or `Some(0)` disables the per-channel limit
     /// (the global API limit still applies). Mirrors
     /// `A2aChannelConfig::rate_limit_per_minute` (EVE-627).
@@ -533,7 +526,7 @@ pub struct A2aChannelConfig {
     /// Optional description surfaced in the Agent Card.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub agent_card_description: Option<String>,
-    /// Optional per-IP rate limit applied to this app's A2A endpoint, in
+    /// Optional per-IP rate limit applied to this agent's A2A endpoint, in
     /// requests per minute. `None` or `Some(0)` disables the per-channel
     /// limit (the global API limit still applies). Set a positive value to
     /// enforce a stricter cap on unattended agent-to-agent traffic for this
@@ -598,11 +591,11 @@ pub struct PactPersonalAgent {
 }
 
 /// Branding shown on a Public Chat surface. All fields optional; the public app
-/// falls back to the App's name and the default design-system theme when unset.
+/// falls back to the Channel's name and the default design-system theme when unset.
 /// Branding is non-secret and is returned as-is in API responses.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
 pub struct PublicChatBranding {
-    /// Display name shown in the chat header. Falls back to the App name.
+    /// Display name shown in the chat header. Falls back to the Channel name.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub display_name: Option<String>,
     /// Absolute URL of a logo image shown in the chat header.
@@ -652,7 +645,7 @@ pub struct PublicChatCaptchaConfig {
 
 /// Typed Public Chat channel configuration.
 ///
-/// Parsed from the `channel_config` JSON field on App. Public Chat reuses
+/// Parsed from the `channel_config` JSON field on Channel. Public Chat reuses
 /// AG-UI's streaming semantics and the shared channel auth verifier, and
 /// adds branding and bot-mitigation tailored to a public, link-shareable chat
 /// website.
@@ -670,8 +663,8 @@ pub struct PublicChatChannelConfig {
     /// one must be started. `0` disables expiration. Defaults to 6 hours.
     #[serde(default = "default_session_expiration_seconds")]
     pub session_expiration_seconds: u32,
-    /// Optional per-IP, per-app rate limit in requests per minute. `None` or
-    /// `Some(0)` disables the per-app cap (the global API limit still applies).
+    /// Optional per-IP, per-channel rate limit in requests per minute. `None` or
+    /// `Some(0)` disables the per-channel cap (the global API limit still applies).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rate_limit_per_minute: Option<u32>,
     /// Public tool activity visibility. Same rules as AG-UI: raw tool names,

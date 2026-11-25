@@ -10,7 +10,7 @@ pub mod agent_definitions;
 pub mod agent_scripts;
 pub mod agent_triggers;
 pub mod agents;
-pub mod apps;
+pub mod applications;
 pub mod audit_logs;
 pub mod budgets;
 pub mod capabilities;

@@ -114,12 +114,11 @@ pub async fn actor(
                 .await
                 .map_err(|e| CommandError::internal(e.into()))?;
         // A dedicated workspace and a single known speaker are necessary, but a
-        // channel/App delivery surface can have an audience before another speaker
+        // channel delivery surface can have an audience before another speaker
         // appears. Without a proved private audience, personal use fails closed.
         !ctx.db.is_playground_session(invocation.session_id).await?
             && matches!(session.source.as_str(), "chat" | "api")
             && session.channel_id.is_none()
-            && session.app_id.is_none()
             && workspace_sessions == 1
             && consumers <= 1
     } else {

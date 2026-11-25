@@ -67,6 +67,7 @@ pub const MOUNTS: &[&str] = &[
     "/memory/shared",
     "/shared",
     "/room",
+    "/application/memory",
 ];
 
 /// `backends` with the mounts of `session`'s Memory, served by its files

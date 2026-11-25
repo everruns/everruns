@@ -192,7 +192,6 @@ fn classify_anyhow_maps_eve437_validation_substrings() {
         "Cannot archive or delete harness while child harnesses still inherit from it: a, b",
         "Could not find a unique name for 'foo'",
         "eval target must specify harness_id or harness_name",
-        "App targets not yet supported in eval execution",
         "harness_id and harness_name are mutually exclusive in eval target",
         "Only API key MCP servers can store an API key",
         "API key auth mode requires an API key",

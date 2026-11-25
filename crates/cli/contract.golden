@@ -77,6 +77,12 @@ agents upsert	--capabilities --communication --completion-check --context-revisi
 agents validate	--remote <file>!
 agents view get	--agent-id! --context-revision --reason
 agents view replace	--agent-id! --context-revision --reason --revision! --view!
+applications create	--config --context-revision --description --name! --reason --resources --slug!
+applications get	--application-id! --context-revision --reason
+applications list	--context-revision --include-archived --reason
+applications resources create	--agent-id --application-id! --context-revision --kind! --name! --reason --slug! --version!
+applications status	--application-id! --context-revision --reason --status! --version!
+applications update	--application-id! --config --context-revision --description --name! --reason --resources --slug! --version!
 budgets check	--budget-id! --context-revision --reason
 budgets create	--context-revision --currency! --limit! --metadata --period --policy --reason --soft-limit --subject-id! --subject-type!
 budgets delete	--budget-id --context-revision --reason <budget_id>
@@ -214,19 +220,19 @@ k8s password	--name
 k8s port-forward	--name
 k8s status	--name
 k8s uninstall	--name
-k8s up	--admin-email --auth --bundled-postgres --chart --chart-version --context --data-plane --database-url --image-tag --ingress-class --name --namespace --no-open --port --provider --public-url --set... --storage-class --timeout --values/-f... --yes/-y
+k8s up	--admin-email --applications-domain --applications-oidc-client-id --applications-oidc-issuer --applications-secret --applications-tls-secret --auth --bundled-postgres --chart --chart-version --context --data-plane --database-url --image-tag --ingress-class --name --namespace --no-open --port --provider --public-url --set... --storage-class --timeout --values/-f... --yes/-y
 k8s upgrade	--chart-version --name --no-backup --timeout --yes/-y
 knowledge create	--context-revision --description --embedding-model-id --indexer-id --indexing --name! --reason --rules
 knowledge delete	--collection-id! --context-revision --reason
 knowledge files delete	--collection-id! --context-revision --path! --reason
-knowledge files list	--after --collection-id! --context-revision --extracted --length --limit --offset --path --reason --tree
+knowledge files list	--after --collection-id! --context-revision --extracted --length --limit --offset --path --reason --tree --version
 knowledge files update	--collection-id! --context-revision --indexable --metadata --path! --readable --reason
 knowledge files write	--collection-id! --content --content-base64 --context-revision --indexable --metadata --mime-type --path! --readable --reason
 knowledge get	--collection-id! --context-revision --reason
 knowledge indexers create	--context-revision --credential-binding-id! --endpoint! --name! --reason
 knowledge indexers list	--context-revision --reason
 knowledge list	--after --context-revision --limit --reason
-knowledge okf validate	--after --collection-id! --context-revision --extracted --length --limit --offset --path --reason --tree
+knowledge okf validate	--after --collection-id! --context-revision --extracted --length --limit --offset --path --reason --tree --version
 knowledge search	--collections... --context-revision --lexical-only --limit --metadata --path --query! --reason
 knowledge sources add	--collection-id! --config --connection-owner --context-revision --kind! --reason --root-path
 knowledge sync	--collection-id! --context-revision --reason
@@ -332,8 +338,8 @@ rooms files edit	--as-member --context-revision --edits! --path! --reason --room
 rooms files history	--context-revision --limit --path! --reason --room-id <room_id>
 rooms files list	--context-revision --prefix --reason --room-id <room_id>
 rooms files move	--as-member --context-revision --from! --reason --room-id! --to!
-rooms files read	--context-revision --path! --reason --room-id <room_id>
-rooms files restore	--as-member --context-revision --path! --reason --room-id!
+rooms files read	--context-revision --path! --reason --room-id --version <room_id>
+rooms files restore	--as-member --context-revision --path! --reason --room-id! --version!
 rooms files write	--as-member --content! --context-revision --encoding --if-version --path! --reason --room-id!
 rooms get	--context-revision --reason --room-id <room_id>
 rooms list	--context-revision --external-ref --include-archived --limit --mine --reason

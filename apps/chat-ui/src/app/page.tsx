@@ -1,6 +1,7 @@
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { channelForHost, bootstrap } from "../server/config";
+import { Application } from "../components/application";
 import { Chat } from "../components/chat";
 export const dynamic = "force-dynamic";
 export default async function Page() {
@@ -17,5 +18,9 @@ export default async function Page() {
   } catch {
     return notFound();
   }
-  return <Chat config={config} />;
+  return channel.startsWith("application_") ? (
+    <Application config={config} />
+  ) : (
+    <Chat config={config} />
+  );
 }

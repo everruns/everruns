@@ -1,24 +1,9 @@
-// Shared state of the Agent Execution API routes (`super::agent_api`), the
-// turn-cancel helper every channel uses, and the answers for the retired
-// `api_endpoint` routes.
-//
-// Decisions (see knowledge/integrations/agent-execution-api.md, phase 6):
-// - `api_endpoint` channels are converted to `api` channels at startup
-//   (`domains::agent_channels::api_endpoint_conversion`) and their handler is
-//   gone. The agent base URL `/v1/channels/{channel_id}` is unchanged, so a
-//   caller with an old `evr_app_` key reaches the Agent API; a request in the
-//   old wire shape is told so there (`agent_api::retired_shape`).
-// - The App-scoped aliases `/v1/apps/{app_id}/api/{channel_id}/…` answer 410
-//   Gone with a pointer to the Agent API, without resolving anything, so they
-//   reveal nothing about which channels exist.
-
 use std::sync::Arc;
 
 use axum::{
     Json, Router,
     http::StatusCode,
     response::{IntoResponse, Response},
-    routing::{get, post},
 };
 use everruns_core::events::{TURN_CANCELLED, TURN_COMPLETED, TURN_FAILED};
 
@@ -96,24 +81,7 @@ impl ChannelApiState {
 }
 
 pub fn routes(state: ChannelApiState) -> Router {
-    Router::new()
-        .route(
-            "/v1/apps/{app_id}/api/{channel_id}/sessions",
-            post(retired_app_route),
-        )
-        .route(
-            "/v1/apps/{app_id}/api/{channel_id}/sessions/{session_id}",
-            get(retired_app_route),
-        )
-        .route(
-            "/v1/apps/{app_id}/api/{channel_id}/sessions/{session_id}/messages",
-            post(retired_app_route),
-        )
-        .route(
-            "/v1/apps/{app_id}/api/{channel_id}/sessions/{session_id}/cancel",
-            post(retired_app_route),
-        )
-        .merge(agent_api::routes(state))
+    agent_api::routes(state)
 }
 
 /// The problem a caller of a retired `api_endpoint` route or shape gets.
@@ -128,16 +96,6 @@ pub(crate) fn retired_api_endpoint_problem(status: StatusCode, detail: &str) -> 
         )
         .into_response(status)
         .into_response()
-}
-
-/// `/v1/apps/{app_id}/api/{channel_id}/…`: the App-scoped `api_endpoint`
-/// aliases, retired with the channel type.
-async fn retired_app_route() -> Response {
-    retired_api_endpoint_problem(
-        StatusCode::GONE,
-        "API endpoint routes under /v1/apps/{app_id}/api/ are retired. The channel is now an \
-         Agent API channel: call /v1/channels/{channel_id} with the same key.",
-    )
 }
 
 /// Cancel a session's in-flight turn and record it as cancelled.
@@ -268,23 +226,5 @@ pub(crate) fn command_error_response(
             ErrorResponse::new("Internal server error")
                 .into_response(StatusCode::INTERNAL_SERVER_ERROR)
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn retired_app_routes_answer_gone_with_a_pointer() {
-        let response = retired_app_route().await;
-        assert_eq!(response.status(), StatusCode::GONE);
-        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        let problem: serde_json::Value = serde_json::from_slice(&body).unwrap();
-        assert_eq!(problem["code"], "api_endpoint_retired");
-        assert_eq!(problem["type"], AGENT_API_DOCS_URL);
-        assert_eq!(problem["allowed_actions"][0]["href"], AGENT_API_DOCS_URL);
     }
 }

@@ -12,7 +12,7 @@ use http_body_util::BodyExt;
 
 const PATHS: &[&str] = &[
     "/v1/auth/external/receiver",
-    "/v1/platform/apps/{id}",
+    "/v1/platform/harnesses/{id}",
     "/v1/platform/user/connections",
     "/v1/user/connections/{provider}/callback",
     "/v1/platform/agents",
@@ -23,7 +23,7 @@ const PATHS: &[&str] = &[
     "/v1/platform/virtual-users/{id}",
     "/v1/virtual-users/me",
     "/v1/channels/{id}/sessions",
-    "/v1/apps/{id}/webhooks/{channel}",
+    "/v1/channels/{id}/webhook",
     "/v1/providers/{id}/oauth/callback",
     "/v1/platform/providers/{id}/oauth/authorize",
     "/v1/platform/sessions/{id}/sse",
@@ -54,7 +54,10 @@ async fn guard(request: Request, next: Next) -> Response {
 use axum::response::IntoResponse;
 fn app(prefix: &str) -> Router {
     let managed = Router::new()
-        .route("/v1/platform/apps/{id}", get(|| async { "managed app" }))
+        .route(
+            "/v1/platform/harnesses/{id}",
+            get(|| async { "managed harness" }),
+        )
         .route(
             "/v1/platform/user/connections/{provider}/verify",
             axum::routing::post(|| async { "verified" }),
@@ -104,10 +107,7 @@ fn app(prefix: &str) -> Router {
         )
         .layer(from_fn(guard));
     let routes = managed
-        .route(
-            "/v1/apps/{id}/public-chat",
-            get(|| async { "published chat" }),
-        )
+        .route("/v1/channels/{id}/chat", get(|| async { "published chat" }))
         .route(
             "/v1/user/connections/{provider}/callback",
             get(|| async { "connection callback" }),
@@ -119,10 +119,7 @@ fn app(prefix: &str) -> Router {
             "/v1/channels/{id}/sessions",
             get(|| async { "agent execution" }),
         )
-        .route(
-            "/v1/apps/{id}/webhooks/{channel}",
-            get(|| async { "webhook" }),
-        )
+        .route("/v1/channels/{id}/webhook", get(|| async { "webhook" }))
         .route("/v1/auth/callback/{provider}", get(|| async { "callback" }))
         .route("/v1/auth/external/receiver", get(|| async { "bridge" }))
         .route(
@@ -239,10 +236,10 @@ async fn parameters_and_encoded_files_keep_their_values() {
 #[tokio::test]
 async fn published_protocols_callbacks_and_self_service_are_not_deprecated() {
     for uri in [
-        "/v1/apps/app_1/public-chat",
+        "/v1/channels/channel_1/chat",
         "/v1/user/connections/example/callback",
         "/v1/channels/channel_1/sessions",
-        "/v1/apps/app_1/webhooks/channel_1",
+        "/v1/channels/channel_1/webhook",
         "/v1/auth/callback/google",
         "/v1/auth/external/receiver",
         "/v1/providers/provider_1/oauth/callback",

@@ -40,11 +40,10 @@ without a design.
 ## Decisions
 
 **A native `slack` capability, resolving the channel's bot token.** A session
-created by a Slack channel carries both `slack:app:{id}` and
-`slack:endpoint:{id}` tags. The capability resolves through the **endpoint**,
-not the app: since EVE-1008 the endpoint is what owns Slack bot identity, so one
-agent can carry two Slack endpoints with different bots and resolving via the
-app would pick the wrong one. It then acts as the bot the user already invited —
+created by a Slack channel carries a structural channel binding. The capability
+resolves the bot through that binding and the session's organization, never
+through mutable tags. Two Slack channels on the same Agent can therefore use
+different bots. It acts as the bot the user already invited —
 no second token, no second set of scopes to rotate, and the agent's Slack
 identity matches the one answering in the thread.
 
@@ -134,7 +133,7 @@ Agent needs a decision
   └─ request_approval tool → synthetic tool call, session waits
        └─ Slack delivery adapter renders Block Kit buttons in the thread
             └─ human clicks
-                 └─ POST /v1/apps/{app_id}/slack/interactivity   (Slack-signed)
+                 └─ POST /v1/channels/{channel_id}/slack/interactivity   (Slack-signed)
                       └─ resolve to the pending call + the clicking user
                            └─ authorize, record who decided
                                 └─ post the decision → turn resumes

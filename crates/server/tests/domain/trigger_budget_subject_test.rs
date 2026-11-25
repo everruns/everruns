@@ -193,7 +193,7 @@ async fn seed_trigger(
 /// Reconstruct a pre-153 `app_channel` budget. The CHECK constraint rejects the
 /// subject type now, which is the migration working, so it comes off for the
 /// insert and goes straight back on.
-async fn seed_app_channel_budget(
+async fn seed_channel_bundle_budget(
     tx: &mut Transaction<'_, Postgres>,
     org_id: i64,
     ingress_id: &str,
@@ -265,7 +265,7 @@ async fn a_webhook_cap_rekeys_onto_the_trigger_preserving_spend_and_window() {
         .clone()
         .expect("seeded with an ingress id");
     let window_start = chrono::Utc::now() - chrono::Duration::days(9);
-    seed_app_channel_budget(&mut tx, org.org_id, &ingress_id, 100.0, 40.0, window_start).await;
+    seed_channel_bundle_budget(&mut tx, org.org_id, &ingress_id, 100.0, 40.0, window_start).await;
 
     sqlx::query(REKEY_APP_CHANNEL_BUDGETS)
         .bind(org.org_id)
@@ -347,7 +347,7 @@ async fn rekeying_never_loosens_the_effective_ceiling() {
         let before = tightest_trigger_limit(&mut tx, org.org_id, &trigger.subject_id())
             .await
             .expect("an existing ceiling");
-        seed_app_channel_budget(
+        seed_channel_bundle_budget(
             &mut tx,
             org.org_id,
             &ingress_id,
@@ -387,7 +387,7 @@ async fn an_unmatched_channel_budget_survives_the_rekey_and_trips_the_guard() {
     let pool = pool().await;
     let mut tx = pool.begin().await.expect("begin");
     let org = seed_org(&mut tx, "trg-budget-orphan").await;
-    seed_app_channel_budget(
+    seed_channel_bundle_budget(
         &mut tx,
         org.org_id,
         &format!("appchan_{}", hex32()),

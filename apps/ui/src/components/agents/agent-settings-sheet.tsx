@@ -541,7 +541,6 @@ function UsageSection({ agent }: { agent: Agent }) {
   const ui = useUiTranslations();
   const usage = agent.usage;
   const sessions = agent.session_count ?? 0;
-  const apps = agent.app_count ?? 0;
 
   return (
     <div className="flex flex-col gap-4 text-sm">
@@ -566,7 +565,6 @@ function UsageSection({ agent }: { agent: Agent }) {
       )}
       <p className="text-muted-foreground">
         {ui("Across")} {sessions} {pluralize(sessions, "session", undefined, displayLocale)}{" "}
-        {ui("and")} {apps} {pluralize(apps, "app", undefined, displayLocale)}
         {ui(". The Stats tab breaks usage down over time.")}
       </p>
     </div>

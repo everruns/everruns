@@ -382,12 +382,11 @@ pub async fn create_api_session(
     };
     let capabilities = personal_plugins(db, context, channel, caller).await?;
     let session = session_service
-        .create_from_app(
+        .create_from_channel(
             &everruns_core::Caller::internal(context.org_id),
             context.harness_id.uuid(),
             Some(context.agent_internal_id),
             context.agent_id,
-            context.historical_app_id,
             Some(channel.internal_id),
             None,
             owner_principal_id,

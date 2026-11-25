@@ -241,9 +241,6 @@ everruns_core::permissions::Permission	enum
 everruns_core::permissions::Permission::OrgAgentsDangerous	variant
 everruns_core::permissions::Permission::OrgAgentsManage	variant
 everruns_core::permissions::Permission::OrgApiKeysManage	variant
-everruns_core::permissions::Permission::OrgAppsDangerous	variant
-everruns_core::permissions::Permission::OrgAppsManage	variant
-everruns_core::permissions::Permission::OrgAppsView	variant
 everruns_core::permissions::Permission::OrgAuditLogsView	variant
 everruns_core::permissions::Permission::OrgCapabilitiesManage	variant
 everruns_core::permissions::Permission::OrgCapabilitiesView	variant
@@ -268,6 +265,7 @@ everruns_core::permissions::Permission::OrgSettingsView	variant
 everruns_core::permissions::Permission::OrgSkillsDangerous	variant
 everruns_core::permissions::Permission::OrgSkillsManage	variant
 everruns_core::permissions::Permission::OrgSkillsView	variant
+everruns_core::permissions::Permission::OrgVirtualUsersDangerous	variant
 everruns_core::permissions::Permission::OrgVirtualUsersManage	variant
 everruns_core::permissions::Permission::OrgVirtualUsersView	variant
 everruns_core::permissions::PermissionResolver	trait

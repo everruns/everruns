@@ -35,6 +35,7 @@ use crate::storage::StorageBackend;
 pub const LISTENERS: &[&str] = &[
     "ObserverMatchListener",
     "CustomerTracing",
+    "room_posts",
     crate::domains::agents::view_publication::LISTENER,
 ];
 
@@ -48,7 +49,9 @@ pub async fn wanted(
     if super::warehouse::enabled(policy) {
         return Ok(vec!["*".into()]);
     }
-    let mut types = BTreeSet::new();
+    // Explicit messages from Room agents must reach the same posting listener
+    // as v1. The listener checks the live Room membership before posting.
+    let mut types = BTreeSet::from([everruns_contracts::runtime::events::CONVERSATION_MESSAGE]);
     // Uncached: called right after an observer changed.
     if db.count_active_observers(org_id).await? > 0 {
         types.extend(crate::domains::observers::OBSERVED_EVENT_TYPES);

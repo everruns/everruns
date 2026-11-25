@@ -1,7 +1,7 @@
 //! The channel host's session port over the server's services.
 //!
 //! Decisions:
-//! - Sessions are created with `SessionService::create_from_app` and the
+//! - Sessions are created with `SessionService::create_from_channel` and the
 //!   channel's tenant, agent and owner from the host scope, so they carry the
 //!   same provenance (`sessions.channel_id`, owner, source) as before the host.
 //! - A request's identified end user (`runtime_owner`) owns the sessions
@@ -206,12 +206,11 @@ impl ChannelSessionPort for ServerChannelPort {
         };
         let session = self
             .sessions
-            .create_from_app(
+            .create_from_channel(
                 &everruns_core::Caller::internal(context.org_id),
                 context.harness_id.uuid(),
                 Some(context.agent_internal_id),
                 context.agent_id,
-                context.historical_app_id,
                 Some(channel.internal_id),
                 None,
                 owner,
@@ -223,9 +222,9 @@ impl ChannelSessionPort for ServerChannelPort {
                     virtual_user_id: context.virtual_user_id,
                     title: Some(request.title),
                     tags: [
-                        format!("app:{}", context.public_id),
-                        format!("app_channel:{}", channel.public_id),
-                        format!("app_channel_type:{}", channel.channel_type),
+                        format!("ingress:{}", context.public_id),
+                        format!("channel:{}", channel.public_id),
+                        format!("channel_type:{}", channel.channel_type),
                     ]
                     .into_iter()
                     .chain(session_tags.iter().cloned())

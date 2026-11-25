@@ -29,7 +29,7 @@ use serde_json::{Value, json};
 use sha2::Sha256;
 use test_harness::TestServer;
 
-use everruns_server::domains::apps::record::App;
+use crate::test_harness::ChannelBundle;
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -223,13 +223,16 @@ async fn create_test_agent(server: &TestServer) -> String {
 }
 
 /// Helper: create a published Slack app, return the app.
-async fn create_published_slack_app(server: &TestServer, signing_secret: &str) -> App {
+async fn create_published_slack_channel(
+    server: &TestServer,
+    signing_secret: &str,
+) -> ChannelBundle {
     init_tracing();
     let agent_id = create_test_agent(server).await;
 
-    let app: App = serde_json::from_value(
+    let app: ChannelBundle = serde_json::from_value(
         server
-            .seed_app_channel(
+            .seed_channel_bundle(
                 "Slack Test Bot",
                 &agent_id,
                 "slack",
@@ -242,26 +245,26 @@ async fn create_published_slack_app(server: &TestServer, signing_secret: &str) -
             )
             .await,
     )
-    .expect("fixture App");
+    .expect("fixture channel");
 
     serde_json::from_value(
         server
-            .set_app_channels_live(&app.public_id.to_string(), true)
+            .set_bundle_live(&app.public_id.to_string(), true)
             .await,
     )
-    .expect("published fixture App")
+    .expect("published fixture channel")
 }
 
 /// Helper: send a signed Slack webhook event to the test server.
 async fn send_slack_event(
     server: &TestServer,
-    app_id: impl std::fmt::Display,
+    channel_id: impl std::fmt::Display,
     signing_secret: &str,
     event_payload: &Value,
 ) -> test_harness::TestResponse {
     send_slack_event_to_path(
         server,
-        &format!("/v1/apps/{}/slack/events", app_id),
+        &format!("/v1/channels/{}/slack/events", channel_id),
         signing_secret,
         event_payload,
     )
@@ -305,7 +308,7 @@ async fn send_slack_event_to_path(
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_slack_url_verification_challenge() {
     let server = TestServer::in_memory().await;
-    let app = create_published_slack_app(&server, TEST_SIGNING_SECRET).await;
+    let app = create_published_slack_channel(&server, TEST_SIGNING_SECRET).await;
 
     let payload = json!({
         "type": "url_verification",
@@ -331,7 +334,7 @@ async fn test_slack_url_verification_challenge() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_slack_invalid_signature_rejected() {
     let server = TestServer::in_memory().await;
-    let app = create_published_slack_app(&server, TEST_SIGNING_SECRET).await;
+    let app = create_published_slack_channel(&server, TEST_SIGNING_SECRET).await;
 
     let payload = json!({
         "type": "url_verification",
@@ -368,7 +371,7 @@ async fn test_slack_invalid_signature_rejected() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_slack_message_creates_session() {
     let server = TestServer::new().await;
-    let app = create_published_slack_app(&server, TEST_SIGNING_SECRET).await;
+    let app = create_published_slack_channel(&server, TEST_SIGNING_SECRET).await;
     let ts = unique_ts();
 
     let payload = json!({
@@ -412,7 +415,7 @@ async fn test_slack_message_creates_session() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_slack_threaded_message_reuses_session() {
     let server = TestServer::new().await;
-    let app = create_published_slack_app(&server, TEST_SIGNING_SECRET).await;
+    let app = create_published_slack_channel(&server, TEST_SIGNING_SECRET).await;
     let thread_ts = unique_ts();
     let reply_ts = unique_ts();
 
@@ -474,7 +477,7 @@ async fn test_slack_threaded_message_reuses_session() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_slack_bot_message_ignored() {
     let server = TestServer::new().await;
-    let app = create_published_slack_app(&server, TEST_SIGNING_SECRET).await;
+    let app = create_published_slack_channel(&server, TEST_SIGNING_SECRET).await;
 
     let bot_ts = unique_ts();
 
@@ -501,7 +504,7 @@ async fn test_slack_bot_message_ignored() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_slack_channel_join_ignored() {
     let server = TestServer::in_memory().await;
-    let app = create_published_slack_app(&server, TEST_SIGNING_SECRET).await;
+    let app = create_published_slack_channel(&server, TEST_SIGNING_SECRET).await;
     let join_ts = unique_ts();
 
     let payload = json!({
@@ -531,7 +534,7 @@ async fn test_slack_channel_join_ignored() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_slack_agent_surface_events_are_no_ops() {
     let server = TestServer::new().await;
-    let app = create_published_slack_app(&server, TEST_SIGNING_SECRET).await;
+    let app = create_published_slack_channel(&server, TEST_SIGNING_SECRET).await;
 
     // Two of these are no longer pure no-ops: `app_context_changed` updates the
     // persisted ThreadContext (EVE-977) and `agent_session_stopped` cancels a
@@ -572,7 +575,7 @@ async fn test_slack_agent_surface_events_are_no_ops() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_slack_context_change_updates_thread_context() {
     let server = TestServer::new().await;
-    let app = create_published_slack_app(&server, TEST_SIGNING_SECRET).await;
+    let app = create_published_slack_channel(&server, TEST_SIGNING_SECRET).await;
 
     // A message first, so there is a session for the context to attach to.
     let ts = unique_ts();
@@ -690,7 +693,7 @@ async fn test_slack_context_change_updates_thread_context() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_slack_stop_cancels_the_running_turn() {
     let server = TestServer::new().await;
-    let app = create_published_slack_app(&server, TEST_SIGNING_SECRET).await;
+    let app = create_published_slack_channel(&server, TEST_SIGNING_SECRET).await;
 
     let ts = unique_ts();
     send_slack_event(
@@ -740,8 +743,8 @@ async fn test_slack_stop_cancels_the_running_turn() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_slack_stop_from_another_app_is_rejected() {
     let server = TestServer::new().await;
-    let owner = create_published_slack_app(&server, TEST_SIGNING_SECRET).await;
-    let other = create_published_slack_app(&server, TEST_SIGNING_SECRET).await;
+    let owner = create_published_slack_channel(&server, TEST_SIGNING_SECRET).await;
+    let other = create_published_slack_channel(&server, TEST_SIGNING_SECRET).await;
 
     let ts = unique_ts();
     send_slack_event(
@@ -787,7 +790,7 @@ async fn test_slack_stop_from_another_app_is_rejected() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_slack_stop_without_thread_is_a_no_op() {
     let server = TestServer::new().await;
-    let app = create_published_slack_app(&server, TEST_SIGNING_SECRET).await;
+    let app = create_published_slack_channel(&server, TEST_SIGNING_SECRET).await;
 
     send_slack_event(
         &server,
@@ -825,7 +828,7 @@ async fn test_slack_nonexistent_app_returns_404() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_slack_app_mention_creates_session() {
     let server = TestServer::new().await;
-    let app = create_published_slack_app(&server, TEST_SIGNING_SECRET).await;
+    let app = create_published_slack_channel(&server, TEST_SIGNING_SECRET).await;
 
     let mention_ts = unique_ts();
 
@@ -852,7 +855,7 @@ async fn test_slack_app_mention_creates_session() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_slack_empty_message_ignored() {
     let server = TestServer::new().await;
-    let app = create_published_slack_app(&server, TEST_SIGNING_SECRET).await;
+    let app = create_published_slack_channel(&server, TEST_SIGNING_SECRET).await;
     let empty_ts = unique_ts();
 
     let payload = json!({
@@ -878,11 +881,11 @@ async fn test_slack_empty_message_ignored() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_slack_manifest_channel() {
     let server = TestServer::in_memory().await;
-    let app = create_published_slack_app(&server, TEST_SIGNING_SECRET).await;
+    let app = create_published_slack_channel(&server, TEST_SIGNING_SECRET).await;
     let channel_id = app.channels[0].public_id;
 
     server
-        .get(&format!("/v1/apps/{}/slack/manifest", app.public_id))
+        .get(&format!("/v1/channels/{}/slack/manifest", app.public_id))
         .await
         .assert_success();
     let resp = server
@@ -1183,7 +1186,7 @@ async fn test_real_slack_users_info() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_slack_missing_signature_headers() {
     let server = TestServer::new().await;
-    let app = create_published_slack_app(&server, TEST_SIGNING_SECRET).await;
+    let app = create_published_slack_channel(&server, TEST_SIGNING_SECRET).await;
 
     let body = serde_json::to_vec(&json!({
         "type": "url_verification",
@@ -1195,7 +1198,7 @@ async fn test_slack_missing_signature_headers() {
     let resp = server
         .request_raw(
             Method::POST,
-            &format!("/v1/apps/{}/slack/events", app.public_id),
+            &format!("/v1/channels/{}/slack/events", app.public_id),
             vec![("content-type", "application/json")],
             body,
         )
@@ -1207,7 +1210,7 @@ async fn test_slack_missing_signature_headers() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_slack_replay_attack_old_timestamp() {
     let server = TestServer::new().await;
-    let app = create_published_slack_app(&server, TEST_SIGNING_SECRET).await;
+    let app = create_published_slack_channel(&server, TEST_SIGNING_SECRET).await;
 
     let payload = json!({
         "type": "url_verification",
@@ -1229,7 +1232,7 @@ async fn test_slack_replay_attack_old_timestamp() {
     let resp = server
         .request_raw(
             Method::POST,
-            &format!("/v1/apps/{}/slack/events", app.public_id),
+            &format!("/v1/channels/{}/slack/events", app.public_id),
             vec![
                 ("content-type", "application/json"),
                 ("x-slack-request-timestamp", &old_timestamp),

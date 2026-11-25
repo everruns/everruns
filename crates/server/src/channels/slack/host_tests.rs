@@ -573,12 +573,11 @@ async fn a_pane_turn_streams_and_a_channel_turn_does_not() {
 /// Sessions the tag lookup created before the host, tagged as it tagged them.
 async fn tagged_session(slack: &Slack, owner: PrincipalId, tags: &[String]) -> SessionId {
     crate::domains::sessions::SessionService::new(slack.db.clone())
-        .create_from_app(
+        .create_from_channel(
             &everruns_core::Caller::internal(DEFAULT_ORG_ID),
             slack.context.harness_id.uuid(),
             Some(slack.context.agent_internal_id),
             slack.context.agent_id,
-            None,
             Some(slack.channel.internal_id),
             None,
             owner,
@@ -630,12 +629,11 @@ async fn existing_slack_conversations_keep_their_session() {
     tagged_session(&slack, stranger.id, &[endpoint, "slack:channel:C1".into()]).await;
     tagged_session(&slack, owner, &["slack:channel:C2".into()]).await;
 
-    sqlx::raw_sql(include_str!(
-        "../../../migrations/legacy/217_slack_channel_bindings.sql"
-    ))
-    .execute(slack.db.database().pool())
-    .await
-    .unwrap();
+    crate::storage::test_database::apply_historical_channel_bindings(
+        slack.db.database().pool(),
+        include_str!("../../../migrations/legacy/217_slack_channel_bindings.sql"),
+    )
+    .await;
 
     assert_eq!(
         slack.bound("slack:thread:1.0").await,

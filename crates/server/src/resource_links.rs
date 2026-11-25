@@ -135,7 +135,6 @@ fn own_resource_id(map: &serde_json::Map<String, Value>) -> Option<ResourceId> {
         "session_id",
         "agent_id",
         "harness_id",
-        "app_id",
         "identity_id",
         "mcp_server_id",
         "skill_id",
@@ -168,7 +167,6 @@ fn route_for_id(id: &str, map: &serde_json::Map<String, Value>) -> Option<LinkRo
         "agent" => ("v1/platform/agents", format!("agents/{id}")),
         "harness" => ("v1/platform/harnesses", format!("harnesses/{id}")),
         "session" => ("v1/platform/sessions", format!("sessions/{id}/chat")),
-        "app" => ("v1/platform/apps", format!("apps/{id}")),
         "identity" => ("v1/platform/virtual-users", format!("virtual-users/{id}")),
         "mcp" => (
             "v1/platform/mcp-servers",

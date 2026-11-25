@@ -677,10 +677,10 @@ mod tests {
         }
     }
 
-    // Regression tests for Slack recovery app ownership.
+    // Regression tests for Slack recovery channel ownership.
     //
-    // Recovery must use the server-owned `sessions.app_id` FK. Mutable
-    // `slack:app:*` routing tags alone must not opt a session into recovery.
+    // Recovery must use the server-owned `sessions.channel_id` FK. Mutable
+    // `slack:channel:*` routing tags alone must not opt a session into recovery.
 
     /// EVE-973: one app serves both Slack surfaces, and which one an event
     /// belongs to is read from the event rather than from config.

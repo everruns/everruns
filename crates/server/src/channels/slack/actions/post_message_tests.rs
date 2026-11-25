@@ -28,7 +28,7 @@ async fn input(
     fixture.db.create_event(CreateEventRow {
         session_id:session, event_type:"input.message".into(), ts:chrono::Utc::now(),
         context:json!({"input_message_id":id}),
-        data:json!({"message":{"id":id,"metadata":{"_app_channel_id":endpoint,"slack_channel":channel,"slack_thread_ts":thread}}}),
+        data:json!({"message":{"id":id,"metadata":{"_channel_id":endpoint,"slack_channel":channel,"slack_thread_ts":thread}}}),
         metadata:Some(if trusted {json!({"initiator":{"type":"endpoint","endpoint_id":app}})} else {json!({"initiator":{"type":"user"}})}),
         tags:None,
     }).await.unwrap();
@@ -37,18 +37,11 @@ async fn input(
 
 async fn setup() -> (Fixture, SessionId, String, String) {
     let fixture = Fixture::new();
-    let (app, endpoint, endpoint_public) = fixture
-        .seed_app_with_channel(1, "slack", "xoxb-endpoint")
-        .await;
+    let (app, endpoint, endpoint_public) = fixture.seed_channel(1, "slack", "xoxb-endpoint").await;
     let session = fixture
         .seed_session(1, Some(app), Some(endpoint), vec![])
         .await;
-    let app_public = crate::domains::apps::queries::get_by_internal_id(&fixture.db, None, 1, app)
-        .await
-        .unwrap()
-        .unwrap()
-        .public_id
-        .to_string();
+    let app_public = endpoint_public.clone();
     (fixture, session, app_public, endpoint_public)
 }
 
@@ -219,10 +212,11 @@ async fn posting_reports_rate_limits_and_does_not_blindly_retry_uncertain_sends(
 async fn slack_ingress_principal_provenance_authorizes_the_neutral_post() {
     use crate::api::messages::{CreateMessageRequest, InputContentPart, InputMessage, MessageRole};
     let (fixture, session, app_public, endpoint) = setup().await;
-    let app = crate::domains::apps::queries::get_by_public_id(&fixture.db, None, 1, &app_public)
-        .await
-        .unwrap()
-        .unwrap();
+    let (app, _) =
+        crate::domains::agent_channels::ingress::resolve_channel(&fixture.db, None, &app_public)
+            .await
+            .unwrap()
+            .unwrap();
     let actor = everruns_core::ExternalActor {
         actor_id: "U_REQUESTER".into(),
         actor_name: None,
@@ -267,7 +261,7 @@ async fn slack_ingress_principal_provenance_authorizes_the_neutral_post() {
                 controls: None,
                 metadata: Some(
                     [
-                        ("_app_channel_id".into(), json!(endpoint)),
+                        ("_channel_id".into(), json!(endpoint)),
                         ("slack_channel".into(), json!("C_RESUME")),
                         ("slack_thread_ts".into(), json!("7.6")),
                     ]
@@ -360,7 +354,7 @@ async fn native_agent_channel_posts_and_edits_without_an_archival_app() {
             .unwrap()
             .is_none()
     );
-    let app = everruns_contracts::typed_id::AppId::from_uuid(endpoint.internal_id).to_string();
+    let app = endpoint.public_id.to_string();
     let message = input(
         &fixture,
         session,
@@ -517,7 +511,7 @@ async fn a_top_level_dm_input_is_answered_in_the_dm_itself() {
     fixture.db.create_event(CreateEventRow {
         session_id:session, event_type:"input.message".into(), ts:chrono::Utc::now(),
         context:json!({"input_message_id":id}),
-        data:json!({"message":{"id":id,"metadata":{"_app_channel_id":endpoint,"slack_channel":"D1","slack_thread_ts":"3.4","slack_reply_inline":true}}}),
+        data:json!({"message":{"id":id,"metadata":{"_channel_id":endpoint,"slack_channel":"D1","slack_thread_ts":"3.4","slack_reply_inline":true}}}),
         metadata:Some(json!({"initiator":{"type":"endpoint","endpoint_id":app}})),
         tags:None,
     }).await.unwrap();
@@ -540,9 +534,7 @@ async fn a_top_level_dm_input_is_answered_in_the_dm_itself() {
 /// A session on a Slack channel whose binding is `strategy`.
 async fn setup_bound(strategy: &str) -> (Fixture, SessionId, String, String) {
     let fixture = Fixture::new();
-    let (app, endpoint, endpoint_public) = fixture
-        .seed_app_with_channel(1, "slack", "xoxb-endpoint")
-        .await;
+    let (app, endpoint, endpoint_public) = fixture.seed_channel(1, "slack", "xoxb-endpoint").await;
     fixture
         .db
         .update_channel_by_id(
@@ -561,12 +553,7 @@ async fn setup_bound(strategy: &str) -> (Fixture, SessionId, String, String) {
     let session = fixture
         .seed_session(1, Some(app), Some(endpoint), vec![])
         .await;
-    let app_public = crate::domains::apps::queries::get_by_internal_id(&fixture.db, None, 1, app)
-        .await
-        .unwrap()
-        .unwrap()
-        .public_id
-        .to_string();
+    let app_public = endpoint_public.clone();
     (fixture, session, app_public, endpoint_public)
 }
 
@@ -640,7 +627,7 @@ async fn a_scheduled_turn_in_a_dm_session_posts_inline_in_the_dm() {
     fixture.db.create_event(CreateEventRow {
         session_id:session, event_type:"input.message".into(), ts:chrono::Utc::now(),
         context:json!({"input_message_id":id}),
-        data:json!({"message":{"id":id,"metadata":{"_app_channel_id":endpoint,"slack_channel":"D1","slack_thread_ts":"3.4","slack_reply_inline":true}}}),
+        data:json!({"message":{"id":id,"metadata":{"_channel_id":endpoint,"slack_channel":"D1","slack_thread_ts":"3.4","slack_reply_inline":true}}}),
         metadata:Some(json!({"initiator":{"type":"channel","channel_id":app}})),
         tags:None,
     }).await.unwrap();

@@ -20,7 +20,7 @@ echoed back in any response body and must use constant-time comparison.
 ## Preconditions
 
 - API server running (`just start-dev`)
-- A published app with an enabled `fcp` channel configured with a token
+- A published agent channel with an enabled `fcp` channel configured with a token
 
 ## Test Data
 
@@ -32,29 +32,26 @@ echoed back in any response body and must use constant-time comparison.
 
 ## Steps
 
-1. Create the app with a token configured:
+1. Create the channel with a token configured:
    ```bash
-   curl -s -X POST "http://localhost:9300/api/v1/platform/apps" \
+   curl -s -X POST "http://localhost:9300/api/v1/platform/agents/$AGENT_ID/channels" \
      -H "Content-Type: application/json" \
      -d '{
-       "name":"Token Protected FCP",
-       "harness_id":"<base harness id>",
-       "agent_id":"<agent id>",
        "channel_type":"fcp",
        "channel_config":{"anonymous":true,"token":"fcp-secret-12345"}
      }'
    ```
-   Save `id` as `APP_ID`, publish it.
+   Save `id` as `CHANNEL_ID`, publish it.
 
 2. POST without a token:
    ```bash
-   curl -i -X POST "http://localhost:9300/api/v1/apps/$APP_ID/fcp" \
+   curl -i -X POST "http://localhost:9300/api/v1/channels/$CHANNEL_ID/fcp" \
      -H "Content-Type: text/plain" --data 'hi'
    ```
 
 3. POST with a **wrong** token:
    ```bash
-   curl -i -X POST "http://localhost:9300/api/v1/apps/$APP_ID/fcp" \
+   curl -i -X POST "http://localhost:9300/api/v1/channels/$CHANNEL_ID/fcp" \
      -H "Content-Type: text/plain" \
      -H "Authorization: Bearer wrong-token" \
      --data 'hi'
@@ -62,7 +59,7 @@ echoed back in any response body and must use constant-time comparison.
 
 4. POST with the **correct** token via `Authorization`:
    ```bash
-   curl -i -X POST "http://localhost:9300/api/v1/apps/$APP_ID/fcp" \
+   curl -i -X POST "http://localhost:9300/api/v1/channels/$CHANNEL_ID/fcp" \
      -H "Content-Type: text/plain" \
      -H "Authorization: Bearer fcp-secret-12345" \
      --data 'hi'
@@ -70,15 +67,15 @@ echoed back in any response body and must use constant-time comparison.
 
 5. POST with the **correct** token via the dedicated header:
    ```bash
-   curl -i -X POST "http://localhost:9300/api/v1/apps/$APP_ID/fcp" \
+   curl -i -X POST "http://localhost:9300/api/v1/channels/$CHANNEL_ID/fcp" \
      -H "Content-Type: text/plain" \
      -H "X-Everruns-FCP-Token: fcp-secret-12345" \
      --data 'hi'
    ```
 
-6. Read the app and confirm the token field is redacted:
+6. Read the channel and confirm the token field is redacted:
    ```bash
-   curl -s "http://localhost:9300/api/v1/platform/apps/$APP_ID" | jq '.channels[] | select(.channel_type=="fcp") | .channel_config'
+   curl -s "http://localhost:9300/api/v1/platform/agents/$AGENT_ID/channels/$CHANNEL_ID" | jq '.channel_config'
    ```
 
 ## Expected Result
@@ -92,14 +89,14 @@ echoed back in any response body and must use constant-time comparison.
 | 3    | HTTP status                                                        | `401` (same body as step 2 — no oracle on validity)                       |
 | 4    | HTTP status                                                        | `200` or `504` (request accepted; model may or may not reply in time)     |
 | 5    | HTTP status                                                        | `200` or `504`                                                            |
-| 6    | App read response                                                  | `token` absent; `token_configured: true` present; no plaintext token leak |
+| 6    | Channel read response                                                  | `token` absent; `token_configured: true` present; no plaintext token leak |
 
 ## Validation Commands
 
 ```bash
 # Step 2: 401 and no token in body
 status=$(curl -s -o /tmp/fcp_401.md -w '%{http_code}' \
-  -X POST "http://localhost:9300/api/v1/apps/$APP_ID/fcp" \
+  -X POST "http://localhost:9300/api/v1/channels/$CHANNEL_ID/fcp" \
   -H 'Content-Type: text/plain' --data 'hi')
 [ "$status" = "401" ]
 grep -q 'Authorization: Bearer' /tmp/fcp_401.md
@@ -108,13 +105,13 @@ grep -q 'X-Everruns-FCP-Token' /tmp/fcp_401.md
 
 # Step 4: accepted
 status=$(curl -s -o /dev/null -w '%{http_code}' \
-  -X POST "http://localhost:9300/api/v1/apps/$APP_ID/fcp" \
+  -X POST "http://localhost:9300/api/v1/channels/$CHANNEL_ID/fcp" \
   -H 'Content-Type: text/plain' \
   -H 'Authorization: Bearer fcp-secret-12345' --data 'hi')
 echo "$status" | grep -E '^(200|504)$'
 
 # Step 6: redaction
-curl -s "http://localhost:9300/api/v1/platform/apps/$APP_ID" \
-  | jq -e '.channels[] | select(.channel_type=="fcp") | .channel_config |
+curl -s "http://localhost:9300/api/v1/platform/agents/$AGENT_ID/channels/$CHANNEL_ID" \
+  | jq -e '.channel_config |
            (has("token") | not) and (.token_configured == true)'
 ```

@@ -540,7 +540,7 @@ See [Serve](/framework/serve/#one-agents-api) and the [serve tutorial](/framewor
 
 ## Migrating from `api_endpoint`
 
-The former `api_endpoint` channel type converted to Agent API channels, keeping keys and sessions. Requests in the old shape answer `400` with `api_endpoint_retired`: starting a session no longer takes a message, and a message is an object, not a string. `/v1/apps/{app_id}/api/{channel_id}/…` routes answer `410`. Create the session, then send `{"message": {"role": "user", "content": [...]}}` to `…/messages`.
+The former `api_endpoint` channel type converted to Agent API channels, keeping keys and sessions. Requests in the old shape answer `400` with `api_endpoint_retired`: starting a session no longer takes a message, and a message is an object, not a string. `/v1/apps/{app_id}/api/{channel_id}/…` routes are removed (`404`). Create the session, then send `{"message": {"role": "user", "content": [...]}}` to `…/messages`.
 
 ## See also
 

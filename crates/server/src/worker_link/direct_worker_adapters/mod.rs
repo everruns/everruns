@@ -1341,7 +1341,6 @@ impl WorkerAdapters for DirectWorkerAdapters {
     async fn invoke_scheduled_channel(
         &self,
         org_id: i64,
-        app_id: &str,
         channel_id: &str,
     ) -> Result<serde_json::Value> {
         let runner = self
@@ -1360,17 +1359,16 @@ impl WorkerAdapters for DirectWorkerAdapters {
             self.event_service.event_delivery().clone(),
         );
 
-        let result = crate::domains::agent_channels::invoke_scheduled_legacy_alias_channel(
+        let result = crate::domains::agent_channels::invoke_scheduled_agent_channel(
             &self.db,
             self.encryption.as_ref(),
             &session_service,
             &message_service,
             org_id,
-            app_id,
             channel_id,
         )
         .await
-        .map_err(|error| store_error(format!("Failed to invoke scheduled app channel: {error}")))?;
+        .map_err(|error| store_error(format!("Failed to invoke scheduled channel: {error}")))?;
 
         Ok(serde_json::json!({
             "session_id": result.session_id.to_string(),

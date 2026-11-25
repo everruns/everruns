@@ -24,6 +24,9 @@ Permissions are scoped **per domain**: each managed resource (MCP servers, plugi
 
 Models and providers are one domain: `OrgModelsView` / `OrgModelsManage` gate both the `model.*` and the `provider.*` policies. Providers live on the Models page, and connecting one, syncing it, and choosing its models is one task, so splitting the grant would let a role do half of it.
 
+Virtual-user deletion has its own dangerous-operation permission and remains
+Owner-only. Retired Apps permissions are no longer part of the permission catalog.
+
 ### Rule
 
 Single predicate that evaluates to true/false given an auth context. Hardcoded enum variants (no dynamic rules). Rules are **additive within a policy**: all rules must pass (AND logic).

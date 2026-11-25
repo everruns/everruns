@@ -150,9 +150,6 @@ const NOT_DENIED_BY_THE_EXTRACTOR: &[(&str, &str, &str)] = &[
     // (`agent_api_auth::org_member`), restricted to `*` in rollout step 3.
     // Work Chat mutations also have valid-channel read-PAT denial coverage in
     // `work_chat_org_members_require_full_scope_on_both_url_spellings`.
-    ("POST", "/v1/apps/{}/a2a/{}", INGRESS),
-    ("POST", "/v1/apps/{}/fcp", INGRESS),
-    ("POST", "/v1/apps/{}/webhooks/{}", INGRESS),
     ("POST", "/v1/channels/{}/a2a", INGRESS),
     ("POST", "/v1/channels/{}/fcp", INGRESS),
     ("POST", "/v1/channels/{}/chat/main", INGRESS),

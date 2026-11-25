@@ -129,3 +129,7 @@ These exist in Everruns but live outside this model:
 - [Memory Specification](memory.md), durable design intent for the Memory tier
 - [Workspace Specification](workspace.md), file surface, mount point, git VCS
 - [Knowledge Bases Specification](knowledge-bases.md), curated org knowledge, the curation-first sibling of Memory
+
+## Application publication
+
+[Applications](../integrations/applications.md) explicitly share organization Memories with their audience and agents. Their live mounts use `/application/memory/<resource-name>` and resolve current publication/bindings/permissions on each access; private scoped memories are not eligible bindings.

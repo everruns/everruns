@@ -51,7 +51,6 @@ pub struct AgentChannelSummary {
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct AgentWithCounts {
     pub session_count: u64,
-    pub app_count: u64,
     pub effective_harness: AgentHarnessSummary,
     pub channels: Vec<AgentChannelSummary>,
     #[serde(flatten)]
@@ -191,16 +190,10 @@ async fn add_agent_counts(
             .await
             .log_internal_error_json("count agent sessions")
     };
-    let app_count = async {
-        db.count_apps_for_agent(org_id, agent_id)
-            .await
-            .log_internal_error_json("count agent apps")
-    };
-    let (session_count, app_count) = tokio::try_join!(session_count, app_count)?;
+    let session_count = session_count.await?;
 
     Ok(AgentWithCounts {
         session_count,
-        app_count,
         effective_harness,
         channels,
         inner: agent,

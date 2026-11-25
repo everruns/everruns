@@ -124,7 +124,6 @@ export interface Agent {
   /** Number of sessions using this agent. Present on list/detail API responses. */
   session_count?: number;
   /** Number of non-deleted apps using this agent. Present on list/detail API responses. */
-  app_count?: number;
   /** Harness a newly created session for this agent will resolve to. */
   effective_harness?: AgentHarnessSummary;
   /** Non-secret inbound channel summaries; schedules are separate triggers. */

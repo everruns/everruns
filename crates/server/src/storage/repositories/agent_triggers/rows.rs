@@ -24,9 +24,6 @@ pub struct AgentTriggerRow {
     pub execution_owner_principal_id: Option<PrincipalId>,
     pub execution_resolved_owner_user_id: Option<Uuid>,
     pub execution_virtual_user_id: Option<VirtualUserId>,
-    pub execution_app_id: Option<Uuid>,
-    pub legacy_alias_id: Option<String>,
-    pub legacy_alias_name: Option<String>,
     pub status: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -49,9 +46,6 @@ pub struct CreateAgentTriggerRow {
     pub execution_owner_principal_id: Option<PrincipalId>,
     pub execution_resolved_owner_user_id: Option<Uuid>,
     pub execution_virtual_user_id: Option<VirtualUserId>,
-    pub execution_app_id: Option<Uuid>,
-    pub legacy_alias_id: Option<String>,
-    pub legacy_alias_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Default)]

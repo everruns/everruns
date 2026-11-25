@@ -11,7 +11,7 @@ describe("A2aAgentCardPreview", () => {
     const card = buildA2aAgentCardPreview({
       agentName: "Support Bot",
       agentDescription: "Routes support requests",
-      channelUrl: "https://example.com/api/v1/apps/app-123/a2a/appchan-123",
+      channelUrl: "https://example.com/api/v1/channels/appchan-123/a2a",
       agentCardName: "Support A2A",
       agentCardDescription: "Answers external agents",
       sessionMode: "session_per_invocation",
@@ -20,7 +20,7 @@ describe("A2aAgentCardPreview", () => {
     expect(card).toEqual({
       name: "Support A2A",
       description: "Answers external agents",
-      url: "https://example.com/api/v1/apps/app-123/a2a/appchan-123",
+      url: "https://example.com/api/v1/channels/appchan-123/a2a",
       protocolVersion: A2A_AGENT_CARD_PROTOCOL_VERSION,
       version: A2A_AGENT_CARD_VERSION,
       preferredTransport: "JSONRPC",
@@ -82,7 +82,7 @@ describe("A2aAgentCardPreview", () => {
       <A2aAgentCardPreview
         agentName="Inbox Triage"
         agentDescription="Reviews inbox items"
-        channelUrl="https://example.com/api/v1/apps/app-123/a2a/appchan-123"
+        channelUrl="https://example.com/api/v1/channels/appchan-123/a2a"
         sessionMode="shared_session"
       />,
     );

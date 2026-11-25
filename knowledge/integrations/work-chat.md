@@ -148,3 +148,7 @@ exclude tool output and routing metadata, and do not cache responses.
 
 Publishing is a user action, not the default visibility of consumer history.
 Source: [experience routes](../../crates/server/src/api/agent_api/work_chat/experience.rs).
+
+## Application publication
+
+A Work Chat can also be attached to an [Application](applications.md), which owns its audience and public navigation alongside other Chats, Rooms and Memory. Application-owned Chats require Application admission; their standalone credentials are not an alternate entry point.

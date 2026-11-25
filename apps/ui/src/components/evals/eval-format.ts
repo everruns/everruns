@@ -7,7 +7,6 @@ import type { EvalCaseResult, EvalScore, EvalTarget } from "@/lib/api/types";
 /// read as `provider/model`; session/app keep their existing labels.
 export function targetLabel(target?: EvalTarget): string {
   if (!target) return "—";
-  if (target.type === "app") return `app: ${target.app_id}`;
   if (target.type === "external") {
     return target.model ? `${target.provider}/${target.model}` : target.provider;
   }

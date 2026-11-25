@@ -67,7 +67,10 @@ async fn a_shards_subagent_gets_a_record_under_its_parent() {
     let mounts = crate::domains::data_plane::memory::mounts(&cp, child)
         .await
         .unwrap();
-    assert_eq!(mounts, vec!["/shared".to_owned()]);
+    assert_eq!(
+        mounts,
+        vec!["/shared".to_owned(), "/application/memory".to_owned()]
+    );
 
     // A replayed record changes nothing.
     subagents::record(&cp, ORG, &child.to_string(), &origin, now)

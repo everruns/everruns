@@ -4,7 +4,7 @@ import { A2aSetupGuidance } from "@/components/agents/integrations/a2a-setup-gui
 const agentCard = {
   name: "Published A2A Agent",
   description: "Visible to external agents",
-  url: "https://example.com/api/v1/apps/app-123/a2a/appchan-123",
+  url: "https://example.com/api/v1/channels/appchan-123/a2a",
   protocolVersion: "0.3.0",
   version: "0.1",
   preferredTransport: "JSONRPC",
@@ -23,8 +23,8 @@ const agentCard = {
 function renderGuidance(overrides: Partial<React.ComponentProps<typeof A2aSetupGuidance>> = {}) {
   return render(
     <A2aSetupGuidance
-      channelUrl="https://example.com/api/v1/apps/app-123/a2a/appchan-123"
-      agentCardUrl="https://example.com/api/v1/apps/app-123/a2a/appchan-123/.well-known/agent-card.json"
+      channelUrl="https://example.com/api/v1/channels/appchan-123/a2a"
+      agentCardUrl="https://example.com/api/v1/channels/appchan-123/a2a/.well-known/agent-card.json"
       apiKeyPrefix="evra2a_12345678..."
       sessionMode="session_per_invocation"
       message="A2A request: {{a2a.text}}"
@@ -56,7 +56,7 @@ describe("A2aSetupGuidance", () => {
     renderGuidance();
 
     expect(global.fetch).toHaveBeenCalledWith(
-      "https://example.com/api/v1/apps/app-123/a2a/appchan-123/.well-known/agent-card.json",
+      "https://example.com/api/v1/channels/appchan-123/a2a/.well-known/agent-card.json",
       expect.objectContaining({
         cache: "no-store",
         headers: { Accept: "application/json" },
@@ -91,7 +91,7 @@ describe("A2aSetupGuidance", () => {
     expect(await screen.findByText(/Could not load Agent Card/)).toBeInTheDocument();
     expect(
       screen.getAllByText(
-        "https://example.com/api/v1/apps/app-123/a2a/appchan-123/.well-known/agent-card.json",
+        "https://example.com/api/v1/channels/appchan-123/a2a/.well-known/agent-card.json",
       ).length,
     ).toBeGreaterThan(0);
   });

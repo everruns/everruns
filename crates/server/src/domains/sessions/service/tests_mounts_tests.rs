@@ -129,7 +129,7 @@ async fn get_skips_foreign_harness_and_agent_capability_features() {
             source: crate::domains::sessions::record::SessionSource::Api,
             workspace_id: None,
             org_id: caller.org_id,
-            app_id: None,
+
             channel_id: None,
             trigger_id: None,
             harness_id: Some(other_harness.id),
@@ -485,7 +485,7 @@ async fn apply_capability_mounts_skips_foreign_harness_and_agent_capabilities() 
             source: crate::domains::sessions::record::SessionSource::Api,
             workspace_id: None,
             org_id: caller.org_id,
-            app_id: None,
+
             channel_id: None,
             trigger_id: None,
             harness_id: None,
@@ -960,14 +960,12 @@ async fn app_session_creation_enforces_monthly_session_limit() {
         .default_owner_principal(&caller, None)
         .await
         .unwrap();
-    let app_id = db.create_test_app(1).await;
 
-    svc.create_from_app(
+    svc.create_from_channel(
         &caller,
         harness.id.uuid(),
         None,
         None,
-        Some(app_id),
         None,
         None,
         owner_principal.id,
@@ -979,12 +977,11 @@ async fn app_session_creation_enforces_monthly_session_limit() {
     .unwrap();
 
     let err = svc
-        .create_from_app(
+        .create_from_channel(
             &caller,
             harness.id.uuid(),
             None,
             None,
-            Some(app_id),
             None,
             None,
             owner_principal.id,

@@ -360,10 +360,8 @@ async fn retired_api_endpoint_surfaces_point_to_the_agent_api() {
             "/v1/apps/app_x/api/appchan_y/sessions/session_z/cancel",
         ),
     ] {
-        let problem: Value = call(&server, method, path, Some("evr_app_key"), None)
+        call(&server, method, path, Some("evr_app_key"), None)
             .await
-            .assert_status(StatusCode::GONE)
-            .json();
-        assert_retired(&problem);
+            .assert_status(StatusCode::NOT_FOUND);
     }
 }

@@ -13,10 +13,10 @@
 mod agent_avatars;
 mod agent_mcp_oauth_attach;
 mod agents;
-mod apps;
 mod audit_logs;
 mod budgets;
 mod channel_rename;
+mod connections;
 mod feature_grades;
 mod files_misc;
 mod harnesses;

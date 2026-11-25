@@ -15,7 +15,7 @@ Organizations you belong to, and which one is active.
 | [`orgs select`](#orgs-select) | Interactive organization picker. |
 | [`orgs get`](#orgs-get) | Get organization details. |
 | [`orgs list`](#orgs-list) | List organizations for the current user. |
-| [`orgs resolve`](#orgs-resolve) | Resolve the owning organization for a prefixed entity id (agent, session, harness, app, skill, mcp server, identity, eval). |
+| [`orgs resolve`](#orgs-resolve) | Resolve the owning organization for a prefixed entity id (agent, session, harness, application, skill, mcp server, identity, eval). |
 | [`orgs update`](#orgs-update) | Update the active organization's name and defaults. |
 | [`orgs audit-logs list`](#orgs-audit-logs-list) | List audit logs for the caller's organization. |
 | [`orgs decision-settings get`](#orgs-decision-settings-get) | Read the active organization's decision-model selection without model credentials. |
@@ -72,7 +72,7 @@ everruns orgs list
 
 ## orgs resolve
 
-Resolve the owning organization for a prefixed entity id (agent, session, harness, app, skill, mcp server, identity, eval). Requires an authenticated user; returns NotFound when the caller is not a member of the owning org or the id does not resolve.
+Resolve the owning organization for a prefixed entity id (agent, session, harness, application, skill, mcp server, identity, eval). Requires an authenticated user; returns NotFound when the caller is not a member of the owning org or the id does not resolve.
 
 ```bash
 everruns orgs resolve [OPTIONS] --id <id>

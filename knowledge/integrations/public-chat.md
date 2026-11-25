@@ -12,7 +12,7 @@ tags:
 
 Public Chat serves an isolated chat website for an existing `public_chat` agent channel.
 The channel owns its identity, liveness, authentication, branding, and ingress configuration.
-The frozen App record is not part of traffic resolution.
+Traffic resolves directly through the agent-owned channel.
 
 The public surface does not use console authentication or navigation. A visitor can reach only the
 agent attached to the resolved channel. Errors follow the public-channel sanitization contract.
@@ -46,14 +46,7 @@ Canonical routes use channel identity:
 - `GET /v1/channels/{channel_id}/public-chat/config`
 - `POST /v1/channels/{channel_id}/public-chat`
 
-The permanent compatibility aliases are:
-
-- `GET /v1/apps/{legacy_app_id}/public-chat/config`
-- `POST /v1/apps/{legacy_app_id}/public-chat`
-
-Aliases resolve from `agent_channels.legacy_alias_id`. They do not read `apps` or
-`app_channels`. Canonical and alias routes apply the same tenant, liveness, authentication,
-rate-limit, Turnstile, and error behavior.
+Channel routes enforce tenant, liveness, authentication, rate-limit and Turnstile checks.
 
 The config response contains only public bootstrap data. It never returns channel secrets. The
 POST route accepts AG-UI `RunAgentInput` and streams AG-UI SSE output.
@@ -80,21 +73,21 @@ internal identifiers, or the existence of another tenant or channel.
 
 - Sessions adopt the channel owner principal.
 - Routing uses channel identity while preserving historical reserved App tag prefixes.
-- `sessions.app_id` remains frozen compatibility attribution; it is not an ingress lookup key.
+- Sessions use structural channel attribution.
 - Distinct channels and visitors cannot adopt each other's sessions.
 - Public Chat cannot enumerate or switch to another agent, channel, organization, or session.
 - Raw tool names, arguments, results, and internal IDs never reach the public client.
 
 ## Public web route
 
-The isolated Next.js surface remains at `/public-chat/{legacy_app_id}` for link compatibility. Its
-server calls use the permanent aliases. The route has no console providers, org switcher, or
+The isolated Next.js surface lives at `/public-chat/{channel_id}`. Its
+server calls use the canonical channel routes. The route has no console providers, org switcher, or
 platform navigation.
 
 ## Related specs
 
-- [Apps](apps.md), frozen archival compatibility contract
+- [Agent exposure](agent-exposure.md), ownership and lifecycle boundaries
 - [Channel authentication](channel-auth.md), shared inbound authentication
-- [App invocation compatibility](app-invocation-channels.md), retained ownership and tags
+- [App invocation compatibility](channel-invocation.md), retained ownership and tags
 - [Public channels](../execution/public-endpoints.md), ingress aliases and sanitized errors
 - [Agent exposure](agent-exposure.md), channel liveness and exposure suspension

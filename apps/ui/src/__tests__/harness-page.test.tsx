@@ -93,7 +93,6 @@ const mockHarness: Harness = {
   is_built_in: false,
   status: "active",
   session_count: 2,
-  app_count: 1,
   created_at: "2025-01-01T00:00:00Z",
   updated_at: "2025-01-01T00:00:00Z",
   archived_at: null,
@@ -184,7 +183,7 @@ describe("HarnessPage layout", () => {
     expect(more.getByRole("button", { name: /Branding\s*Description/ })).toBeInTheDocument();
     expect(more.getByRole("button", { name: /Starter files\s*None/ })).toBeInTheDocument();
     expect(more.getByRole("button", { name: /Network access\s*Unrestricted/ })).toBeInTheDocument();
-    expect(more.getByRole("button", { name: /Usage\s*2 sessions · 1 app/ })).toBeInTheDocument();
+    expect(more.getByRole("button", { name: /Usage\s*2 sessions$/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Edit" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Save changes/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Archive/ })).not.toBeInTheDocument();

@@ -83,7 +83,7 @@ pub struct ResolveOrg {
 #[command(
     name = "resolve_org",
     category = "organizations",
-    description = "Resolve the owning organization for a prefixed entity id (agent, session, harness, app, skill, mcp server, identity, eval). Requires an authenticated user; returns NotFound when the caller is not a member of the owning org or the id does not resolve.",
+    description = "Resolve the owning organization for a prefixed entity id (agent, session, harness, application, skill, mcp server, identity, eval). Requires an authenticated user; returns NotFound when the caller is not a member of the owning org or the id does not resolve.",
     method = "GET",
     path = "/v1/platform/resolve-org",
     positional = "id",

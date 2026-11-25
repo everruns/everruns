@@ -177,6 +177,33 @@ fn connection(definition: &InjectedCapabilityDefinition) -> McpConnection {
     connection
 }
 
+#[tokio::test]
+async fn deployment_base_urls_reach_the_versioned_injected_router() {
+    for base in [
+        resolve_base_url(None, "http://8.8.8.8/api/"),
+        resolve_base_url(Some("http://8.8.8.8/api/v1/"), "https://public.example/api"),
+    ] {
+        let fixture = fixture();
+        let router = Router::new().nest("/api", fixture.router);
+        let endpoint = InjectedCapabilities::url_for(&base, "knowledge_base");
+        let response = router
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(endpoint.trim_start_matches("http://8.8.8.8"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"jsonrpc":"2.0","id":1,"method":"tools/list"}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        // Missing session credentials must reach authentication, not a 404.
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED, "{endpoint}");
+    }
+}
+
 #[test]
 fn definition_points_at_this_server() {
     let fixture = fixture();
@@ -452,8 +479,9 @@ fn slacks_model_view_stays_native_beside_its_injected_tools() {
     assert!(served[0].validate().is_ok(), "{:?}", served[0].validate());
 }
 
-/// The `memory_file` handler, for one org and session: `/memory/user` only.
+/// Run the actual Memory handler so the token adapter and handler share a contract.
 struct MemoryCalls {
+    ctx: crate::domains::common::Ctx,
     org: OrgId,
     session: SessionId,
     asked: parking_lot::Mutex<Vec<Value>>,
@@ -469,20 +497,11 @@ impl hosted::CallRunner for MemoryCalls {
     ) -> anyhow::Result<crate::domains::data_plane::calls::Answer> {
         assert_eq!(call.name, crate::domains::data_plane::calls::MEMORY_FILE);
         assert_eq!(org, self.org);
-        assert_eq!(params["session_id"], self.session.uuid().to_string());
+        assert_eq!(params["session_id"], self.session.to_string());
         self.asked.lock().push(params.clone());
-        let path = params["path"].as_str().unwrap();
-        let answer = if !path.starts_with("/memory/user") {
-            json!({ "error": format!("{path} is not in this session's Memory") })
-        } else {
-            json!({ "ok": {
-                "path": path,
-                "content": "likes tea",
-                "encoding": "text",
-                "is_directory": false,
-            } })
-        };
-        Ok(crate::domains::data_plane::calls::Answer::Value(answer))
+        Ok(crate::domains::data_plane::calls::Answer::Value(
+            crate::domains::data_plane::memory::answer(&self.ctx, &params).await,
+        ))
     }
 }
 
@@ -491,10 +510,51 @@ async fn memory_is_served_as_files_through_the_memory_file_handler() {
     let signer = Arc::new(SessionTokenSigner::generate("https://dp.example").unwrap());
     let verifier =
         SessionTokenVerifier::from_jwks(&signer.jwks(), vec!["https://dp.example".into()]).unwrap();
-    let org = OrgId::new();
-    let session = SessionId::new();
+    const ORG: i64 = 2;
+    let db = Arc::new(crate::storage::StorageBackend::test_database());
+    let person = db.create_test_user(uuid::Uuid::new_v4()).await;
+    db.create_memory(
+        ORG,
+        crate::storage::CreateMemoryRow {
+            public_id: everruns_contracts::typed_id::MemoryId::new().to_string(),
+            name: format!("injected-memory-{person}"),
+            description: None,
+            scope: "user".into(),
+            owner_agent_id: None,
+            owner_user_id: Some(person),
+            source_type: "manual".into(),
+            source_config: json!({}),
+            is_readonly: false,
+            sync_status: "idle".into(),
+            owner_principal_id: None,
+            resolved_owner_user_id: Some(person),
+        },
+    )
+    .await
+    .unwrap();
+    let mut row = crate::storage::test_database::test_session_row(ORG);
+    row.resolved_owner_user_id = Some(person);
+    let session = db.create_session(row).await.unwrap().id;
+    let org = everruns_contracts::runtime::organization::org_public_id_from_internal(ORG)
+        .parse::<OrgId>()
+        .unwrap();
+    let ctx = crate::domains::common::Ctx::minimal_for_test(
+        everruns_core::Caller::internal(ORG),
+        db,
+        None,
+    );
+    let written = crate::domains::data_plane::memory::answer(
+        &ctx,
+        &json!({
+            "session_id": session, "op": "write", "path": "/memory/user/notes.md",
+            "content": "likes tea"
+        }),
+    )
+    .await;
+    assert!(written.get("ok").is_some(), "{written}");
     let capabilities = InjectedCapabilities::new(BASE_URL, Some(verifier));
     let runner = Arc::new(MemoryCalls {
+        ctx,
         org,
         session,
         asked: Default::default(),
@@ -525,7 +585,7 @@ async fn memory_is_served_as_files_through_the_memory_file_handler() {
         .files(
             &connection,
             "everruns/files/read",
-            json!({ "path": "/memory/user/notes.md" }),
+            json!({ "path": "/memory/user/notes.md", "session_id": SessionId::new() }),
         )
         .await
         .unwrap();

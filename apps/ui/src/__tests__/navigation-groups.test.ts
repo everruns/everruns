@@ -55,7 +55,7 @@ describe("navigationGroupForPath", () => {
       "Blocks",
       "Quality",
     ]);
-    expect(groups.Build).toEqual(["Agents", "Playground", "Extractions"]);
+    expect(groups.Build).toEqual(["Applications", "Agents", "Playground", "Extractions"]);
     expect(groups.Observability).toEqual(["Sessions", "Rooms", "Monitoring"]);
     expect(groups.Blocks).toEqual([
       "Harnesses",

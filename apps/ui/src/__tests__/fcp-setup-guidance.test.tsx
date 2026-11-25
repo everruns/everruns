@@ -8,7 +8,7 @@ describe("FcpSetupGuidance", () => {
   it("renders channel, anonymous badge, and timeout for a published app", () => {
     render(
       <FcpSetupGuidance
-        channelUrl="https://example.com/api/v1/apps/app-123/fcp"
+        channelUrl="https://example.com/api/v1/channels/appchan-123/fcp"
         isPublished={true}
         anonymousEnabled={true}
         sessionExpirationSeconds={6 * 60 * 60}
@@ -18,7 +18,9 @@ describe("FcpSetupGuidance", () => {
 
     expect(screen.getByText("Anonymous")).toBeInTheDocument();
     expect(screen.getByText("Ready for FCP clients")).toBeInTheDocument();
-    expect(screen.getByText("https://example.com/api/v1/apps/app-123/fcp")).toBeInTheDocument();
+    expect(
+      screen.getByText("https://example.com/api/v1/channels/appchan-123/fcp"),
+    ).toBeInTheDocument();
     expect(screen.getByText(/Auto-generated/)).toBeInTheDocument();
     expect(screen.getByText(/120 seconds/)).toBeInTheDocument();
   });
@@ -26,7 +28,7 @@ describe("FcpSetupGuidance", () => {
   it("renders 'Never' when session expiration is disabled", () => {
     render(
       <FcpSetupGuidance
-        channelUrl="https://example.com/api/v1/apps/app-123/fcp"
+        channelUrl="https://example.com/api/v1/channels/appchan-123/fcp"
         isPublished={true}
         anonymousEnabled={true}
         sessionExpirationSeconds={0}
@@ -39,7 +41,7 @@ describe("FcpSetupGuidance", () => {
   it("renders 'Token Protected' badge and token value when token is provided", () => {
     render(
       <FcpSetupGuidance
-        channelUrl="https://example.com/api/v1/apps/app-123/fcp"
+        channelUrl="https://example.com/api/v1/channels/appchan-123/fcp"
         isPublished={true}
         anonymousEnabled={true}
         sessionExpirationSeconds={6 * 60 * 60}
@@ -56,7 +58,7 @@ describe("FcpSetupGuidance", () => {
   it("renders 'Token Protected' when token is configured but not surfaced", () => {
     render(
       <FcpSetupGuidance
-        channelUrl="https://example.com/api/v1/apps/app-123/fcp"
+        channelUrl="https://example.com/api/v1/channels/appchan-123/fcp"
         isPublished={false}
         anonymousEnabled={true}
         sessionExpirationSeconds={6 * 60 * 60}
@@ -72,7 +74,7 @@ describe("FcpSetupGuidance", () => {
   it("renders 'Restricted' state and warning when anonymous is off without a token", () => {
     render(
       <FcpSetupGuidance
-        channelUrl="https://example.com/api/v1/apps/app-123/fcp"
+        channelUrl="https://example.com/api/v1/channels/appchan-123/fcp"
         isPublished={true}
         anonymousEnabled={false}
         sessionExpirationSeconds={6 * 60 * 60}
@@ -86,7 +88,7 @@ describe("FcpSetupGuidance", () => {
   it("displays per-minute rate limit when configured", () => {
     render(
       <FcpSetupGuidance
-        channelUrl="https://example.com/api/v1/apps/app-123/fcp"
+        channelUrl="https://example.com/api/v1/channels/appchan-123/fcp"
         isPublished={true}
         anonymousEnabled={true}
         sessionExpirationSeconds={6 * 60 * 60}
@@ -101,7 +103,7 @@ describe("FcpSetupGuidance", () => {
   it("falls back to global cap message when no per-app rate limit", () => {
     render(
       <FcpSetupGuidance
-        channelUrl="https://example.com/api/v1/apps/app-123/fcp"
+        channelUrl="https://example.com/api/v1/channels/appchan-123/fcp"
         isPublished={true}
         anonymousEnabled={true}
         sessionExpirationSeconds={6 * 60 * 60}
@@ -114,7 +116,7 @@ describe("FcpSetupGuidance", () => {
   it("marks a custom handshake when one is configured", () => {
     render(
       <FcpSetupGuidance
-        channelUrl="https://example.com/api/v1/apps/app-123/fcp"
+        channelUrl="https://example.com/api/v1/channels/appchan-123/fcp"
         isPublished={true}
         anonymousEnabled={true}
         sessionExpirationSeconds={6 * 60 * 60}

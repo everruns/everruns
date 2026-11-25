@@ -153,7 +153,12 @@ fn command_section(spelling: &str, command: &Command) -> String {
     let args: Vec<&Arg> = command
         .get_arguments()
         .filter(|arg| !arg.is_hide_set())
-        .filter(|arg| !matches!(arg.get_id().as_str(), "help" | "version"))
+        .filter(|arg| {
+            !matches!(
+                arg.get_action(),
+                ArgAction::Help | ArgAction::HelpShort | ArgAction::HelpLong | ArgAction::Version
+            )
+        })
         // Every command takes these; the overview page explains them once
         // rather than repeating two identical rows under every command.
         .filter(|arg| !matches!(arg.get_long(), Some("reason" | "context-revision")))
