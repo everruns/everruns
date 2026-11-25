@@ -12,8 +12,17 @@
 // transaction and still read through the pool; two connections let one such
 // request starve every other request on the process (the Slack install 500).
 // A database too small for that floor gets a warning, not a smaller pool.
+//
+// Decision: `DATABASE_POOLER_ADDR` routes the request and liveness pools
+// through a transaction pooler (PgBouncer) with `DATABASE_URL`'s credentials
+// and database, while everything session-scoped stays on the direct URL. One
+// secret serves both legs, so adding a pooler is a plain setting next to the
+// deployment rather than a second credential. The pooler presents its own
+// certificate, not the database's, so certificate verification is relaxed to
+// `require` on that leg only; encryption is kept.
 
 use super::DatabasePoolConfig;
+use sqlx::postgres::{PgConnectOptions, PgSslMode};
 
 /// Connections each server process opens outside its pools: the PostgreSQL
 /// listeners (task, notification and cache-invalidation wakeups, the outbox),
@@ -23,6 +32,36 @@ pub const DEDICATED_PER_PROCESS: u32 = 6;
 const REQUEST_FLOOR: u32 = 3;
 const REQUEST_CEILING: u32 = 50;
 const BACKGROUND_CEILING: u32 = 8;
+
+/// `DATABASE_POOLER_ADDR` as `(host, port)`, port defaulting to 6432.
+pub fn pooler_address() -> anyhow::Result<Option<(String, u16)>> {
+    match std::env::var("DATABASE_POOLER_ADDR") {
+        Ok(value) if !value.trim().is_empty() => parse_pooler_address(value.trim()).map(Some),
+        _ => Ok(None),
+    }
+}
+
+fn parse_pooler_address(value: &str) -> anyhow::Result<(String, u16)> {
+    match value.rsplit_once(':') {
+        Some((host, port)) if !host.is_empty() => {
+            let port = port
+                .parse()
+                .map_err(|_| anyhow::anyhow!("DATABASE_POOLER_ADDR has an invalid port"))?;
+            Ok((host.to_string(), port))
+        }
+        Some(_) => anyhow::bail!("DATABASE_POOLER_ADDR needs a host"),
+        None => Ok((value.to_string(), 6432)),
+    }
+}
+
+/// `direct` aimed at the pooler at `host:port` instead of the database.
+pub fn through_pooler(direct: PgConnectOptions, host: &str, port: u16) -> PgConnectOptions {
+    let ssl_mode = match direct.get_ssl_mode() {
+        PgSslMode::VerifyCa | PgSslMode::VerifyFull => PgSslMode::Require,
+        other => other,
+    };
+    direct.host(host).port(port).ssl_mode(ssl_mode)
+}
 
 /// What the database reports about its connection limit.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -182,6 +221,40 @@ mod tests {
         assert_eq!(config.max_connections, 2);
         assert_eq!(config.background_max_connections, 4);
         assert_eq!(config.min_connections, 2, "min never exceeds max");
+    }
+
+    #[test]
+    fn pooler_address_parses_host_and_port() {
+        assert_eq!(
+            parse_pooler_address("pgbouncer:6433").unwrap(),
+            ("pgbouncer".to_string(), 6433)
+        );
+        assert_eq!(
+            parse_pooler_address("pgbouncer").unwrap(),
+            ("pgbouncer".to_string(), 6432)
+        );
+        assert!(parse_pooler_address("pgbouncer:x").is_err());
+        assert!(parse_pooler_address(":6432").is_err());
+    }
+
+    #[test]
+    fn the_pooler_leg_keeps_credentials_and_encryption() {
+        let direct: PgConnectOptions =
+            "postgres://app:secret@db.internal:5432/everruns?sslmode=verify-full"
+                .parse()
+                .unwrap();
+        let pooled = through_pooler(direct, "pgbouncer", 6432);
+        assert_eq!(pooled.get_host(), "pgbouncer");
+        assert_eq!(pooled.get_port(), 6432);
+        assert_eq!(pooled.get_username(), "app");
+        assert_eq!(pooled.get_database(), Some("everruns"));
+        assert!(matches!(pooled.get_ssl_mode(), PgSslMode::Require));
+
+        let plain: PgConnectOptions = "postgres://app@db/everruns?sslmode=disable"
+            .parse()
+            .unwrap();
+        let pooled = through_pooler(plain, "pgbouncer", 6432);
+        assert!(matches!(pooled.get_ssl_mode(), PgSslMode::Disable));
     }
 
     #[test]

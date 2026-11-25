@@ -478,7 +478,19 @@ impl Database {
                 ),
             }
         }
-        Self::connect_with_urls(database_url, session_url.as_deref(), config).await
+        let direct: sqlx::postgres::PgConnectOptions = database_url.parse()?;
+        let session = match session_url.as_deref() {
+            Some(url) => url.parse()?,
+            None => direct.clone(),
+        };
+        let pooled = match pool_sizing::pooler_address()? {
+            Some((host, port)) => {
+                tracing::info!(%host, port, "Request and liveness pools go through a connection pooler");
+                pool_sizing::through_pooler(direct, &host, port)
+            }
+            None => direct,
+        };
+        Self::connect_with_options(pooled, session, config).await
     }
 
     /// Create database connection pools from an explicit configuration.
@@ -507,13 +519,27 @@ impl Database {
         session_url: Option<&str>,
         config: DatabasePoolConfig,
     ) -> Result<Self> {
-        let session_url = session_url.unwrap_or(database_url);
+        let pooled: sqlx::postgres::PgConnectOptions = database_url.parse()?;
+        let session = match session_url {
+            Some(url) => url.parse()?,
+            None => pooled.clone(),
+        };
+        Self::connect_with_options(pooled, session, config).await
+    }
+
+    /// Pools from connect options: request and liveness on `pooled`, the
+    /// background pool on `session`.
+    async fn connect_with_options(
+        pooled: sqlx::postgres::PgConnectOptions,
+        session: sqlx::postgres::PgConnectOptions,
+        config: DatabasePoolConfig,
+    ) -> Result<Self> {
         let pool = pool_options()
             .max_connections(config.max_connections)
             .min_connections(config.min_connections)
             .acquire_timeout(config.acquire_timeout)
             .idle_timeout(config.idle_timeout)
-            .connect(database_url)
+            .connect_with(pooled.clone())
             .await?;
 
         // Lazy: the background pool must not add a second round of connects to
@@ -526,7 +552,7 @@ impl Database {
                 .min_connections(1)
                 .acquire_timeout(config.background_acquire_timeout)
                 .idle_timeout(config.idle_timeout)
-                .connect_lazy(session_url)?
+                .connect_lazy_with(session)
         };
 
         // Eager and warm: a renewal must never wait for a connect either.
@@ -538,7 +564,7 @@ impl Database {
                 .min_connections(config.liveness_max_connections)
                 .acquire_timeout(config.acquire_timeout)
                 .idle_timeout(None)
-                .connect_lazy(database_url)?
+                .connect_lazy_with(pooled)
         };
 
         tracing::info!(
