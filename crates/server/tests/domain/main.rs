@@ -36,6 +36,7 @@ mod api_endpoint_check_migration_test;
 mod api_endpoint_conversion_test;
 mod app_invocation_channels_integration_test;
 mod auth_integration_test;
+mod automated_coordination_test;
 mod change_history_test;
 mod channel_a2a_ask_user_test;
 mod channel_a2a_http_json_test;
