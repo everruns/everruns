@@ -51,7 +51,6 @@ GET  /v1/channels/{channel_id}/fcp
 POST /v1/channels/{channel_id}/fcp
 ```
 
-
 Both routes always respond with `Content-Type: text/markdown; charset=utf-8`.
 
 - `GET` returns the configured handshake (or a generated one).

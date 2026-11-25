@@ -90,7 +90,6 @@ API key generation:
 
 Canonical: `POST /v1/channels/{channel_id}/a2a`.
 
-
 - Content-Type: `application/json`
 - Auth: `Authorization: Bearer <api_key>` (the `apiKey` scheme in the Agent
   Card uses `bearer` for unification with the standard HTTP header).
