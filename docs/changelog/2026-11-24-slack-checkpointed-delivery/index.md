@@ -27,6 +27,7 @@ Custom `ChannelStore` implementations must support delivery checkpoints. The sup
 Memory, SQLite and PostgreSQL stores do. Host egress governs provider requests and
 file downloads. Channel-wide and user-group notifications are neutralized in agent
 output.
+Slack file attachments also reach agents using Responses models.
 
 **For operators**, first deploy the protocol-aware compatibility baseline to every
 delivery host and drain older owners, then roll out the Channelkit adapter.

@@ -188,11 +188,10 @@ impl From<&CompactOutputItem> for ResponsesInputItem {
                                     filename,
                                 } => ResponsesContentPart::InputFile {
                                     r#type: "input_file".to_string(),
-                                    input_file: ResponsesInputFile {
-                                        file_data: Some(file_data.clone()),
-                                        file_url: None,
-                                        filename: filename.clone(),
-                                    },
+                                    input_file: ResponsesInputFile::from_source(
+                                        file_data,
+                                        filename.as_deref(),
+                                    ),
                                 },
                             })
                             .collect(),
@@ -240,6 +239,8 @@ pub(crate) enum ResponsesContentPart {
     },
     InputFile {
         r#type: String,
+        // Responses file fields belong on the content part, unlike input_audio.
+        #[serde(flatten)]
         input_file: ResponsesInputFile,
     },
 }
@@ -258,6 +259,17 @@ pub(crate) struct ResponsesInputFile {
     pub(crate) file_url: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) filename: Option<String>,
+}
+
+impl ResponsesInputFile {
+    pub(crate) fn from_source(source: &str, filename: Option<&str>) -> Self {
+        let remote = source.starts_with("https://");
+        Self {
+            file_data: (!remote).then(|| source.to_owned()),
+            file_url: remote.then(|| source.to_owned()),
+            filename: filename.map(str::to_owned),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]

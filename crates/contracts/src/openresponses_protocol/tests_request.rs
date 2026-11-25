@@ -199,6 +199,58 @@ fn test_request_serializes_verbosity() {
 }
 
 #[test]
+fn responses_file_parts_use_flat_wire_fields() {
+    for (source, field) in [
+        ("data:text/plain;base64,aGk=", "file_data"),
+        ("https://example.com/note.txt", "file_url"),
+    ] {
+        for role in [MessageRole::User, MessageRole::Tool] {
+            let is_tool = role == MessageRole::Tool;
+            let mut message = Message::parts(
+                role,
+                vec![crate::message::LlmContentPart::File {
+                    url: source.into(),
+                    filename: Some("note.txt".into()),
+                }],
+            );
+            if is_tool {
+                message.tool_call_id = Some("call_file".into());
+            }
+            let wire = serde_json::to_value(OpenResponsesProtocolChatDriver::convert_message(
+                &message, false,
+            ))
+            .unwrap();
+            let parts = if is_tool { "output" } else { "content" };
+            assert_eq!(
+                wire[parts][0],
+                json!({"type":"input_file",field:source,"filename":"note.txt"})
+            );
+        }
+    }
+}
+
+#[test]
+fn responses_compacted_files_use_flat_wire_fields() {
+    for (source, field) in [
+        ("data:application/pdf;base64,aGk=", "file_data"),
+        ("https://example.com/report.pdf", "file_url"),
+    ] {
+        let compacted = CompactOutputItem::Message {
+            role: "user".into(),
+            content: CompactContent::Parts(vec![CompactContentPart::InputFile {
+                file_data: source.into(),
+                filename: Some("report.pdf".into()),
+            }]),
+        };
+        let wire = serde_json::to_value(ResponsesInputItem::from(&compacted)).unwrap();
+        assert_eq!(
+            wire["content"][0],
+            json!({"type":"input_file",field:source,"filename":"report.pdf"})
+        );
+    }
+}
+
+#[test]
 fn tool_result_images_reach_function_call_output() {
     // A computer-use screenshot arrives as an image part on the tool message;
     // `function_call_output` must carry it as `input_image`, not drop it.

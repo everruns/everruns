@@ -53,6 +53,9 @@ An application-supplied egress service remains authoritative for every provider 
 Native file downloads accept the host ceiling and cap transport reads instead of
 rejecting a larger budget before fetching a small file. This preserves the host's
 default 25 MiB intake contract; upload limits remain provider-specific.
+File qualification includes model access after intake: Responses encoding must
+carry native file parts correctly through user input, tool output and compacted
+history. A successful provider download alone does not prove the agent can read it.
 
 The output checkpoint foundation is merged. Opting drivers use a fenced write-ahead
 ledger in Memory, serve SQLite and server PostgreSQL; confirmed split parts and native
