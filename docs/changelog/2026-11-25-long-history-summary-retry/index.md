@@ -1,5 +1,5 @@
 ---
-title: Long scheduled sessions no longer fail when their history summary runs short
+title: Long sessions no longer fail when their history summary runs short
 description: A cut-off history summary now always retries with a larger output limit, and a summary that still fails names itself instead of a generic error.
 date: 2026-11-25
 kind: fix
