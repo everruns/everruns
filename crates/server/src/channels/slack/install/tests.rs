@@ -339,6 +339,52 @@ async fn concurrent_installs_for_one_channel_are_serialized() {
         .expect("lock released when guard drops");
 }
 
+/// Production's request pool holds two connections. An install holds the
+/// agent and channel locks while it re-reads and persists through the same
+/// pool, so both locks must share one connection; on two they took the whole
+/// pool and the re-read timed out (HTTP 500 on every Add to Slack).
+#[tokio::test]
+async fn install_locks_leave_a_two_connection_pool_room_to_read() {
+    let (_, database) = crate::storage::test_database::create_test_database();
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(2)
+        .acquire_timeout(std::time::Duration::from_secs(2))
+        .connect_lazy(database.url())
+        .expect("valid test database URL");
+    let db = Arc::new(StorageBackend::from_database(
+        crate::storage::repositories::Database::new(pool).with_test_database(database),
+    ));
+    let (agent_id, channel_id) = (uuid::Uuid::now_v7(), uuid::Uuid::now_v7());
+
+    let mut lock = db.lock_slack_install(agent_id).await.expect("agent lock");
+    db.extend_slack_install_lock(&mut lock, channel_id)
+        .await
+        .expect("channel lock");
+    db.database()
+        .get_ingress_channel_by_public_id("appchan_00000000000000000000000000000000")
+        .await
+        .expect("a read while both locks are held");
+
+    // The extended lock still excludes a holder of the channel lock alone.
+    let waiting_db = db.clone();
+    let waiting = tokio::spawn(async move {
+        let _guard = waiting_db
+            .lock_slack_install(channel_id)
+            .await
+            .expect("channel lock after release");
+    });
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    assert!(
+        !waiting.is_finished(),
+        "the channel lock must still be held"
+    );
+    drop(lock);
+    tokio::time::timeout(std::time::Duration::from_secs(5), waiting)
+        .await
+        .expect("released with the guard")
+        .expect("waiter finished");
+}
+
 #[test]
 fn only_socket_mode_without_https_skips_oauth_consent() {
     use super::super::events::slack_oauth_redirect_available as available;

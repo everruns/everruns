@@ -465,7 +465,9 @@ async fn begin_install(
     // Serialize it in PostgreSQL across server instances, then re-read under
     // the lock so concurrent requests reuse the winner instead of creating
     // orphaned apps. The guard stays live through persistence.
-    let _agent_lock = state
+    // Both locks on one connection: the handler reads and persists through
+    // the same pool while holding them (see `advisory_xact_lock_also`).
+    let mut _install_lock = state
         .slack
         .db
         .lock_slack_install(app.agent_internal_id)
@@ -474,10 +476,10 @@ async fn begin_install(
             ErrorResponse::new("Could not lock Slack agent lifecycle")
                 .into_response(StatusCode::SERVICE_UNAVAILABLE)
         })?;
-    let _install_lock = state
+    state
         .slack
         .db
-        .lock_slack_install(endpoint.internal_id)
+        .extend_slack_install_lock(&mut _install_lock, endpoint.internal_id)
         .await
         .map_err(|error| {
             tracing::error!(%error, "Failed to lock Slack app installation");
@@ -682,9 +684,10 @@ pub(crate) async fn begin_reconsent(
     };
     let (app, _) = resolve().await?;
     // Same lock order as `begin_install`: agent lifecycle, then installation.
-    let _agent_lock = db.lock_slack_install(app.agent_internal_id).await?;
+    let mut _install_lock = db.lock_slack_install(app.agent_internal_id).await?;
     let (_, endpoint) = resolve().await?;
-    let _install_lock = db.lock_slack_install(endpoint.internal_id).await?;
+    db.extend_slack_install_lock(&mut _install_lock, endpoint.internal_id)
+        .await?;
     let (_, endpoint) = resolve().await?;
     let mut config = parse_config(&endpoint.channel_config);
     let mut provisioned = config
@@ -786,7 +789,7 @@ async fn finish_install(
         Ok(endpoint) => endpoint,
         Err(_) => return rejected("endpoint not found"),
     };
-    let _agent_lock = match state
+    let mut _install_lock = match state
         .slack
         .db
         .lock_slack_install(context.agent_internal_id)
@@ -795,15 +798,15 @@ async fn finish_install(
         Ok(lock) => lock,
         Err(_) => return rejected("could not lock agent lifecycle"),
     };
-    let _install_lock = match state
+    if state
         .slack
         .db
-        .lock_slack_install(endpoint.internal_id)
+        .extend_slack_install_lock(&mut _install_lock, endpoint.internal_id)
         .await
+        .is_err()
     {
-        Ok(lock) => lock,
-        Err(_) => return rejected("could not lock installation"),
-    };
+        return rejected("could not lock installation");
+    }
     let (context, endpoint) = match resolve_install_channel(&state.slack, &channel_id).await {
         Ok(endpoint) => endpoint,
         Err(_) => return rejected("endpoint not found"),

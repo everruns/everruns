@@ -91,6 +91,22 @@ impl Database {
         .await
     }
 
+    /// Also take `channel_id`'s install lock on a guard from
+    /// [`Self::lock_slack_install`], on that guard's connection.
+    pub async fn extend_slack_install_lock(
+        &self,
+        lock: &mut sqlx::Transaction<'static, sqlx::Postgres>,
+        channel_id: Uuid,
+    ) -> Result<()> {
+        self.advisory_xact_lock_also(
+            lock,
+            "slack_install",
+            &channel_id.to_string(),
+            super::advisory_locks::ADVISORY_LOCK_WAIT,
+        )
+        .await
+    }
+
     pub async fn create_legacy_alias_channel(
         &self,
         app_id: Uuid,
