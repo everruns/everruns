@@ -295,3 +295,153 @@ fn a_subagent_is_reported_once_with_its_create() {
         "a retried create reports nothing new"
     );
 }
+
+fn claim(state: &mut ShardState, session: SessionId, now_ms: i64) -> Value {
+    apply(
+        state,
+        session,
+        RecordOp::ClaimLease {
+            provider: "daytona".into(),
+            resource_type: "sandbox".into(),
+            external_id: "sbx-1".into(),
+            stale_after_seconds: 300,
+        },
+        now_ms,
+    )
+}
+
+fn cleaned(
+    state: &mut ShardState,
+    session: SessionId,
+    claimed: &Value,
+    error: Option<&str>,
+    now_ms: i64,
+) -> Value {
+    let claimed: LeasedResource = serde_json::from_value(claimed.clone()).unwrap();
+    apply(
+        state,
+        session,
+        RecordOp::LeaseCleaned {
+            provider: claimed.provider,
+            resource_type: claimed.resource_type,
+            external_id: claimed.external_id,
+            claimed_at: claimed.cleanup_started_at.unwrap(),
+            error: error.map(str::to_owned),
+            retry_after_seconds: 60,
+        },
+        now_ms,
+    )
+}
+
+fn lease_of(state: &ShardState, session: SessionId) -> LeasedResource {
+    state.sessions[&session]
+        .platform
+        .records
+        .leases
+        .values()
+        .next()
+        .cloned()
+        .unwrap()
+}
+
+/// The lease sweep claims a lease only once it expired, one claim at a
+/// time; a release ends it and its resource, and the feed shows each step.
+#[test]
+fn an_expired_lease_is_claimed_once_and_released() {
+    let (mut state, session) = session();
+    let upsert = RecordOp::UpsertLease {
+        input: lease(session, 60),
+        id: LeasedResourceId::new(),
+    };
+    apply(&mut state, session, upsert, T0);
+    assert_eq!(
+        claim(&mut state, session, T0 + 59_000),
+        Value::Null,
+        "not expired yet"
+    );
+    let records = &state.sessions[&session].platform.records;
+    assert_eq!(records.due_leases(at(T0 + 61_000), 300).count(), 1);
+
+    let claimed = claim(&mut state, session, T0 + 61_000);
+    assert_eq!(claimed["status"], "cleaning");
+    assert_eq!(claimed["cleanup_attempts"], 1);
+    assert_eq!(
+        claim(&mut state, session, T0 + 62_000),
+        Value::Null,
+        "claimed already"
+    );
+
+    let released = cleaned(&mut state, session, &claimed, None, T0 + 63_000);
+    assert_eq!(released["status"], "released");
+    assert_eq!(
+        lease_of(&state, session).status,
+        LeasedResourceStatus::Released
+    );
+    let resource = &state.sessions[&session].platform.records.resources
+        [&lease_of(&state, session).id.to_string()];
+    assert_eq!(resource.status, SessionResourceStatus::Released);
+    assert_eq!(
+        claim(&mut state, session, T0 + 999_000),
+        Value::Null,
+        "released is never due"
+    );
+    let leases_fed = fed(&state)
+        .iter()
+        .filter(|r| matches!(r, Record::Lease { .. }))
+        .count();
+    assert_eq!(
+        leases_fed, 3,
+        "upsert, claim and release are each on the feed"
+    );
+}
+
+/// A failed release is due again after its retry; a claim nobody finished
+/// is due again once stale; an outcome for an older claim changes nothing.
+#[test]
+fn a_failed_or_abandoned_claim_comes_due_again() {
+    let (mut state, session) = session();
+    let upsert = RecordOp::UpsertLease {
+        input: lease(session, 60),
+        id: LeasedResourceId::new(),
+    };
+    apply(&mut state, session, upsert, T0);
+    let first = claim(&mut state, session, T0 + 61_000);
+    let failed = cleaned(
+        &mut state,
+        session,
+        &first,
+        Some("provider down"),
+        T0 + 62_000,
+    );
+    assert_eq!(failed["status"], "cleanup_failed");
+    assert_eq!(failed["last_cleanup_error"], "provider down");
+    assert_eq!(
+        claim(&mut state, session, T0 + 100_000),
+        Value::Null,
+        "retry not due yet"
+    );
+
+    // Claimed again after the retry, then abandoned: due again past stale.
+    let second = claim(&mut state, session, T0 + 123_000);
+    assert_eq!(second["cleanup_attempts"], 2);
+    assert_eq!(
+        claim(&mut state, session, T0 + 123_000 + 299_000),
+        Value::Null
+    );
+    let third = claim(&mut state, session, T0 + 123_000 + 301_000);
+    assert_eq!(third["cleanup_attempts"], 3);
+
+    // The abandoned sweep reports late: its claim is not the lease's now.
+    assert_eq!(
+        cleaned(&mut state, session, &second, None, T0 + 500_000),
+        Value::Null
+    );
+    assert_eq!(
+        lease_of(&state, session).status,
+        LeasedResourceStatus::Cleaning
+    );
+    assert_eq!(
+        cleaned(&mut state, session, &third, None, T0 + 501_000)["status"],
+        "released"
+    );
+}

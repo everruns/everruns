@@ -470,14 +470,17 @@ impl Database {
             WITH due AS (
                 SELECT id AS due_id
                 FROM leased_resources
-                WHERE (
+                WHERE ((
                     status IN ('active', 'cleanup_failed')
                     AND lease_expires_at <= NOW()
                 ) OR (
                     status = 'cleaning'
                     AND cleanup_started_at IS NOT NULL
                     AND cleanup_started_at <= NOW() - make_interval(secs => $2)
-                )
+                ))
+                -- A v2 session's lease is agentd's to release; the row is
+                -- its mirror (`domains/data_plane/session_records.rs`).
+                AND COALESCE(metadata->>'swept_by', '') <> 'data_plane'
                 ORDER BY
                     lease_expires_at ASC NULLS FIRST,
                     cleanup_started_at ASC NULLS FIRST,
