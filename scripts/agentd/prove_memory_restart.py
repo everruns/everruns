@@ -161,8 +161,11 @@ while time.time() < deadline:
         if n in down:
             st = stats(n)
             lead_st = stats(leader) if leader and leader != n else None
-            if st and st.get("leader") is not None and lead_st and \
-                    st.get("applied", 0) + 100 >= lead_st.get("applied", 0):
+            # Back once it knows a leader and, unless it leads again itself,
+            # has caught up with the one that does.
+            if st and st.get("leader") is not None and (
+                    st.get("leader") == n
+                    or (lead_st and st.get("applied", 0) + 100 >= lead_st.get("applied", 0))):
                 intervals.append((n, down.pop(n), t))
                 print(f"t={t}: node {n} back and caught up", flush=True)
             continue
