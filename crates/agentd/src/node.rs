@@ -175,9 +175,6 @@ pub struct Node {
     moving: Mutex<HashSet<SessionId>>,
     /// Ships the committed log to the object store while this node leads.
     pub(crate) shipper: crate::ship::Shipper,
-    /// Ship-first writes skip waiting for every voter until then
-    /// (`Node::held_everywhere`).
-    pub(crate) replicas_slow_until: Mutex<Option<Instant>>,
     /// The shard's members (voters and learners) as Raft last committed
     /// them, refreshed by the liveness loop.
     members: parking_lot::RwLock<BTreeMap<NodeId, String>>,
@@ -295,7 +292,6 @@ impl Node {
                 gateway: std::sync::OnceLock::new(),
                 moving: Mutex::default(),
                 shipper: crate::ship::Shipper::new(shared_store, cfg.shard, ship_wal),
-                replicas_slow_until: Mutex::default(),
                 members: parking_lot::RwLock::new(cfg.members.clone()),
                 dispatch: Default::default(),
                 control: Default::default(),

@@ -33,9 +33,12 @@ Three kinds of write must survive more than a quorum commit, because losing
 them would break a promise below rather than just lose recent history: a
 session's create, every step of a session move, and the `tool.started`
 record of a call that must not run twice. These are **ship-first** writes
-(`Node::ship_first`): answered only once every voter of a three-node shard
-holds them, or, while a voter is down or more than 250 ms behind, once the
-object store holds them.
+(`Node::ship_first`): answered only once the object store holds them.
+Writers waiting at the same time share one object, which also carries every
+entry committed before it. Decision (owner, 2026-11-25): Phase 2 answered
+them once every voter held them on disk, which lost them with every disk of
+a shard; the disaster drill then ran tools twice and lost answered session
+creates, against the 75k goal (E2, U9).
 
 ## Writes, per failure
 
@@ -45,7 +48,7 @@ Three-node shard, nodes in three zones, restore points in an object store:
 | --- | --- | --- | --- |
 | A node or a zone | None | None | A new leader within seconds; running turns continue |
 | Two zones, the third node's disk left | What the survivor had not received yet, usually nothing | None | Down until `restore --survivor` rebuilds the shard (minutes) |
-| Every disk of the shard (a region) | Writes not yet shipped: up to 10 s, never more than 30 s | Writes not yet shipped, same window | Rebuilt from the object store, in another region if needed |
+| Every disk of the shard (a region) | Writes not yet shipped: up to 10 s, never more than 30 s | None | Rebuilt from the object store, in another region if needed |
 | Region, rebuilt elsewhere | Also the bucket's replication lag (target 15 min) | Same | Restore in the second region |
 | A bad release or a bad delete | Nothing, once restored to a point before it | None | Point-in-time restore of the shard or of one org |
 
@@ -89,9 +92,9 @@ behind stops admitting new turns until it catches up (`ship.rs`,
   A turn whose holders keep dying without progress is sealed after a few
   epochs, never earlier.
 - **A started call is never run twice.** A call that is not safe to repeat
-  runs only after its `tool.started` is stored as a ship-first write, so it
-  is known after any failure that leaves one disk or the bucket's copy of
-  it, including a rebuild. Its idempotency key (session, message, call) is
+  runs only after its `tool.started` is in the object store (a ship-first
+  write), so it is known after any failure, including the loss of every
+  disk of its shard. Its idempotency key (session, message, call) is
   the same on every attempt. If its outcome was lost, the model is told the
   outcome is unknown; it is not rerun.
 - **Every accepted input has one outcome**: a new turn, steering into the

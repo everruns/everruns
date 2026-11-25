@@ -555,3 +555,20 @@ fn capability_context_is_searchable_and_refreshes_without_overriding_execution()
             .is_none()
     );
 }
+
+#[test]
+fn a_host_refusal_reaches_the_model_and_a_fault_stays_hidden() {
+    let refused = ToolExecutionResult::internal_error(crate::runtime::AgentLoopError::refused(
+        "This run has no person behind it",
+    ));
+    assert!(
+        matches!(&refused, ToolExecutionResult::ToolError(message) if message == "This run has no person behind it"),
+        "{refused:?}"
+    );
+    let fault = ToolExecutionResult::internal_error(crate::runtime::AgentLoopError::store(
+        "PRIVATE-DATABASE-DETAIL",
+    ));
+    let shown = fault.into_tool_result("id", "tool");
+    assert!(!shown.error.unwrap_or_default().contains("PRIVATE"));
+    assert!(crate::runtime::AgentLoopError::refused("no").is_non_retryable());
+}

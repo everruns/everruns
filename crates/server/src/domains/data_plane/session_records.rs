@@ -110,8 +110,41 @@ pub async fn lease(
             connection_id: lease.connection_id,
             lease_duration_seconds: lease.lease_duration_seconds as i32,
             lease_expires_at: lease.lease_expires_at,
-            metadata: lease.metadata,
+            metadata: swept_by_data_plane(lease.metadata),
         })
         .await?;
     Ok(())
+}
+
+/// The marker the control plane's cleanup activity skips: agentd releases
+/// a v2 session's leases itself (`agentd/src/lease_sweep.rs`), and the
+/// mirror only shows them.
+pub const SWEPT_BY: &str = "swept_by";
+pub const DATA_PLANE: &str = "data_plane";
+
+fn swept_by_data_plane(metadata: serde_json::Value) -> serde_json::Value {
+    let mut metadata = match metadata {
+        serde_json::Value::Object(map) => map,
+        _ => serde_json::Map::new(),
+    };
+    metadata.insert(SWEPT_BY.into(), serde_json::Value::from(DATA_PLANE));
+    serde_json::Value::Object(metadata)
+}
+
+#[cfg(test)]
+mod swept_by_tests {
+    use super::*;
+
+    /// A mirrored lease carries the marker the control plane's cleanup
+    /// skips, and keeps its own metadata.
+    #[test]
+    fn a_mirrored_lease_is_marked_as_the_data_planes_to_release() {
+        let marked = swept_by_data_plane(serde_json::json!({ "region": "us" }));
+        assert_eq!(marked[SWEPT_BY], DATA_PLANE);
+        assert_eq!(marked["region"], "us");
+        assert_eq!(
+            swept_by_data_plane(serde_json::Value::Null)[SWEPT_BY],
+            DATA_PLANE
+        );
+    }
 }
