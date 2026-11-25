@@ -193,7 +193,7 @@ async fn tokens(cp: &ControlPlane, id: &str) -> TokenSet {
 }
 
 #[tokio::test]
-async fn an_agents_mcp_credentials_travel_sealed_and_its_grant_comes_back_refreshed() {
+async fn an_agents_mcp_credentials_travel_sealed_and_its_grant_stays_with_the_control_plane() {
     let (cp, _, _) = control_plane().await;
     let encryption = test_encryption();
     let agent = agent(&cp, &encryption).await;
@@ -215,28 +215,40 @@ async fn an_agents_mcp_credentials_travel_sealed_and_its_grant_comes_back_refres
     );
     assert!(!package.to_string().contains("docs-key"), "{package}");
 
-    // The preset is its catalog server, acting through the agent's grant.
+    // The preset is its catalog server, acting through the agent's grant,
+    // which stays with the control plane: the data plane asks for its token
+    // per use, and the control plane is its one refresher.
     let crm = &servers["crm"];
     assert_eq!(crm["url"], CRM_URL);
+    assert!(crm.get("use").is_none(), "{crm}");
+    assert_eq!(crm["oauth_provider_id"], agent.provider.as_str(), "{crm}");
+    assert_eq!(crm["actsAs"], "service");
+    assert_eq!(crm["auth_mode"], "oauth");
+    let pushed = cp.db.dp_items_live(ORG).await.unwrap();
     assert!(
-        crm.get("use").is_none() && crm.get("actsAs").is_none(),
-        "{crm}"
+        !pushed
+            .iter()
+            .any(|item| item.item_id.starts_with("mcp_oauth:")),
+        "no grant goes over"
     );
-    let id = crm["oauth_provider_id"].as_str().unwrap().to_owned();
-    assert!(id.starts_with("mcp_oauth:"), "{id}");
-    let connection = cp
-        .db
-        .dp_item(ORG, "connection", &id)
+
+    // A grant that went over before (an older definition): its data
+    // plane's refreshes still come back to the platform's row.
+    let grants = crate::storage::DbConnectionResolver::new(
+        cp.db.as_ref().clone(),
+        encryption.as_ref().clone(),
+        None,
+        crate::domains::mcp_servers::McpServerService::new(cp.db.clone(), cp.encryption.clone())
+            .egress_service(),
+    );
+    let grant = grants
+        .agent_service_mcp_grant(ORG, agent.id, &agent.provider)
         .await
         .unwrap()
         .unwrap();
-    match ConfigChange::parse(&connection.body.unwrap()) {
-        Some(ConfigChange::Connection(c)) => {
-            assert_eq!(c.kind, dp::MCP_OAUTH);
-            assert_eq!(c.refresh_owner, dp::RefreshOwner::DataPlane);
-        }
-        other => panic!("{other:?}"),
-    }
+    let id = crate::domains::data_plane::mcp::put_grant(&cp, ORG, &grant)
+        .await
+        .unwrap();
     let held = tokens(&cp, &id).await;
     assert_eq!(held.access_token, "access-0");
     assert_eq!(held.refresh_token.as_deref(), Some("refresh-0"));
@@ -313,13 +325,6 @@ async fn an_agents_mcp_credentials_travel_sealed_and_its_grant_comes_back_refres
     // A replayed refresh is not stored twice, and a refresh over a grant the
     // person authorized again is not stored at all.
     refreshed(&cp, ORG, &sealed).await.unwrap();
-    let grants = crate::storage::DbConnectionResolver::new(
-        cp.db.as_ref().clone(),
-        encryption.as_ref().clone(),
-        None,
-        crate::domains::mcp_servers::McpServerService::new(cp.db.clone(), cp.encryption.clone())
-            .egress_service(),
-    );
     let mut stale = grants
         .agent_service_mcp_grant(ORG, agent.id, &agent.provider)
         .await
