@@ -146,7 +146,9 @@ pub(crate) async fn init_storage(
 
 async fn run_migrations(backend: &StorageBackend, migrations: Vec<MigrationFn>) -> Result<()> {
     tracing::info!("Running database migrations...");
-    let pool = backend.pool();
+    // Session pool: migrations take session advisory locks, which a
+    // transaction pooler on DATABASE_URL would break.
+    let pool = backend.background_pool();
     if let Err(e) = crate::setup::migrations::run(pool).await {
         tracing::error!(error = %e, "Database migration failed");
         return Err(e);
