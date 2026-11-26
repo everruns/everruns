@@ -657,7 +657,6 @@ fn with_urls_preserves_allowed_actions_for_resource_with_counts() {
     let builder = UrlBuilder::new("https://api.example", "https://app.example");
     let wrapped = builder.wrap(ResourceWithCounts {
         session_count: 1,
-        app_count: 2,
         inner: TestResourceWithActions {
             id: "resource_1".to_string(),
         },
@@ -722,44 +721,6 @@ fn harness_actions_offer_copy_only_when_active() {
     );
     assert!(active.iter().any(|a| a.rel == "copy"));
     assert!(!archived.iter().any(|a| a.rel == "copy"));
-}
-
-#[test]
-fn app_actions_offer_only_the_read_route_that_still_exists() {
-    // Apps are retired: `/v1/platform/apps/{id}` is GET-only, and publish,
-    // unpublish, runs, update and delete have no route registration left.
-    // Advertising any of them hands a client a 404 from a deprecated
-    // read-only resource.
-    let actions = app_allowed_actions("app_01", "https://api.example");
-    let rels: Vec<&str> = actions.iter().map(|a| a.rel.as_str()).collect();
-
-    assert_eq!(rels, vec!["self"], "only `self` resolves: {rels:?}");
-    assert_eq!(actions[0].method.as_deref(), Some("GET"));
-    for dead in ["publish", "unpublish", "runs", "update", "delete"] {
-        assert!(
-            !rels.contains(&dead),
-            "`{dead}` has no route and must not be advertised: {rels:?}"
-        );
-    }
-}
-
-#[test]
-fn archival_app_links_to_its_agent_rather_than_the_deleted_apps_page() {
-    // The `/apps` UI pages went with the App surface, so a `view_url` into
-    // them would 404.
-    let with_agent = archival_app_ui_path(Some("agent_07"));
-    assert_eq!(with_agent, "agents/agent_07?tab=integrations");
-
-    // Pre-agent rows have nowhere agent-specific to go; the cross-agent
-    // exposures view is the honest fallback.
-    assert_eq!(archival_app_ui_path(None), "exposures");
-
-    for path in [with_agent.as_str(), "exposures"] {
-        assert!(
-            !path.starts_with("apps/"),
-            "must not link into /apps: {path}"
-        );
-    }
 }
 
 #[test]

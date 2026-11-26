@@ -1,4 +1,4 @@
-//! Constructing sessions: from scratch, from an app, from a trigger, from a blueprint.
+//! Constructing sessions: from scratch, from a channel, from a trigger, from a blueprint.
 
 use super::*;
 use crate::domains::harnesses::record::HarnessExecution;
@@ -71,43 +71,23 @@ impl SessionService {
             None,
             None,
             None,
-            None,
             source,
             req,
         )
         .await
     }
 
-    /// Create a session from an App channel. The app backreference is server-owned
-    /// and intentionally absent from public session create/update request types.
-    ///
-    /// `owner_principal_id` and `resolved_owner_user_id` come from the App row
-    /// itself, not the caller. This is intentional: app-channel ingress
-    /// (webhook, schedule, A2A, AG-UI, Slack) typically runs as
-    /// `Caller::internal(org)` whose default principal is the system principal,
-    /// while the App was created by a real user. Without this override, the
-    /// session would be owned by `system-owner` and shared-session reuse via
-    /// `find_app_session_by_tags_and_owner(.. app.owner_principal_id ..)` would
-    /// fail to match it.
+    /// Create an ingress-owned session using the channel's verified execution
+    /// owner and identity. Internal callers must pass structural attribution;
+    /// users cannot set these pointers or choose another channel's owner.
     #[allow(clippy::too_many_arguments)]
-    pub async fn create_from_app(
+    pub async fn create_from_channel(
         &self,
         caller: &Caller,
         harness_id: Uuid,
         agent_internal_id: Option<Uuid>,
         agent_public_id: Option<AgentId>,
-        app_internal_id: Option<Uuid>,
-        // Internal id of the endpoint this ingress resolved, recorded as
-        // `sessions.channel_id` so provenance names the door, not the bundle
-        // (EVE-1004). `None` only where the caller genuinely has no endpoint
-        // pointer — migrated App schedules, whose trigger row kept
-        // `execution_app_id` but never an endpoint id. Leaving those NULL is
-        // the same rule the 137 backfill follows: derive or leave unknown,
-        // never guess an App's endpoint for it.
         channel_internal_id: Option<Uuid>,
-        // Internal id of the trigger whose ingress resolved, recorded as
-        // `sessions.trigger_id` (EVE-1138). Set for the migrated App webhooks
-        // that now run as triggers; `None` for every other App channel.
         trigger_internal_id: Option<Uuid>,
         owner_principal_id: PrincipalId,
         resolved_owner_user_id: Option<Uuid>,
@@ -119,7 +99,6 @@ impl SessionService {
             harness_id,
             agent_internal_id,
             agent_public_id,
-            app_internal_id,
             channel_internal_id,
             trigger_internal_id,
             Some((owner_principal_id, resolved_owner_user_id)),
@@ -130,11 +109,7 @@ impl SessionService {
     }
 
     /// Create a session owned by an agent that one of its triggers started.
-    /// Mirrors [`Self::create_from_app`] but there is no App row: the session
-    /// runs on the agent's harness, is hosted by the agent through
-    /// `agent_public_id`, and is owned by `owner_principal_id` so the
-    /// shared-session reuse lookup (`find_session_by_tags_and_owner`) matches
-    /// across invocations. `app_id` is `None`.
+    /// Create a trigger-owned session with its persisted execution authority.
     #[allow(clippy::too_many_arguments)]
     pub async fn create_from_agent_trigger(
         &self,
@@ -157,7 +132,6 @@ impl SessionService {
             Some(agent_internal_id),
             Some(agent_public_id),
             None,
-            None,
             trigger_internal_id,
             Some((owner_principal_id, resolved_owner_user_id)),
             source,
@@ -173,19 +147,18 @@ impl SessionService {
         harness_id: Uuid,
         agent_internal_id: Option<Uuid>,
         agent_public_id: Option<AgentId>,
-        app_id: Option<Uuid>,
         // Endpoint whose ingress is creating this session (EVE-1004). Every
-        // app-channel path knows its endpoint, so this is passed rather than
+        // channel path knows its endpoint, so this is passed rather than
         // inferred from tags — the tag spelling differs per transport and a
-        // multi-endpoint App makes `app_id` alone ambiguous.
+        // channel may have sibling channels with different authority.
         channel_id: Option<Uuid>,
         // Agent trigger whose ingress is creating this session (EVE-1138).
         // Passed rather than inferred from the `app_channel:`/`agent_trigger:`
         // tags: it is the budget subject for trigger ingress, and no budget
         // subject is resolved from a tag any more.
         trigger_id: Option<Uuid>,
-        // (principal, resolved_user) override; used by app-channel ingress so
-        // the session owner matches the App row (not the internal caller).
+        // (principal, resolved_user) override; used by channel ingress so
+        // the session owner matches the channel (not the internal caller).
         owner_override: Option<(PrincipalId, Option<Uuid>)>,
         // How this session was started (EVE-852). Resolved by the calling
         // ingress path, never read from the request body except for the two
@@ -444,12 +417,15 @@ impl SessionService {
                 &merge_capabilities(&effective_harness.capabilities, &agent_capabilities),
                 resolved_sandbox.as_ref().map(|sandbox| &sandbox.spec),
             );
-        // Decision: an agent handed work in a run can talk to the others in it
-        // (knowledge/runtime-resources/agents-using-agents.md, Run
-        // conversation). The host attaches the conversation to the session,
-        // not the agent: the same agent on its own has no run to talk in.
-        if req.parent_session_id.is_some() {
-            attach_run_conversation(
+        // Decision (2026-11-25): children talk to each other only when their
+        // parent's agent turned on Sibling communication
+        // (knowledge/runtime-resources/threads.md). The host attaches it to
+        // the child session, not the child's agent: the same agent on its own
+        // has no run to talk in.
+        if let Some(parent_id) = req.parent_session_id
+            && self.parent_allows_sibling_talk(org_id, parent_id).await?
+        {
+            attach_sibling_communication(
                 &mut session_capabilities,
                 &[&effective_harness.capabilities, &agent_capabilities],
             );
@@ -521,8 +497,8 @@ impl SessionService {
         }
 
         let (owner_principal_id, resolved_owner_user_id) = match owner_override {
-            // App-channel ingress: trust the App row's owner so shared-session
-            // lookups (which key on `app.owner_principal_id`) actually match
+            // Channel ingress: trust the channel's owner so shared-session
+            // lookups (which key on `channel.owner_principal_id`) actually match
             // sessions created here.
             Some((principal_id, resolved_user_id)) => (principal_id, resolved_user_id),
             None => {
@@ -547,7 +523,6 @@ impl SessionService {
                 .transpose()?,
             org_id,
             source,
-            app_id,
             channel_id,
             trigger_id,
             harness_id: Some(harness_id),
@@ -774,7 +749,7 @@ impl SessionService {
             workspace_id: None,
             org_id,
             source,
-            app_id: None,
+
             channel_id: None,
             trigger_id: None,
             harness_id: Some(harness_id),
@@ -929,20 +904,46 @@ impl SessionService {
         crate::domains::models::catalog::require_chat(model.provider_metadata.as_ref())?;
         Ok(Some(model_id))
     }
+
+    /// Whether the agent of `parent` has Sibling communication, so its
+    /// children may talk to each other.
+    async fn parent_allows_sibling_talk(&self, org_id: i64, parent: SessionId) -> Result<bool> {
+        use everruns_capabilities::capabilities::SIBLING_COMMUNICATION_CAPABILITY_ID;
+        let Some(agent_id) = self
+            .db
+            .get_session(org_id, parent)
+            .await?
+            .and_then(|session| session.agent_id)
+        else {
+            return Ok(false);
+        };
+        Ok(self
+            .db
+            .get_agent_capabilities(agent_id.uuid())
+            .await?
+            .iter()
+            .any(|row| {
+                row.capability_id == SIBLING_COMMUNICATION_CAPABILITY_ID
+                    || row.capability_id
+                        == everruns_contracts::capability::delegation::LEGACY_RUN_CONVERSATION_ID
+            }))
+    }
 }
 
-/// Add the run conversation to a session started under another one, unless
-/// its harness or agent already has it.
-fn attach_run_conversation(
+/// Add Sibling communication to a child session, unless its harness or agent
+/// already has it.
+fn attach_sibling_communication(
     session_capabilities: &mut Vec<AgentCapabilityConfig>,
     inherited: &[&[AgentCapabilityConfig]],
 ) {
-    use everruns_capabilities::capabilities::run_conversation::RUN_CONVERSATION_CAPABILITY_ID;
+    use everruns_capabilities::capabilities::SIBLING_COMMUNICATION_CAPABILITY_ID;
     let present = session_capabilities
         .iter()
         .chain(inherited.iter().flat_map(|caps| caps.iter()))
-        .any(|capability| capability.id() == RUN_CONVERSATION_CAPABILITY_ID);
+        .any(|capability| capability.id() == SIBLING_COMMUNICATION_CAPABILITY_ID);
     if !present {
-        session_capabilities.push(AgentCapabilityConfig::new(RUN_CONVERSATION_CAPABILITY_ID));
+        session_capabilities.push(AgentCapabilityConfig::new(
+            SIBLING_COMMUNICATION_CAPABILITY_ID,
+        ));
     }
 }

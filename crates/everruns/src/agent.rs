@@ -13,6 +13,7 @@ mod builder;
 mod communication;
 mod completion_check;
 mod members;
+pub use members::SpawnAgents;
 mod package;
 
 use std::collections::{HashMap, HashSet};
@@ -396,7 +397,7 @@ pub struct Agent {
     network_access: Option<everruns_core::network_access::NetworkAccessList>,
     package_manifest: Option<everruns_core::agent_package::Manifest>,
     description: Option<String>,
-    /// Agents this one hands work to; see [`AgentBuilder::member`].
+    /// Agents this one can start; see [`AgentBuilder::spawns`].
     members: Vec<Agent>,
     max_iterations: Option<usize>,
     parallel_tool_calls: Option<bool>,
@@ -1193,8 +1194,14 @@ pub struct AgentBuilder {
     members: Vec<Agent>,
     /// Bundled agents from a package, built with this agent's providers.
     bundled_members: Vec<crate::AgentPackage>,
-    /// Agents a package links by name; each must be added with `member`.
+    /// Agents a package links by name; each must be added with `spawns` or
+    /// `threads_with`.
     linked_members: Vec<String>,
+    /// How the added agents are reached: set by the first `spawns` or
+    /// `threads_with`.
+    member_kind: Option<members::MemberKind>,
+    /// Agents were added with both `spawns` and `threads_with`.
+    mixed_members: bool,
     max_iterations: Option<usize>,
     parallel_tool_calls: Option<bool>,
     communication: crate::conversation::Communication,

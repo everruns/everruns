@@ -24,10 +24,10 @@ mod agent_triggers;
 pub use agent_triggers::rows::*;
 mod agent_sources;
 pub use agent_sources::AgentSourceRow;
+mod applications;
+pub use applications::ApplicationRow;
 mod agents;
 pub use agents::rows::*;
-mod apps;
-pub use apps::rows::*;
 mod audit_logs;
 pub use audit_logs::rows::*;
 mod auth;
@@ -53,6 +53,7 @@ pub use virtual_users::rows::*;
 mod a2a_push_configs;
 mod advisory_locks;
 mod channel_host;
+pub mod pool_sizing;
 pub use channel_host::{ChannelPendingDeliveryRow, WorkChatShareEventRow};
 mod agent_avatars;
 mod agent_trigger_mcp_subscriptions;
@@ -106,6 +107,7 @@ mod oauth_grants;
 mod rooms;
 pub use oauth_grants::OAUTH_GRANT_ACCESS_READ_AND_RUN;
 pub use oauth_grants::rows::*;
+pub use rooms::memory::*;
 pub use rooms::rows::*;
 mod observers;
 pub use observers::rows::*;
@@ -424,8 +426,73 @@ impl Database {
     /// Multi-instance sizing: set `DATABASE_POOL_MAX = pg_max_connections / N - margin`
     /// where N = number of control-plane instances. The background pool adds
     /// `DATABASE_BACKGROUND_POOL_MAX` on top of that per instance.
+    ///
+    /// Pool sizes the environment leaves unset are derived from the
+    /// database's `max_connections` (see `pool_sizing`). Session-scoped work
+    /// (the background pool and its listeners, advisory session locks) runs
+    /// on `DATABASE_UNPOOLED_URL` when set, so `DATABASE_URL` may be a
+    /// transaction pooler such as PgBouncer.
     pub async fn from_url(database_url: &str) -> Result<Self> {
-        Self::connect_with_config(database_url, DatabasePoolConfig::from_env()).await
+        let session_url = std::env::var("DATABASE_UNPOOLED_URL")
+            .ok()
+            .map(|url| url.trim().to_string())
+            .filter(|url| !url.is_empty());
+        let mut config = DatabasePoolConfig::from_env();
+        let explicit = pool_sizing::ExplicitSizes::from_env();
+        if !explicit.all() {
+            let probe_url = session_url.as_deref().unwrap_or(database_url);
+            match pool_sizing::read_limits(probe_url).await {
+                Ok(limits) => {
+                    let instances = env_or("EXPECTED_INSTANCES", 1u32).max(1);
+                    let other_clients = pool_sizing::other_clients(
+                        limits,
+                        std::env::var("DATABASE_RESERVED_CONNECTIONS")
+                            .ok()
+                            .as_deref(),
+                    );
+                    let share = pool_sizing::process_share(limits, instances, other_clients);
+                    let fits = pool_sizing::fit(&mut config, explicit, share);
+                    tracing::info!(
+                        max_connections = limits.max_connections,
+                        reserved = limits.reserved,
+                        other_clients,
+                        instances,
+                        share,
+                        request = config.max_connections,
+                        background = config.background_max_connections,
+                        liveness = config.liveness_max_connections,
+                        "Database pools sized from the database's connection limit"
+                    );
+                    if !fits {
+                        tracing::warn!(
+                            max_connections = limits.max_connections,
+                            instances,
+                            share,
+                            "The database's connection limit is too small for this many \
+                             server processes; pools use their minimum sizes. Raise \
+                             max_connections or lower EXPECTED_INSTANCES."
+                        );
+                    }
+                }
+                Err(error) => tracing::warn!(
+                    %error,
+                    "Could not read the database's connection limit; unset pool sizes use defaults"
+                ),
+            }
+        }
+        let direct: sqlx::postgres::PgConnectOptions = database_url.parse()?;
+        let session = match session_url.as_deref() {
+            Some(url) => url.parse()?,
+            None => direct.clone(),
+        };
+        let pooled = match pool_sizing::pooler_address()? {
+            Some((host, port)) => {
+                tracing::info!(%host, port, "Request and liveness pools go through a connection pooler");
+                pool_sizing::through_pooler(direct, &host, port)
+            }
+            None => direct,
+        };
+        Self::connect_with_options(pooled, session, config).await
     }
 
     /// Create database connection pools from an explicit configuration.
@@ -443,12 +510,38 @@ impl Database {
         database_url: &str,
         config: DatabasePoolConfig,
     ) -> Result<Self> {
+        Self::connect_with_urls(database_url, None, config).await
+    }
+
+    /// [`Self::connect_with_config`], with the background pool on
+    /// `session_url` when given: it hosts `LISTEN` and session advisory locks,
+    /// which a transaction pooler on `database_url` would break.
+    pub async fn connect_with_urls(
+        database_url: &str,
+        session_url: Option<&str>,
+        config: DatabasePoolConfig,
+    ) -> Result<Self> {
+        let pooled: sqlx::postgres::PgConnectOptions = database_url.parse()?;
+        let session = match session_url {
+            Some(url) => url.parse()?,
+            None => pooled.clone(),
+        };
+        Self::connect_with_options(pooled, session, config).await
+    }
+
+    /// Pools from connect options: request and liveness on `pooled`, the
+    /// background pool on `session`.
+    async fn connect_with_options(
+        pooled: sqlx::postgres::PgConnectOptions,
+        session: sqlx::postgres::PgConnectOptions,
+        config: DatabasePoolConfig,
+    ) -> Result<Self> {
         let pool = pool_options()
             .max_connections(config.max_connections)
             .min_connections(config.min_connections)
             .acquire_timeout(config.acquire_timeout)
             .idle_timeout(config.idle_timeout)
-            .connect(database_url)
+            .connect_with(pooled.clone())
             .await?;
 
         // Lazy: the background pool must not add a second round of connects to
@@ -461,7 +554,7 @@ impl Database {
                 .min_connections(1)
                 .acquire_timeout(config.background_acquire_timeout)
                 .idle_timeout(config.idle_timeout)
-                .connect_lazy(database_url)?
+                .connect_lazy_with(session)
         };
 
         // Eager and warm: a renewal must never wait for a connect either.
@@ -473,7 +566,7 @@ impl Database {
                 .min_connections(config.liveness_max_connections)
                 .acquire_timeout(config.acquire_timeout)
                 .idle_timeout(None)
-                .connect_lazy(database_url)?
+                .connect_lazy_with(pooled)
         };
 
         tracing::info!(
@@ -486,45 +579,6 @@ impl Database {
             liveness_max_connections = config.liveness_max_connections,
             "Database connection pool initialized"
         );
-
-        // Multi-instance pool sizing check
-        let instances: u32 = std::env::var("EXPECTED_INSTANCES")
-            .ok()
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(1)
-            .max(1);
-        if instances > 1 {
-            // Both pools count against the server's connection budget.
-            let per_instance = config.total_max_connections();
-            let estimated_total = per_instance.saturating_mul(instances);
-            // PostgreSQL default max_connections is 100; warn if we'd exceed 80% of it
-            let pg_max: u32 = std::env::var("PG_MAX_CONNECTIONS")
-                .ok()
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(100);
-            if estimated_total > pg_max * 80 / 100 {
-                tracing::warn!(
-                    pool_max = config.max_connections,
-                    background_pool_max = config.background_max_connections,
-                    per_instance,
-                    instances,
-                    estimated_total,
-                    pg_max,
-                    "Pool size × instances ({estimated_total}) exceeds 80% of PG_MAX_CONNECTIONS ({pg_max}). \
-                     Reduce DATABASE_POOL_MAX / DATABASE_BACKGROUND_POOL_MAX or increase PostgreSQL max_connections."
-                );
-            } else {
-                tracing::info!(
-                    pool_max = config.max_connections,
-                    background_pool_max = config.background_max_connections,
-                    per_instance,
-                    instances,
-                    estimated_total,
-                    pg_max,
-                    "Database pool sizing OK for multi-instance deployment"
-                );
-            }
-        }
 
         Ok(Self {
             pool: crate::storage::transaction::TxPool::new(pool),

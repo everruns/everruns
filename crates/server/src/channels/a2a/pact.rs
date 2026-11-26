@@ -95,8 +95,7 @@ type ReqId = Option<Extension<crate::middleware::RequestId>>;
 /// A PACT request that passed routing and authentication.
 struct Caller {
     auth: AuthorizedA2a,
-    /// The id the A2A turn resolves the channel's app by.
-    legacy_app_id: String,
+    /// The id the A2A turn resolves the channel's ingress by.
     user: pact_identity::PersonalAgentUser,
     /// The channel's internal id, which keys its PACT signing key and grants.
     channel_internal_id: Uuid,
@@ -118,7 +117,7 @@ pub(super) async fn pact_channel(
     )>,
     Response,
 > {
-    let Some((app, channel)) =
+    let Some((ingress, channel)) =
         channel_ingress::resolve_channel(&state.db, state.encryption.as_ref(), channel_id)
             .await
             .map_err(|err| super::internal_error(err).into_response())?
@@ -126,7 +125,7 @@ pub(super) async fn pact_channel(
         return Ok(None);
     };
     if channel.channel_type != crate::domains::agent_channels::record::ChannelType::A2a
-        || channel_ingress::channel_liveness(&app, &channel).is_err()
+        || channel_ingress::channel_liveness(&ingress, &channel).is_err()
     {
         return Ok(None);
     }
@@ -136,7 +135,7 @@ pub(super) async fn pact_channel(
     let Some(pact) = config.pact.clone() else {
         return Ok(None);
     };
-    Ok(Some((app, channel, config, pact)))
+    Ok(Some((ingress, channel, config, pact)))
 }
 
 /// Resolve the endpoint, then authenticate the personal agent and apply the
@@ -147,18 +146,17 @@ async fn admit(
     headers: &HeaderMap,
     peer: Peer,
 ) -> Result<Caller, Response> {
-    let Some((app, channel, config, pact)) = pact_channel(state, channel_id).await? else {
+    let Some((ingress, channel, config, pact)) = pact_channel(state, channel_id).await? else {
         return Err(super::not_found().into_response());
     };
     let user = pact_identity::verify(&state.auth_verifier, &pact, headers)
         .await
         .map_err(|()| unauthorized())?;
-    rate_limit(state, &app, &channel, &config, headers, peer).await?;
+    rate_limit(state, &ingress, &channel, &config, headers, peer).await?;
     Ok(Caller {
-        legacy_app_id: app.legacy_app_id(),
         auth: AuthorizedA2a {
-            org_id: app.org_id,
-            app_public_id: app.public_id.to_string(),
+            org_id: ingress.org_id,
+            ingress_public_id: ingress.public_id.to_string(),
             channel_public_id: channel.public_id,
             session_mode: config.session_mode,
             caller_tag: Some(user.session_tag()),
@@ -174,13 +172,13 @@ async fn admit(
 /// limiter or probe the endpoint through it.
 pub(super) async fn rate_limit(
     state: &ChannelA2aState,
-    app: &channel_ingress::IngressContext,
+    ingress: &channel_ingress::IngressContext,
     channel: &channel_ingress::IngressChannel,
     config: &crate::domains::agent_channels::record::A2aChannelConfig,
     headers: &HeaderMap,
     peer: Peer,
 ) -> Result<(), Response> {
-    let channel_scope = format!("{}:{}", app.public_id, channel.public_id);
+    let channel_scope = format!("{}:{}", ingress.public_id, channel.public_id);
     if let Some(limit) = config.rate_limit_per_minute
         && limit > 0
     {
@@ -218,8 +216,8 @@ async fn agent_card(
     OriginalUri(uri): OriginalUri,
     headers: HeaderMap,
 ) -> Response {
-    let (app, config, pact) = match pact_channel(&state, &channel_id).await {
-        Ok(Some((app, _, config, pact))) => (app, config, pact),
+    let (ingress, config, pact) = match pact_channel(&state, &channel_id).await {
+        Ok(Some((ingress, _, config, pact))) => (ingress, config, pact),
         Ok(None) => return super::not_found().into_response(),
         Err(response) => return response,
     };
@@ -232,11 +230,11 @@ async fn agent_card(
     let name = config
         .agent_card_name
         .clone()
-        .unwrap_or_else(|| app.name.clone());
+        .unwrap_or_else(|| ingress.name.clone());
     let description = config
         .agent_card_description
         .clone()
-        .or_else(|| app.description.clone())
+        .or_else(|| ingress.description.clone())
         .unwrap_or_default();
     (
         [(header::CONTENT_TYPE, "application/json")],
@@ -244,7 +242,7 @@ async fn agent_card(
             pact_card(
                 &name,
                 &description,
-                &app.name,
+                &ingress.name,
                 &interface_url,
                 pact.delegation.as_ref(),
             ),
@@ -473,7 +471,6 @@ async fn send_message(
     let result = turn::start(
         &state,
         turn::A2aTurnRequest {
-            legacy_app_id: caller.legacy_app_id.clone(),
             channel_id: caller.auth.channel_public_id.to_string(),
             params: serde_json::from_slice(&body).unwrap_or(Value::Null),
             text: message.text,

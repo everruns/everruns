@@ -64,7 +64,7 @@ echo "==> data plane v2 by default, v1 one setting away"
 grep -q 'name: check-everruns-agentd$' <<<"$one" || fail "v2 is the default but no shard renders"
 grep -q 'EVERRUNS_DEFAULT_DATA_PLANE_URL, value: "http://check-everruns-agentd-gateway:7000"' <<<"$one" \
   || fail "the server does not reach the shard through the gateway Service over its ready nodes"
-grep -q 'INJECTED_CAPABILITIES_BASE_URL, value: "http://check-everruns-server:9000/api"' <<<"$one" \
+grep -q 'INJECTED_CAPABILITIES_BASE_URL, value: "http://check-everruns-server:9000/api/v1"' <<<"$one" \
   || fail "the server hands the data plane injected capabilities at an address it cannot reach"
 [ "$(grep -c 'AGENTD_CONTROL_PLANE, value: "http://check-everruns-server:9000/api"' <<<"$one")" -ge 3 ] \
   || fail "a data plane pod (node, executor, edge) does not know its control plane"
@@ -210,3 +210,39 @@ helm template check "$tmp/agentd-1.2.3.tgz" "${key[@]}" | grep -q "ghcr.io/everr
   || fail "packaged agentd chart does not use the v1.2.3 image"
 
 echo "helm chart checks passed"
+
+echo "==> Applications share identity settings and isolate browser secrets"
+application_values=(--set postgresql.enabled=true --set auth.adminEmail=admin@example.com
+  --set applications.enabled=true --set applications.domain=work.example.com
+  --set applications.oidcIssuer=https://id.example.com --set applications.oidcClientId=work
+  --set applications.existingSecret=application-auth --set applications.ingress.tlsSecret=wildcard-tls
+  --set networkPolicy.enabled=true)
+application_out="$(helm template check "$CHART" "${application_values[@]}")"
+APPLICATION_CHART="$application_out" python3 - <<'PY'
+import os,yaml
+items=list(yaml.safe_load_all(os.environ['APPLICATION_CHART']))
+workloads={x['metadata']['name']:x for x in items if x and x['kind']=='Deployment'}
+consumer=workloads['check-everruns-applications']['spec']['template']['spec']
+server=workloads['check-everruns-server']['spec']['template']['spec']
+env=lambda p:{e['name']:e for e in p['containers'][0]['env']}
+a,s=env(consumer),env(server)
+for name in ['CHAT_DOMAIN','CHAT_OIDC_ISSUER','CHAT_OIDC_CLIENT_ID']:assert a[name]==s[name],name
+for name in ['CHAT_DATABASE_URL','CHAT_OIDC_CLIENT_SECRET','CHAT_SESSION_KEY']:
+ assert a[name]['valueFrom']['secretKeyRef']['name']=='application-auth'
+ assert name not in s
+assert a['CHAT_API_URL']['value']=='http://check-everruns-server:9000/api'
+assert consumer['automountServiceAccountToken'] is False
+assert consumer['containers'][0]['image'].endswith('/everruns-chat-ui:latest')
+ingress=next(x for x in items if x and x['kind']=='Ingress' and x['metadata']['name']=='check-everruns-applications')
+assert ingress['spec']['rules'][0]['host']=='*.work.example.com'
+assert ingress['spec']['tls'][0]['secretName']=='wildcard-tls'
+policies={x['metadata']['name']:str(x) for x in items if x and x['kind']=='NetworkPolicy'}
+assert 'applications' in policies['check-everruns-server']
+assert 'applications' in policies['check-everruns-postgresql']
+PY
+if helm template check "$CHART" "${application_values[@]}" --set applications.ingress.tlsSecret= >/dev/null 2>&1; then
+  fail "Applications render without required TLS"
+fi
+if helm template check "$CHART" "${application_values[@]}" --set applications.oidcIssuer=http://id.example.com >/dev/null 2>&1; then
+  fail "Applications render with an insecure issuer"
+fi

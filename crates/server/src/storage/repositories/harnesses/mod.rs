@@ -415,7 +415,6 @@ impl Database {
         for statement in [
             "UPDATE sessions SET harness_id = $3 WHERE org_id = $1 AND harness_id = $2",
             "UPDATE agents SET harness_id = $3 WHERE org_id = $1 AND harness_id = $2",
-            "UPDATE apps SET harness_id = $3 WHERE org_id = $1 AND harness_id = $2",
             "UPDATE harnesses SET parent_harness_id = $3 WHERE org_id = $1 AND parent_harness_id = $2",
             "UPDATE organization_settings SET default_harness_id = $3 WHERE org_id = $1 AND default_harness_id = $2",
             "UPDATE organization_settings SET base_harness_id = $3 WHERE org_id = $1 AND base_harness_id = $2",

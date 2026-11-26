@@ -44,6 +44,8 @@ pub(super) const READ_ONLY_TOOLS: &[&str] = &[
     "room_list_files",
     "room_read_file",
     "room_file_history",
+    "room_recall",
+    "room_facts",
 ];
 
 /// Access class of an MCP tool for personal access token scopes.

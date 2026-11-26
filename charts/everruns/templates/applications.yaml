@@ -1,0 +1,116 @@
+{{- if .Values.applications.enabled }}
+{{- $name := include "everruns.name" (list . "applications") }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels: {{- include "everruns.labels" . | nindent 4 }}
+    app.kubernetes.io/component: applications
+spec:
+  replicas: {{ .Values.applications.replicas }}
+  strategy:
+    rollingUpdate: { maxUnavailable: 0, maxSurge: 1 }
+  selector:
+    matchLabels: {{- include "everruns.selector" (list . "applications") | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "everruns.selector" (list . "applications") | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: applications
+          image: {{ .Values.applications.image | default (include "everruns.image" (list . "chat-ui")) | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - { name: http, containerPort: 3000 }
+          env:
+            - { name: PORT, value: "3000" }
+            - { name: HOSTNAME, value: "0.0.0.0" }
+            - { name: CHAT_DOMAIN, value: {{ .Values.applications.domain | quote }} }
+            - { name: CHAT_OIDC_ISSUER, value: {{ .Values.applications.oidcIssuer | quote }} }
+            - { name: CHAT_OIDC_CLIENT_ID, value: {{ .Values.applications.oidcClientId | quote }} }
+            - { name: CHAT_API_URL, value: {{ printf "http://%s:9000/api" (include "everruns.name" (list . "server")) | quote }} }
+            {{- range list "CHAT_DATABASE_URL" "CHAT_OIDC_CLIENT_SECRET" "CHAT_SESSION_KEY" }}
+            - name: {{ . }}
+              valueFrom: { secretKeyRef: { name: {{ $.Values.applications.existingSecret }}, key: {{ . }} } }
+            {{- end }}
+          readinessProbe:
+            httpGet: { path: "/health?ready=1", port: http }
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          resources: {{- toYaml .Values.applications.resources | nindent 12 }}
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            capabilities: { drop: [ALL] }
+      {{- with .Values.applications.nodeSelector }}
+      nodeSelector: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.applications.tolerations }}
+      tolerations: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.applications.affinity }}
+      affinity: {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels: {{- include "everruns.labels" . | nindent 4 }}
+    app.kubernetes.io/component: applications
+spec:
+  selector: {{- include "everruns.selector" (list . "applications") | nindent 4 }}
+  ports:
+    - { name: http, port: 3000, targetPort: http }
+{{- if .Values.applications.ingress.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $name }}
+  labels: {{- include "everruns.labels" . | nindent 4 }}
+  {{- with .Values.applications.ingress.annotations }}
+  annotations: {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with (.Values.applications.ingress.className | default .Values.ingress.className) }}
+  ingressClassName: {{ . | quote }}
+  {{- end }}
+  tls:
+    - secretName: {{ .Values.applications.ingress.tlsSecret | quote }}
+      hosts: [{{ printf "*.%s" .Values.applications.domain | quote }}]
+  rules:
+    - host: {{ printf "*.%s" .Values.applications.domain | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $name }}
+                port: { name: http }
+{{- end }}
+{{- if .Values.networkPolicy.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $name }}
+  labels: {{- include "everruns.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels: {{- include "everruns.selector" (list . "applications") | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    - from: {{- toYaml .Values.networkPolicy.ingressFrom | nindent 8 }}
+      ports: [{ protocol: TCP, port: 3000 }]
+{{- end }}
+{{- end }}

@@ -1,0 +1,102 @@
+name: MCP conformance
+on:
+  pull_request:
+    paths:
+      - "crates/core/src/mcp/**"
+      - "crates/server/src/api/mcp_endpoint/**"
+      - "crates/server/src/domains/mcp_servers/events.rs"
+      - "crates/server/src/domains/agent_triggers/mcp_event.rs"
+      - "crates/server/tests/domain/mcp*"
+      - "crates/server/tests/domain/mcp*/**"
+      - "crates/server/tests/test_harness/mcp_events_conformance.rs"
+      - "crates/server/tests/test_harness/egress_fakes.rs"
+      - "scripts/mcp*conformance*/**"
+      - "scripts/mcp-events-conformance.sh"
+      - ".github/workflows/mcp-conformance.yml"
+  push:
+    branches: [main]
+    paths:
+      - "crates/core/src/mcp/**"
+      - "crates/server/src/**/mcp*/**"
+      - "crates/server/src/domains/agent_triggers/mcp_event.rs"
+      - "crates/server/tests/domain/mcp*"
+      - "crates/server/tests/domain/mcp*/**"
+      - "crates/server/tests/test_harness/mcp_events_conformance.rs"
+      - "crates/server/tests/test_harness/egress_fakes.rs"
+      - "scripts/mcp*conformance*"
+      - "scripts/mcp*conformance*/**"
+      - ".github/workflows/mcp-conformance.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+env:
+  CARGO_INCREMENTAL: "0"
+  CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS: "-C link-arg=-fuse-ld=lld"
+jobs:
+  base:
+    name: Released MCP baseline
+    runs-on: ${{ vars.CI_RUNNER_LABEL || 'ubuntu-latest' }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - run: bash scripts/ci-prepare-disk.sh
+      - run: bash scripts/ci-prepare-linker.sh
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.96.0"
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+      - uses: Swatinem/rust-cache@v2
+        with:
+          # Read the canonical producer; both jobs use its exact linker flags.
+          shared-key: integration-v2
+          save-if: false
+      - uses: actions/cache/restore@v6
+        with:
+          path: ~/.cache/everruns/postgres
+          key: ${{ runner.os }}-pg-embedded-17
+      - run: npm ci --ignore-scripts --prefix scripts/mcp-conformance
+      - run: cargo test --locked -p everruns-server --test domain official_mcp_baseline -- --nocapture --test-threads=1
+        env:
+          MCP_CONFORMANCE_DIR: ${{ github.workspace }}/scripts/mcp-conformance/node_modules/@modelcontextprotocol/conformance
+  events:
+    name: Events extension upstream checks
+    runs-on: ${{ vars.CI_RUNNER_LABEL || 'ubuntu-latest' }}
+    timeout-minutes: 60
+    # No Doppler, cloud credentials, write token, or pull_request_target.
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - run: bash scripts/ci-prepare-disk.sh
+      - run: bash scripts/ci-prepare-linker.sh
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.96.0"
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+      - uses: Swatinem/rust-cache@v2
+        with:
+          # Read the canonical producer; both jobs use its exact linker flags.
+          shared-key: integration-v2
+          save-if: false
+      - uses: actions/cache/restore@v6
+        with:
+          path: ~/.cache/everruns/postgres
+          key: ${{ runner.os }}-pg-embedded-17
+      - run: bash scripts/mcp-events-conformance.sh --setup-only
+      - run: cargo test --locked -p everruns-server --test domain official_events_checks -- --nocapture --test-threads=1
+        env:
+          MCP_EVENTS_CONFORMANCE_DIR: ${{ github.workspace }}/.local/mcp-events-conformance/upstream
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: mcp-events-conformance-results
+          path: .local/mcp-events-conformance/results

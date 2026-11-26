@@ -519,13 +519,6 @@ impl IdMarker for LeasedResourceIdMarker {
     const PREFIX: &'static str = "resource";
 }
 
-/// Marker for App IDs
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct AppIdMarker;
-impl IdMarker for AppIdMarker {
-    const PREFIX: &'static str = "app";
-}
-
 /// Marker for agent channel IDs. The `appchan` prefix predates the App
 /// retirement and stays: it is persisted in rows, session tags, and URLs
 /// registered with third parties.
@@ -533,6 +526,13 @@ impl IdMarker for AppIdMarker {
 pub struct AgentChannelIdMarker;
 impl IdMarker for AgentChannelIdMarker {
     const PREFIX: &'static str = "appchan";
+}
+
+/// An organization-owned published Application.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct ApplicationIdMarker;
+impl IdMarker for ApplicationIdMarker {
+    const PREFIX: &'static str = "application";
 }
 
 /// Marker for Notification IDs
@@ -561,6 +561,13 @@ impl IdMarker for RoomMemberIdMarker {
 pub struct RoomMessageIdMarker;
 impl IdMarker for RoomMessageIdMarker {
     const PREFIX: &'static str = "rmsg";
+}
+
+/// Marker for Room memory entry IDs (a fact or a note a room remembers)
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct RoomMemoryEntryIdMarker;
+impl IdMarker for RoomMemoryEntryIdMarker {
+    const PREFIX: &'static str = "rmm";
 }
 
 /// Marker for Memory IDs (org-scoped named Memories)
@@ -753,10 +760,9 @@ pub type ExecId = TypedId<ExecIdMarker>;
 pub type ScheduleId = TypedId<ScheduleIdMarker>;
 /// Leased resource ID
 pub type LeasedResourceId = TypedId<LeasedResourceIdMarker>;
-/// App ID
-pub type AppId = TypedId<AppIdMarker>;
 /// Agent channel ID (`appchan_` prefix)
 pub type AgentChannelId = TypedId<AgentChannelIdMarker>;
+pub type ApplicationId = TypedId<ApplicationIdMarker>;
 /// Notification ID
 pub type NotificationId = TypedId<NotificationIdMarker>;
 /// Room ID (`room_` prefix)
@@ -765,6 +771,8 @@ pub type RoomId = TypedId<RoomIdMarker>;
 pub type RoomMemberId = TypedId<RoomMemberIdMarker>;
 /// Room message ID (`rmsg_` prefix)
 pub type RoomMessageId = TypedId<RoomMessageIdMarker>;
+/// Room memory entry ID (`rmm_` prefix)
+pub type RoomMemoryEntryId = TypedId<RoomMemoryEntryIdMarker>;
 /// Memory ID (org-scoped named Memory)
 pub type MemoryId = TypedId<MemoryIdMarker>;
 /// Workspace ID (org-scoped named Workspace)

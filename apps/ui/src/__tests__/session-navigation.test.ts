@@ -203,7 +203,7 @@ describe("buildSessionNavigation on a data plane", () => {
     expect(leasedOnly).not.toContain("work");
     const subagents = buildSessionNavigation({
       basePath: "/sessions/session_1",
-      features: new Set(["subagents"]),
+      features: new Set(["spawn_agents"]),
       dataPlane: true,
     }).map((item) => item.key);
     expect(subagents).toContain("work");

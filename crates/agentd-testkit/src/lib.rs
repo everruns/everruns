@@ -207,14 +207,20 @@ impl everruns::ChatDriver for FilesSim {
                     .filter(|m| m.role == MessageRole::User)
                     .map(|m| m.content.to_text())
                     .collect();
+                // A command may sit on a line of its own inside a framed
+                // message (a thread's brief).
+                let command_line = |text: &String| {
+                    text.lines()
+                        .find(|line| {
+                            let verb = line.split_whitespace().next().unwrap_or_default();
+                            FILES_COMMANDS.contains(&verb)
+                        })
+                        .map(str::to_owned)
+                };
                 let text = said
                     .iter()
-                    .find(|text| {
-                        let verb = text.split_whitespace().next().unwrap_or_default();
-                        FILES_COMMANDS.contains(&verb)
-                    })
-                    .or(said.first())
-                    .cloned()
+                    .find_map(command_line)
+                    .or(said.first().cloned())
                     .unwrap_or_default();
                 let mut words = text.trim().splitn(3, ' ');
                 let call = |name: &str, arguments: Value| {
@@ -752,7 +758,9 @@ fn agent(name: &str, instructions: &str, model: &str, tool_names: &[&str]) -> Va
 ///   `sh <command>` there;
 /// - `team`: `files`, with subagents (`ask <text>`, `later <text>`);
 /// - `mcp`: `files`, with the stub MCP server (`mcp <query>`);
-/// - `lead`: hands each message to its bundled member `worker3`.
+/// - `lead`: hands each message to its bundled member `worker3`;
+/// - `threads`: `files`, with Threads (`call start_thread {...}`; a thread
+///   plays the command in its brief, such as `call finish {...}`).
 pub fn definition(name: &str) -> Option<Value> {
     Some(match name {
         "echo" => agent("echo", "Answer.", "echo", &[]),
@@ -808,11 +816,18 @@ pub fn definition(name: &str) -> Option<Value> {
             files
         }
         "team" => {
-            // `files`, with subagents: sessions of the same agent, placed
+            // `files`, with Spawn agents: sessions of the same agent, placed
             // wherever the gateway puts them.
             let mut team = agent("team", "Ask a helper.", "files", &[]);
-            team["capabilities"] = json!([{ "ref": "subagents" }]);
+            team["capabilities"] = json!([{ "ref": "spawn_agents" }]);
             team
+        }
+        "threads" => {
+            // `files`, with Threads: children of this same agent working
+            // assignments the parent holds.
+            let mut threads = agent("threads", "Hand work to threads.", "files", &[]);
+            threads["capabilities"] = json!([{ "ref": "threads" }]);
+            threads
         }
         "mcp" => {
             // `files`, with the stub MCP server (`stub_mcp.rs`): `mcp <query>`

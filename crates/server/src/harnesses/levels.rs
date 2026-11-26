@@ -23,7 +23,7 @@ pub fn definition(preset: BuiltInHarnessPreset) -> BuiltInHarnessDefinition {
         BuiltInHarnessPreset::Worker => (
             "Worker",
             "box",
-            "Files, AGENTS.md, skills, subagents and tasks, with no shell. Best for agents that act through tools and MCP servers, such as triage and research.",
+            "Files, AGENTS.md, skills and tasks, with no shell. Best for agents that act through tools and MCP servers, such as triage and research.",
         ),
         BuiltInHarnessPreset::BashkitWorker => (
             "Bashkit Worker",

@@ -80,25 +80,26 @@ pub async fn initialize(db: &StorageBackend, org_id: i64) -> Result<()> {
         // (knowledge/integrations/user-mcp-servers.md).
         ("user_mcp".into(), 15, serde_json::json!({"manage": true})),
         // Threads: every Platform Chat conversation (Main chat and side
-        // chats) hands longer work to threads shown in its Threads panel
-        // (knowledge/runtime-resources/coordination.md).
+        // chats) hands longer work to threads shown in its Threads panel, and
+        // behaves as their coordinator (knowledge/runtime-resources/threads.md).
         (
-            "coordination".into(),
+            "threads".into(),
             16,
-            serde_json::json!({"role":"coordinator","workers":[{"id":"self"},{"id":"any"}]}),
+            serde_json::json!({"self": true, "any_agent": true}),
         ),
+        ("coordinator".into(), 17, serde_json::json!({})),
         // Talk to companies as the person's Poppy personal agent
         // (knowledge/integrations/poppy-personal-agent.md).
-        ("poppy_client".into(), 17, serde_json::json!({})),
+        ("poppy_client".into(), 18, serde_json::json!({})),
         // Register the whole platform catalog, disclosing only the schemas
         // selected for this conversation through the existing ToolChanges path.
         (
             "tool_search".into(),
-            18,
+            19,
             serde_json::json!({"bounded":true,"threshold":1}),
         ),
         // Images, GIFs and SVGs in chat on the org's default image model.
-        ("image_generation".into(), 19, serde_json::json!({})),
+        ("image_generation".into(), 20, serde_json::json!({})),
     ];
     let existing = db.get_agent_capabilities(id.uuid()).await?;
     if existing.len() != capabilities.len()

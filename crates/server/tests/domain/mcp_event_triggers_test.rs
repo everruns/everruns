@@ -8,6 +8,9 @@
 //!
 //! Run with: cargo test -p everruns-server --test domain mcp_event_triggers_test::
 
+#[path = "mcp_event_triggers_test/final_contract.rs"]
+mod final_contract;
+
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -39,6 +42,8 @@ struct FakeEventsServer {
     /// `refreshBefore` to answer subscribe with; one hour out when unset.
     refresh_before: parking_lot::Mutex<Option<String>>,
     reject_subscribe: AtomicBool,
+    null_cursor: AtomicBool,
+    omit_cursor: AtomicBool,
 }
 
 impl FakeEventsServer {
@@ -71,9 +76,13 @@ impl FakeEventsServer {
 
     fn result(&self, method: &str, params: &Value) -> Result<Value, (i64, &'static str)> {
         match method {
+            "server/discover" => {
+                Ok(json!({"capabilities":{"extensions":{"io.modelcontextprotocol/events":{}}}}))
+            }
             "events/list" => Ok(json!({
                 "events": [{
                     "name": EVENT,
+                    "delivery": ["webhook"],
                     "inputSchema": { "type": "object", "properties": { "team": { "type": "string" } } },
                 }]
             })),
@@ -88,12 +97,16 @@ impl FakeEventsServer {
                 let refresh_before = self.refresh_before.lock().clone().unwrap_or_else(|| {
                     (chrono::Utc::now() + chrono::Duration::hours(1)).to_rfc3339()
                 });
-                Ok(json!({
+                let mut response = json!({
                     "id": format!("sub_{id}"),
                     "refreshBefore": refresh_before,
-                    "cursor": format!("cursor_{id}"),
+                    "cursor": if self.null_cursor.load(Ordering::SeqCst) { Value::Null } else { json!(format!("cursor_{id}")) },
                     "truncated": false,
-                }))
+                });
+                if self.omit_cursor.load(Ordering::SeqCst) {
+                    response.as_object_mut().unwrap().remove("cursor");
+                }
+                Ok(response)
             }
             "events/unsubscribe" => Ok(json!({})),
             _ => Err((-32601, "method not found")),

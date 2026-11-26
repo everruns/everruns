@@ -139,7 +139,7 @@ undo already executed tools. Terminal writes must be idempotent under retry.
 
 Reuse [SideEffectClass](../../crates/contracts/src/tool_types.rs),
 [ActAtom](../../crates/core/src/engine/execution/act.rs), the existing
-[claim/settle store](../../crates/core/src/durability.rs) and
+[claim/settle store](../../crates/contracts/src/runtime/durability.rs) and
 [recovery policy](../../crates/core/src/host/turn_resume.rs). Make the required
 persistence barriers enforceable by a backend, not a comment that each adapter
 may interpret differently.

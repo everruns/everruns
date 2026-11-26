@@ -23,9 +23,9 @@ jest.mock("@/hooks/use-chat-mcp-servers", () => ({
   useChatMcpServers: () => ({ data: [], isLoading: false, error: null, refetch: jest.fn() }),
   useRemoveChatMcpServer: () => ({ mutate: jest.fn(), isPending: false, error: null }),
 }));
-jest.mock("@/components/chat/streamdown-message", () => ({
-  StreamdownMessage: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
-  InlineStreamdownMessage: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
+jest.mock("@/components/markdown/markdown-message", () => ({
+  MarkdownMessage: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
+  InlineMarkdownMessage: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
 }));
 jest.mock("next/link", () => ({
   __esModule: true,

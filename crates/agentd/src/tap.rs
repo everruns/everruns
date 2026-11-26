@@ -14,9 +14,9 @@
 //!   drained them, up to half a megabyte each, while the events themselves
 //!   are already in the session's history. One pointer per session per
 //!   command names the range and the tapped types in it.
-//! - The org's policy names the types (`TenantPolicy::events`), so an org
-//!   that uses none of these pays nothing, and one with only observers
-//!   copies three types, not the whole stream. Policies live in the
+//! - Explicit conversation messages always reach the control plane: Room
+//!   delivery cannot wait for a policy poll. The org's policy names optional
+//!   observer/export types (`TenantPolicy::events`). Policies live in the
 //!   directory shard; each shard's leader reads them with the tenants view
 //!   (`tenants.rs`) and proposes them (`Command::Taps`), so a policy change
 //!   reaches every shard within a poll.
@@ -38,9 +38,7 @@ impl ShardState {
         let start = changes.len();
         let feed_before = self.feed.records.len();
         let response = self.apply_command(command, changes);
-        if !self.orgs.taps.is_empty() {
-            self.tap(start, changes);
-        }
+        self.tap(start, changes);
         self.label_feed(feed_before);
         response
     }
@@ -86,11 +84,11 @@ impl ShardState {
             let Some(org) = self.sessions.get(session).and_then(|s| s.tenant.as_deref()) else {
                 continue;
             };
-            let wanted = self
-                .orgs
-                .taps
-                .get(org)
-                .is_some_and(|types| types.iter().any(|t| t == "*" || *t == event.event_type));
+            let wanted =
+                event.event_type == everruns_contracts::runtime::events::CONVERSATION_MESSAGE
+                    || self.orgs.taps.get(org).is_some_and(|types| {
+                        types.iter().any(|t| t == "*" || *t == event.event_type)
+                    });
             if !wanted {
                 continue;
             }
@@ -174,6 +172,39 @@ mod tests {
             _ => EventData::TurnStarted(serde_json::from_value(data).unwrap()),
         };
         Event::new(session, EventContext::empty(), data)
+    }
+
+    #[test]
+    fn explicit_messages_reach_the_feed_before_the_first_policy_poll() {
+        let mut state = ShardState::default();
+        let session = SessionId::new();
+        state.sessions.insert(
+            session,
+            SessionState {
+                tenant: Some("room-org".into()),
+                ..Default::default()
+            },
+        );
+        let mut event = Event::new(
+            session,
+            EventContext::empty(),
+            everruns_contracts::runtime::events::ConversationMessageData {
+                message_id: everruns_contracts::typed_id::MessageId::new(),
+                text: "Editorial room is ready.".into(),
+                tool_call_id: "send-1".into(),
+                files: vec![],
+                delivery: None,
+            },
+        );
+        event.sequence = Some(3);
+        state.tap(0, &[Change::Event(session, Arc::new(event))]);
+        assert_eq!(state.feed.records.len(), 1);
+        let record = state.feed.records.front().unwrap();
+        assert_eq!(record.org_id, "room-org");
+        assert!(
+            matches!(&record.record, Record::Events { from: 3, to: 3, types, .. }
+            if types == &["conversation.message"])
+        );
     }
 
     #[test]

@@ -149,9 +149,6 @@ async fn activity_buckets_turns_by_hour_and_reports_load_and_triggers() {
             execution_owner_principal_id: None,
             execution_resolved_owner_user_id: None,
             execution_virtual_user_id: None,
-            execution_app_id: None,
-            legacy_alias_id: None,
-            legacy_alias_name: None,
         })
         .await
         .expect("create trigger");

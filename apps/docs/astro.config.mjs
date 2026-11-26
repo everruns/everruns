@@ -64,6 +64,9 @@ export default defineConfig({
     [`${LEGACY_GALLERY_ROOT}/`]: `${GALLERY_ROOT}/`,
     // The experimental Docker Container capability was removed; Container sandbox replaces it.
     "/capabilities/docker/": "/capabilities/container-sandbox/",
+    // subagents and agent_handoff folded into spawn_agents (2026-11-25).
+    "/capabilities/sub-agents/": "/capabilities/spawn-agents/",
+    "/capabilities/agent-handoff/": "/capabilities/spawn-agents/",
     // virtual_bash capability renamed to bashkit_shell
     "/capabilities/virtual-bash/": "/capabilities/bashkit-shell/",
     // tools_in_shell capability renamed to shell_code_mode
@@ -86,7 +89,6 @@ export default defineConfig({
     "/getting-started/architecture/": "/explanation/architecture/",
     "/features/skills-registry/": "/features/skills/",
     "/features/agent-instructions/": "/capabilities/agent-instructions/",
-    "/features/apps/": "/features/channels/",
     "/features/endpoints/": "/features/channels/",
     // Agent versions were retired: entity history and restore replace them.
     "/features/agent-versions/": "/features/change-history/",
@@ -370,6 +372,8 @@ export default defineConfig({
                     { label: "GitHub Tools", slug: "framework/github" },
                     { label: "MCP Authentication", slug: "framework/mcp-authentication" },
                     { label: "Code Mode with MCP", slug: "framework/code-mode" },
+                    { label: "Python Code Mode", slug: "framework/python-code-mode" },
+                    { label: "Choosing Execution Options", slug: "framework/execution-options" },
                     { label: "Slack Services", slug: "framework/slack-services" },
                     { label: "Native Services", slug: "framework/native-services" },
                     { label: "Data Services", slug: "framework/data-services" },
@@ -547,6 +551,7 @@ export default defineConfig({
                         { label: "Read Tools", slug: "built-ins/read-tools" },
                         { label: "Bashkit Shell", slug: "capabilities/bashkit-shell" },
                         { label: "Shell Code Mode", slug: "capabilities/shell-code-mode" },
+                        { label: "Python Code Mode", slug: "capabilities/python-code-mode" },
                         { label: "Host Shell", slug: "capabilities/host-shell" },
                         { label: "Session", slug: "capabilities/session" },
                         { label: "Automatic session titles", slug: "capabilities/automatic-session-titles" },
@@ -562,7 +567,10 @@ export default defineConfig({
                           label: "Auto-Continue After Usage Limit",
                           slug: "capabilities/usage-limit-auto-continue",
                         },
-                        { label: "Sub Agents", slug: "capabilities/sub-agents" },
+                        { label: "Spawn agents", slug: "capabilities/spawn-agents" },
+                        { label: "Threads", slug: "capabilities/threads" },
+                        { label: "Coordinator", slug: "capabilities/coordinator" },
+                        { label: "Sibling communication", slug: "capabilities/sibling-communication" },
                         { label: "AGENTS.md", slug: "capabilities/agent-instructions" },
                         { label: "Agent Skills", slug: "capabilities/agent-skills" },
                       ],
@@ -624,6 +632,7 @@ export default defineConfig({
                         { label: "Repositories", slug: "capabilities/repositories" },
                         { label: "Slack actions", slug: "capabilities/slack" },
                         { label: "User MCP Servers", slug: "capabilities/user-mcp-servers" },
+                        { label: "Plugins", slug: "capabilities/plugins" },
                         { label: "Poppy Personal Agent", slug: "capabilities/poppy-personal-agent" },
                       ],
                     },
@@ -723,7 +732,6 @@ export default defineConfig({
                   collapsed: true,
                   items: [
                     { label: "A2A Agent Delegation", slug: "capabilities/a2a-agent-delegation" },
-                    { label: "Agent Handoff", slug: "capabilities/agent-handoff" },
                     { label: "AgentID Sign-In", slug: "integrations/agentid" },
                     { label: "ARD", slug: "integrations/ard" },
                     { label: "boxd", slug: "integrations/boxd" },

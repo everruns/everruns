@@ -47,7 +47,7 @@ impl TurnBackend for RecordingRunner {
     }
 }
 
-async fn seed_agent(db: &Arc<StorageBackend>, name: &str) -> String {
+pub(super) async fn seed_agent(db: &Arc<StorageBackend>, name: &str) -> String {
     let harness = db
         .create_harness(
             DEFAULT_ORG_ID,
@@ -107,7 +107,7 @@ async fn seed_agent(db: &Arc<StorageBackend>, name: &str) -> String {
     public_id
 }
 
-async fn seed_person(db: &Arc<StorageBackend>, name: &str, role: &str) -> uuid::Uuid {
+pub(super) async fn seed_person(db: &Arc<StorageBackend>, name: &str, role: &str) -> uuid::Uuid {
     let user = db
         .create_user(CreateUserRow {
             email: format!("{}@example.test", name.to_lowercase().replace(' ', ".")),
@@ -128,7 +128,7 @@ async fn seed_person(db: &Arc<StorageBackend>, name: &str, role: &str) -> uuid::
     user.id
 }
 
-fn caller(user_id: Option<uuid::Uuid>, role: OrgRole) -> Caller {
+pub(super) fn caller(user_id: Option<uuid::Uuid>, role: OrgRole) -> Caller {
     Caller {
         org_id: DEFAULT_ORG_ID,
         org_public_id: DEFAULT_ORG_PUBLIC_ID.to_string(),
@@ -140,7 +140,7 @@ fn caller(user_id: Option<uuid::Uuid>, role: OrgRole) -> Caller {
     }
 }
 
-fn ctx(db: &Arc<StorageBackend>, caller: Caller) -> Ctx {
+pub(super) fn ctx(db: &Arc<StorageBackend>, caller: Caller) -> Ctx {
     Ctx::minimal_for_test(caller, db.clone(), None)
 }
 
@@ -157,7 +157,7 @@ fn waking_ctx(db: &Arc<StorageBackend>, caller: Caller) -> (Ctx, Arc<RecordingRu
     (ctx, runner)
 }
 
-fn guest(name: &str) -> RoomMemberInput {
+pub(super) fn guest(name: &str) -> RoomMemberInput {
     RoomMemberInput {
         kind: RoomMemberKind::Guest,
         user_id: None,
@@ -168,10 +168,11 @@ fn guest(name: &str) -> RoomMemberInput {
         wake: None,
         session_scope: None,
         instructions: None,
+        memory_recall: None,
     }
 }
 
-fn agent_member(agent_id: &str, wake: WakeMode) -> RoomMemberInput {
+pub(super) fn agent_member(agent_id: &str, wake: WakeMode) -> RoomMemberInput {
     RoomMemberInput {
         kind: RoomMemberKind::Agent,
         user_id: None,
@@ -182,10 +183,11 @@ fn agent_member(agent_id: &str, wake: WakeMode) -> RoomMemberInput {
         wake: Some(wake),
         session_scope: None,
         instructions: None,
+        memory_recall: None,
     }
 }
 
-fn create(name: &str, members: Vec<RoomMemberInput>) -> CreateRoom {
+pub(super) fn create(name: &str, members: Vec<RoomMemberInput>) -> CreateRoom {
     CreateRoom {
         name: name.into(),
         topic: None,
@@ -197,7 +199,10 @@ fn create(name: &str, members: Vec<RoomMemberInput>) -> CreateRoom {
     }
 }
 
-async fn members_by_handle(ctx: &Ctx, room_id: &str) -> std::collections::HashMap<String, String> {
+pub(super) async fn members_by_handle(
+    ctx: &Ctx,
+    room_id: &str,
+) -> std::collections::HashMap<String, String> {
     ListRoomMembers {
         room_id: room_id.into(),
         include_left: None,
@@ -211,7 +216,7 @@ async fn members_by_handle(ctx: &Ctx, room_id: &str) -> std::collections::HashMa
     .collect()
 }
 
-async fn post(
+pub(super) async fn post(
     ctx: &Ctx,
     room_id: &str,
     text: &str,
@@ -492,6 +497,7 @@ async fn people_join_by_posting_and_track_what_they_read() {
         metadata: None,
         link_template: None,
         loop_limits: None,
+        auto_facts: None,
     }
     .run(&bo)
     .await

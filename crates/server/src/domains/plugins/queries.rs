@@ -93,6 +93,7 @@ pub fn row_to_installed_plugin(
         .and_then(|v| v.as_str())
         .map(|s| s.to_string());
     let update_available = compute_update_available(install, marketplace);
+    let requirement = install_requirement(install);
 
     InstalledPlugin {
         public_id: install
@@ -114,7 +115,24 @@ pub fn row_to_installed_plugin(
                 &install.definition,
             ),
         update_available,
+        environment: requirement.environment,
+        environment_declared: requirement.declared,
         created_at: install.created_at,
         updated_at: install.updated_at,
     }
+}
+
+/// What an installed plugin needs from the agent that runs it, from its
+/// stored manifest and definition (`everruns_core::plugins::environment`).
+pub fn install_requirement(
+    install: &PluginInstallRow,
+) -> everruns_core::plugins::PluginRequirement {
+    let definition: everruns_core::DeclarativeCapabilityDefinition =
+        serde_json::from_value(install.definition.clone()).unwrap_or_else(|_| {
+            everruns_core::DeclarativeCapabilityDefinition {
+                name: install.name.clone(),
+                ..Default::default()
+            }
+        });
+    everruns_core::plugins::plugin_requirement(&install.manifest, &definition, &mut Vec::new())
 }

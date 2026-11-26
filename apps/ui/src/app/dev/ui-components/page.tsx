@@ -118,7 +118,6 @@ const sampleAgent: Agent = {
   archived_at: null,
   deleted_at: null,
   session_count: 12,
-  app_count: 2,
   effective_harness: {
     id: "harness_generic",
     name: "generic",
@@ -523,7 +522,6 @@ export default function DevUiComponentsPage() {
                   archived_at: null,
                   deleted_at: null,
                   session_count: 12,
-                  app_count: 2,
                 }}
                 allCapabilities={sampleCapabilities}
               />

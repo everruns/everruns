@@ -1,9 +1,9 @@
 // Agent-triggers commands — user-facing operations.
 //
 // An agent trigger is an agent-owned schedule or webhook that wakes the agent
-// on its own harness. Schedule behavior mirrors the former App schedule channel
+// on its own harness. Schedule execution follows the durable scheduler contract.
 // path. Webhook trigger secrets use the same encrypted configuration mechanism
-// as App channel secrets.
+// as channel secrets.
 
 use super::events;
 use super::github;
@@ -163,7 +163,7 @@ async fn count_enabled_triggers(ctx: &Ctx) -> Result<i64, CommandError> {
 }
 
 // ============================================================================
-// Durable binding — mirrors apps::sync_schedule_binding_for_channel
+// Durable schedule binding for the trigger.
 // ============================================================================
 
 fn durable_store(ctx: &Ctx) -> Result<&Arc<dyn WorkflowEventStore + Send + Sync>, CommandError> {
@@ -528,9 +528,6 @@ impl Command for CreateAgentTrigger {
                 execution_owner_principal_id: None,
                 execution_resolved_owner_user_id: None,
                 execution_virtual_user_id: None,
-                execution_app_id: None,
-                legacy_alias_id: None,
-                legacy_alias_name: None,
             })
             .await?;
 
@@ -1087,24 +1084,15 @@ pub(super) struct TriggerExecutionContext {
     pub(super) owner_principal_id: everruns_contracts::typed_id::PrincipalId,
     resolved_owner_user_id: Option<Uuid>,
     virtual_user_id: Option<everruns_contracts::typed_id::VirtualUserId>,
-    app_id: Option<Uuid>,
 }
 
-/// Legacy App attribution for webhook triggers migrated from App channels.
-#[derive(Debug, Clone)]
-pub struct WebhookCompatibilityContext {
-    pub(super) app_public_id: String,
-    pub(super) app_name: String,
-    pub(super) ingress_id: String,
-}
-
-/// Resolve the execution context (harness, owner principal, identity, app) that
+/// Resolve the execution context (harness, owner principal, identity) that
 /// a trigger fire runs under.
 ///
-/// - Migrated App schedules persist their original App execution context on the
+/// - Migrated schedules persist their original execution context on the
 ///   trigger row (`execution_*`). Preserving it avoids silently changing harness
 ///   capabilities, private memory scope, or identity-backed providers after the
-///   106 migration retargeted App schedules to Agent triggers.
+///   migration retargeted schedules to agent triggers.
 /// - Native Agent triggers have no persisted context: the session is owned by
 ///   the agent's own identity principal, lazily created on first fire (EVE-758),
 ///   so the agent acts as itself and the shared-session reuse key stays stable.
@@ -1123,7 +1111,6 @@ pub(super) async fn resolve_trigger_execution_context(
             owner_principal_id,
             resolved_owner_user_id: trigger.execution_resolved_owner_user_id,
             virtual_user_id: trigger.execution_virtual_user_id,
-            app_id: trigger.execution_app_id,
         });
     }
 
@@ -1142,22 +1129,10 @@ pub(super) async fn resolve_trigger_execution_context(
         owner_principal_id: owner.id,
         resolved_owner_user_id: owner.resolved_user_id,
         virtual_user_id: Some(virtual_user_id),
-        app_id: None,
     })
 }
 
-fn trigger_session_tags(
-    trigger_id: TriggerId,
-    webhook: Option<&WebhookCompatibilityContext>,
-) -> Vec<String> {
-    if let Some(webhook) = webhook {
-        return vec![
-            format!("app:{}", webhook.app_public_id),
-            format!("app_channel:{}", webhook.ingress_id),
-            "app_channel_type:webhook".to_string(),
-            "__internal:app_invocation".to_string(),
-        ];
-    }
+fn trigger_session_tags(trigger_id: TriggerId) -> Vec<String> {
     vec![
         format!("agent_trigger:{trigger_id}"),
         "__internal:agent_trigger".to_string(),
@@ -1177,9 +1152,8 @@ pub(super) async fn find_or_create_trigger_session(
         session_mode,
         subject,
         source,
-        webhook,
     } = route;
-    let mut shared_tags = trigger_session_tags(trigger_id, webhook);
+    let mut shared_tags = trigger_session_tags(trigger_id);
     // `per_thread` on a trigger means one session per event subject. An event
     // without a subject cannot be keyed and gets a fresh session instead.
     let session_mode = match (session_mode, subject) {
@@ -1191,22 +1165,14 @@ pub(super) async fn find_or_create_trigger_session(
         (mode, _) => mode,
     };
     if session_mode == SessionBinding::Shared {
-        let existing = if let Some(app_id) = execution_context.app_id {
-            db.find_app_session_by_tags_and_owner(
+        let existing = db
+            .find_trigger_session_by_tags_and_owner(
                 org_id,
-                app_id,
+                trigger_id.uuid(),
                 execution_context.owner_principal_id,
                 &shared_tags,
             )
-            .await?
-        } else {
-            db.find_session_by_tags_and_owner(
-                org_id,
-                execution_context.owner_principal_id,
-                &shared_tags,
-            )
-            .await?
-        };
+            .await?;
         if let Some(existing) = existing {
             return Ok((existing.id, false));
         }
@@ -1214,20 +1180,11 @@ pub(super) async fn find_or_create_trigger_session(
 
     let mut tags = shared_tags;
     if session_mode == SessionBinding::Ephemeral {
-        let prefix = if webhook.is_some() {
-            "app_invocation"
-        } else {
-            "agent_invocation"
-        };
-        tags.push(format!("{prefix}:{}", Uuid::now_v7()));
+        tags.push(format!("agent_invocation:{}", Uuid::now_v7()));
     }
 
-    let title_subject = webhook.map_or(agent.name.as_str(), |value| value.app_name.as_str());
-    let title_source = if webhook.is_some() {
-        "webhook"
-    } else {
-        "agent_trigger"
-    };
+    let title_subject = agent.name.as_str();
+    let title_source = "agent_trigger";
     let title = if let Some(subject) = subject.filter(|_| session_mode == SessionBinding::Shared) {
         format!("{title_subject} {subject}")
     } else if session_mode == SessionBinding::Shared {
@@ -1268,40 +1225,19 @@ pub(super) async fn find_or_create_trigger_session(
         helper_model: None,
     };
 
-    let session = if let Some(app_id) = execution_context.app_id {
-        session_service
-            .create_from_app(
-                &Caller::internal(org_id),
-                execution_context.harness_id.uuid(),
-                Some(agent.id.uuid()),
-                Some(agent.id),
-                Some(app_id),
-                // Migrated App schedules (migration 106) kept
-                // `execution_app_id` but never an endpoint pointer, so there
-                // is nothing structural to record here.
-                None,
-                Some(trigger_id.uuid()),
-                execution_context.owner_principal_id,
-                execution_context.resolved_owner_user_id,
-                source,
-                req,
-            )
-            .await
-    } else {
-        session_service
-            .create_from_agent_trigger(
-                &Caller::internal(org_id),
-                execution_context.harness_id.uuid(),
-                agent.id.uuid(),
-                agent.id,
-                Some(trigger_id.uuid()),
-                execution_context.owner_principal_id,
-                execution_context.resolved_owner_user_id,
-                source,
-                req,
-            )
-            .await
-    }?;
+    let session = session_service
+        .create_from_agent_trigger(
+            &Caller::internal(org_id),
+            execution_context.harness_id.uuid(),
+            agent.id.uuid(),
+            agent.id,
+            Some(trigger_id.uuid()),
+            execution_context.owner_principal_id,
+            execution_context.resolved_owner_user_id,
+            source,
+            req,
+        )
+        .await?;
 
     Ok((session.id, true))
 }
@@ -1423,9 +1359,9 @@ pub(super) fn emit_agent_trigger_audit_event(
     owner_principal_id: everruns_contracts::typed_id::PrincipalId,
     created_session: bool,
 ) {
-    // Reuse the AppInvocationStarted action — the audit token space has no
+    // Reuse the ChannelInvocationStarted action — the audit token space has no
     // agent-trigger-specific variant, and the `source` detail disambiguates.
-    let event = AuditEvent::agent(AgentAction::AppInvocationStarted, org_id, None)
+    let event = AuditEvent::agent(AgentAction::ChannelInvocationStarted, org_id, None)
         .target("agent_trigger", trigger_id.to_string())
         .detail("source", "agent_trigger")
         .detail("agent_id", agent.public_id.clone())

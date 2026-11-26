@@ -97,7 +97,8 @@ impl BuiltInHarnessPreset {
                 CapabilityRef::new("budgeting"),
                 CapabilityRef::new("self_budget"),
                 CapabilityRef::new("stateless_todo_list"),
-                CapabilityRef::new("subagents"),
+                // No Spawn agents or Threads here (knowledge/runtime-resources/
+                // threads.md): an agent picks one way to start other agents.
                 CapabilityRef::new("session_tasks"),
                 web_search(),
                 // Images, animated GIFs and SVGs out of the box on the org's
@@ -246,7 +247,8 @@ mod tests {
             // Only Bashkit Worker brings compute; Worker is the no-compute kit.
             assert_eq!(ids.contains(&"bashkit_shell"), preset == BashkitWorker);
             let worker_kit = matches!(preset, Worker | BashkitWorker);
-            assert_eq!(ids.contains(&"subagents"), worker_kit);
+            // Neither way to start agents is a base default.
+            assert!(!ids.contains(&"spawn_agents") && !ids.contains(&"threads"));
             assert_eq!(ids.contains(&"session_file_system"), worker_kit);
             // Chat affordances stay on Conversation; workers do not inherit it.
             assert_eq!(ids.contains(&"ask_user"), preset == Conversation);
@@ -272,7 +274,7 @@ mod tests {
         assert!(
             !generic_capabilities()
                 .iter()
-                .any(|cap| cap.capability_id() == "subagents")
+                .any(|cap| cap.capability_id() == "spawn_agents")
         );
     }
 

@@ -10,6 +10,8 @@ import {
   installPlugin,
   patchInstalledPlugin,
   updateInstalledPlugin,
+  getMyPlugins,
+  setMyPlugin,
 } from "@/lib/api/plugins";
 import type {
   CreateMarketplaceRequest,
@@ -168,6 +170,30 @@ export function useUpdateInstalledPlugin() {
     mutationFn: (id: string) => updateInstalledPlugin(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.installedPlugins.all });
+    },
+  });
+}
+
+// ============================================
+// A person's own plugins
+// ============================================
+
+export function useMyPlugins() {
+  return useOrgScopedQuery({
+    queryKey: queryKeys.myPlugins.all,
+    queryFn: getMyPlugins,
+    staleTime: 30000,
+  });
+}
+
+export function useSetMyPlugin() {
+  const queryClient = useQueryClient();
+  const { currentOrg } = useOrg();
+  return useMutation({
+    mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) => setMyPlugin(id, enabled),
+    onSuccess: (list) => {
+      queryClient.setQueryData([...queryKeys.myPlugins.all, currentOrg?.public_id], list);
+      queryClient.invalidateQueries({ queryKey: queryKeys.myPlugins.all });
     },
   });
 }

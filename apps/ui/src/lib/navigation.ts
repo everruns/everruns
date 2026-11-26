@@ -34,7 +34,7 @@ import {
   WorkerIcon,
   WorkflowIcon,
 } from "@/components/icons/facet-icons";
-import { ArrowRight, Plus } from "lucide-react";
+import { ArrowRight, Plus, PanelsTopLeft } from "lucide-react";
 import type { IconComponent } from "@/lib/capability-icons";
 import { registryNavigationByHref, type RegistryNavigationItem } from "@/lib/registry-navigation";
 import type { FeatureFlags } from "@/lib/api/types";
@@ -117,6 +117,13 @@ export const defaultOverviewNavigation: NavigationItem[] = [
 
 export const defaultBuildNavigation: NavigationItem[] = [
   {
+    name: "Applications",
+    description: "Publish chats, rooms and memory for a shared audience.",
+    href: "/applications",
+    icon: PanelsTopLeft,
+    keywords: ["application", "publish", "audience", "work chat"],
+  },
+  {
     name: "Agents",
     description: "Build and configure your AI assistants.",
     href: "/agents",
@@ -169,7 +176,7 @@ export const defaultActivityNavigation: NavigationItem[] = [
 function registryItem(href: keyof typeof registryNavigationByHref): NavigationItem {
   const { name, icon, keywords, description }: RegistryNavigationItem =
     registryNavigationByHref[href];
-  const flag = href === "/skills" ? "skills" : href === "/plugins" ? "plugins" : undefined;
+  const flag = href === "/skills" ? "skills" : undefined;
   return { name, href, icon, keywords, description, flag, experimental: Boolean(flag) };
 }
 
@@ -186,7 +193,6 @@ export const defaultBlocksNavigation: NavigationItem[] = [
   },
   registryItem("/capabilities"),
   registryItem("/skills"),
-  registryItem("/plugins"),
   {
     name: "Knowledge",
     description: "Organize collections, sources and searchable knowledge for agents.",

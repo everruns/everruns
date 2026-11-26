@@ -77,6 +77,12 @@ agents upsert	--capabilities --communication --completion-check --context-revisi
 agents validate	--remote <file>!
 agents view get	--agent-id! --context-revision --reason
 agents view replace	--agent-id! --context-revision --reason --revision! --view!
+applications create	--config --context-revision --description --name! --reason --resources --slug!
+applications get	--application-id! --context-revision --reason
+applications list	--context-revision --include-archived --reason
+applications resources create	--agent-id --application-id! --context-revision --kind! --name! --reason --slug! --version!
+applications status	--application-id! --context-revision --reason --status! --version!
+applications update	--application-id! --config --context-revision --description --name! --reason --resources --slug! --version!
 budgets check	--budget-id! --context-revision --reason
 budgets create	--context-revision --currency! --limit! --metadata --period --policy --reason --soft-limit --subject-id! --subject-type!
 budgets delete	--budget-id --context-revision --reason <budget_id>
@@ -214,19 +220,19 @@ k8s password	--name
 k8s port-forward	--name
 k8s status	--name
 k8s uninstall	--name
-k8s up	--admin-email --auth --bundled-postgres --chart --chart-version --context --data-plane --database-url --image-tag --ingress-class --name --namespace --no-open --port --provider --public-url --set... --storage-class --timeout --values/-f... --yes/-y
+k8s up	--admin-email --applications-domain --applications-oidc-client-id --applications-oidc-issuer --applications-secret --applications-tls-secret --auth --bundled-postgres --chart --chart-version --context --data-plane --database-url --image-tag --ingress-class --name --namespace --no-open --port --provider --public-url --set... --storage-class --timeout --values/-f... --yes/-y
 k8s upgrade	--chart-version --name --no-backup --timeout --yes/-y
 knowledge create	--context-revision --description --embedding-model-id --indexer-id --indexing --name! --reason --rules
 knowledge delete	--collection-id! --context-revision --reason
 knowledge files delete	--collection-id! --context-revision --path! --reason
-knowledge files list	--after --collection-id! --context-revision --extracted --length --limit --offset --path --reason --tree
+knowledge files list	--after --collection-id! --context-revision --extracted --length --limit --offset --path --reason --tree --version
 knowledge files update	--collection-id! --context-revision --indexable --metadata --path! --readable --reason
 knowledge files write	--collection-id! --content --content-base64 --context-revision --indexable --metadata --mime-type --path! --readable --reason
 knowledge get	--collection-id! --context-revision --reason
 knowledge indexers create	--context-revision --credential-binding-id! --endpoint! --name! --reason
 knowledge indexers list	--context-revision --reason
 knowledge list	--after --context-revision --limit --reason
-knowledge okf validate	--after --collection-id! --context-revision --extracted --length --limit --offset --path --reason --tree
+knowledge okf validate	--after --collection-id! --context-revision --extracted --length --limit --offset --path --reason --tree --version
 knowledge search	--collections... --context-revision --lexical-only --limit --metadata --path --query! --reason
 knowledge sources add	--collection-id! --config --connection-owner --context-revision --kind! --reason --root-path
 knowledge sync	--collection-id! --context-revision --reason
@@ -303,6 +309,8 @@ plugin-marketplaces update	--context-revision --id --name --reason --status <id>
 plugins get	--context-revision --id --reason <id>
 plugins install	--context-revision --marketplace-id! --plugin-name! --reason
 plugins list	--context-revision --reason --search
+plugins mine list	--context-revision --reason
+plugins mine set	--context-revision --enabled! --id --reason <id>
 plugins patch	--context-revision --id --mcp-server-identities --reason --status <id>
 plugins uninstall	--context-revision --id --reason <id>
 plugins update	--context-revision --id --reason <id>
@@ -322,22 +330,28 @@ resources grants revoke	--context-revision --grant-id! --id! --reason
 rooms archive	--archived --context-revision --reason --room-id!
 rooms create	--context-revision --external-ref --link-template --loop-limits --members --metadata --name! --reason --topic
 rooms events	--after --context-revision --limit --reason --room-id!
+rooms facts list	--as-of --context-revision --include-replaced --kind --limit --reason --room-id --subject <room_id>
+rooms facts remember	--as-member --context-revision --kind! --message-id --occurred-at --quote --reason --room-id! --statement! --status --subject!
 rooms feed	--after --context-revision --limit --reason
 rooms files delete	--as-member --context-revision --if-version --path! --reason --room-id <room_id>
 rooms files edit	--as-member --context-revision --edits! --path! --reason --room-id!
 rooms files history	--context-revision --limit --path! --reason --room-id <room_id>
 rooms files list	--context-revision --prefix --reason --room-id <room_id>
 rooms files move	--as-member --context-revision --from! --reason --room-id! --to!
-rooms files read	--context-revision --path! --reason --room-id <room_id>
-rooms files restore	--as-member --context-revision --path! --reason --room-id!
+rooms files read	--context-revision --path! --reason --room-id --version <room_id>
+rooms files restore	--as-member --context-revision --path! --reason --room-id! --version!
 rooms files write	--as-member --content! --context-revision --encoding --if-version --path! --reason --room-id!
 rooms get	--context-revision --reason --room-id <room_id>
 rooms list	--context-revision --external-ref --include-archived --limit --mine --reason
 rooms mark-read	--as-member --context-revision --message-id --reason --room-id!
-rooms members add	--agent-id --context-revision --display-name --handle --instructions --kind! --reason --role --room-id! --session-scope --user-id --wake
+rooms members add	--agent-id --context-revision --display-name --handle --instructions --kind! --memory-recall --reason --role --room-id! --session-scope --user-id --wake
 rooms members list	--context-revision --include-left --reason --room-id <room_id>
 rooms members remove	--context-revision --member-id! --reason --room-id!
-rooms members update	--context-revision --display-name --instructions --member-id! --reason --role --room-id! --session-scope --wake
+rooms members update	--context-revision --display-name --instructions --member-id! --memory-recall --reason --role --room-id! --session-scope --wake
+rooms memory forget	--as-member --context-revision --entry-id! --reason --room-id!
+rooms memory get	--context-revision --entry-id! --reason --room-id!
+rooms memory ingest	--as-member --context-revision --label --metadata --occurred-at --reason --room-id! --source-ref --text!
+rooms memory publish-session	--as-member --context-revision --reason --room-id! --session-id!
 rooms messages delete	--as-member --context-revision --message-id! --reason --room-id!
 rooms messages edit	--as-member --context-revision --message-id! --reason --room-id! --text!
 rooms messages get	--context-revision --message-id! --reason --room-id!
@@ -349,8 +363,9 @@ rooms messages react	--add --as-member --context-revision --emoji! --message-id!
 rooms messages readers	--context-revision --message-id! --reason --room-id!
 rooms messages replies	--after --before --context-revision --limit --message-id! --reason --room-id!
 rooms messages search	--context-revision --limit --q! --reason --room-id!
+rooms recall	--as-of --context-revision --limit --q! --reason --room-id <room_id>
 rooms unread	--as-member --context-revision --limit --peek --reason --room-id!
-rooms update	--context-revision --link-template --loop-limits --metadata --name --reason --room-id! --topic
+rooms update	--auto-facts --context-revision --link-template --loop-limits --metadata --name --reason --room-id! --topic
 sandbox-targets list	--context-revision --reason
 sandbox-template-metadata get	--context-revision --id! --reason
 sandbox-template-metadata update	--context-revision --description --display-name --id! --reason

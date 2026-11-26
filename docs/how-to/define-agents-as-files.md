@@ -111,7 +111,7 @@ become created children there; credentials and GitHub connections are not copied
 Text and GitHub source exports retain linked names. Agents with nested teams
 cannot be bundled under the one-level package format. The Framework builds
 bundled agents with the lead's
-providers and asks you to add linked ones with `AgentBuilder::member`.
+providers and asks you to add linked ones with `AgentBuilder::spawns` (or `threads_with` when the package has Threads).
 
 ## Paths, environments and session files
 
@@ -377,7 +377,7 @@ bindings and are rejected by the generic package builder.
 
 A package with [agents it hands work to](#agents-it-hands-work-to) builds its
 bundled agents with the same provider as the lead. Add each agent listed in
-`members` with `.member(agent)` before `build`; a missing one fails the build.
+`members` with `.spawns(agent)` (or `.threads_with(agent)`) before `build`; a missing one fails the build.
 
 `package.create` resolves the standard `base`, `conversation`, `worker` and
 `bashkit-worker` harnesses. For custom harnesses, use `Engine::create(agent).harness(...)`.

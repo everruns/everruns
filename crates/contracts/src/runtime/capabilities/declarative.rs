@@ -67,6 +67,11 @@ pub struct DeclarativeCapabilityDefinition {
     pub features: Vec<String>,
     #[serde(default = "default_risk_level")]
     pub risk_level: RiskLevel,
+    /// What the agent must provide for this definition to run (plugins only).
+    /// Collection drops the definition when the agent's full capability list
+    /// provides less. `None` means no requirement.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub environment: Option<super::PluginEnvironment>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -124,6 +129,7 @@ impl Default for DeclarativeCapabilityDefinition {
             dependencies: Vec::new(),
             features: Vec::new(),
             risk_level: RiskLevel::Low,
+            environment: None,
         }
     }
 }

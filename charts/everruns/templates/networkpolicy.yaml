@@ -54,6 +54,9 @@ spec:
         {{- toYaml .Values.networkPolicy.ingressFrom | nindent 8 }}
         {{- end }}
         {{- include "everruns.peer" (list . "ui") | nindent 8 }}
+        {{- if .Values.applications.enabled }}
+        {{- include "everruns.peer" (list . "applications") | nindent 8 }}
+        {{- end }}
       ports:
         - { protocol: TCP, port: 9000 }
     {{- if include "everruns.dataPlaneRuns" . }}
@@ -195,6 +198,9 @@ spec:
   ingress:
     - from:
         {{- include "everruns.peer" (list . "server") | nindent 8 }}
+        {{- if .Values.applications.enabled }}
+        {{- include "everruns.peer" (list . "applications") | nindent 8 }}
+        {{- end }}
         {{- if .Values.worker.autoscaling.enabled }}
         - namespaceSelector:
             matchLabels: { kubernetes.io/metadata.name: {{ .Values.networkPolicy.kedaNamespace }} }

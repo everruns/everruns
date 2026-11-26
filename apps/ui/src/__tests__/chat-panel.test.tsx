@@ -95,9 +95,9 @@ const mockSessionContext = {
   getToolCalls: jest.fn(() => []),
 };
 
-jest.mock("@/components/chat/streamdown-message", () => ({
-  StreamdownMessage: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
-  InlineStreamdownMessage: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
+jest.mock("@/components/markdown/markdown-message", () => ({
+  MarkdownMessage: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
+  InlineMarkdownMessage: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
 }));
 jest.mock("@/hooks/use-members", () => ({ useMembers: () => ({ data: [] }) }));
 jest.mock("@/app/(main)/sessions/[sessionId]/session-context", () => ({

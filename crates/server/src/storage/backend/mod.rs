@@ -109,7 +109,7 @@ impl std::ops::Deref for StorageBackend {
 }
 
 /// Keeps an endpoint's Slack app creation serialized until dropped.
-pub struct SlackInstallLock(#[allow(dead_code)] sqlx::Transaction<'static, sqlx::Postgres>);
+pub struct SlackInstallLock(sqlx::Transaction<'static, sqlx::Postgres>);
 
 impl StorageBackend {
     /// Wrap an already connected database.
@@ -143,6 +143,23 @@ impl StorageBackend {
         Ok(SlackInstallLock(
             self.db.lock_slack_install(channel_id).await?,
         ))
+    }
+
+    /// Hold `channel_id`'s install lock too, on `lock`'s own connection: a
+    /// holder of both an agent and a channel lock pins one pool connection,
+    /// not two (see `advisory_xact_lock_also`).
+    pub async fn extend_slack_install_lock(
+        &self,
+        lock: &mut SlackInstallLock,
+        channel_id: uuid::Uuid,
+    ) -> anyhow::Result<()> {
+        // Boxed: callers nest this deep inside command futures (agent update,
+        // channel removal), and the unboxed query future overflowed rustc's
+        // `Send` check there.
+        let extend: std::pin::Pin<
+            Box<dyn std::future::Future<Output = anyhow::Result<()>> + Send + '_>,
+        > = Box::pin(self.db.extend_slack_install_lock(&mut lock.0, channel_id));
+        extend.await
     }
 }
 

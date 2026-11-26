@@ -30,7 +30,7 @@ import {
   localizedCapabilityName,
 } from "@/lib/capability-localization";
 
-import { InlineStreamdownMessage } from "@/components/chat/streamdown-message";
+import { InlineMarkdownMessage } from "@/components/markdown/markdown-message";
 import { getDisplayName, getEntityNameClassName } from "@/lib/entity-lifecycle";
 import { formatCountLabel } from "@/lib/formatting";
 import { normalizeTags } from "@/lib/tags";
@@ -117,9 +117,9 @@ export function HarnessCard({
     >
       {localizedEntityDescription(harness, displayLocale) ? (
         <EntityCardDescription>
-          <InlineStreamdownMessage>
+          <InlineMarkdownMessage>
             {localizedEntityDescription(harness, displayLocale)}
-          </InlineStreamdownMessage>
+          </InlineMarkdownMessage>
         </EntityCardDescription>
       ) : (
         <p className="text-sm text-muted-foreground mb-3 italic">{ui("No description provided")}</p>

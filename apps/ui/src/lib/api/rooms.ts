@@ -94,7 +94,7 @@ export async function listRoomMembers(roomId: string, includeLeft = true): Promi
 }
 
 export async function addRoomMember(roomId: string, member: RoomMemberInput): Promise<RoomMember> {
-  return (await api.post<RoomMember>(`${base(roomId)}/members`, { member })).data;
+  return (await api.post<RoomMember>(`${base(roomId)}/members`, member)).data;
 }
 
 export async function updateRoomMember(

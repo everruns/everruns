@@ -18,6 +18,8 @@ Plugins installed in this organization.
 | [`plugins patch`](#plugins-patch) | Update an installed plugin's status or MCP acting identities. |
 | [`plugins uninstall`](#plugins-uninstall) | Uninstall a plugin. |
 | [`plugins update`](#plugins-update) | Re-install an installed plugin at the marketplace's current catalog version. |
+| [`plugins mine list`](#plugins-mine-list) | List the organization's approved plugins with your own choices: added for yourself, or not. |
+| [`plugins mine set`](#plugins-mine-set) | Add an approved plugin to your own conversations, or take it out. |
 
 ## plugins get
 
@@ -134,4 +136,39 @@ Example:
 ```bash
 # Move an installed plugin to the marketplace's current version
 everruns plugins update plugin_01h9 --reason 'Pick up the security fix'
+```
+
+## plugins mine list
+
+List the organization's approved plugins with your own choices: added for yourself, or not.
+
+```bash
+everruns plugins mine list [OPTIONS]
+```
+
+Example:
+
+```bash
+# See which approved plugins you added for yourself
+everruns plugins mine list
+```
+
+## plugins mine set
+
+Add an approved plugin to your own conversations, or take it out.
+
+```bash
+everruns plugins mine set [OPTIONS] --enabled [<enabled>] [ID]
+```
+
+| Flag | Description |
+|---|---|
+| `--id <ID>` | Installed plugin id (`plugin_…`). |
+| `--enabled` | Required. In your new conversations, or not. |
+
+Example:
+
+```bash
+# Add Visti to your own conversations
+everruns plugins mine set plugin_01h9 --enabled true
 ```

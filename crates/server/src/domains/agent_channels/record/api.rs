@@ -116,7 +116,7 @@ pub enum ApiErrorDetail {
 }
 
 /// Typed `api` channel configuration.
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct AgentApiChannelConfig {
     /// `per_user` (default): each caller has its own sessions.
@@ -163,6 +163,26 @@ pub struct AgentApiChannelConfig {
     /// connections. Off by default.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub org_members: bool,
+}
+
+impl Default for AgentApiChannelConfig {
+    fn default() -> Self {
+        // Keep programmatic creation (including Work Chat) identical to an
+        // empty JSON config. SessionBinding's general default is Thread,
+        // which an API channel must never accept.
+        Self {
+            session_binding: default_api_binding(),
+            visibility: ApiVisibility::default(),
+            errors: ApiErrorDetail::default(),
+            tool_activity_text: None,
+            tool_approvals: None,
+            rate_limit_per_minute: None,
+            auth_methods: Vec::new(),
+            cors_origins: Vec::new(),
+            daily_spend_limit_usd: None,
+            org_members: false,
+        }
+    }
 }
 
 fn default_api_binding() -> SessionBinding {
@@ -301,6 +321,13 @@ mod tests {
     #[test]
     fn config_defaults_are_the_safe_ones() {
         let config: AgentApiChannelConfig = serde_json::from_value(serde_json::json!({})).unwrap();
+        assert_eq!(AgentApiChannelConfig::default(), config);
+        assert_eq!(
+            super::super::work_chat::WorkChatConfig::default()
+                .execution
+                .session_binding,
+            SessionBinding::Requester
+        );
         assert_eq!(config.session_binding, SessionBinding::Requester);
         assert_eq!(config.visibility, ApiVisibility::Activity);
         assert_eq!(config.errors, ApiErrorDetail::Public);

@@ -8,8 +8,8 @@ describe("AgUiSetupGuidance", () => {
   it("renders the channel and anonymous status", () => {
     render(
       <AgUiSetupGuidance
-        channelUrl="https://example.com/api/v1/apps/app-123/ag-ui"
-        imageUploadUrl="https://example.com/api/v1/apps/app-123/ag-ui/images"
+        channelUrl="https://example.com/api/v1/channels/appchan-123/ag-ui"
+        imageUploadUrl="https://example.com/api/v1/channels/appchan-123/ag-ui/images"
         isPublished={true}
         anonymousEnabled={true}
         sessionExpirationSeconds={6 * 60 * 60}
@@ -18,9 +18,11 @@ describe("AgUiSetupGuidance", () => {
 
     expect(screen.getByText("Anonymous")).toBeInTheDocument();
     expect(screen.getByText("Ready for AG-UI clients")).toBeInTheDocument();
-    expect(screen.getByText("https://example.com/api/v1/apps/app-123/ag-ui")).toBeInTheDocument();
     expect(
-      screen.getByText("https://example.com/api/v1/apps/app-123/ag-ui/images"),
+      screen.getByText("https://example.com/api/v1/channels/appchan-123/ag-ui"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("https://example.com/api/v1/channels/appchan-123/ag-ui/images"),
     ).toBeInTheDocument();
     expect(screen.getByText(/forwardedProps.imageIds/)).toBeInTheDocument();
     expect(screen.getByText("Responses stream back as AG-UI SSE events.")).toBeInTheDocument();
@@ -33,7 +35,7 @@ describe("AgUiSetupGuidance", () => {
   it("renders 'Never' when expiration is disabled", () => {
     render(
       <AgUiSetupGuidance
-        channelUrl="https://example.com/api/v1/apps/app-123/ag-ui"
+        channelUrl="https://example.com/api/v1/channels/appchan-123/ag-ui"
         isPublished={true}
         anonymousEnabled={true}
         sessionExpirationSeconds={0}
@@ -72,7 +74,7 @@ describe("formatSessionExpiration", () => {
   it("displays rate limit when configured", () => {
     render(
       <AgUiSetupGuidance
-        channelUrl="https://example.com/api/v1/apps/app-123/ag-ui"
+        channelUrl="https://example.com/api/v1/channels/appchan-123/ag-ui"
         isPublished={true}
         anonymousEnabled={true}
         rateLimitPerMinute={120}
@@ -86,7 +88,7 @@ describe("formatSessionExpiration", () => {
   it("falls back to global cap message when rate limit is not configured", () => {
     render(
       <AgUiSetupGuidance
-        channelUrl="https://example.com/api/v1/apps/app-123/ag-ui"
+        channelUrl="https://example.com/api/v1/channels/appchan-123/ag-ui"
         isPublished={true}
         anonymousEnabled={true}
         sessionExpirationSeconds={6 * 60 * 60}
@@ -99,7 +101,7 @@ describe("formatSessionExpiration", () => {
   it("renders configured token guidance", () => {
     render(
       <AgUiSetupGuidance
-        channelUrl="https://example.com/api/v1/apps/app-123/ag-ui"
+        channelUrl="https://example.com/api/v1/channels/appchan-123/ag-ui"
         isPublished={true}
         anonymousEnabled={true}
         sessionExpirationSeconds={6 * 60 * 60}
@@ -115,7 +117,7 @@ describe("formatSessionExpiration", () => {
   it("renders public tool activity visibility with generic text", () => {
     render(
       <AgUiSetupGuidance
-        channelUrl="https://example.com/api/v1/apps/app-123/ag-ui"
+        channelUrl="https://example.com/api/v1/channels/appchan-123/ag-ui"
         isPublished={true}
         anonymousEnabled={true}
         sessionExpirationSeconds={6 * 60 * 60}

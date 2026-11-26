@@ -318,7 +318,7 @@ async fn create_persisted_session(
             source: everruns_server::domains::sessions::record::SessionSource::Api,
             org_id: DEFAULT_ORG_ID,
             workspace_id: None,
-            app_id: None,
+
             channel_id: None,
             harness_id: None,
             agent_id: Some(AgentId::from_uuid(agent_id)),

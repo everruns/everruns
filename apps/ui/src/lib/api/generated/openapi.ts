@@ -4,24 +4,7 @@
  */
 
 export interface paths {
-  "/v1/apps/{app_id}/a2a/{channel_id}": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** Invoke a2a legacy */
-    post: operations["invoke_a2a_legacy"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/apps/{app_id}/a2a/{channel_id}/.well-known/agent-card.json": {
+  "/v1/application-hosts/{slug}": {
     parameters: {
       query?: never;
       header?: never;
@@ -29,10 +12,10 @@ export interface paths {
       cookie?: never;
     };
     /**
-     * Get an A2A agent card (legacy app route)
-     * @description GET /v1/apps/{app_id}/a2a/{channel_id}/.well-known/agent-card.json
+     * Application host
+     * @description Resolve a published Application hostname.
      */
-    get: operations["agent_card_legacy"];
+    get: operations["application_host"];
     put?: never;
     post?: never;
     delete?: never;
@@ -41,7 +24,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/apps/{app_id}/fcp": {
+  "/v1/applications/{application_id}/config": {
     parameters: {
       query?: never;
       header?: never;
@@ -49,22 +32,131 @@ export interface paths {
       cookie?: never;
     };
     /**
-     * `GET /v1/apps/{app_id}/fcp` — handshake
-     * @description `GET /v1/apps/{app_id}/fcp` — handshake. Always returns the same
-     *     generic 404 body for unknown apps so the endpoint cannot be used to
-     *     probe which app ids are real.
+     * Application config
+     * @description Read public Application presentation.
      */
-    get: operations["handshake"];
+    get: operations["application_config"];
     put?: never;
-    /** `POST /v1/apps/{app_id}/fcp` — text-in, text-out */
-    post: operations["message_legacy"];
+    post?: never;
     delete?: never;
     options?: never;
     head?: never;
     patch?: never;
     trace?: never;
   };
-  "/v1/apps/{app_id}/webhooks/{channel_id}": {
+  "/v1/applications/{application_id}/manifest": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Application manifest
+     * @description List resources available to the signed-in Application audience.
+     */
+    get: operations["application_manifest"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/applications/{application_id}/memory/{slug}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Application memory
+     * @description List shared memory files or read a text file from the bound organization Memory.
+     */
+    get: operations["application_memory"];
+    /**
+     * Application write memory
+     * @description Create or update a text file when the bound Memory grants write access.
+     */
+    put: operations["application_write_memory"];
+    post?: never;
+    /**
+     * Application delete memory
+     * @description Delete a file or empty directory when the bound Memory grants write access.
+     */
+    delete: operations["application_delete_memory"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/applications/{application_id}/rooms/{slug}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Application room
+     * @description Read the bound Room and its public participant roster.
+     */
+    get: operations["application_room"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/applications/{application_id}/rooms/{slug}/messages": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Application messages
+     * @description Read a bounded page of messages from the bound Room.
+     */
+    get: operations["application_messages"];
+    put?: never;
+    /**
+     * Application post message
+     * @description Post as the signed-in Application participant; caller-selected attribution is rejected.
+     */
+    post: operations["application_post_message"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/applications/{application_id}/rooms/{slug}/replies/{message_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Application replies
+     * @description Read replies in a thread of the bound Room.
+     */
+    get: operations["application_replies"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/applications/{application_id}/runtime-auth": {
     parameters: {
       query?: never;
       header?: never;
@@ -74,10 +166,10 @@ export interface paths {
     get?: never;
     put?: never;
     /**
-     * Invoke webhook legacy
-     * @description Invoke a webhook channel for a published App. The body is forwarded to the agent as a message.
+     * Application exchange
+     * @description Exchange a verified deployment identity for Application access.
      */
-    post: operations["invoke_webhook_legacy"];
+    post: operations["application_exchange"];
     delete?: never;
     options?: never;
     head?: never;
@@ -238,6 +330,46 @@ export interface paths {
      * @description Resolve the consumer’s permanent main conversation.
      */
     post: operations["resolve_work_chat_main"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/channels/{channel_id}/chat/plugins": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List work chat plugins
+     * @description The signed-in person's plugins in this Work Chat: the agent's, the ones they added, and approved ones they could add. Choices apply to new conversations.
+     */
+    get: operations["list_work_chat_plugins"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/channels/{channel_id}/chat/plugins/{plugin_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /**
+     * Set work chat plugin
+     * @description Add an approved plugin to your conversations in this Work Chat, or turn one off, as the channel allows.
+     */
+    put: operations["set_work_chat_plugin"];
+    post?: never;
     delete?: never;
     options?: never;
     head?: never;
@@ -731,6 +863,48 @@ export interface paths {
      * @description Resolve the consumer’s permanent main conversation.
      */
     post: operations["resolve_work_chat_main_legacy"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/e/{channel_id}/chat/plugins": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List work chat plugins legacy
+     * @deprecated
+     * @description The signed-in person's plugins in this Work Chat: the agent's, the ones they added, and approved ones they could add. Choices apply to new conversations.
+     */
+    get: operations["list_work_chat_plugins_legacy"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/e/{channel_id}/chat/plugins/{plugin_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /**
+     * Set work chat plugin legacy
+     * @deprecated
+     * @description Add an approved plugin to your conversations in this Work Chat, or turn one off, as the channel allows.
+     */
+    put: operations["set_work_chat_plugin_legacy"];
+    post?: never;
     delete?: never;
     options?: never;
     head?: never;
@@ -2538,7 +2712,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/platform/apps": {
+  "/v1/platform/application-launchers": {
     parameters: {
       query?: never;
       header?: never;
@@ -2546,11 +2720,10 @@ export interface paths {
       cookie?: never;
     };
     /**
-     * List apps
-     * @deprecated
-     * @description List archival App records. This endpoint is read-only and deprecated.
+     * Application launchers
+     * @description List published Application sidebar launchers.
      */
-    get: operations["list_apps"];
+    get: operations["application_launchers"];
     put?: never;
     post?: never;
     delete?: never;
@@ -2559,21 +2732,82 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/platform/apps/{app_id}": {
+  "/v1/platform/applications": {
     parameters: {
       query?: never;
       header?: never;
       path?: never;
       cookie?: never;
     };
+    /** List Applications in the current organization */
+    get: operations["list_applications"];
+    put?: never;
     /**
-     * Get app
-     * @deprecated
-     * @description Get an archival App record. This endpoint is read-only and deprecated.
+     * Create Application
+     * @description Create an Application with a permanently reserved stable name.
      */
-    get: operations["get_app"];
+    post: operations["create_application"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/applications/{application_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get an Application's configuration and resources */
+    get: operations["get_application"];
     put?: never;
     post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /**
+     * Update Application
+     * @description Update an Application and its resource bindings, checking its version.
+     */
+    patch: operations["update_application"];
+    trace?: never;
+  };
+  "/v1/platform/applications/{application_id}/resources": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Create Application resource
+     * @description Create and attach a Chat, Room or Memory atomically to an Application.
+     */
+    post: operations["create_application_resource"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/applications/{application_id}/status": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Publish, unpublish or archive an Application
+     * @description Publish, unpublish or archive an Application. Archiving retains its stable name.
+     */
+    post: operations["set_application_status"];
     delete?: never;
     options?: never;
     head?: never;
@@ -6384,6 +6618,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/platform/plugins/config": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Plugin config */
+    get: operations["plugin_config"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/platform/plugins/{id}": {
     parameters: {
       query?: never;
@@ -6741,7 +6992,7 @@ export interface paths {
     head?: never;
     /**
      * Change a room's name, topic or settings
-     * @description Change a room's name, topic, metadata, link template or loop limits. Owners and org admins only.
+     * @description Change a room's name, topic, metadata, link template, loop limits or whether it records facts on its own. Owners and org admins only.
      */
     patch: operations["update_room"];
     trace?: never;
@@ -6954,9 +7205,113 @@ export interface paths {
     head?: never;
     /**
      * Change a room member's settings
-     * @description Change a room member's settings. Name, role, wake setting, session scope or instructions; owners and org admins only.
+     * @description Change a room member's settings. Name, role, wake setting, session scope, instructions or memory recall; owners and org admins only.
      */
     patch: operations["update_room_member"];
+    trace?: never;
+  };
+  "/v1/platform/rooms/{room_id}/memory/entries/{entry_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Open one thing a room remembers
+     * @description Get one fact or note with the message it rests on and, for a fact, every fact on its subject in time order.
+     */
+    get: operations["get_room_memory_entry"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/rooms/{room_id}/memory/entries/{entry_id}/forget": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Take a wrong fact or note out of a room's memory
+     * @description Hide a fact or note from recall. A forgotten fact gives its place back to the fact it replaced. The member it came from, room owners and org admins only; nothing is deleted.
+     */
+    post: operations["forget_room_memory_entry"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/rooms/{room_id}/memory/facts": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List what a room has settled
+     * @description List a room's current facts (decisions, rules, claims, deadlines, open questions, observations), newest first, or as they stood at an earlier time.
+     */
+    get: operations["list_room_facts"];
+    put?: never;
+    /**
+     * Record a fact in a room's memory
+     * @description Record a decision, rule, claim, deadline, question or observation in a room's memory. A newer fact on the same subject replaces the older one; both stay.
+     */
+    post: operations["remember_room_fact"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/rooms/{room_id}/memory/notes": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Add outside text to a room's memory
+     * @description Add a note to a room's memory, such as meeting notes or a summary from another tool, so recall finds it next to the room's messages. A caller id makes re-sending safe.
+     */
+    post: operations["ingest_room_note"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/rooms/{room_id}/memory/sessions": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Add a session's conversation to a room's memory
+     * @description Publish a session's conversation into a room's memory as notes: the person's messages and the agent's answers, without tool calls, with secrets scrubbed. Publishing again updates what changed.
+     */
+    post: operations["publish_session_to_room"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
     trace?: never;
   };
   "/v1/platform/rooms/{room_id}/messages": {
@@ -7113,6 +7468,26 @@ export interface paths {
      * @description Mark a room's top level, or a thread, read up to a message. Marks only move forward.
      */
     post: operations["mark_room_read"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/rooms/{room_id}/recall": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Recall what a room knows about something
+     * @description Search a room's messages and memory (facts and notes) together by their words, best match first. Current facts lead; a replaced fact says what replaced it.
+     */
+    get: operations["recall_room"];
+    put?: never;
+    post?: never;
     delete?: never;
     options?: never;
     head?: never;
@@ -9393,6 +9768,40 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/platform/users/me/plugins": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List my plugins */
+    get: operations["list_my_plugins"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/users/me/plugins/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Set my plugin choice */
+    put: operations["set_my_plugin_choice"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/platform/users/me/switch-org": {
     parameters: {
       query?: never;
@@ -10541,7 +10950,7 @@ export interface components {
       id: string;
       /**
        * @description Per-channel lifecycle. Authoritative for ingress (EVE-1007); `enabled`
-       *     is retained for the App API's existing shape.
+       *     is retained for the Channel API's existing shape.
        */
       status?: components["schemas"]["ChannelStatus"];
       /**
@@ -11446,8 +11855,6 @@ export interface components {
     };
     /** @description Agent list/detail payload with relationship counts and resolved harness metadata. */
     AgentWithCounts: components["schemas"]["Agent"] & {
-      /** Format: int64 */
-      app_count: number;
       channels: components["schemas"]["AgentChannelSummary"][];
       effective_harness: components["schemas"]["AgentHarnessSummary"];
       /** Format: int64 */
@@ -11541,232 +11948,74 @@ export interface components {
        */
       api_key: string;
     };
-    /**
-     * @description App configuration for deploying agents to channels.
-     *     An app binds a harness and optional agent to distribution channels with a
-     *     publish lifecycle.
-     */
-    App: {
-      /**
-       * @description Optional ID of the agent to use (format: agent_{32-hex}).
-       * @example agent_01933b5a00007000800000000000001
-       */
-      agent_id?: string | null;
-      /**
-       * Format: date-time
-       * @description Timestamp when the app was archived.
-       */
-      archived_at?: string | null;
-      /** @description Distribution channels attached to this app. */
-      channels?: components["schemas"]["AgentChannel"][];
-      /**
-       * Format: date-time
-       * @description Timestamp when the app was created.
-       */
-      created_at: string;
-      /**
-       * Format: date-time
-       * @description Timestamp when the app was deleted.
-       */
-      deleted_at?: string | null;
-      /** @description Human-readable description of what the app does. */
-      description?: string | null;
-      effective_owner?: components["schemas"]["PrincipalSummary"] | null;
-      /**
-       * @description ID of the harness to use (format: harness_{32-hex}).
-       * @example harness_01933b5a00007000800000000000001
-       */
-      harness_id: string;
-      /**
-       * @description External identifier (app_<32-hex>). Shown as "id" in API.
-       * @example app_01933b5a000070008000000000000001
-       */
-      id: string;
-      /** @description Display name of the app. */
-      name: string;
-      owner?: components["schemas"]["PrincipalSummary"] | null;
-      /**
-       * @description Owning principal for this app.
-       * @example principal_01933b5a000070008000000000000001
-       */
-      owner_principal_id: string;
-      /**
-       * Format: date-time
-       * @description Timestamp when the app was last published.
-       */
-      published_at?: string | null;
-      /**
-       * Format: uuid
-       * @description Denormalized effective human owner of the owning principal lineage.
-       */
-      resolved_owner_user_id?: string | null;
-      /** @description Current lifecycle status. */
-      status: components["schemas"]["AppStatus"];
-      /**
-       * Format: date-time
-       * @description Timestamp when the app was last updated.
-       */
-      updated_at: string;
-      /**
-       * @description Optional virtual identity that represents the app in unattended/channel execution.
-       * @example identity_01933b5a00007000800000000000001
-       */
-      virtual_user_id?: string | null;
-    };
-    /**
-     * @description An independently published communication channel owned by an Agent.
-     *     Each channel has its own type, config, and lifecycle status.
-     */
-    AppChannel: {
-      /**
-       * @description The agent that owns this channel. Also what lets responses carry a
-       *     `view_url` to the channel's page (`/agents/{agent_id}/channels/{id}`),
-       *     so a caller can hand out a direct link.
-       * @example agent_01933b5a000070008000000000000001
-       */
-      agent_id?: string | null;
-      auth?: components["schemas"]["ChannelAuthConfig"] | null;
-      /** @description Channel-specific configuration (validated per channel type). */
-      channel_config?: unknown;
-      /** @description Channel type (e.g. slack). */
-      channel_type: components["schemas"]["ChannelType"];
-      /**
-       * Format: date-time
-       * @description Timestamp when this channel was created.
-       */
-      created_at: string;
-      /** @description Whether this channel is enabled. */
-      enabled?: boolean;
-      /**
-       * @description External identifier (appchan_<32-hex>). Shown as "id" in API.
-       * @example appchan_01933b5a000070008000000000000001
-       */
-      id: string;
-      /**
-       * @description Per-channel lifecycle. Authoritative for ingress (EVE-1007); `enabled`
-       *     is retained for the App API's existing shape.
-       */
-      status?: components["schemas"]["ChannelStatus"];
-      /**
-       * Format: date-time
-       * @description Timestamp when this channel was last updated.
-       */
-      updated_at: string;
-    };
-    /**
-     * @description Authentication config for one channel/channel.
-     * @example {
-     *       "mode": "api_key",
-     *       "requirements": {
-     *         "audiences": [
-     *           "everruns-api"
-     *         ],
-     *         "scopes": [
-     *           "app:invoke"
-     *         ]
-     *       }
-     *     }
-     */
-    AppEndpointAuthConfig: {
-      mode: components["schemas"]["ChannelAuthMode"];
-      provider?: components["schemas"]["ChannelAuthProviderConfig"] | null;
-      requirements?: components["schemas"]["ChannelAuthRequirements"];
-    };
-    /**
-     * @description Agent channel authentication mode.
-     *
-     *     Stored on `AgentChannel.auth` so users can protect one endpoint without first
-     *     creating org-level identity-provider state.
-     * @enum {string}
-     */
-    AppEndpointAuthMode:
-      | "anonymous"
-      | "shared_secret"
-      | "api_key"
-      | "google_oidc"
-      | "oidc"
-      | "oauth2_introspection"
-      | "http_basic"
-      | "mtls";
-    /** @description OIDC/OAuth/basic/mTLS provider details for one channel. */
-    AppEndpointAuthProviderConfig:
-      | {
-          allowed_domains?: string[];
-          client_id: string;
-          /** @enum {string} */
-          type: "google_oidc";
-        }
-      | {
-          issuer: string;
-          jwks_url?: string | null;
-          /** @enum {string} */
-          type: "oidc";
-        }
-      | {
-          client_id?: string | null;
-          client_secret?: string | null;
-          client_secret_configured?: boolean;
-          introspection_url: string;
-          /** @enum {string} */
-          type: "oauth2_introspection";
-        }
-      | {
-          password?: string | null;
-          password_configured?: boolean;
-          password_hash?: string | null;
-          /** @enum {string} */
-          type: "http_basic";
-          username: string;
-        }
-      | {
-          allowed_values?: string[];
-          header_name: string;
-          /**
-           * @description Shared secret the trusted proxy includes in `proxy_secret_header`.
-           *     Write-only: redacted in GET responses. See TM-AUTH-021.
-           */
-          proxy_secret?: string | null;
-          proxy_secret_configured?: boolean;
-          /**
-           * @description Header the trusted reverse proxy uses to prove its identity.
-           *     Required. Configs without this field fail closed at verification time.
-           */
-          proxy_secret_header?: string | null;
-          /** @enum {string} */
-          type: "mtls";
-        };
-    /** @description Claim and credential requirements common to channel auth providers. */
-    AppEndpointAuthRequirements: {
-      /** @description JWT `aud` values to require on inbound tokens. Empty list disables audience checking. */
-      audiences?: string[];
-      /** @description Arbitrary claim equality predicates. Empty map disables claim filtering. */
-      claims?: {
-        [key: string]: unknown;
-      };
-      /** @description Allowlist of email/identifier domains. Empty list disables domain filtering. */
-      domains?: string[];
-      /** @description Allowlist of group memberships (from `groups` claim). Empty list disables group filtering. */
-      groups?: string[];
-      /** @description OAuth scope strings to require (space-delimited per scope entry). Empty list disables scope checking. */
-      scopes?: string[];
-      /** @description Allowlist of `sub` claim values. Empty list disables subject filtering. */
-      subjects?: string[];
-    };
-    /**
-     * @description App lifecycle status.
-     *     - `draft`: App is configured but not accepting requests
-     *     - `published`: App is live, accepting incoming requests
-     *     - `archived`: App is hidden from listings and cannot be modified or assigned
-     *     - `deleted`: App is a tombstone kept only for historical references
-     * @example published
-     * @enum {string}
-     */
-    AppStatus: "draft" | "published" | "archived" | "deleted";
     /** @description Add a paragraph to an entity's manager context. */
     AppendManagerContextRequest: {
       /** @description The paragraph to add, markdown. */
       text: string;
     };
+    /** @description An organization-owned publication with a permanent name and versioned configuration. */
+    Application: {
+      /** @description Current audience and workspace settings. */
+      config: components["schemas"]["ApplicationConfig"];
+      /**
+       * Format: date-time
+       * @description Time the Application and its stable name were created.
+       */
+      created_at: string;
+      /** @description Participant-facing overview text. */
+      description: string;
+      /** @description Stable public Application identifier. */
+      id: components["schemas"]["applicationId"];
+      /** @description Display name shown in the editor and published workspace. */
+      name: string;
+      /** @description Published hostname, or null when the deployment has no publication domain. */
+      public_url?: string | null;
+      /** @description Ordered navigation entries and explicit shared-resource grants. */
+      resources: components["schemas"]["ApplicationResource"][];
+      /** @description Permanently reserved hostname label. */
+      slug: string;
+      /** @description Publication state: draft, published, or archived. */
+      status: string;
+      /**
+       * Format: date-time
+       * @description Time of the latest configuration or publication change.
+       */
+      updated_at: string;
+      /**
+       * Format: int64
+       * @description Optimistic concurrency version required for updates and status changes.
+       */
+      version: number;
+    };
+    /** @description Audience admission and optional workspace features. */
+    ApplicationConfig: {
+      /** @description Reserved until the automation runtime is available. Enabling is rejected. */
+      automations?: boolean;
+      /** @description Verified email addresses admitted when membership is invites. */
+      invites?: string[];
+      /** @description Who may sign in: organization members by default, invited people, or anyone. */
+      membership?: components["schemas"]["WorkChatMembership"];
+      /** @description Show a launcher for published Applications in the organization sidebar. */
+      show_in_sidebar?: boolean;
+    };
+    /** @description One named navigation entry and its explicitly shared resource. */
+    ApplicationResource: {
+      /** @description The existing resource type exposed by this navigation entry. */
+      kind: components["schemas"]["ApplicationResourceKind"];
+      /** @description Display label shown to participants. */
+      name: string;
+      /** @description Public ID of a Chat channel, Room, or organization Memory. */
+      resource_id: string;
+      /** @description Unique navigation path within the Application. */
+      slug: string;
+      /** @description Allow Memory writes; false for read-only Memory and all other resource kinds. */
+      writable?: boolean;
+    };
+    /**
+     * @description Existing runtime resource exposed through the Application.
+     * @enum {string}
+     */
+    ApplicationResourceKind: "chat" | "room" | "memory";
     /** @description What copying a preset into the organization defaults changed. */
     ApplyModelPresetResult: {
       /** @description Jobs whose organization default now uses the preset's model. */
@@ -12719,10 +12968,7 @@ export interface components {
     /**
      * @description Per-channel lifecycle (EVE-1007).
      *
-     *     This is the authority for whether an exposure accepts traffic. It replaced
-     *     the two-dimensional `App.status × AppChannel.enabled` matrix, which could
-     *     express "published App, disabled channel" and forced publishing a whole App —
-     *     and therefore every sibling channel on it — to make one endpoint reachable.
+     *     Authoritative lifecycle for whether this channel accepts traffic.
      *
      *     Liveness also depends on agent-level conditions, which are folded in at
      *     resolution time rather than stored here.
@@ -16222,10 +16468,7 @@ export interface components {
     /**
      * @description Per-channel lifecycle (EVE-1007).
      *
-     *     This is the authority for whether an exposure accepts traffic. It replaced
-     *     the two-dimensional `App.status × AppChannel.enabled` matrix, which could
-     *     express "published App, disabled channel" and forced publishing a whole App —
-     *     and therefore every sibling channel on it — to make one endpoint reachable.
+     *     Authoritative lifecycle for whether this channel accepts traffic.
      *
      *     Liveness also depends on agent-level conditions, which are folded in at
      *     resolution time rather than stored here.
@@ -17109,7 +17352,7 @@ export interface components {
      *
      *     Two modes:
      *     - `Session`: mirrors `CreateSessionRequest` — full control over session creation parameters.
-     *     - `App`: references a deployed app by ID.
+     *     - `External`: labels imported results.
      *
      *     Resolution order: EvalRun.target → EvalCase.target → Eval.target → org default harness.
      */
@@ -17129,11 +17372,6 @@ export interface components {
           system_prompt?: string | null;
           /** @enum {string} */
           type: "session";
-        }
-      | {
-          app_id: string;
-          /** @enum {string} */
-          type: "app";
         }
       | {
           model: string;
@@ -22063,94 +22301,6 @@ export interface components {
      * @description Response wrapper for list endpoints.
      *     All list endpoints return responses wrapped in a `data` field.
      */
-    ListResponse_WithUrls_App: {
-      /** @description Array of items returned by the list operation. */
-      data: ({
-        /**
-         * @description Optional ID of the agent to use (format: agent_{32-hex}).
-         * @example agent_01933b5a00007000800000000000001
-         */
-        agent_id?: string | null;
-        /**
-         * Format: date-time
-         * @description Timestamp when the app was archived.
-         */
-        archived_at?: string | null;
-        /** @description Distribution channels attached to this app. */
-        channels?: components["schemas"]["AgentChannel"][];
-        /**
-         * Format: date-time
-         * @description Timestamp when the app was created.
-         */
-        created_at: string;
-        /**
-         * Format: date-time
-         * @description Timestamp when the app was deleted.
-         */
-        deleted_at?: string | null;
-        /** @description Human-readable description of what the app does. */
-        description?: string | null;
-        effective_owner?: components["schemas"]["PrincipalSummary"] | null;
-        /**
-         * @description ID of the harness to use (format: harness_{32-hex}).
-         * @example harness_01933b5a00007000800000000000001
-         */
-        harness_id: string;
-        /**
-         * @description External identifier (app_<32-hex>). Shown as "id" in API.
-         * @example app_01933b5a000070008000000000000001
-         */
-        id: string;
-        /** @description Display name of the app. */
-        name: string;
-        owner?: components["schemas"]["PrincipalSummary"] | null;
-        /**
-         * @description Owning principal for this app.
-         * @example principal_01933b5a000070008000000000000001
-         */
-        owner_principal_id: string;
-        /**
-         * Format: date-time
-         * @description Timestamp when the app was last published.
-         */
-        published_at?: string | null;
-        /**
-         * Format: uuid
-         * @description Denormalized effective human owner of the owning principal lineage.
-         */
-        resolved_owner_user_id?: string | null;
-        /** @description Current lifecycle status. */
-        status: components["schemas"]["AppStatus"];
-        /**
-         * Format: date-time
-         * @description Timestamp when the app was last updated.
-         */
-        updated_at: string;
-        /**
-         * @description Optional virtual identity that represents the app in unattended/channel execution.
-         * @example identity_01933b5a00007000800000000000001
-         */
-        virtual_user_id?: string | null;
-      } & {
-        /**
-         * @description State-aware hypermedia actions the caller can take on this resource
-         *     next (e.g. `cancel`, `events`, `update`). Omitted from the wire
-         *     shape when empty so resources that haven't opted into the
-         *     convention don't grow their payloads.
-         */
-        allowed_actions?: components["schemas"]["AllowedAction"][];
-        /** @description Full API endpoint URL for this resource. */
-        self_url: string;
-        /** @description Alias for `view_url`, used by command and MCP outputs. */
-        ui_link: string;
-        /** @description Full UI URL for viewing this resource. */
-        view_url: string;
-      })[];
-    };
-    /**
-     * @description Response wrapper for list endpoints.
-     *     All list endpoints return responses wrapped in a `data` field.
-     */
     ListResponse_WithUrls_DeclarativeCapability: {
       /** @description Array of items returned by the list operation. */
       data: ({
@@ -22702,11 +22852,6 @@ export interface components {
          */
         updated_at: string;
       } & {
-        /**
-         * Format: int64
-         * @description Number of non-deleted apps using this resource.
-         */
-        app_count: number;
         /**
          * Format: int64
          * @description Number of sessions using this resource.
@@ -26581,8 +26726,6 @@ export interface components {
     PaginatedResponse_WithUrls_AgentWithCounts: {
       /** @description Array of items returned by the list operation. */
       data: ((components["schemas"]["Agent"] & {
-        /** Format: int64 */
-        app_count: number;
         channels: components["schemas"]["AgentChannelSummary"][];
         effective_harness: components["schemas"]["AgentHarnessSummary"];
         /** Format: int64 */
@@ -27267,6 +27410,61 @@ export interface components {
        */
       total: number;
     };
+    /** @description One approved plugin as a person sees it. */
+    PluginOption: {
+      /**
+       * @description What the plugin does.
+       * @example Publish web pages from the conversation
+       */
+      description: string;
+      /**
+       * @description Name to show people, when the manifest gives one.
+       * @example Stend
+       */
+      display_name?: string | null;
+      /**
+       * @description Whether it is in this person's new conversations.
+       * @example true
+       */
+      enabled: boolean;
+      /**
+       * @description What the plugin needs from the agent.
+       * @example workspace
+       */
+      environment: string;
+      /**
+       * @description Whether the agent provides what the plugin needs. Always true outside
+       *     an agent (Settings > Personal > Plugins).
+       * @example true
+       */
+      fits: boolean;
+      /**
+       * @description Installed plugin id (`plugin_…`).
+       * @example plugin_01933b5a00007000800000000000001
+       */
+      id: string;
+      /**
+       * @description Name from the plugin manifest.
+       * @example stend
+       */
+      name: string;
+      /**
+       * @description An admin still has to choose how one of its MCP servers signs in.
+       * @example false
+       */
+      needs_admin_setup: boolean;
+      origin: components["schemas"]["PluginOrigin"];
+      /**
+       * @description Installed version.
+       * @example 1.2.0
+       */
+      version?: string | null;
+    };
+    /**
+     * @description Where a plugin in a person's list comes from.
+     * @enum {string}
+     */
+    PluginOrigin: "agent" | "added" | "available";
     /**
      * @description Which usage a policy counts. Absent counts everything.
      * @enum {string}
@@ -27287,6 +27485,10 @@ export interface components {
      * @enum {string}
      */
     PolicyStepAction: "notify" | "ask" | "stop";
+    Post: {
+      reply_to?: string | null;
+      text: string;
+    };
     /** @description A posted message and the agents it woke. */
     PostRoomMessageResponse: {
       /** @description The posted message. */
@@ -28440,6 +28642,12 @@ export interface components {
        */
       archived: boolean;
       /**
+       * @description Whether the room records facts from its messages on its own (room
+       *     memory). On unless turned off.
+       * @example true
+       */
+      auto_facts: boolean;
+      /**
        * Format: date-time
        * @description When the room was created.
        * @example 2026-11-10T15:04:05Z
@@ -28544,7 +28752,9 @@ export interface components {
        * @description `room.created`, `room.updated`, `room.archived`, `room.unarchived`,
        *     `member.joined`, `member.left`, `message.posted`, `message.edited`,
        *     `message.deleted`, `message.pinned`, `message.unpinned`,
-       *     `reaction.added`, `reaction.removed`, `agent.woken`, `agent.limited`.
+       *     `reaction.added`, `reaction.removed`, `agent.woken`, `agent.limited`,
+       *     `agent.considered`, `file.written`, `file.moved`, `file.deleted`,
+       *     `memory.recorded`, `memory.forgotten`, `memory.extraction`.
        * @example message.posted
        */
       type: string;
@@ -28559,6 +28769,11 @@ export interface components {
        * @example 120
        */
       next_after: number;
+    };
+    /** @description A room's facts. */
+    RoomFactListResponse: {
+      /** @description Newest first. */
+      data: components["schemas"]["RoomMemoryEntry"][];
     };
     /** @description A file in a room's shared folder, as it is now. */
     RoomFile: {
@@ -28718,6 +28933,12 @@ export interface components {
        * @example false
        */
       left: boolean;
+      /**
+       * @description For an agent member: whether a wake also carries what the room
+       *     remembers about the message.
+       * @example false
+       */
+      memory_recall: boolean;
       /** @description Owner or member. */
       role: components["schemas"]["RoomMemberRole"];
       /**
@@ -28750,6 +28971,124 @@ export interface components {
      * @enum {string}
      */
     RoomMemberRole: "owner" | "member";
+    /** @description A fact or a note a room remembers. */
+    RoomMemoryEntry: {
+      author?: components["schemas"]["RoomAuthor"] | null;
+      /**
+       * Format: date-time
+       * @description When it was recorded.
+       */
+      created_at: string;
+      /**
+       * @description Whether it is current: not replaced and not forgotten.
+       * @example true
+       */
+      current: boolean;
+      /**
+       * @description For a fact: decision, rule, claim, deadline, question or observation.
+       * @example decision
+       */
+      fact_kind?: string | null;
+      /**
+       * @description Whether it was forgotten (taken out of recall).
+       * @example false
+       */
+      forgotten: boolean;
+      /**
+       * @description Prefixed entry id (`rmm_...`).
+       * @example rmm_01933b5a000070008000000000000004
+       */
+      id: string;
+      /**
+       * @description `fact` or `note`.
+       * @example fact
+       */
+      kind: string;
+      /** @description A short name, such as a session's title. */
+      label?: string | null;
+      /**
+       * Format: date-time
+       * @description When it happened, which is not always when it was recorded.
+       * @example 2026-11-24T15:04:05Z
+       */
+      occurred_at: string;
+      /**
+       * @description The exact words it rests on.
+       * @example let's move deploys to Tuesdays, 3pm Central
+       */
+      quote?: string | null;
+      /**
+       * @description `extraction` (the room read it from a message), `member`, `ingest` or `session`.
+       * @example extraction
+       */
+      recorded_by: string;
+      /**
+       * Format: date-time
+       * @description When the replacing fact happened.
+       */
+      replaced_at?: string | null;
+      /** @description The fact that replaced it. */
+      replaced_by?: string | null;
+      source: components["schemas"]["RoomMemorySource"];
+      /**
+       * @description The fact in one sentence, or the note's text.
+       * @example Deploys happen Tuesdays at 15:00 CT.
+       */
+      statement: string;
+      /**
+       * @description stated, proposed (an option nobody adopted), hypothetical, or retracted.
+       * @example stated
+       */
+      status: string;
+      /**
+       * @description For a fact: what it is about. A newer fact on the same subject
+       *     replaces the older one.
+       * @example deploy window
+       */
+      subject?: string | null;
+    };
+    /** @description One entry with where it came from and, for a fact, its subject's history. */
+    RoomMemoryEntryDetail: {
+      entry: components["schemas"]["RoomMemoryEntry"];
+      /** @description Every live fact on the same subject, oldest first. */
+      history: components["schemas"]["RoomMemoryEntry"][];
+      source_message?: components["schemas"]["RoomMessage"] | null;
+    };
+    /** @description What recording an entry did. */
+    RoomMemoryRecorded: {
+      entry: components["schemas"]["RoomMemoryEntry"];
+      /** @description Facts the new one replaces. */
+      replaced: string[];
+      /**
+       * @description Whether the same content was already recorded under that caller id,
+       *     so nothing changed.
+       * @example false
+       */
+      unchanged: boolean;
+    };
+    /** @description Where a memory entry came from. */
+    RoomMemorySource: {
+      /**
+       * @description `message`, `session`, `ingest` or `member`.
+       * @example message
+       */
+      kind: string;
+      /**
+       * @description The message the entry rests on.
+       * @example rmsg_01933b5a000070008000000000000002
+       */
+      message_id?: string | null;
+      /**
+       * @description The session it was published from.
+       * @example session_01933b5a000070008000000000000003
+       */
+      session_id?: string | null;
+      /**
+       * @description The caller's own id for an ingested note or a session piece.
+       * @example standup-2026-11-24
+       */
+      source_ref?: string | null;
+    };
     /** @description A member a message mentions. */
     RoomMention: {
       /**
@@ -28910,6 +29249,39 @@ export interface components {
       not_read_by: components["schemas"]["RoomAuthor"][];
       /** @description Members who have read up to the message. */
       read_by: components["schemas"]["RoomReader"][];
+    };
+    /** @description One thing recall found: a message or a memory entry. */
+    RoomRecallHit: {
+      entry?: components["schemas"]["RoomMemoryEntry"] | null;
+      /** @description The matching words in context, with matches in `**bold**`. */
+      excerpt?: string | null;
+      /**
+       * @description `message` or `entry`.
+       * @example entry
+       */
+      kind: string;
+      message?: components["schemas"]["RoomMessage"] | null;
+      /**
+       * Format: float
+       * @description How well it matched, higher is better; comparable within one answer.
+       * @example 0.42
+       */
+      score: number;
+    };
+    /** @description What a room remembers about a question. */
+    RoomRecallResponse: {
+      /** @description Best first. */
+      data: components["schemas"]["RoomRecallHit"][];
+    };
+    /** @description What publishing a session did. */
+    RoomSessionPublished: {
+      /** @description The session's conversation, in pieces, as room notes. */
+      notes: components["schemas"]["RoomMemoryEntry"][];
+      /**
+       * @description Pieces already in room memory unchanged.
+       * @example 0
+       */
+      unchanged: number;
     };
     /**
      * @description Messages a member has not read yet, each with its thread root for
@@ -30393,7 +30765,7 @@ export interface components {
        *     Example: `{"max_attempts": 3, "initial_backoff_secs": 30, "backoff_multiplier": 2.0}`.
        */
       retry_policy?: unknown;
-      /** @description What the schedule invokes when it fires (a session, an agent, an app channel, etc.). */
+      /** @description What the schedule invokes when it fires (a session, an agent, a channel, etc.). */
       target: components["schemas"]["ScheduleTargetResponse"];
       /**
        * @description IANA timezone name used to interpret `cron_expression` (e.g. `UTC`, `America/New_York`).
@@ -32117,6 +32489,14 @@ export interface components {
        */
       expected_revision?: number | null;
     };
+    /** @description Request body for a person's choice about one plugin. */
+    SetPluginChoice: {
+      /**
+       * @description In this person's new conversations, or not.
+       * @example true
+       */
+      enabled: boolean;
+    };
     /** @description Request body for setting a preference value. */
     SetPreferenceRequest: {
       value: Record<string, unknown>;
@@ -33744,7 +34124,7 @@ export interface components {
       error?: string | null;
       /** @description The call's input, shortened for display. */
       input_preview: string;
-      /** @description The `bash` tool call the script ran in. */
+      /** @description The execution tool call (`bash` or `python`) the script ran in. */
       parent_tool_call_id: string;
       /**
        * @description `completed`, `failed`, `needs_approval` (the script stopped here and a
@@ -36944,103 +37324,11 @@ export interface components {
      *     into the convention by overriding `ResourceUrlable::allowed_actions`.
      */
     WithUrls_AgentWithCounts: (components["schemas"]["Agent"] & {
-      /** Format: int64 */
-      app_count: number;
       channels: components["schemas"]["AgentChannelSummary"][];
       effective_harness: components["schemas"]["AgentHarnessSummary"];
       /** Format: int64 */
       session_count: number;
     }) & {
-      /**
-       * @description State-aware hypermedia actions the caller can take on this resource
-       *     next (e.g. `cancel`, `events`, `update`). Omitted from the wire
-       *     shape when empty so resources that haven't opted into the
-       *     convention don't grow their payloads.
-       */
-      allowed_actions?: components["schemas"]["AllowedAction"][];
-      /** @description Full API endpoint URL for this resource. */
-      self_url: string;
-      /** @description Alias for `view_url`, used by command and MCP outputs. */
-      ui_link: string;
-      /** @description Full UI URL for viewing this resource. */
-      view_url: string;
-    };
-    /**
-     * @description Wrapper that adds API and UI links to a serialized resource.
-     *
-     *     Uses `self_url` (not `url`) for the API link to avoid collision with
-     *     resources that already have a `url` field (e.g. McpServer). The
-     *     `allowed_actions` array carries state-aware hypermedia links — empty
-     *     (and omitted from the wire shape) until the underlying resource opts
-     *     into the convention by overriding `ResourceUrlable::allowed_actions`.
-     */
-    WithUrls_App: {
-      /**
-       * @description Optional ID of the agent to use (format: agent_{32-hex}).
-       * @example agent_01933b5a00007000800000000000001
-       */
-      agent_id?: string | null;
-      /**
-       * Format: date-time
-       * @description Timestamp when the app was archived.
-       */
-      archived_at?: string | null;
-      /** @description Distribution channels attached to this app. */
-      channels?: components["schemas"]["AgentChannel"][];
-      /**
-       * Format: date-time
-       * @description Timestamp when the app was created.
-       */
-      created_at: string;
-      /**
-       * Format: date-time
-       * @description Timestamp when the app was deleted.
-       */
-      deleted_at?: string | null;
-      /** @description Human-readable description of what the app does. */
-      description?: string | null;
-      effective_owner?: components["schemas"]["PrincipalSummary"] | null;
-      /**
-       * @description ID of the harness to use (format: harness_{32-hex}).
-       * @example harness_01933b5a00007000800000000000001
-       */
-      harness_id: string;
-      /**
-       * @description External identifier (app_<32-hex>). Shown as "id" in API.
-       * @example app_01933b5a000070008000000000000001
-       */
-      id: string;
-      /** @description Display name of the app. */
-      name: string;
-      owner?: components["schemas"]["PrincipalSummary"] | null;
-      /**
-       * @description Owning principal for this app.
-       * @example principal_01933b5a000070008000000000000001
-       */
-      owner_principal_id: string;
-      /**
-       * Format: date-time
-       * @description Timestamp when the app was last published.
-       */
-      published_at?: string | null;
-      /**
-       * Format: uuid
-       * @description Denormalized effective human owner of the owning principal lineage.
-       */
-      resolved_owner_user_id?: string | null;
-      /** @description Current lifecycle status. */
-      status: components["schemas"]["AppStatus"];
-      /**
-       * Format: date-time
-       * @description Timestamp when the app was last updated.
-       */
-      updated_at: string;
-      /**
-       * @description Optional virtual identity that represents the app in unattended/channel execution.
-       * @example identity_01933b5a00007000800000000000001
-       */
-      virtual_user_id?: string | null;
-    } & {
       /**
        * @description State-aware hypermedia actions the caller can take on this resource
        *     next (e.g. `cancel`, `events`, `update`). Omitted from the wire
@@ -37993,11 +38281,6 @@ export interface components {
     } & {
       /**
        * Format: int64
-       * @description Number of non-deleted apps using this resource.
-       */
-      app_count: number;
-      /**
-       * Format: int64
        * @description Number of sessions using this resource.
        */
       session_count: number;
@@ -38420,6 +38703,27 @@ export interface components {
      * @enum {string}
      */
     WorkAttentionKind: "approval" | "question" | "action";
+    /**
+     * @description Who may sign in. Further modes, such as a publisher-chosen identity
+     *     provider, are additional variants.
+     * @enum {string}
+     */
+    WorkChatMembership: "open" | "invites" | "org_users";
+    /** @description A person's plugins in one Work Chat channel. */
+    WorkChatPluginList: {
+      /**
+       * @description The channel lets people add approved plugins.
+       * @example true
+       */
+      allow_adding: boolean;
+      /**
+       * @description The channel lets people turn off the agent's plugins.
+       * @example false
+       */
+      allow_turning_off: boolean;
+      /** @description The agent's plugins, the ones this person added, and ones they could add. */
+      plugins: components["schemas"]["PluginOption"][];
+    };
     /** @description One measured fact. */
     WorkFact: {
       /** @description Which fact. */
@@ -38815,11 +39119,22 @@ export interface components {
       /** Format: date-time */
       updated_at: string;
     };
+    WriteMemory: {
+      content?: string;
+      create?: boolean;
+      is_directory?: boolean;
+      path: string;
+    };
     /**
      * @description Prefixed identifier with 'agent' prefix
      * @example agent_01933b5a000070008000000000000001
      */
     agentId: string;
+    /**
+     * @description Prefixed identifier with 'application' prefix
+     * @example application_01933b5a000070008000000000000001
+     */
+    applicationId: string;
     /**
      * @description Prefixed identifier with 'event' prefix
      * @example event_01933b5a000070008000000000000001
@@ -38854,277 +39169,555 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
-  invoke_a2a_legacy: {
+  application_host: {
     parameters: {
       query?: never;
       header?: never;
       path: {
-        /** @description App ID */
-        app_id: string;
-        /** @description A2A channel ID */
-        channel_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/json": unknown;
-      };
-    };
-    responses: {
-      /** @description JSON-RPC 2.0 response. For message/send and tasks/* the body is a single JSON envelope; for message/stream the body is text/event-stream of JSON-RPC envelopes. tasks/get and tasks/cancel surface -32001 Task not found for unknown task ids. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Missing or invalid API key */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description App or channel not found, not published, or channel disabled (collapsed to a single generic 404 to prevent app-existence enumeration) */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Per-channel A2A rate limit exceeded, or SSE connection limit reached for the org/session */
-      429: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  agent_card_legacy: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description App ID */
-        app_id: string;
-        /** @description A2A channel ID */
-        channel_id: string;
+        slug: string;
       };
       cookie?: never;
     };
     requestBody?: never;
     responses: {
-      /** @description Agent Card JSON */
+      /** @description Success */
       200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description Sign-in required */
+      401: {
         headers: {
           [name: string]: unknown;
         };
         content?: never;
       };
-      /** @description App or channel not found / unpublished / disabled */
+      /** @description Access denied */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unavailable */
       404: {
         headers: {
           [name: string]: unknown;
         };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
+        content?: never;
       };
     };
   };
-  handshake: {
+  application_config: {
     parameters: {
       query?: never;
       header?: never;
       path: {
-        /** @description App ID */
-        app_id: string;
+        application_id: string;
       };
       cookie?: never;
     };
     requestBody?: never;
     responses: {
-      /** @description Markdown handshake describing the FCP endpoint and how to authenticate. Always `text/markdown`. */
+      /** @description Success */
       200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          "text/markdown": unknown;
+          "application/json": unknown;
         };
       };
-      /** @description No FCP endpoint at this URL. Single sanitized body covers unknown apps, unpublished apps, apps without an FCP channel, and disabled FCP channels — operator state is never disclosed. */
+      /** @description Sign-in required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Access denied */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unavailable */
       404: {
         headers: {
           [name: string]: unknown;
         };
-        content: {
-          "text/markdown": unknown;
-        };
-      };
-      /** @description Per-channel FCP rate limit exceeded. `Retry-After: 60` header is set. */
-      429: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "text/markdown": unknown;
-        };
+        content?: never;
       };
     };
   };
-  message_legacy: {
+  application_manifest: {
     parameters: {
       query?: never;
       header?: never;
       path: {
-        /** @description App ID */
-        app_id: string;
+        application_id: string;
       };
       cookie?: never;
     };
-    /** @description Plain UTF-8 text, or `application/json` of shape `{"message": "..."}`. Maximum 256 KiB. */
-    requestBody: {
-      content: {
-        "text/plain": string;
-      };
-    };
+    requestBody?: never;
     responses: {
-      /** @description Agent reply as Markdown. The `Set-Cookie: fcp_session=...` header is emitted so subsequent POSTs can resume the same conversation. */
+      /** @description Success */
       200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          "text/markdown": unknown;
+          "application/json": unknown;
         };
       };
-      /** @description Malformed body. Distinct messages for empty body, non-UTF-8 bytes, and JSON that did not parse into the expected shape — each Markdown body points back at the handshake. */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "text/markdown": unknown;
-        };
-      };
-      /** @description Token required but missing or wrong. Markdown body explains both accepted headers (`Authorization: Bearer` and `X-Everruns-FCP-Token`) and points at the handshake. */
+      /** @description Sign-in required */
       401: {
         headers: {
           [name: string]: unknown;
         };
-        content: {
-          "text/markdown": unknown;
-        };
+        content?: never;
       };
-      /** @description Same generic 404 as the handshake — operator state is never disclosed. */
+      /** @description Access denied */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unavailable */
       404: {
         headers: {
           [name: string]: unknown;
         };
-        content: {
-          "text/markdown": unknown;
-        };
-      };
-      /** @description FCP session expired. Body tells the client to drop the `fcp_session` cookie and POST again. */
-      410: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "text/markdown": unknown;
-        };
-      };
-      /** @description Body exceeds 256 KiB. */
-      413: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "text/markdown": unknown;
-        };
-      };
-      /** @description Per-channel FCP rate limit exceeded. `Retry-After: 60` header is set. */
-      429: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "text/markdown": unknown;
-        };
-      };
-      /** @description Agent did not reply within the configured timeout. The same `fcp_session` cookie is set so the client can retry the same conversation. */
-      504: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "text/markdown": unknown;
-        };
+        content?: never;
       };
     };
   };
-  invoke_webhook_legacy: {
+  application_memory: {
+    parameters: {
+      query?: {
+        path?: string;
+        file?: boolean;
+      };
+      header?: never;
+      path: {
+        application_id: string;
+        slug: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description Deleted */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Sign-in required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Access denied */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Resource unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  application_write_memory: {
     parameters: {
       query?: never;
       header?: never;
       path: {
-        /** @description App ID */
-        app_id: string;
-        /** @description Webhook channel ID */
-        channel_id: string;
+        application_id: string;
+        slug: string;
       };
       cookie?: never;
     };
     requestBody: {
       content: {
-        "application/octet-stream": string;
+        "application/json": components["schemas"]["WriteMemory"];
       };
     };
     responses: {
-      /** @description Webhook accepted */
-      202: {
+      /** @description Success */
+      200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["WebhookInvocationResponse"];
+          "application/json": unknown;
         };
       };
-      /** @description Invalid or missing webhook token */
+      /** @description Deleted */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Sign-in required */
       401: {
         headers: {
           [name: string]: unknown;
         };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
+        content?: never;
       };
-      /** @description App or channel not found, not published, or channel disabled (collapsed to a single generic 404 to prevent app-existence enumeration) */
+      /** @description Access denied */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Resource unavailable */
       404: {
         headers: {
           [name: string]: unknown;
         };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
+        content?: never;
       };
-      /** @description Internal server error */
-      500: {
+    };
+  };
+  application_delete_memory: {
+    parameters: {
+      query?: {
+        path?: string;
+        file?: boolean;
+      };
+      header?: never;
+      path: {
+        application_id: string;
+        slug: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["ErrorResponse"];
+          "application/json": unknown;
         };
+      };
+      /** @description Deleted */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Sign-in required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Access denied */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Resource unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  application_room: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        application_id: string;
+        slug: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description Deleted */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Sign-in required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Access denied */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Resource unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  application_messages: {
+    parameters: {
+      query?: {
+        before?: string;
+        after?: string;
+        limit?: number;
+      };
+      header?: never;
+      path: {
+        application_id: string;
+        slug: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description Deleted */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Sign-in required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Access denied */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Resource unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  application_post_message: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        application_id: string;
+        slug: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["Post"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description Deleted */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Sign-in required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Access denied */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Resource unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  application_replies: {
+    parameters: {
+      query?: {
+        before?: string;
+        after?: string;
+        limit?: number;
+      };
+      header?: never;
+      path: {
+        application_id: string;
+        slug: string;
+        message_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description Deleted */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Sign-in required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Access denied */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Resource unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  application_exchange: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        application_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description Sign-in required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Access denied */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };
@@ -39296,7 +39889,7 @@ export interface operations {
           "application/json": components["schemas"]["ErrorResponse"];
         };
       };
-      /** @description Channel not found, app not published, or channel disabled */
+      /** @description Channel not found, ingress not published, or channel disabled */
       404: {
         headers: {
           [name: string]: unknown;
@@ -39335,7 +39928,7 @@ export interface operations {
         };
         content?: never;
       };
-      /** @description Endpoint not found, app not published, or channel disabled */
+      /** @description Endpoint not found, ingress not published, or channel disabled */
       404: {
         headers: {
           [name: string]: unknown;
@@ -39410,6 +40003,97 @@ export interface operations {
         content?: never;
       };
       /** @description Channel or resource unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  list_work_chat_plugins: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        channel_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["WorkChatPluginList"];
+        };
+      };
+      /** @description Consumer sign-in required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Channel or resource unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  set_work_chat_plugin: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        channel_id: string;
+        plugin_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SetPluginChoice"];
+      };
+    };
+    responses: {
+      /** @description Saved; the updated list */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["WorkChatPluginList"];
+        };
+      };
+      /** @description The agent cannot run this plugin */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Consumer sign-in required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description The channel does not allow this choice */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Channel or plugin unavailable */
       404: {
         headers: {
           [name: string]: unknown;
@@ -39558,7 +40242,7 @@ export interface operations {
           "text/markdown": unknown;
         };
       };
-      /** @description Channel not found, app not published, or channel disabled */
+      /** @description Channel not found, ingress not published, or channel disabled */
       404: {
         headers: {
           [name: string]: unknown;
@@ -40643,7 +41327,7 @@ export interface operations {
           "application/json": components["schemas"]["ErrorResponse"];
         };
       };
-      /** @description Channel not found, app not published, or channel disabled */
+      /** @description Channel not found, ingress not published, or channel disabled */
       404: {
         headers: {
           [name: string]: unknown;
@@ -40731,7 +41415,7 @@ export interface operations {
           "application/json": components["schemas"]["ErrorResponse"];
         };
       };
-      /** @description Channel not found, app not published, or channel disabled */
+      /** @description Channel not found, ingress not published, or channel disabled */
       404: {
         headers: {
           [name: string]: unknown;
@@ -40770,7 +41454,7 @@ export interface operations {
         };
         content?: never;
       };
-      /** @description Endpoint not found, app not published, or channel disabled */
+      /** @description Endpoint not found, ingress not published, or channel disabled */
       404: {
         headers: {
           [name: string]: unknown;
@@ -40845,6 +41529,97 @@ export interface operations {
         content?: never;
       };
       /** @description Channel or resource unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  list_work_chat_plugins_legacy: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        channel_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["WorkChatPluginList"];
+        };
+      };
+      /** @description Consumer sign-in required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Channel or resource unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  set_work_chat_plugin_legacy: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        channel_id: string;
+        plugin_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SetPluginChoice"];
+      };
+    };
+    responses: {
+      /** @description Saved; the updated list */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["WorkChatPluginList"];
+        };
+      };
+      /** @description The agent cannot run this plugin */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Consumer sign-in required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description The channel does not allow this choice */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Channel or plugin unavailable */
       404: {
         headers: {
           [name: string]: unknown;
@@ -40993,7 +41768,7 @@ export interface operations {
           "text/markdown": unknown;
         };
       };
-      /** @description Channel not found, app not published, or channel disabled */
+      /** @description Channel not found, ingress not published, or channel disabled */
       404: {
         headers: {
           [name: string]: unknown;
@@ -41764,7 +42539,7 @@ export interface operations {
           "application/json": components["schemas"]["ErrorResponse"];
         };
       };
-      /** @description Channel not found, app not published, or channel disabled */
+      /** @description Channel not found, ingress not published, or channel disabled */
       404: {
         headers: {
           [name: string]: unknown;
@@ -45380,31 +46155,40 @@ export interface operations {
       };
     };
   };
-  list_apps: {
+  application_launchers: {
     parameters: {
-      query?: {
-        /** @description Search by name or description (case-insensitive substring match). */
-        search?: string | null;
-        /** @description Include archived apps. Deleted apps never appear in lists. */
-        include_archived?: boolean | null;
-      };
+      query?: never;
       header?: never;
       path?: never;
       cookie?: never;
     };
     requestBody?: never;
     responses: {
-      /** @description Archival list of Apps */
+      /** @description Success */
       200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["ListResponse_WithUrls_App"];
+          "application/json": unknown;
         };
       };
-      /** @description Internal server error */
-      500: {
+      /** @description Sign-in required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Access denied */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unavailable */
+      404: {
         headers: {
           [name: string]: unknown;
         };
@@ -45412,47 +46196,135 @@ export interface operations {
       };
     };
   };
-  get_app: {
+  list_applications: {
     parameters: {
       query?: never;
       header?: never;
-      path: {
-        /** @description App ID */
-        app_id: string;
-      };
+      path?: never;
       cookie?: never;
     };
     requestBody?: never;
     responses: {
-      /** @description Archival App record */
+      /** @description Success */
       200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["WithUrls_App"];
+          "application/json": components["schemas"]["Application"][];
         };
       };
-      /** @description Invalid App ID */
-      400: {
+    };
+  };
+  create_application: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Created */
+      201: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          "application/json": components["schemas"]["Application"];
+        };
       };
-      /** @description App not found */
-      404: {
+    };
+  };
+  get_application: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        application_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          "application/json": components["schemas"]["Application"];
+        };
       };
-      /** @description Internal server error */
-      500: {
+    };
+  };
+  update_application: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        application_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
         headers: {
           [name: string]: unknown;
         };
-        content?: never;
+        content: {
+          "application/json": components["schemas"]["Application"];
+        };
+      };
+    };
+  };
+  create_application_resource: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        application_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Application"];
+        };
+      };
+    };
+  };
+  set_application_status: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        application_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Application"];
+        };
       };
     };
   };
@@ -54792,6 +55664,26 @@ export interface operations {
       };
     };
   };
+  plugin_config: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Resource config for plugins */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ResourceConfigResponse"];
+        };
+      };
+    };
+  };
   get_plugin: {
     parameters: {
       query?: never;
@@ -56149,6 +57041,159 @@ export interface operations {
       };
     };
   };
+  get_room_memory_entry: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        room_id: string;
+        /** @description Prefixed public identifier */
+        entry_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RoomMemoryEntryDetail"];
+        };
+      };
+    };
+  };
+  forget_room_memory_entry: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        room_id: string;
+        /** @description Prefixed public identifier */
+        entry_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RoomMemoryEntry"];
+        };
+      };
+    };
+  };
+  list_room_facts: {
+    parameters: {
+      query?: {
+        /** @description Only facts of this kind: decision, rule, claim, deadline, question or observation. */
+        kind?: string;
+        /** @description Only facts on this subject. */
+        subject?: string;
+        /** @description The facts as they stood at this time. */
+        as_of?: string;
+        /** @description Also list facts that were replaced. */
+        include_replaced?: boolean;
+        /** @description Most facts, 50 by default, 200 at most. */
+        limit?: number;
+      };
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        room_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RoomFactListResponse"];
+        };
+      };
+    };
+  };
+  remember_room_fact: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        room_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RoomMemoryRecorded"];
+        };
+      };
+    };
+  };
+  ingest_room_note: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        room_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RoomMemoryRecorded"];
+        };
+      };
+    };
+  };
+  publish_session_to_room: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        room_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RoomSessionPublished"];
+        };
+      };
+    };
+  };
   list_room_messages: {
     parameters: {
       query?: {
@@ -56424,6 +57469,39 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["RoomReadMark"];
+        };
+      };
+    };
+  };
+  recall_room: {
+    parameters: {
+      query: {
+        /** @description What to look for, in plain words: any of them may match. */
+        q: string;
+        /**
+         * @description Recall as of this time: later messages and facts are left out, and a
+         *     fact replaced after it still counts as current.
+         */
+        as_of?: string;
+        /** @description Most results, 10 by default, 50 at most. */
+        limit?: number;
+      };
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        room_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RoomRecallResponse"];
         };
       };
     };
@@ -61707,6 +62785,80 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
+      };
+    };
+  };
+  list_my_plugins: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Approved plugins with your own choices */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PluginOption"][];
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  set_my_plugin_choice: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Plugin install ID (plugin_...) */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SetPluginChoice"];
+      };
+    };
+    responses: {
+      /** @description Choice saved; the updated list */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PluginOption"][];
+        };
+      };
+      /** @description No approved plugin with that ID */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
       };
     };
   };

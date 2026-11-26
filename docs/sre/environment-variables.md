@@ -17,7 +17,7 @@ a working default; each row links to the section that documents it.
 | [`SECRETS_ENCRYPTION_KEY`](#llm-provider-api-keys) | API | Recommended | The API starts, but cannot store provider keys or other encrypted values. Turns still run, in-process and on remote workers, without durable compaction checkpoints or native async tool journals. |
 | [`DEV_MODE`](#dev_mode), [`DEPLOYMENT_GRADE`](#deployment_grade) | API and workers | No | Production behavior (`prod` grade). |
 | [`PUBLIC_APP_URL`](#public_app_url), [`AUTH_LOGIN_ORIGIN`](#auth_login_origin), [`API_PREFIX`](#api_prefix), [`CORS_ALLOWED_ORIGINS`](#cors_allowed_origins), [`HTTP_ADDR`](#http_addr) | API | No | `http://localhost:9300`, same-origin login, `/api`, CORS off, `0.0.0.0:9000`. |
-| [`DATABASE_UNPOOLED_URL`](#database_unpooled_url), [`DATABASE_POOL_MAX`](#other-server-variables), [`DATABASE_POOL_MIN`](#other-server-variables) | API | No | Listeners reuse `DATABASE_URL`; pool of 5 to 50 connections. |
+| [`DATABASE_UNPOOLED_URL`](#database_unpooled_url), [`DATABASE_POOL_MAX`](#database-pool-sizing), [`DATABASE_RESERVED_CONNECTIONS`](#database-pool-sizing) | API | No | Session work reuses `DATABASE_URL`; pools are sized from the database's `max_connections`. |
 | [`VALKEY_URL`](#valkey_url) | API | No | Rate limits are per instance. |
 | [`NATS_URL`](#nats_url) | API | With more than one control-plane instance | PostgreSQL `NOTIFY` and in-memory broadcast (one instance only). |
 | [`STORAGE_*`](#object-storage-s3-compatible-blob-backend) | API | No | File and image bytes stay in PostgreSQL. |
@@ -342,7 +342,7 @@ DATABASE_URL=postgres://everruns:secret@db.example.com:5432/everruns?sslmode=req
 
 ## DATABASE_UNPOOLED_URL
 
-Direct PostgreSQL connection URL used only for session-scoped `LISTEN/NOTIFY` listeners.
+Direct PostgreSQL connection URL for session-scoped work: `LISTEN/NOTIFY` listeners, the background pool, session advisory locks and migrations.
 
 | Property | Value |
 |----------|-------|
@@ -361,7 +361,7 @@ DATABASE_UNPOOLED_URL=postgres://app:secret@ep-foo.us-east-1.aws.neon.tech/everr
 - Use this when `DATABASE_URL` points at Neon `-pooler`, PgBouncer, or another proxy that does not preserve session-scoped `LISTEN/NOTIFY` semantics.
 - Listener paths include PostgreSQL-backed event wakeups, notification SSE, and PG task notification fallback when NATS is unavailable.
 - If `DATABASE_URL` or `DATABASE_UNPOOLED_URL` appears to point at a pooled/proxied endpoint, startup now fails fast with guidance to set a direct listener URL.
-- Ordinary query traffic still uses `DATABASE_URL`.
+- Request traffic still uses `DATABASE_URL`, which can then be a transaction pooler such as PgBouncer.
 
 ## Object Storage (S3-compatible blob backend)
 
@@ -716,10 +716,42 @@ The UI makes all REST API requests (including SSE) to `/api/*` paths. The backen
 | `RATE_LIMIT_API_REQUESTS_PER_MINUTE` | `1200` | API request rate limit per minute. Uses Valkey when `VALKEY_URL` is set, otherwise a per-instance in-memory limiter. |
 | `TRUSTED_PROXY_HOPS` | `1` | Number of trusted reverse proxies in front of the server. The client IP is taken from `X-Forwarded-For` counting this many entries from the right. Raise it if a CDN or load balancer sits in front of your reverse proxy. |
 | `EVENT_RETENTION_DAYS` | `0` (disabled) | Archive session events older than this many days. A background task runs hourly. |
-| `DATABASE_POOL_MAX` | `50` | Maximum PostgreSQL connections in the request pool. |
-| `DATABASE_POOL_MIN` | `5` | Minimum PostgreSQL connections kept open. |
+| `DATABASE_POOL_MAX` | Derived | Maximum PostgreSQL connections in the request pool. See [Database pool sizing](#database-pool-sizing). |
+| `DATABASE_POOL_MIN` | `5` | Minimum PostgreSQL connections kept open, never above the request pool's maximum. |
 | `SECRETS_ENCRYPTION_KEY_PREVIOUS` | Unset | Previous encryption key, kept during key rotation so existing values still decrypt. See [Encryption key rotation](/sre/runbooks/encryption-key-rotation/). |
 | `EXPECTED_INSTANCES` | `1` | Number of control-plane instances behind the load balancer. Divides the global and per-org SSE connection limits across instances. Per-session limits are not divided. Above 1 without `NATS_URL`, live session events are polled from PostgreSQL (degraded). |
+
+## Database pool sizing
+
+Each server process sizes its connection pools from the database at startup, so
+resizing PostgreSQL needs no matching setting. It reads `max_connections`,
+subtracts PostgreSQL's reserved slots and `DATABASE_RESERVED_CONNECTIONS`,
+divides the rest by `EXPECTED_INSTANCES`, and subtracts six connections each
+process opens outside its pools (listeners and lock connections). Of that
+share, one connection renews running turns, a quarter (at most 8) serves
+background work and the rest (3 to 50) serves requests. The log line
+`Database pools sized from the database's connection limit` shows the result.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `EXPECTED_INSTANCES` | `1` | Server processes that can run at once. Count the extra processes a rolling deploy starts. |
+| `DATABASE_RESERVED_CONNECTIONS` | A tenth of `max_connections`, at least 5 | Connections left for clients that are not server processes: migrations, operators, a pooler. A count (`20`) or a share of `max_connections` (`35%`). |
+| `DATABASE_POOL_MAX`, `DATABASE_BACKGROUND_POOL_MAX`, `DATABASE_LIVENESS_POOL_MAX` | Derived | Set any of them to fix that pool's size; the others are still derived. |
+
+The request pool never drops below 3, because one request can hold a lock and
+still read. If the database is too small for that, startup logs a warning:
+raise `max_connections` or lower `EXPECTED_INSTANCES`.
+
+### Behind a connection pooler
+
+Set `DATABASE_POOLER_ADDR` (`host:port`, port 6432 by default) to send the
+request and turn-renewal pools through a transaction pooler such as PgBouncer.
+They use the credentials and database from `DATABASE_URL`; listeners,
+background work, session locks and migrations keep connecting to the database
+directly (`DATABASE_UNPOOLED_URL`, else `DATABASE_URL`). The pooler presents
+its own certificate, so `verify-ca` and `verify-full` become `require` on that
+leg only. PgBouncer needs transaction mode and `max_prepared_statements` above
+zero.
 
 ## Throughput tuning
 

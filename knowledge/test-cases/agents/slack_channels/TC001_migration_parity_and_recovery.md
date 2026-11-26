@@ -18,7 +18,7 @@ Verifies real-model Slack replies, requester-bound approvals and retained output
 
 - An isolated canonical stack and designated Slack test app/conversation; record the exact build revision and channel, agent and organization identifiers.
 - Local `AUTH_MODE=none` only, or an authenticated organization member with agent management permission; never use anonymous production access.
-- A real `gpt-6.2-sol` agent with soft approvals, configured signing secret/workspace and checkpoint-capable store.
+- A real OpenRouter `meta/muse-spark-1.3-contributor` agent with soft approvals, configured signing secret/workspace and checkpoint-capable store.
 - A public HTTPS callback, or the authenticated Socket Mode supervisor with an app-level token. Record which transport actually receives provider-origin events.
 - Two opted-in Slack test users for the allowed/denied approval checks; the second user's identity grants no Everruns authority.
 - A separate controlled transport-fault fixture for uncertain writes. Never inject faults into another application's Slack traffic.

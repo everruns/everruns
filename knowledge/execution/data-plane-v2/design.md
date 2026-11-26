@@ -1918,10 +1918,13 @@ so the org's policy names the types it uses (`TenantPolicy::events`,
 computed by `crates/server/src/domains/data_plane/event_tap.rs` and set
 again when an observer or trace destination changes; the directory shard
 hands the list to every shard on the tenants poll, so a change reaches a
-shard within one poll, about 2 s), the shard copies
-those committed events onto the feed (`crates/agentd/src/tap.rs`, payloads
-over 512 KiB left out and named), and feed ingest hands each to the same
-listeners v1 runs, once, by feed position. Reports were removed
+shard within one poll, about 2 s). Explicit conversation messages always
+reach the feed, including before the first policy poll, so Room delivery
+does not depend on policy propagation. The shard writes sequence-range
+pointers onto the feed (`crates/agentd/src/tap.rs`); ingest reads the events
+and hands each to the same listeners v1 runs, once, by feed position. The
+data-plane API shares the application builder’s event service so these
+listeners are registered on both execution paths. Reports were removed
 (2026-11-17); analytics come from the warehouse export, which is
 opt-in per org (`everruns-dataplane warehouse <org> on`): every event goes
 onto the feed and the control plane writes gzipped

@@ -1,9 +1,9 @@
 // Agent channel A2A (Agent2Agent) ingress — JSON-RPC + API key authenticated invocation.
 //
 // Design Decision: A2A channels use channel-scoped routes
-// (`POST /v1/channels/{channel_id}/a2a`) so a single app can expose multiple
+// (`POST /v1/channels/{channel_id}/a2a`) so a single ingress can expose multiple
 // agent-to-agent channels with independent keys, agent cards, and session
-// routing. App-and-channel routes remain permanent aliases.
+// routing.
 //
 // Speaks A2A 1.0 and 0.3 on the same URL, negotiated per request by the
 // `A2A-Version` service parameter (`wire.rs`). The same URL also carries the
@@ -114,7 +114,6 @@ pub struct ChannelA2aState {
 }
 
 struct MessageSendContext {
-    app_id: String,
     channel_id: String,
     req_id: Option<axum::Extension<RequestId>>,
     version: WireVersion,
@@ -174,14 +173,6 @@ impl ChannelA2aState {
 
 pub fn routes(state: ChannelA2aState) -> Router {
     pact_oauth::routes(pact::routes(http_json::routes(Router::new())))
-        .route(
-            "/v1/apps/{app_id}/a2a/{channel_id}",
-            post(invoke_a2a_legacy),
-        )
-        .route(
-            "/v1/apps/{app_id}/a2a/{channel_id}/.well-known/agent-card.json",
-            get(agent_card::agent_card_legacy),
-        )
         .route("/v1/channels/{channel_id}/a2a", post(invoke_a2a_channel))
         .route("/v1/e/{channel_id}/a2a", post(invoke_a2a_channel))
         .route(
@@ -265,42 +256,6 @@ fn unsupported_operation(method: &str) -> Option<(i32, &'static str)> {
     }
 }
 
-/// POST /v1/apps/{app_id}/a2a/{channel_id}
-#[utoipa::path(
-    post,
-    path = "/v1/apps/{app_id}/a2a/{channel_id}",
-    params(
-        ("app_id" = String, Path, description = "App ID"),
-        ("channel_id" = String, Path, description = "A2A channel ID")
-    ),
-    request_body(content = serde_json::Value, content_type = "application/json"),
-    responses(
-        (status = 200, description = "JSON-RPC 2.0 response. For message/send and tasks/* the body is a single JSON envelope; for message/stream the body is text/event-stream of JSON-RPC envelopes. tasks/get and tasks/cancel surface -32001 Task not found for unknown task ids."),
-        (status = 401, description = "Missing or invalid API key", body = ErrorResponse),
-        (status = 404, description = "App or channel not found, not published, or channel disabled (collapsed to a single generic 404 to prevent app-existence enumeration)", body = ErrorResponse),
-        (status = 429, description = "Per-channel A2A rate limit exceeded, or SSE connection limit reached for the org/session", body = ErrorResponse),
-    ),
-    tag = "apps"
-)]
-pub async fn invoke_a2a_legacy(
-    State(state): State<ChannelA2aState>,
-    Path((app_id, channel_id)): Path<(String, String)>,
-    OriginalUri(uri): OriginalUri,
-    req_id: Option<axum::Extension<RequestId>>,
-    connect_info: Option<Extension<ConnectInfo<std::net::SocketAddr>>>,
-    headers: HeaderMap,
-    body: Bytes,
-) -> Response {
-    let request = A2aHttpRequest {
-        uri,
-        req_id,
-        connect_info,
-        headers,
-        body,
-    };
-    invoke_a2a(state, app_id, channel_id, request).await
-}
-
 #[utoipa::path(
     description = "Invoke a published A2A endpoint with JSON-RPC 2.0. Authentication follows the endpoint channel configuration.",
     post,
@@ -311,10 +266,10 @@ pub async fn invoke_a2a_legacy(
         (status = 200, description = "JSON-RPC response or event stream"),
         (status = 400, description = "Invalid JSON-RPC request"),
         (status = 401, description = "Missing or invalid endpoint credentials", body = ErrorResponse),
-        (status = 404, description = "Channel not found, app not published, or channel disabled", body = ErrorResponse),
+        (status = 404, description = "Channel not found, ingress not published, or channel disabled", body = ErrorResponse),
         (status = 429, description = "Per-channel or SSE connection limit exceeded", body = ErrorResponse)
     ),
-    tag = "apps"
+    tag = "agent-channels"
 )]
 pub async fn invoke_a2a_channel(
     State(state): State<ChannelA2aState>,
@@ -325,8 +280,8 @@ pub async fn invoke_a2a_channel(
     headers: HeaderMap,
     body: Bytes,
 ) -> Response {
-    let app_id = match channel_app_id(&state, &channel_id).await {
-        Ok(app_id) => app_id,
+    let ingress_id = match channel_ingress_id(&state, &channel_id).await {
+        Ok(ingress_id) => ingress_id,
         Err(err) => return err.into_response(),
     };
     let request = A2aHttpRequest {
@@ -336,7 +291,7 @@ pub async fn invoke_a2a_channel(
         headers,
         body,
     };
-    invoke_a2a(state, app_id, channel_id, request).await
+    invoke_a2a(state, ingress_id, channel_id, request).await
 }
 
 /// The parts of the HTTP request the JSON-RPC handler needs.
@@ -348,20 +303,20 @@ struct A2aHttpRequest {
     body: Bytes,
 }
 
-async fn channel_app_id(
+async fn channel_ingress_id(
     state: &ChannelA2aState,
     channel_id: &str,
 ) -> Result<String, (StatusCode, Json<ErrorResponse>)> {
     channel_ingress::resolve_channel(&state.db, state.encryption.as_ref(), channel_id)
         .await
         .map_err(internal_error)?
-        .map(|(app, _)| app.public_id.to_string())
+        .map(|(ingress, _)| ingress.public_id.to_string())
         .ok_or_else(not_found)
 }
 
 async fn invoke_a2a(
     state: ChannelA2aState,
-    app_id: String,
+    ingress_id: String,
     channel_id: String,
     request: A2aHttpRequest,
 ) -> Response {
@@ -400,12 +355,13 @@ async fn invoke_a2a(
     let rpc_id = parsed.id.clone().unwrap_or(Value::Null);
 
     let peer_addr = connect_info.map(|Extension(ConnectInfo(addr))| addr);
-    let auth = match authenticate_request(&state, &app_id, &channel_id, &headers, peer_addr, &body)
-        .await
-    {
-        Ok(auth) => auth,
-        Err(err) => return err.into_response(),
-    };
+    let auth =
+        match authenticate_request(&state, &ingress_id, &channel_id, &headers, peer_addr, &body)
+            .await
+        {
+            Ok(auth) => auth,
+            Err(err) => return err.into_response(),
+        };
 
     let version = match wire::negotiate(&headers, &uri, &parsed.method) {
         Ok(version) => version,
@@ -423,7 +379,6 @@ async fn invoke_a2a(
     };
 
     let ctx = MessageSendContext {
-        app_id,
         channel_id,
         req_id,
         version,
@@ -467,14 +422,14 @@ async fn dispatch(
     }
 }
 
-/// Authenticated request context — the app and channel resolution + API key
+/// Authenticated request context — the ingress and channel resolution + API key
 /// check that both `message/send` and `message/stream` need to perform up
 /// front before any session work. Carries the public ids that downstream
 /// handlers use to bind a per-call session lookup back to the
 /// authenticated channel (TM-A2A-012).
 struct AuthorizedA2a {
     org_id: i64,
-    app_public_id: String,
+    ingress_public_id: String,
     channel_public_id: crate::records::AgentChannelId,
     session_mode: everruns_core::channel::SessionBinding,
     /// Session tag of the verified caller (see `verified_caller_tag`). When
@@ -484,23 +439,20 @@ struct AuthorizedA2a {
 
 async fn authenticate_request(
     state: &ChannelA2aState,
-    app_id: &str,
+    _ingress_id: &str,
     channel_id: &str,
     headers: &HeaderMap,
     peer_addr: Option<std::net::SocketAddr>,
     body: &[u8],
 ) -> Result<AuthorizedA2a, (StatusCode, Json<ErrorResponse>)> {
-    let (app, channel) =
+    let (ingress, channel) =
         channel_ingress::resolve_channel(&state.db, state.encryption.as_ref(), channel_id)
             .await
             .map_err(internal_error)?
             .ok_or_else(not_found)?;
-    if !app.matches_legacy_app_id(app_id) {
-        return Err(not_found());
-    }
 
     // THREAT[TM-TENANT-002]: An unauthenticated caller must not be able to tell
-    // "app does not exist" apart from "app exists but is not published / the
+    // "ingress does not exist" apart from "ingress exists but is not published / the
     // channel is disabled / misconfigured". Every such case collapses to a
     // single generic 404 (matching the FCP channel in `channels/fcp.rs`); the real
     // reason is logged server-side only.
@@ -512,9 +464,9 @@ async fn authenticate_request(
     // endpoint, and every request must present the per-channel API key before
     // session creation. Liveness is resolved before auth so a caller cannot
     // distinguish a misconfigured endpoint from a bad key.
-    if let Err(reason) = channel_ingress::channel_liveness(&app, &channel) {
+    if let Err(reason) = channel_ingress::channel_liveness(&ingress, &channel) {
         tracing::debug!(
-            app_id = %app.public_id,
+            ingress_id = %ingress.public_id,
             channel_id = %channel.public_id,
             reason = reason.as_str(),
             "A2A request rejected: endpoint not live"
@@ -523,7 +475,7 @@ async fn authenticate_request(
     }
 
     let Some(config) = channel.a2a_config() else {
-        tracing::error!(app_id = %app.public_id, "A2A channel config did not deserialize");
+        tracing::error!(ingress_id = %ingress.public_id, "A2A channel config did not deserialize");
         return Err(not_found());
     };
 
@@ -559,7 +511,7 @@ async fn authenticate_request(
     // channel has a `signing_secret` configured, every request must carry
     // a `(timestamp, signature)` header pair signed against the basestring
     // `v0:{timestamp}:{channel_scope}:{body}` (where `channel_scope` is
-    // `{app_id}:{channel_id}`). Channels without a `signing_secret` keep
+    // `{ingress_id}:{channel_id}`). Channels without a `signing_secret` keep
     // the existing API-key / endpoint-auth behavior. The 5-minute
     // timestamp window plus the signature-keyed dedup store bound the
     // replay surface to the window even if an `Authorization: Bearer` is
@@ -574,7 +526,7 @@ async fn authenticate_request(
     // grow the replay store. Missing-header / mismatch / replay all
     // collapse to a single 401 response so a remote attacker cannot
     // distinguish the failure modes.
-    let channel_scope = format!("{}:{}", app.public_id, channel_id_typed);
+    let channel_scope = format!("{}:{}", ingress.public_id, channel_id_typed);
 
     let pending_signature = if let Some(signing_secret) = config.signing_secret.as_deref()
         && !signing_secret.is_empty()
@@ -596,7 +548,7 @@ async fn authenticate_request(
             Ok(sig) => sig,
             Err(err) => {
                 tracing::warn!(
-                    app_id = %app.public_id,
+                    ingress_id = %ingress.public_id,
                     channel_id = %channel_id_typed,
                     reason = err.as_log_reason(),
                     "A2A signed-request verification failed"
@@ -610,7 +562,7 @@ async fn authenticate_request(
     };
 
     // THREAT[TM-A2A-013]: Unattended A2A traffic must respect a configurable
-    // per-app, per-IP cap in addition to the global API limit. App owners
+    // per-ingress, per-IP cap in addition to the global API limit. Channel owners
     // tune `rate_limit_per_minute` on the A2A channel to bound LLM/budget
     // burn from a runaway counterparty agent. The check runs after the
     // API key comparison so an unauthenticated caller cannot grow the
@@ -624,9 +576,9 @@ async fn authenticate_request(
         && limit > 0
     {
         let client_ip = extract_client_ip_from_parts(peer_addr, headers);
-        // Scope must include the channel id — apps can expose multiple A2A
+        // Scope must include the channel id — agents can expose multiple A2A
         // channels with independent `rate_limit_per_minute` settings, and
-        // sharing a single `app_id`-keyed bucket would let an attacker
+        // sharing a single `ingress_id`-keyed bucket would let an attacker
         // alternate between channels with different limits to flush the
         // cached limiter and bypass throttling (TM-A2A-013, Copilot review
         // on PR #1800).
@@ -637,7 +589,7 @@ async fn authenticate_request(
             .is_err()
         {
             return Err(too_many_requests(
-                "A2A rate limit exceeded for this app channel",
+                "A2A rate limit exceeded for this ingress channel",
             ));
         }
     }
@@ -652,7 +604,7 @@ async fn authenticate_request(
             .await
     {
         tracing::warn!(
-            app_id = %app.public_id,
+            ingress_id = %ingress.public_id,
             channel_id = %channel_id_typed,
             reason = SignatureCheckError::Replay.as_log_reason(),
             "A2A signed-request replay rejected"
@@ -661,8 +613,8 @@ async fn authenticate_request(
     }
 
     Ok(AuthorizedA2a {
-        org_id: app.org_id,
-        app_public_id: app.public_id.to_string(),
+        org_id: ingress.org_id,
+        ingress_public_id: ingress.public_id.to_string(),
         channel_public_id: channel_id_typed,
         session_mode: config.session_mode,
         caller_tag,
@@ -714,7 +666,7 @@ fn verify_a2a_api_key(
 }
 
 /// Verify that a session looked up by an A2A task id belongs to the same
-/// app + channel that the API key authenticates against. Without this check
+/// ingress + channel that the API key authenticates against. Without this check
 /// an API key for one A2A channel could read or cancel sessions created by
 /// any other channel in the same org once the session id leaks.
 /// THREAT[TM-A2A-012].
@@ -722,9 +674,9 @@ fn session_belongs_to_a2a_channel(
     session: &crate::storage::SessionRow,
     auth: &AuthorizedA2a,
 ) -> bool {
-    let app_tag = format!("app:{}", auth.app_public_id);
-    let channel_tag = format!("app_channel:{}", auth.channel_public_id);
-    session.tags.iter().any(|t| t == &app_tag)
+    let ingress_tag = format!("ingress:{}", auth.ingress_public_id);
+    let channel_tag = format!("channel:{}", auth.channel_public_id);
+    session.tags.iter().any(|t| t == &ingress_tag)
         && session.tags.iter().any(|t| t == &channel_tag)
         && auth
             .caller_tag
@@ -891,7 +843,6 @@ async fn handle_message_send(
     let result = match turn::start(
         state,
         turn::A2aTurnRequest {
-            legacy_app_id: ctx.app_id,
             channel_id: ctx.channel_id,
             params: parsed.params,
             text: parsed_msg.text,
@@ -1267,7 +1218,6 @@ async fn handle_message_stream(
     let result = match turn::start(
         state,
         turn::A2aTurnRequest {
-            legacy_app_id: ctx.app_id,
             channel_id: ctx.channel_id,
             params: parsed.params,
             text: parsed_msg.text,
@@ -1395,7 +1345,7 @@ fn a2a_auth_error_response(error: ChannelAuthError) -> (StatusCode, Json<ErrorRe
 }
 
 fn not_found() -> (StatusCode, Json<ErrorResponse>) {
-    ErrorResponse::new("App channel not found".to_string()).into_response(StatusCode::NOT_FOUND)
+    ErrorResponse::new("Channel not found".to_string()).into_response(StatusCode::NOT_FOUND)
 }
 
 fn too_many_requests(message: &str) -> (StatusCode, Json<ErrorResponse>) {
@@ -1403,7 +1353,7 @@ fn too_many_requests(message: &str) -> (StatusCode, Json<ErrorResponse>) {
 }
 
 fn internal_error(error: anyhow::Error) -> (StatusCode, Json<ErrorResponse>) {
-    tracing::error!(error = %error, "Failed to invoke app A2A");
+    tracing::error!(error = %error, "Failed to invoke ingress A2A");
     ErrorResponse::new("Internal server error".to_string())
         .into_response(StatusCode::INTERNAL_SERVER_ERROR)
 }

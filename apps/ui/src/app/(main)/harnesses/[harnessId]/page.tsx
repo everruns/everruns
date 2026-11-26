@@ -274,10 +274,7 @@ export default function HarnessDetailPage({ params }: { params: Promise<{ harnes
     {
       id: "usage",
       label: ui("Usage"),
-      summary: ui("{value0} · {value1}", {
-        value0: count(harness.session_count ?? 0, "session"),
-        value1: count(harness.app_count ?? 0, "app"),
-      }),
+      summary: count(harness.session_count ?? 0, "session"),
     },
   ];
 

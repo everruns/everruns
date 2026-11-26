@@ -3,7 +3,7 @@ import { renderHook } from "@testing-library/react";
 import {
   agentIdLoginUrl,
   useAgentIdSession,
-} from "@/app/(public)/public-chat/[appId]/agentid-signin";
+} from "@/app/(public)/public-chat/[channelId]/agentid-signin";
 
 const CHANNEL = "appchan_0123456789abcdef0123456789abcdef";
 

@@ -194,7 +194,7 @@ async fn convert_one(
                     format!("api_key:{}", agent_key_public_id(key_id)),
                 ];
                 locked
-                    .retag_sessions(&format!("app_channel:{channel}"), &tags)
+                    .retag_sessions(&format!("channel:{channel}"), &tags)
                     .await?;
             }
             None => plan.disabled_because = Some("its key is already another agent key"),

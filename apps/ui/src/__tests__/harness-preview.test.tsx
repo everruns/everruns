@@ -2,16 +2,6 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { HarnessPreview } from "@/components/harnesses/harness-preview";
 import type { AgentPreviewResponse } from "@/lib/api/types";
 
-jest.mock("streamdown", () => ({
-  Streamdown: ({ children }: { children: string }) => (
-    <pre data-testid="streamdown-mock">{children}</pre>
-  ),
-}));
-
-jest.mock("@streamdown/code", () => ({
-  code: {},
-}));
-
 const mockUsePreviewHarness = jest.fn();
 
 jest.mock("@/hooks/use-harnesses", () => ({

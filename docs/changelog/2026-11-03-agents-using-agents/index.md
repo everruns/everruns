@@ -8,7 +8,7 @@ significance: major
 products: [platform, cloud, framework]
 surfaces: [ui, api, code]
 links:
-  docs: [/capabilities/agent-handoff/, /framework/serve/]
+  docs: [/capabilities/spawn-agents/, /framework/serve/]
   prs: [everruns/everruns#5175, everruns/everruns#5188, everruns/everruns#5196, everruns/everruns#5202]
 ---
 
@@ -37,7 +37,7 @@ fn analyst() -> Agent {
 }
 ```
 
-See [Agent handoff](/capabilities/agent-handoff/).
+See [Agent handoff](/capabilities/spawn-agents/).
 
 ## Update 2026-11-24
 

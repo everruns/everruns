@@ -16,6 +16,9 @@ homepage.workspace = true
 [lints]
 workspace = true
 
+[features]
+monty = ["everruns-capabilities/monty", "everruns/monty"]
+
 [dependencies]
 libc = "0.2"
 everruns = { workspace = true, features = ["macros", "capabilities", "builtins", "filesystem", "agent-package-fs", "mcp", "sql-database"] }

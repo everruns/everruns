@@ -2,19 +2,12 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { SkillDetailView } from "@/components/skills/skill-detail-view";
 import type { Skill, SkillContent } from "@/lib/api/types";
 
-jest.mock("streamdown", () => ({
-  Streamdown: ({ children }: { children: string }) => (
-    <pre data-testid="streamdown-mock">{children}</pre>
+jest.mock("@/components/markdown/markdown-message", () => ({
+  MarkdownMessage: ({ children }: { children: string }) => (
+    <pre data-testid="markdown-mock">{children}</pre>
   ),
-}));
-
-jest.mock("@streamdown/code", () => ({
-  code: {},
-}));
-
-jest.mock("@/components/chat/streamdown-message", () => ({
-  InlineStreamdownMessage: ({ children }: { children: string }) => (
-    <pre data-testid="inline-streamdown-mock">{children}</pre>
+  InlineMarkdownMessage: ({ children }: { children: string }) => (
+    <pre data-testid="inline-markdown-mock">{children}</pre>
   ),
 }));
 

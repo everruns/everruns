@@ -707,11 +707,21 @@ mod tests {
 /// Consumer credentials are a distinct audience and type. They carry no
 /// management roles and cannot be validated as Everruns access tokens.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApplicationIdentityClaims {
+    pub id: everruns_contracts::typed_id::ApplicationId,
+    pub version: i64,
+    pub subject: String,
+    pub email: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RuntimeAccessClaims {
     pub sub: String,
     pub org_id: i64,
     #[serde(alias = "endpoint_id")]
     pub channel_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub application: Option<ApplicationIdentityClaims>,
     pub binding_id: Uuid,
     pub token_type: String,
     pub aud: String,
@@ -733,6 +743,7 @@ impl JwtService {
                 sub: subject.to_string(),
                 org_id: org,
                 channel_id: endpoint,
+                application: None,
                 binding_id: binding,
                 token_type: "runtime_access".into(),
                 aud: "everruns-virtual-user".into(),
@@ -742,11 +753,43 @@ impl JwtService {
             &self.encoding_key,
         )?)
     }
+    pub fn generate_application_token(
+        &self,
+        org: i64,
+        subject: everruns_contracts::typed_id::VirtualUserId,
+        binding: Uuid,
+        application: ApplicationIdentityClaims,
+    ) -> Result<String> {
+        let now = Utc::now().timestamp();
+        Ok(encode(
+            &Header::default(),
+            &RuntimeAccessClaims {
+                sub: subject.to_string(),
+                org_id: org,
+                channel_id: String::new(),
+                application: Some(application),
+                binding_id: binding,
+                token_type: "application_access".into(),
+                aud: "everruns-application".into(),
+                exp: now + 900,
+                iat: now,
+            },
+            &self.encoding_key,
+        )?)
+    }
     pub fn validate_runtime_token(&self, token: &str) -> Result<RuntimeAccessClaims> {
         let mut validation = Validation::default();
-        validation.set_audience(&["everruns-virtual-user"]);
+        validation.set_audience(&["everruns-virtual-user", "everruns-application"]);
         let claims = decode::<RuntimeAccessClaims>(token, &self.decoding_key, &validation)?.claims;
-        if claims.token_type != "runtime_access" {
+        if !((claims.token_type == "runtime_access"
+            && claims.aud == "everruns-virtual-user"
+            && claims.application.is_none()
+            && !claims.channel_id.is_empty())
+            || (claims.token_type == "application_access"
+                && claims.aud == "everruns-application"
+                && claims.application.is_some()
+                && claims.channel_id.is_empty()))
+        {
             anyhow::bail!("Invalid runtime credential");
         }
         Ok(claims)

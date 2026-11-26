@@ -93,7 +93,7 @@ const server = createServer(
       }
       if (req.url === "/provision") {
         const { subject, channel } = JSON.parse(body);
-        if (typeof subject !== "string" || !/^appchan_[a-f0-9]{32}$/.test(channel))
+        if (typeof subject !== "string" || !/^(?:appchan|application)_[a-f0-9]{32}$/.test(channel))
           return json(res, { error: "invalid_fixture" }, 400);
         const opaque = randomBytes(32).toString("base64url"),
           hash = createHash("sha256").update(opaque).digest("hex");

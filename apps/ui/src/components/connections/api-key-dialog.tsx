@@ -21,7 +21,7 @@ import {
 import { useCreateApiKeyConnection } from "@/hooks/use-user-connections";
 import { AlertCircle } from "lucide-react";
 import type { ConnectionProvider } from "@/lib/api/types";
-import { InlineStreamdownMessage } from "@/components/chat/streamdown-message";
+import { InlineMarkdownMessage } from "@/components/markdown/markdown-message";
 import {
   createConnectionFormSchema,
   getFieldErrors,
@@ -105,9 +105,9 @@ export function ApiKeyDialog({ provider, open, onOpenChange, onConnected }: ApiK
 
         <form onSubmit={handleSubmit}>
           {/* Instructions */}
-          <InlineStreamdownMessage className="text-sm text-muted-foreground mb-4 leading-relaxed">
+          <InlineMarkdownMessage className="text-sm text-muted-foreground mb-4 leading-relaxed">
             {formSchema.instructions_markdown}
-          </InlineStreamdownMessage>
+          </InlineMarkdownMessage>
 
           {/* Form fields */}
           <div className="space-y-4 mb-4">

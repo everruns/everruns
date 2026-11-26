@@ -12,9 +12,7 @@ async fn typed_missing_scope_records_one_persistent_health_issue() {
         .mount(&server)
         .await;
     let fixture = Fixture::new();
-    let (app, channel, public_id) = fixture
-        .seed_app_with_channel(ORG, "slack", "xoxb-test")
-        .await;
+    let (app, channel, public_id) = fixture.seed_channel(ORG, "slack", "xoxb-test").await;
     let session = fixture
         .seed_session(ORG, Some(app), Some(channel), vec![])
         .await;

@@ -36,10 +36,6 @@ export const messages: Readonly<Record<string, string>> = {
   Answers: "答案",
   "Anyone with this link can view this run read-only.":
     "知道此链接的任何人都可以只读方式查看此运行。",
-  App: "应用程序",
-  "App ID": "应用程序 ID",
-  "app_01933b5a...": "app_01933b5a...",
-  "app:": "应用程序：",
   "Avg Duration": "平均持续时间",
   "Avg exec:": "平均执行次数：",
   "Avg Latency": "平均延迟",

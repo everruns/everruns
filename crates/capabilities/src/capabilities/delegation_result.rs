@@ -156,7 +156,7 @@ impl Tool for ReportResultTool {
     }
 
     fn name(&self) -> &str {
-        "report_result"
+        "finish"
     }
 
     fn hints(&self) -> everruns_contracts::tool_types::ToolHints {
@@ -178,7 +178,7 @@ impl Tool for ReportResultTool {
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
         ToolExecutionResult::tool_error(
-            "report_result requires context. This tool must be executed with session context.",
+            "finish requires context. This tool must be executed with session context.",
         )
     }
 
@@ -190,13 +190,13 @@ impl Tool for ReportResultTool {
         let errors = schema_validation_errors(&self.result_schema, &arguments);
         if !errors.is_empty() {
             return ToolExecutionResult::tool_error(format!(
-                "report_result arguments do not match result_schema: {}",
+                "finish arguments do not match result_schema: {}",
                 errors.join("; ")
             ));
         }
         let Some(registry) = context.session_task_registry.as_ref() else {
             return ToolExecutionResult::tool_error(
-                "report_result requires session_task_registry context",
+                "finish requires session_task_registry context",
             );
         };
         // Runtime-owned record (EVE-1165): prefer the host's confined artifact
@@ -212,32 +212,32 @@ impl Tool for ReportResultTool {
             .or(self.file_store.as_ref())
             .or(context.file_store.as_ref())
         else {
-            return ToolExecutionResult::tool_error("report_result requires file_store context");
+            return ToolExecutionResult::tool_error("finish requires file_store context");
         };
 
         if context.session_id != self.child_session_id {
             return ToolExecutionResult::tool_error(
-                "report_result can only be called from the linked child session",
+                "finish can only be called from the linked child session",
             );
         }
         let task = match registry.get(self.parent_session_id, &self.task_id).await {
             Ok(Some(task)) => task,
-            Ok(None) => return ToolExecutionResult::tool_error("report_result task was not found"),
+            Ok(None) => return ToolExecutionResult::tool_error("finish task was not found"),
             Err(error) => return ToolExecutionResult::internal_error(error),
         };
         if task.links.child_session_id != Some(self.child_session_id) {
             return ToolExecutionResult::tool_error(
-                "report_result child session is no longer linked to this task",
+                "finish child session is no longer linked to this task",
             );
         }
         if task.state.is_terminal() {
             return ToolExecutionResult::tool_error(
-                "report_result is closed because the subagent task is terminal",
+                "finish is closed because the subagent task is terminal",
             );
         }
         if task.result_path.is_some() {
             return ToolExecutionResult::tool_error(
-                "report_result was already recorded for this subagent task",
+                "finish was already recorded for this subagent task",
             );
         }
 
@@ -320,7 +320,7 @@ impl Tool for ReportTaskProgressTool {
     }
 
     fn name(&self) -> &str {
-        "report_task_progress"
+        "report_progress"
     }
 
     fn hints(&self) -> everruns_contracts::tool_types::ToolHints {
@@ -342,7 +342,7 @@ impl Tool for ReportTaskProgressTool {
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
         ToolExecutionResult::tool_error(
-            "report_task_progress requires context. This tool must be executed with session context.",
+            "report_progress requires context. This tool must be executed with session context.",
         )
     }
 
@@ -354,13 +354,13 @@ impl Tool for ReportTaskProgressTool {
         let errors = schema_validation_errors(&self.message_schema, &arguments);
         if !errors.is_empty() {
             return ToolExecutionResult::tool_error(format!(
-                "report_task_progress arguments do not match message_schema: {}",
+                "report_progress arguments do not match message_schema: {}",
                 errors.join("; ")
             ));
         }
         let Some(registry) = context.session_task_registry.as_ref() else {
             return ToolExecutionResult::tool_error(
-                "report_task_progress requires session_task_registry context",
+                "report_progress requires session_task_registry context",
             );
         };
         let stored = match registry
@@ -393,7 +393,7 @@ impl Tool for ReportTaskProgressTool {
     }
 }
 
-pub async fn report_result_tool_for_child_session(
+pub async fn finish_tool_for_child_session(
     child_session_id: SessionId,
     session_store: &dyn SessionStore,
     task_registry: &dyn everruns_core::session_task::SessionTaskRegistry,
@@ -415,7 +415,7 @@ pub async fn report_result_tool_for_child_session(
     )))
 }
 
-pub async fn report_task_progress_tool_for_child_session(
+pub async fn report_progress_tool_for_child_session(
     child_session_id: SessionId,
     session_store: &dyn SessionStore,
     task_registry: &dyn everruns_core::session_task::SessionTaskRegistry,
@@ -595,7 +595,7 @@ mod tests {
     }
 
     /// EVE-1165: under the read-only default the act-phase store denies the
-    /// write, so `report_result` records through the host's runtime artifact
+    /// write, so `finish` records through the host's runtime artifact
     /// store, keyed to the parent's workspace, and the parent model can then
     /// read (but not overwrite) the result it was pointed at.
     #[tokio::test]

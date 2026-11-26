@@ -25,6 +25,7 @@ const member = (
   role: "member",
   wake: "mentions",
   session_scope: "thread",
+  memory_recall: false,
   left: false,
   joined_at: "2026-11-10T10:00:00Z",
   ...extra,

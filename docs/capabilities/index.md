@@ -50,18 +50,19 @@ Fundamental capabilities for file operations, command execution, web access, ses
 
 ### Orchestration
 
-Delegating work to other sessions and running it in the background.
+Delegating work to other sessions and running it in the background. An agent
+has Spawn agents (one-off calls) or Threads (followed work), never both.
 
 | Capability | ID | Tools |
 |---|---|---|
-| [Sub Agents](/capabilities/sub-agents/) | `subagents` | 0 (contributes the `spawn_agent` delegation target) |
+| [Spawn agents](/capabilities/spawn-agents/) | `spawn_agents` | 0 to 1 (contributes the `spawn_agent` delegation target; `invite_agent` with named agents) |
+| [Threads](/capabilities/threads/) | `threads` | 5 |
+| [Coordinator](/capabilities/coordinator/) | `coordinator` | 0 (prompt only; needs Threads) |
+| [Sibling communication](/capabilities/sibling-communication/) | `sibling_communication` | 2 |
 | Session Tasks | `session_tasks` | 5 |
 | Background Execution | `background_execution` | 1 |
-| [Agents](/capabilities/agent-handoff/) | `agent_handoff` | 2 (and contributes the `agent` `spawn_agent` target) |
-| Run conversation | `run_conversation` | 2 (added to every agent a run hands work to) |
 | [A2A Agent Delegation](/capabilities/a2a-agent-delegation/) | `a2a_agent_delegation` | 0 (contributes the `external_a2a` `spawn_agent` target) |
 | AG-UI Agent Delegation | `ag_ui_delegation` | 0 (contributes the `external_ag_ui` `spawn_agent` target) |
-| [Coordination](/framework/coordination/) | `coordination` | 5 |
 
 ### Sandboxes
 
@@ -150,6 +151,7 @@ External-service capabilities and blueprint-backed workflows.
 | [Parallel Search and Fetch](/integrations/parallel/) | `parallel_search` | 0 (hosted MCP tools from Parallel: search, fetch, decisions, image search) |
 | [Jev Decisions](/integrations/typesafe/) | `jev` | 1 |
 | [User MCP Servers](/capabilities/user-mcp-servers/) | `user_mcp` | 7 (only with `manage` on) |
+| [Plugins](/capabilities/plugins/) | `plugins` | 2 |
 | [Poppy Personal Agent](/capabilities/poppy-personal-agent/) | `poppy_client` | 5 |
 
 ### Platform
@@ -311,7 +313,7 @@ Some capabilities depend on others. Dependencies are resolved automatically at r
 | [Host Shell](/capabilities/host-shell/) | [File System](/capabilities/file-system/) |
 | [Platform](/capabilities/platform/) | [Agent Skills](/capabilities/agent-skills/), [File System](/capabilities/file-system/) (when embedded docs are enabled) |
 | [Agent Skills](/capabilities/agent-skills/) | [File System](/capabilities/file-system/) |
-| [GitHub Scout](/capabilities/github-scout/) | [Sub Agents](/capabilities/sub-agents/) |
+| [GitHub Scout](/capabilities/github-scout/) | [Spawn agents](/capabilities/spawn-agents/) |
 | Managed Environment | [Storage](/capabilities/session-storage/) |
 | [Sandbox Desktop](/capabilities/computer-use/#desktop-in-a-sandbox) | [Storage](/capabilities/session-storage/) |
 | [Sandbox Fleet](/capabilities/sandbox-fleet/) | [Storage](/capabilities/session-storage/) |
@@ -327,6 +329,8 @@ Some capabilities depend on others. Dependencies are resolved automatically at r
 | [Memory](/capabilities/memory/) | [File System](/capabilities/file-system/) |
 | [Dreaming](/features/dreaming/) | [File System](/capabilities/file-system/) |
 | [Container Sandbox](/capabilities/container-sandbox/) | [Storage](/capabilities/session-storage/) |
+| [Spawn agents](/capabilities/spawn-agents/) | Session Tasks |
+| [Coordinator](/capabilities/coordinator/) | [Threads](/capabilities/threads/) |
 | [A2A Agent Delegation](/capabilities/a2a-agent-delegation/) | Session Tasks |
 | AG-UI Agent Delegation | Session Tasks |
 
@@ -341,7 +345,7 @@ Capabilities declare UI features they contribute. The session aggregates feature
 | `key_value` | Files tab, key values | [Storage](/capabilities/session-storage/) |
 | `schedules` | Files tab and Work tab | [Schedules](/capabilities/session-schedules/) |
 | `sql_database` | Database tab | [SQL Database](/capabilities/sql-database/) |
-| `subagents` | Subagents tab | [Sub Agents](/capabilities/sub-agents/) |
+| `spawn_agents`, `threads` | Work and Agents tabs | [Spawn agents](/capabilities/spawn-agents/), [Threads](/capabilities/threads/) |
 | `citations` | Inline citation chips + Sources strip | [Retrieval Citations](/capabilities/citation-retrieval/), [Citation Verification](/capabilities/citation-verification/) |
 
 ### Ordering

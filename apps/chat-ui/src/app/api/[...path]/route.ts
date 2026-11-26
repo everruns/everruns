@@ -1,22 +1,54 @@
-import { channelOf, settings, safeMutation, bootstrap } from "../../../server/config";
+import { channelOf, settings, safeMutation, bootstrap, runtimePath } from "../../../server/config";
 import { tokenFor, recoveryScope } from "../../../server/auth";
 import { liveStream, proxyHeaders } from "../../../server/proxy";
 import { fetchUpstream } from "../../../server/upstream";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 const allowed =
-  /^(sessions(?:\/[a-zA-Z0-9_-]+(?:\/(?:messages(?:\/[a-zA-Z0-9_-]+\/reactions\/(?!\.)[^/\s?#]{1,64})?|events|sse|cancel|question-answers|tool-approvals|files|work|settings|share|reactions))?)?|chat\/(?:main|config|view|shared\/[a-zA-Z0-9_-]+)|virtual-users\/me(?:\/connections(?:\/[a-zA-Z0-9_-]+(?:\/authorize)?)?)?)$/;
+  /^(sessions(?:\/[a-zA-Z0-9_-]+(?:\/(?:messages(?:\/[a-zA-Z0-9_-]+\/reactions\/(?!\.)[^/\s?#]{1,64})?|events|sse|cancel|question-answers|tool-approvals|files|work|settings|share|reactions))?)?|chat\/(?:main|config|view|plugins(?:\/[a-zA-Z0-9_-]+)?|shared\/[a-zA-Z0-9_-]+)|virtual-users\/me(?:\/connections(?:\/[a-zA-Z0-9_-]+(?:\/authorize)?)?)?)$/;
 async function proxy(request: Request, { params }: { params: Promise<{ path: string[] }> }) {
   try {
-    const path = (await params).path.join("/");
+    let segments = (await params).path;
+    let selected: string | undefined;
+    if (segments[0] === "chats" && segments.length > 2) {
+      selected = segments[1];
+      segments = segments.slice(2);
+    }
+    const path = segments.join("/");
     if (path !== "chat/recovery" && !allowed.test(path))
       return new Response("Not found", { status: 404 });
-    const channel = await channelOf(request);
+    let channel = await channelOf(request);
+    const application = channel.startsWith("application_");
+    let applicationToken: string | null = null;
+    if (application) {
+      applicationToken = await tokenFor(request);
+      if (!applicationToken) return new Response("Sign in to continue", { status: 401 });
+      if (selected) {
+        const manifest = await fetch(`${settings().upstream}${runtimePath(channel)}/manifest`, {
+          headers: { Authorization: `Bearer ${applicationToken}` },
+          cache: "no-store",
+          redirect: "error",
+          signal: AbortSignal.timeout(10000),
+        });
+        if (!manifest.ok)
+          return new Response("Application unavailable", { status: manifest.status });
+        const resource = (await manifest.json()).resources?.find(
+          (r: { kind: string; slug: string }) => r.kind === "chat" && r.slug === selected,
+        );
+        if (!resource || !/^appchan_[0-9a-f]{32}$/.test(resource.resource_id))
+          return new Response("Not found", { status: 404 });
+        channel = resource.resource_id;
+      } else if (!path.startsWith("virtual-users/") && path !== "chat/recovery") {
+        return new Response("Select a chat", { status: 404 });
+      }
+    } else if (selected) return new Response("Not found", { status: 404 });
     if (path === "chat/config") {
       if (request.method !== "GET") return new Response("Method not allowed", { status: 405 });
-      return Response.json(await bootstrap(channel), { headers: { "Cache-Control": "no-store" } });
+      const config = await bootstrap(channel);
+      if (application) delete config.logo;
+      return Response.json(config, { headers: { "Cache-Control": "no-store" } });
     }
-    if (path.startsWith("chat/shared/")) {
+    if (!application && path.startsWith("chat/shared/")) {
       if (request.method !== "GET") return new Response("Method not allowed", { status: 405 });
       const response = await fetch(
         `${settings().upstream}/v1/channels/${channel}/${path}${new URL(request.url).search}`,
@@ -38,7 +70,7 @@ async function proxy(request: Request, { params }: { params: Promise<{ path: str
     }
     if (request.method !== "GET" && !safeMutation(request))
       return new Response("Forbidden", { status: 403 });
-    const token = await tokenFor(request);
+    const token = applicationToken ?? (await tokenFor(request));
     if (!token) return new Response("Sign in to continue", { status: 401 });
     if (path === "chat/recovery") {
       if (request.method !== "GET") return new Response("Method not allowed", { status: 405 });

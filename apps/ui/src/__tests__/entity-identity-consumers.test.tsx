@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AgentCard } from "@/components/agents/agent-card";
 import { VirtualUserCard } from "@/app/(main)/virtual-users/page";
-import { InstalledPluginCard } from "@/app/(main)/plugins/page";
+import { InstalledPluginCard } from "@/components/plugins/plugin-sources";
 import type { Agent, VirtualUser, InstalledPlugin } from "@/lib/api/types";
 
 jest.mock("@/providers/locale-provider", () => ({
@@ -14,8 +14,8 @@ jest.mock("@/providers/org-provider", () => ({
   useOrg: () => ({ currentOrg: { public_id: "org-1" }, isLoading: false }),
 }));
 
-jest.mock("@/components/chat/streamdown-message", () => ({
-  InlineStreamdownMessage: ({ children }: { children: string }) => <>{children}</>,
+jest.mock("@/components/markdown/markdown-message", () => ({
+  InlineMarkdownMessage: ({ children }: { children: string }) => <>{children}</>,
 }));
 
 const agent: Agent = {

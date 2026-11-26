@@ -4,7 +4,9 @@
 import type { AgentCapabilityConfig } from "@/lib/api/types";
 import type { ModelJob, ModelPreset } from "@/lib/api/model-presets";
 
-export const SUBAGENTS_CAPABILITY = "subagents";
+// Helper models are the models a copy of the agent may run on, set on its
+// Spawn agents capability.
+export const SUBAGENTS_CAPABILITY = "spawn_agents";
 export const SAME_KEY = "same";
 export const MAX_HELPER_MODELS = 16;
 

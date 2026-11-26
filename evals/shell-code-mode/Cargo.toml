@@ -17,16 +17,24 @@ publish = false
 name = "shell_code_mode"
 path = "src/main.rs"
 
+[features]
+# Deployment qualification supplies the pinned isolated worker and private journal.
+monty-runtime-tests = []
+
 [dependencies]
 mira-eval = "0.4"
 # `bashkit` registers both the shell and the Shell Code Mode capability, so the
 # agent gets the shipped builtin, prompt addition and tool-hiding hook.
-everruns = { path = "../../crates/everruns", features = ["bashkit"] }
+everruns = { path = "../../crates/everruns", features = ["bashkit", "monty"] }
 everruns-drivers = { path = "../../crates/drivers/drivers", features = ["anthropic", "openai", "openrouter"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "time", "sync"] }
 serde_json = "1"
 regex = "1"
 async-trait = "0.1"
+
+uuid = { version = "1", features = ["v4"] }
+everruns-contracts = { path = "../../crates/contracts", features = ["runtime"] }
+everruns-integrations = { path = "../../crates/integrations", features = ["monty"] }
 
 [dev-dependencies]
 everruns-llmsim = { path = "../../crates/drivers/llmsim" }

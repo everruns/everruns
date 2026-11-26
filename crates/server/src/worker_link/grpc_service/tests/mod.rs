@@ -583,7 +583,7 @@ async fn authorize_session_creation_is_owner_scoped_and_returns_budget_root() {
             source: crate::domains::sessions::record::SessionSource::Api,
             workspace_id: None,
             org_id: everruns_core::DEFAULT_ORG_ID,
-            app_id: None,
+
             channel_id: None,
             trigger_id: None,
             harness_id: None,

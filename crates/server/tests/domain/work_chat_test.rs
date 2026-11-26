@@ -43,7 +43,7 @@ async fn work_chat_publish_requires_effective_coordinator_tools() {
     assert_eq!(config["status"], "draft");
     let coordinator = setup(
         &server,
-        json!([{"ref":"coordination","config":{"role":"coordinator","workers":[{"id":"self"}]}}]),
+        json!([{"ref":"threads"},{"ref":"coordinator"}]),
         "single_with_threads",
     )
     .await;
@@ -160,11 +160,11 @@ async fn work_chat_public_url_is_not_the_channel_id() {
 }
 
 #[tokio::test]
-async fn worker_role_does_not_qualify_for_thread_interface() {
+async fn spawn_agents_does_not_qualify_for_thread_interface() {
     let server = TestServer::in_memory().await;
     let channel = setup(
         &server,
-        json!([{"ref":"coordination","config":{"role":"worker"}}]),
+        json!([{"ref":"spawn_agents"}]),
         "single_with_threads",
     )
     .await;
@@ -253,7 +253,7 @@ async fn work_chat_main_conversation_is_stable_across_concurrent_tabs() {
     let server = TestServer::in_memory().await;
     let channel = setup(
         &server,
-        json!([{"ref":"coordination","config":{"role":"coordinator","workers":[{"id":"self"}]}}]),
+        json!([{"ref":"threads"},{"ref":"coordinator"}]),
         "single_with_threads",
     )
     .await;
@@ -285,7 +285,7 @@ async fn work_chat_worker_link_delegates_only_inside_the_consumer_tree() {
     let server = TestServer::in_memory().await;
     let channel = setup(
         &server,
-        json!([{"ref":"coordination","config":{"role":"coordinator","workers":[{"id":"self"}]}}]),
+        json!([{"ref":"threads"},{"ref":"coordinator"}]),
         "single_with_threads",
     )
     .await;
@@ -425,7 +425,7 @@ async fn work_chat_worker_link_delegates_only_inside_the_consumer_tree() {
 #[tokio::test]
 async fn work_chat_inherited_coordinator_changes_are_atomic() {
     let server = TestServer::in_memory().await;
-    let harness:Value=server.post("/v1/platform/harnesses",json!({"name":"work-coordinator","capabilities":[{"ref":"coordination","config":{"role":"coordinator","workers":[{"id":"self"}]}}]})).await.assert_success().json();
+    let harness:Value=server.post("/v1/platform/harnesses",json!({"name":"work-coordinator","capabilities":[{"ref":"threads"},{"ref":"coordinator"}]})).await.assert_success().json();
     let channel = setup(&server, json!([]), "single_with_threads").await;
     server
         .patch(
@@ -742,6 +742,11 @@ async fn work_chat_org_members_require_full_scope_on_both_url_spellings() {
         for (method, path, body) in [
             (Method::POST, format!("{base}/chat/main"), Some(json!({}))),
             (Method::PUT, format!("{base}/chat/view"), Some(json!({}))),
+            (
+                Method::PUT,
+                format!("{base}/chat/plugins/any-plugin"),
+                Some(json!({"enabled": true})),
+            ),
             (
                 Method::POST,
                 format!("{base}/sessions/{id}/settings"),

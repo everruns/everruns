@@ -300,7 +300,7 @@ mod tests {
             source: crate::domains::sessions::record::SessionSource::Api,
             workspace_id: None,
             org_id: ORG,
-            app_id: None,
+
             channel_id: None,
             trigger_id: None,
             harness_id: Some(harness),

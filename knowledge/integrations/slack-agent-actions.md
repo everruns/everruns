@@ -40,11 +40,10 @@ without a design.
 ## Decisions
 
 **A native `slack` capability, resolving the channel's bot token.** A session
-created by a Slack channel carries both `slack:app:{id}` and
-`slack:endpoint:{id}` tags. The capability resolves through the **endpoint**,
-not the app: since EVE-1008 the endpoint is what owns Slack bot identity, so one
-agent can carry two Slack endpoints with different bots and resolving via the
-app would pick the wrong one. It then acts as the bot the user already invited —
+created by a Slack channel carries a structural channel binding. The capability
+resolves the bot through that binding and the session's organization, never
+through mutable tags. Two Slack channels on the same Agent can therefore use
+different bots. It acts as the bot the user already invited —
 no second token, no second set of scopes to rotate, and the agent's Slack
 identity matches the one answering in the thread.
 
@@ -134,7 +133,7 @@ Agent needs a decision
   └─ request_approval tool → synthetic tool call, session waits
        └─ Slack delivery adapter renders Block Kit buttons in the thread
             └─ human clicks
-                 └─ POST /v1/apps/{app_id}/slack/interactivity   (Slack-signed)
+                 └─ POST /v1/channels/{channel_id}/slack/interactivity   (Slack-signed)
                       └─ resolve to the pending call + the clicking user
                            └─ authorize, record who decided
                                 └─ post the decision → turn resumes
@@ -172,15 +171,14 @@ An invoker is **bound to one org and one session at construction**, the way
 `platform_store(org_id, session_id)` is. A capability holds only the handle it
 was given, so there is no argument it could vary to reach another session's
 endpoint. Org scoping is then structural rather than a check: the session read
-is `get_session(org_id, session_id)` and the app read is
-`get_by_internal_id(.., org_id, ..)`.
+is `get_session(org_id, session_id)` and the channel read is scoped to the same
+organization.
 
-Resolution prefers `sessions.channel_id` (EVE-1004) over the
-`slack:endpoint:{id}` routing tag, because the FK is immutable and the tag is
-not; the tag remains the fallback for pre-backfill sessions. Either way the
-endpoint must be `ChannelType::Slack` and `status == live`, so a session that
-came through another channel never falls through to a sibling Slack endpoint —
-the wrong-bot bug that resolving by endpoint exists to prevent.
+Resolution requires `sessions.channel_id`. The structural FK is authoritative;
+mutable routing tags cannot grant bot actions. The channel must be
+`ChannelType::Slack` and live, so a session that came through another channel
+never falls through to a sibling Slack channel — the wrong-bot bug that
+channel-bound resolution prevents.
 
 Mutating actions are also bound to the conversation recorded by trusted Slack
 ingress metadata. Model-selected alternate channels, channel-level uploads, and

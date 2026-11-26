@@ -9,9 +9,9 @@ appliesTo: [platform, cloud]
 | **ID** | `github_scout` |
 | **Category** | Integrations |
 | **Features** | None |
-| **Dependencies** | [`subagents`](/capabilities/sub-agents/) |
+| **Dependencies** | [`spawn_agents`](/capabilities/spawn-agents/) |
 
-GitHub Scout lets an agent spawn a specialist subagent for read-only GitHub repository exploration. The host agent receives `spawn_agent` with `target.type: "subagent"` through the dependency on `subagents`; monitoring and steering are handled by the generic `session_tasks` tools (`list_tasks`, `get_task`, `message_task`, `cancel_task`). The GitHub API tools stay private inside the spawned `github_scout` blueprint session.
+GitHub Scout lets an agent spawn a specialist subagent for read-only GitHub repository exploration. The host agent receives `spawn_agent` (with `blueprint: "github_scout"`) through the dependency on `spawn_agents`; monitoring and steering are handled by the generic `session_tasks` tools (`list_tasks`, `get_task`, `message_task`, `cancel_task`). The GitHub API tools stay private inside the spawned `github_scout` blueprint session.
 
 ## How to Use
 
@@ -57,6 +57,6 @@ The adoptable **Coding (Daytona)** and **Coding (Container)** harness examples i
 
 ## See Also
 
-- [Sub Agents](/capabilities/sub-agents/), lifecycle tools used to spawn and manage Scout
+- [Spawn agents](/capabilities/spawn-agents/), lifecycle tools used to spawn and manage Scout
 - [Author an agent blueprint](/framework/agent-blueprints/), how Scout and blueprints like it are built
 - [Capabilities Overview](/capabilities/), full capability catalog

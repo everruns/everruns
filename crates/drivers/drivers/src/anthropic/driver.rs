@@ -540,7 +540,7 @@ impl AnthropicChatDriver {
     /// Anthropic rejects `oneOf`, `allOf`, and `anyOf` at the top level of a
     /// tool `input_schema` (nested composition is accepted). Tool schemas can
     /// be caller-supplied JSON Schema (e.g. a spawn_agent `result_schema`
-    /// becomes the child's `report_result` schema verbatim), so drop the
+    /// becomes the child's `finish` schema verbatim), so drop the
     /// keywords here instead of failing the whole request with a 400. This
     /// only loosens what the model sees; execute-time validation still
     /// enforces the full schema and rejects non-conforming calls.

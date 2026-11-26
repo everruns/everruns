@@ -203,9 +203,9 @@ checksum = "ac07cdecf99051d9a5238b80f35af32cdeba5b336e55d957b318b50137e18da5"
 
 [[package]]
 name = "bashkit"
-version = "0.21.1"
+version = "0.22.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "08e2baeab9e923cd734416fd36d41da5009188c515057f3aa3d8181e12ee50e8"
+checksum = "d344bf5cc4fbaa31a0ea467e345d110f448a6870ceab274394a93f8519a240a7"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -253,9 +253,9 @@ dependencies = [
 
 [[package]]
 name = "bashkit-cpython-wasm"
-version = "0.21.1"
+version = "0.22.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d9186c8efb3dc3962ba50ab3796487f62d6bbe1272077b13e6fba548fc3ef184"
+checksum = "234520286fa5134c9cda9a781368dc7e27a1a2e2b170f1bc55945289fd2f309b"
 dependencies = [
  "lzma-rs",
  "wasmtime",

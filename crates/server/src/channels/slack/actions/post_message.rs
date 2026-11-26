@@ -6,30 +6,22 @@ use crate::domains::agent_channels::record::SessionBinding;
 /// The channel a server-authored event provenance names as initiator, or
 /// `None` when the provenance is not channel-initiated.
 ///
-/// Writes are channel-shaped (`execution_metadata::channel_message_metadata`).
-/// Reads also accept the two older shapes, `endpoint` and the frozen `app`,
-/// because the caller gate reads *persisted* provenance: a session mid-thread
-/// when either rename shipped still carries the old key, and rejecting it would
-/// silence a live Slack conversation until its next inbound message. All three
-/// name the same channel public id, so the authorized set does not widen. Same
-/// posture as the permanent ingress aliases — nothing new is written in an old
-/// shape.
+/// Only server-authored channel provenance can authorize a post.
 fn initiator_channel_id(provenance: &serde_json::Value) -> Option<&str> {
     let initiator = &provenance["initiator"];
     match initiator["type"].as_str() {
         Some("channel") => initiator["channel_id"].as_str(),
         Some("endpoint") => initiator["endpoint_id"].as_str(),
-        Some("app") => initiator["app_id"].as_str(),
         _ => None,
     }
 }
 
 /// The Slack conversation `(channel, thread_ts)` a persisted input came from,
-/// when its server-authored provenance binds it to this app and endpoint.
+/// when its server-authored provenance binds it to this channel.
 /// `Ok(None)` is a bound input without a thread reference.
 pub(crate) fn slack_target(
     input: &crate::storage::EventRow,
-    app_public_id: &str,
+    ingress_public_id: &str,
     endpoint_public_id: &str,
 ) -> Result<Option<(String, String)>, SlackActionError> {
     let provenance = input
@@ -37,7 +29,7 @@ pub(crate) fn slack_target(
         .as_ref()
         .ok_or(SlackActionError::NoSlackSession)?;
     // MessageService records the external participant as runtime subject
-    // and nests the server-authored app provenance under `source`.
+    // and nests the server-authored channel provenance under `source`.
     let provenance = if provenance["type"] == "virtual_user" {
         &provenance["source"]
     } else {
@@ -47,8 +39,8 @@ pub(crate) fn slack_target(
     // THREAT[TM-SLACK-005]: bind posts to this invocation's signed ingress.
     // Event provenance is server-authored; message metadata alone is
     // caller-controlled on ordinary API inputs and cannot authorize a post.
-    if initiator_channel_id(provenance) != Some(app_public_id)
-        || metadata["_app_channel_id"].as_str() != Some(endpoint_public_id)
+    if initiator_channel_id(provenance) != Some(ingress_public_id)
+        || metadata["_channel_id"].as_str() != Some(endpoint_public_id)
     {
         return Err(SlackActionError::NoSlackSession);
     }
@@ -70,11 +62,11 @@ impl DbSlackActionInvoker {
     pub(crate) async fn resolve_action_channel(
         &self,
         session: &crate::storage::SessionRow,
-    ) -> Result<(everruns_contracts::typed_id::AppId, AgentChannel), SlackActionError> {
+    ) -> Result<(everruns_contracts::typed_id::AgentChannelId, AgentChannel), SlackActionError>
+    {
         use crate::api::channel_ingress::{channel_liveness, resolve_channel};
 
-        // The FK is authoritative. Only sessions from before its backfill may
-        // fall back to their persisted channel tag, never to a sibling channel.
+        // The structural channel FK is authoritative.
         let public_id = match session.channel_id {
             Some(channel_id) => self
                 .db
@@ -82,12 +74,6 @@ impl DbSlackActionInvoker {
                 .await
                 .map_err(|e| SlackActionError::Transient(e.to_string()))?
                 .ok_or(SlackActionError::ChannelUnavailable)?,
-            None if session.app_id.is_some() => session
-                .tags
-                .iter()
-                .find_map(|tag| tag.strip_prefix(SLACK_CHANNEL_TAG_PREFIX))
-                .map(str::to_owned)
-                .ok_or(SlackActionError::NoSlackSession)?,
             None => return Err(SlackActionError::NoSlackSession),
         };
         let (context, channel) = resolve_channel(&self.db, self.encryption.as_ref(), &public_id)
@@ -95,18 +81,15 @@ impl DbSlackActionInvoker {
             .map_err(|e| SlackActionError::Transient(e.to_string()))?
             .ok_or(SlackActionError::ChannelUnavailable)?;
 
-        // THREAT[TM-SLACK-005]: migrated and native sessions use the same
-        // channel-owned authority. Historical attribution is a binding check,
-        // not a reason to read a frozen App or revive its publication state.
+        // THREAT[TM-SLACK-005]: require the same tenant, agent and channel.
         if context.org_id != self.org_id
-            || context.historical_app_id != session.app_id
             || channel.channel_type != ChannelType::Slack
             || session
                 .channel_id
                 .is_some_and(|id| id != channel.internal_id)
             || match session.agent_id {
                 Some(id) => id.uuid() != context.agent_internal_id,
-                None => session.app_id.is_none(),
+                None => true,
             }
         {
             return Err(SlackActionError::NoSlackSession);
@@ -118,7 +101,7 @@ impl DbSlackActionInvoker {
     pub(super) async fn resolve_post_context(
         &self,
         input_message_id: &str,
-        app_public_id: everruns_contracts::typed_id::AppId,
+        ingress_public_id: everruns_contracts::typed_id::AgentChannelId,
         endpoint: &AgentChannel,
         config: crate::domains::agent_channels::record::slack_channel::SlackChannelConfig,
     ) -> Result<SlackActionContext, SlackActionError> {
@@ -132,14 +115,14 @@ impl DbSlackActionInvoker {
             .await
             .map_err(|e| SlackActionError::Transient(e.to_string()))?
             .ok_or(SlackActionError::NoSlackSession)?;
-        let app_id = app_public_id.to_string();
+        let ingress_id = ingress_public_id.to_string();
         let endpoint_id = endpoint.public_id.to_string();
         let target = match self
-            .scheduled_target(&input, &app_id, &endpoint_id, config.session_strategy)
+            .scheduled_target(&input, &ingress_id, &endpoint_id, config.session_strategy)
             .await?
         {
             Some(target) => Some(target),
-            None => slack_target(&input, &app_id, &endpoint_id)?,
+            None => slack_target(&input, &ingress_id, &endpoint_id)?,
         };
         let (mut channel, mut thread_ts) = target.ok_or_else(|| {
             SlackActionError::InvalidArgument(
@@ -157,7 +140,7 @@ impl DbSlackActionInvoker {
             .await
             .map_err(|e| SlackActionError::Transient(e.to_string()))?
             .filter(|latest| latest.sequence > input.sequence)
-            && let Ok(Some(target)) = slack_target(&latest, &app_id, &endpoint_id)
+            && let Ok(Some(target)) = slack_target(&latest, &ingress_id, &endpoint_id)
         {
             (channel, thread_ts) = target;
         }
@@ -193,7 +176,7 @@ impl DbSlackActionInvoker {
     async fn scheduled_target(
         &self,
         input: &crate::storage::EventRow,
-        app_id: &str,
+        ingress_id: &str,
         endpoint_id: &str,
         binding: SessionBinding,
     ) -> Result<Option<(String, String)>, SlackActionError> {
@@ -211,7 +194,7 @@ impl DbSlackActionInvoker {
             .map_err(|e| SlackActionError::Transient(e.to_string()))?;
         let (channel, thread_ts) = candidates
             .iter()
-            .find_map(|row| slack_target(row, app_id, endpoint_id).ok().flatten())
+            .find_map(|row| slack_target(row, ingress_id, endpoint_id).ok().flatten())
             .ok_or(SlackActionError::NoSlackSession)?;
         Ok(Some(match binding {
             SessionBinding::Thread => (channel, thread_ts),
@@ -291,23 +274,15 @@ mod initiator_provenance_tests {
 
     #[test]
     fn channel_shaped_provenance_names_its_channel() {
-        let p = json!({"initiator": {"type": "channel", "channel_id": "app_01"}});
-        assert_eq!(initiator_channel_id(&p), Some("app_01"));
+        let p = json!({"initiator": {"type": "channel", "channel_id": "appchan_01"}});
+        assert_eq!(initiator_channel_id(&p), Some("appchan_01"));
     }
 
     #[test]
     fn endpoint_shaped_provenance_still_names_its_channel() {
         // Persisted by the short-lived `endpoint` writer.
-        let p = json!({"initiator": {"type": "endpoint", "endpoint_id": "app_01"}});
-        assert_eq!(initiator_channel_id(&p), Some("app_01"));
-    }
-
-    #[test]
-    fn frozen_app_shaped_provenance_still_names_its_channel() {
-        // Persisted by the pre-rename writer. A live Slack thread must keep
-        // posting across the deploy that renamed the key.
-        let p = json!({"initiator": {"type": "app", "app_id": "app_01"}});
-        assert_eq!(initiator_channel_id(&p), Some("app_01"));
+        let p = json!({"initiator": {"type": "endpoint", "endpoint_id": "appchan_01"}});
+        assert_eq!(initiator_channel_id(&p), Some("appchan_01"));
     }
 
     #[test]
@@ -319,9 +294,9 @@ mod initiator_provenance_tests {
             json!({"initiator": {"type": "user", "user_id": "user_01"}}),
             json!({"initiator": {"type": "agent_trigger", "trigger_id": "trg_01"}}),
             json!({"initiator": {"type": "channel"}}),
-            json!({"initiator": {"channel_id": "app_01"}}),
+            json!({"initiator": {"channel_id": "appchan_01"}}),
             json!({"initiator": {"type": "endpoint"}}),
-            json!({"initiator": {"endpoint_id": "app_01"}}),
+            json!({"initiator": {"endpoint_id": "appchan_01"}}),
             json!({}),
         ] {
             assert_eq!(initiator_channel_id(&p), None, "authorized: {p}");

@@ -152,11 +152,8 @@ pub(crate) async fn scheduled_delivery(
             .insert(SLACK_RECIPIENT_TEAM_ID.into(), team.clone());
     }
     let metadata = [
-        ("_app_id", Value::String(context.public_id.to_string())),
-        (
-            "_app_channel_id",
-            Value::String(channel.public_id.to_string()),
-        ),
+        ("_ingress_id", Value::String(context.public_id.to_string())),
+        ("_channel_id", Value::String(channel.public_id.to_string())),
         ("slack_channel", Value::String(slack_channel)),
         (SLACK_THREAD_KEY, Value::String(String::new())),
         (SLACK_REPLY_INLINE, Value::Bool(true)),

@@ -18,6 +18,7 @@ import { api } from "@/lib/api/client";
 import { ApiFields, type ApiFormState } from "./api-fields";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 
 export type WorkChatMembership = "open" | "invites" | "org_users";
@@ -270,6 +271,62 @@ export function WorkChatSection({
           </p>
         </div>
       )}
+      <WorkChatPluginOptions
+        value={state.chatPlugins}
+        onChange={(chatPlugins) => onChange({ ...state, chatPlugins })}
+      />
     </FormSection>
+  );
+}
+
+/** What each person may change about the plugins in their own conversations.
+ * Both off keeps every conversation on exactly the agent's plugins. */
+function WorkChatPluginOptions({
+  value,
+  onChange,
+}: {
+  value: ChannelFormState["chatPlugins"];
+  onChange: (value: ChannelFormState["chatPlugins"]) => void;
+}) {
+  const ui = useUiTranslations();
+  const addingId = useId();
+  const turningOffId = useId();
+  return (
+    <div className="space-y-3">
+      <div>
+        <Label>{ui("Plugins")}</Label>
+        <p className="mt-1 text-xs text-muted-foreground">
+          {ui(
+            "People manage these in Customizations in the chat. Changes apply to their new conversations.",
+          )}
+        </p>
+      </div>
+      <div className="flex items-start justify-between gap-4">
+        <div className="space-y-0.5">
+          <Label htmlFor={addingId}>{ui("Let people add plugins")}</Label>
+          <p className="text-xs text-muted-foreground">
+            {ui("Any plugin your organization approved, for their own conversations.")}
+          </p>
+        </div>
+        <Switch
+          id={addingId}
+          checked={value.allow_adding}
+          onCheckedChange={(allow_adding) => onChange({ ...value, allow_adding })}
+        />
+      </div>
+      <div className="flex items-start justify-between gap-4">
+        <div className="space-y-0.5">
+          <Label htmlFor={turningOffId}>{ui("Let people turn off the agent's plugins")}</Label>
+          <p className="text-xs text-muted-foreground">
+            {ui("Each person can switch off a plugin the agent includes.")}
+          </p>
+        </div>
+        <Switch
+          id={turningOffId}
+          checked={value.allow_turning_off}
+          onCheckedChange={(allow_turning_off) => onChange({ ...value, allow_turning_off })}
+        />
+      </div>
+    </div>
   );
 }

@@ -1,0 +1,9 @@
+flowchart TB
+  accTitle: Python code mode trust boundaries
+  accDescr: Framework, Server workers and agentd executors share the host Python tool bridge. Monty executes in a disposable kernel-restricted worker. The host mediates authorized tools and stores private checkpoints and effect outcomes.
+  F[Framework host] --> B[Python tool bridge: turn allowlist, approvals, workspace, egress and credentials]
+  S[Server worker] --> B
+  A[agentd executor] --> B
+  B -->|execute and resume| M[Disposable Monty worker: kernel restrictions, no ambient host access]
+  M -->|tool suspension| B
+  B -->|checkpoints and effect outcomes| J[Private journal: platform store, Raft records or Framework directory]

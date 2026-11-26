@@ -11,15 +11,6 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import React from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
-// Streamdown and friends ship ESM that jest cannot parse; the transcript's
-// markdown rendering is not what this test is about.
-jest.mock("streamdown", () => ({
-  Streamdown: ({ children }: { children: string }) => <div>{children}</div>,
-}));
-jest.mock("@streamdown/code", () => ({ code: {} }));
-jest.mock("remark-gfm", () => jest.fn());
-jest.mock("remark-github-blockquote-alert", () => jest.fn());
-
 // SSE keeps live sessions streaming; jsdom has no EventSource. A stub is enough
 // — this test is about requests the page issues, and SSE is a GET subscription.
 class StubEventSource {

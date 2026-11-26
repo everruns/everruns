@@ -7,19 +7,9 @@
 //!
 //! # Resolution
 //!
-//! `sessions.channel_id` is the authoritative answer to "which door did this
-//! session come through" (EVE-1004), so it is preferred over the
-//! `slack:channel:{id}` routing tag, which is mutable. The tag is the fallback
-//! for app-channel sessions that predate the FK backfill.
-//!
-//! Resolving through the channel rather than the app matters: since EVE-1008
-//! the channel owns Slack bot identity, so an app with two Slack endpoints has
-//! two different bots, and `App::slack_channel()` would return whichever comes
-//! first.
-//!
-//! Sessions are read within their organization. Channel resolution rechecks that
-//! organization, the owning Agent, and historical attribution without loading
-//! the frozen App. A session cannot borrow another tenant's or App's bot.
+//! `sessions.channel_id` is the authoritative channel binding. Mutable tags
+//! cannot grant access to a bot. Resolution checks the session organization,
+//! owning agent, channel type and liveness before decrypting credentials.
 
 use std::sync::Arc;
 
@@ -44,10 +34,6 @@ use everruns_integrations::slack_channel::web_api::SLACK_API_BASE;
 
 mod post_message;
 pub(crate) use post_message::slack_target as signed_slack_target;
-
-/// Routing-tag prefix archival Slack sessions carry, from before sessions
-/// had a channel FK.
-const SLACK_CHANNEL_TAG_PREFIX: &str = "slack:channel:";
 
 /// Performs Slack actions as one session's own channel bot.
 ///
@@ -456,8 +442,8 @@ pub async fn serve_rpc(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::storage::{CreateAppRow, CreateHarnessRow, CreateSessionRow};
-    use crate::storage::{CreateLegacyAliasChannelRow, UpdateChannelByIdRow};
+    use crate::storage::{CreateAgentChannelRow, UpdateChannelByIdRow};
+    use crate::storage::{CreateHarnessRow, CreateSessionRow};
     use everruns_contracts::slack_action::SlackActionInvoker;
     use everruns_contracts::typed_id::{AgentId, HarnessId, PrincipalId};
     use uuid::Uuid;
@@ -547,7 +533,7 @@ mod tests {
         }
 
         /// Seed an app with one endpoint of `channel_type`, live and configured.
-        pub(super) async fn seed_app_with_channel(
+        pub(super) async fn seed_channel(
             &self,
             org_id: i64,
             channel_type: &str,
@@ -555,33 +541,17 @@ mod tests {
         ) -> (Uuid, Uuid, String) {
             let harness_id = self.seed_harness().await;
             let agent_id = self.seed_agent(org_id, harness_id).await;
-            let app = self
-                .db
-                .create_app(
-                    org_id,
-                    CreateAppRow {
-                        public_id: format!("app_{}", Uuid::now_v7().simple()),
-                        name: "slack app".to_string(),
-                        description: None,
-                        harness_id: harness_id.uuid(),
-                        agent_id: Some(agent_id.uuid()),
-                        virtual_user_id: None,
-                        owner_principal_id: PrincipalId::from_seed(1),
-                        resolved_owner_user_id: None,
-                        channel_type: None,
-                        channel_config: json!({}),
-                        channel_config_encrypted: None,
-                    },
-                )
-                .await
-                .expect("create app");
-
             let public_id = format!("appchan_{}", Uuid::now_v7().simple());
             let channel = self
                 .db
-                .create_legacy_alias_channel(
-                    app.id,
-                    CreateLegacyAliasChannelRow {
+                .create_agent_channel(
+                    org_id,
+                    CreateAgentChannelRow {
+                        agent_id: agent_id.uuid(),
+                        status: "live".into(),
+                        virtual_user_id: None,
+                        owner_principal_id: PrincipalId::from_seed(1).uuid(),
+                        resolved_owner_user_id: None,
                         public_id: public_id.clone(),
                         channel_type: channel_type.to_string(),
                         channel_config: json!({
@@ -591,7 +561,6 @@ mod tests {
                         channel_config_encrypted: None,
                         auth: None,
                         auth_encrypted: None,
-                        durable_schedule_id: None,
                         enabled: true,
                     },
                 )
@@ -601,7 +570,7 @@ mod tests {
             // A new channel starts `draft`; publish it so it accepts traffic.
             self.db
                 .update_channel_by_id(
-                    channel.id,
+                    channel.channel_id,
                     UpdateChannelByIdRow {
                         status: Some("live".to_string()),
                         ..Default::default()
@@ -610,24 +579,24 @@ mod tests {
                 .await
                 .expect("publish channel");
 
-            (app.id, channel.id, public_id)
+            (agent_id.uuid(), channel.channel_id, public_id)
         }
 
         pub(super) async fn seed_session(
             &self,
             org_id: i64,
-            app_id: Option<Uuid>,
+            owner_agent_id: Option<Uuid>,
             channel_id: Option<Uuid>,
             tags: Vec<String>,
         ) -> SessionId {
-            self.seed_session_for_agent(org_id, app_id, channel_id, tags, None)
+            self.seed_session_for_agent(org_id, owner_agent_id, channel_id, tags, None)
                 .await
         }
 
         pub(super) async fn seed_session_for_agent(
             &self,
             org_id: i64,
-            app_id: Option<Uuid>,
+            owner_agent_id: Option<Uuid>,
             channel_id: Option<Uuid>,
             tags: Vec<String>,
             agent_id: Option<AgentId>,
@@ -641,11 +610,10 @@ mod tests {
                     source: crate::domains::sessions::record::SessionSource::Api,
                     workspace_id: None,
                     org_id,
-                    app_id,
                     channel_id,
                     trigger_id: None,
                     harness_id: Some(harness_id),
-                    agent_id,
+                    agent_id: agent_id.or(owner_agent_id.map(AgentId::from_uuid)),
                     agent_revision: None,
                     virtual_user_id: None,
                     owner_principal_id: PrincipalId::from_seed(1),
@@ -699,7 +667,7 @@ mod tests {
         }
     }
 
-    mod legacy_app_tests;
+    mod channel_authority_tests;
 
     /// The case the issue calls out: an agent with the capability enabled,
     /// running from the API or a schedule, must fail closed.
@@ -735,11 +703,10 @@ mod tests {
     #[tokio::test]
     async fn a_non_slack_channel_does_not_resolve() {
         let fixture = Fixture::new();
-        let (app_id, channel_id, _) = fixture
-            .seed_app_with_channel(ORG, "schedule", "xoxb-nope")
-            .await;
+        let (owner_agent_id, channel_id, _) =
+            fixture.seed_channel(ORG, "schedule", "xoxb-nope").await;
         let session_id = fixture
-            .seed_session(ORG, Some(app_id), Some(channel_id), vec![])
+            .seed_session(ORG, Some(owner_agent_id), Some(channel_id), vec![])
             .await;
 
         let error = fixture
@@ -756,11 +723,10 @@ mod tests {
     #[tokio::test]
     async fn another_orgs_id_does_not_reach_this_sessions_channel() {
         let fixture = Fixture::new();
-        let (app_id, channel_id, _) = fixture
-            .seed_app_with_channel(ORG, "slack", "xoxb-secret")
-            .await;
+        let (owner_agent_id, channel_id, _) =
+            fixture.seed_channel(ORG, "slack", "xoxb-secret").await;
         let session_id = fixture
-            .seed_session(ORG, Some(app_id), Some(channel_id), vec![])
+            .seed_session(ORG, Some(owner_agent_id), Some(channel_id), vec![])
             .await;
 
         let error = fixture
@@ -775,9 +741,9 @@ mod tests {
     #[tokio::test]
     async fn a_channel_without_a_bot_token_is_not_configured() {
         let fixture = Fixture::new();
-        let (app_id, channel_id, _) = fixture.seed_app_with_channel(ORG, "slack", "").await;
+        let (owner_agent_id, channel_id, _) = fixture.seed_channel(ORG, "slack", "").await;
         let session_id = fixture
-            .seed_session(ORG, Some(app_id), Some(channel_id), vec![])
+            .seed_session(ORG, Some(owner_agent_id), Some(channel_id), vec![])
             .await;
 
         let error = fixture
@@ -792,9 +758,8 @@ mod tests {
     #[tokio::test]
     async fn a_disabled_channel_stops_acting() {
         let fixture = Fixture::new();
-        let (app_id, channel_id, _) = fixture
-            .seed_app_with_channel(ORG, "slack", "xoxb-secret")
-            .await;
+        let (owner_agent_id, channel_id, _) =
+            fixture.seed_channel(ORG, "slack", "xoxb-secret").await;
         fixture
             .db
             .update_channel_by_id(
@@ -807,7 +772,7 @@ mod tests {
             .await
             .expect("disable channel");
         let session_id = fixture
-            .seed_session(ORG, Some(app_id), Some(channel_id), vec![])
+            .seed_session(ORG, Some(owner_agent_id), Some(channel_id), vec![])
             .await;
 
         let error = fixture
@@ -823,9 +788,8 @@ mod tests {
     async fn endpoint_channel_scope_must_match_the_ingress_channel() {
         let server = crate::channels::slack::events::tests_support::mock_provider().await;
         let fixture = Fixture::new();
-        let (app_id, channel_id, _) = fixture
-            .seed_app_with_channel(ORG, "slack", "xoxb-secret")
-            .await;
+        let (owner_agent_id, channel_id, _) =
+            fixture.seed_channel(ORG, "slack", "xoxb-secret").await;
         fixture
             .db
             .update_channel_by_id(
@@ -842,7 +806,7 @@ mod tests {
             .await
             .expect("scope channel");
         let session_id = fixture
-            .seed_session(ORG, Some(app_id), Some(channel_id), vec![])
+            .seed_session(ORG, Some(owner_agent_id), Some(channel_id), vec![])
             .await;
 
         let error = fixture
@@ -856,47 +820,29 @@ mod tests {
         assert!(server.received_requests().await.unwrap().is_empty());
     }
 
-    /// Pre-backfill sessions carry no `channel_id`, so the routing tag is the
-    /// fallback (EVE-1004).
+    /// Mutable transport tags cannot manufacture channel authority. The
+    /// migration backfills only unambiguous reserved provenance.
     #[tokio::test]
-    async fn the_routing_tag_resolves_a_session_without_the_channel_fk() {
+    async fn routing_tag_without_channel_fk_cannot_authorize_actions() {
         let server = crate::channels::slack::events::tests_support::mock_provider().await;
-        Mock::given(method("POST"))
-            .and(path("/reactions.add"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "ok": true })))
-            .mount(&server)
-            .await;
-
         let fixture = Fixture::new();
-        let (app_id, _, channel_public_id) = fixture
-            .seed_app_with_channel(ORG, "slack", "xoxb-secret")
-            .await;
+        let (owner_agent_id, _, channel_public_id) =
+            fixture.seed_channel(ORG, "slack", "xoxb-secret").await;
         let session_id = fixture
             .seed_session(
                 ORG,
-                Some(app_id),
+                Some(owner_agent_id),
                 None,
                 vec![format!("slack:channel:{channel_public_id}")],
             )
             .await;
-
         let outcome = fixture
             .invoker(ORG, session_id)
-            .with_api_base(
-                format!("{}/", server.uri())
-                    .trim_end_matches('/')
-                    .to_string(),
-            )
+            .with_api_base(server.uri())
             .invoke(add_reaction_action())
-            .await
-            .expect("the routing tag must resolve the channel");
-
-        assert!(matches!(
-            outcome,
-            SlackActionOutcome::ReactionAdded {
-                already_reacted: false
-            }
-        ));
+            .await;
+        assert!(matches!(outcome, Err(SlackActionError::NoSlackSession)));
+        assert!(server.received_requests().await.unwrap().is_empty());
     }
 
     /// An app session with neither the FK nor the tag names no channel, and
@@ -904,10 +850,10 @@ mod tests {
     #[tokio::test]
     async fn an_app_session_with_no_channel_reference_fails_closed() {
         let fixture = Fixture::new();
-        let (app_id, _, _) = fixture
-            .seed_app_with_channel(ORG, "slack", "xoxb-secret")
+        let (owner_agent_id, _, _) = fixture.seed_channel(ORG, "slack", "xoxb-secret").await;
+        let session_id = fixture
+            .seed_session(ORG, Some(owner_agent_id), None, vec![])
             .await;
-        let session_id = fixture.seed_session(ORG, Some(app_id), None, vec![]).await;
 
         let error = fixture
             .invoker(ORG, session_id)
@@ -934,11 +880,11 @@ mod tests {
             .await;
 
         let fixture = Fixture::new();
-        let (app_id, channel_id, _) = fixture
-            .seed_app_with_channel(ORG, "slack", "xoxb-channel-secret")
+        let (owner_agent_id, channel_id, _) = fixture
+            .seed_channel(ORG, "slack", "xoxb-channel-secret")
             .await;
         let session_id = fixture
-            .seed_session(ORG, Some(app_id), Some(channel_id), vec![])
+            .seed_session(ORG, Some(owner_agent_id), Some(channel_id), vec![])
             .await;
 
         let outcome = fixture
@@ -963,11 +909,10 @@ mod tests {
     async fn an_alternate_channel_is_rejected_without_a_slack_request() {
         let server = crate::channels::slack::events::tests_support::mock_provider().await;
         let fixture = Fixture::new();
-        let (app_id, channel_id, _) = fixture
-            .seed_app_with_channel(ORG, "slack", "xoxb-secret")
-            .await;
+        let (owner_agent_id, channel_id, _) =
+            fixture.seed_channel(ORG, "slack", "xoxb-secret").await;
         let session_id = fixture
-            .seed_session(ORG, Some(app_id), Some(channel_id), vec![])
+            .seed_session(ORG, Some(owner_agent_id), Some(channel_id), vec![])
             .await;
 
         let error = fixture
@@ -1000,11 +945,10 @@ mod tests {
             .await;
 
         let fixture = Fixture::new();
-        let (app_id, channel_id, _) = fixture
-            .seed_app_with_channel(ORG, "slack", "xoxb-secret")
-            .await;
+        let (owner_agent_id, channel_id, _) =
+            fixture.seed_channel(ORG, "slack", "xoxb-secret").await;
         let session_id = fixture
-            .seed_session(ORG, Some(app_id), Some(channel_id), vec![])
+            .seed_session(ORG, Some(owner_agent_id), Some(channel_id), vec![])
             .await;
 
         let outcome = fixture
@@ -1038,11 +982,10 @@ mod tests {
             .await;
 
         let fixture = Fixture::new();
-        let (app_id, channel_id, _) = fixture
-            .seed_app_with_channel(ORG, "slack", "xoxb-secret")
-            .await;
+        let (owner_agent_id, channel_id, _) =
+            fixture.seed_channel(ORG, "slack", "xoxb-secret").await;
         let session_id = fixture
-            .seed_session(ORG, Some(app_id), Some(channel_id), vec![])
+            .seed_session(ORG, Some(owner_agent_id), Some(channel_id), vec![])
             .await;
 
         let error = fixture
@@ -1090,11 +1033,10 @@ mod tests {
             .await;
 
         let fixture = Fixture::new();
-        let (app_id, channel_id, _) = fixture
-            .seed_app_with_channel(ORG, "slack", "xoxb-secret")
-            .await;
+        let (owner_agent_id, channel_id, _) =
+            fixture.seed_channel(ORG, "slack", "xoxb-secret").await;
         let session_id = fixture
-            .seed_session(ORG, Some(app_id), Some(channel_id), vec![])
+            .seed_session(ORG, Some(owner_agent_id), Some(channel_id), vec![])
             .await;
 
         let outcome = fixture
@@ -1140,11 +1082,10 @@ mod tests {
             .await;
 
         let fixture = Fixture::new();
-        let (app_id, channel_id, _) = fixture
-            .seed_app_with_channel(ORG, "slack", "xoxb-secret")
-            .await;
+        let (owner_agent_id, channel_id, _) =
+            fixture.seed_channel(ORG, "slack", "xoxb-secret").await;
         let session_id = fixture
-            .seed_session(ORG, Some(app_id), Some(channel_id), vec![])
+            .seed_session(ORG, Some(owner_agent_id), Some(channel_id), vec![])
             .await;
 
         let error = fixture
@@ -1161,11 +1102,10 @@ mod tests {
     #[tokio::test]
     async fn an_empty_upload_is_rejected_before_any_request() {
         let fixture = Fixture::new();
-        let (app_id, channel_id, _) = fixture
-            .seed_app_with_channel(ORG, "slack", "xoxb-secret")
-            .await;
+        let (owner_agent_id, channel_id, _) =
+            fixture.seed_channel(ORG, "slack", "xoxb-secret").await;
         let session_id = fixture
-            .seed_session(ORG, Some(app_id), Some(channel_id), vec![])
+            .seed_session(ORG, Some(owner_agent_id), Some(channel_id), vec![])
             .await;
 
         // No mock server: reaching Slack at all would fail the test with a
@@ -1216,11 +1156,10 @@ mod tests {
             .await;
 
         let fixture = Fixture::new();
-        let (app_id, channel_id, _) = fixture
-            .seed_app_with_channel(ORG, "slack", "xoxb-secret")
-            .await;
+        let (owner_agent_id, channel_id, _) =
+            fixture.seed_channel(ORG, "slack", "xoxb-secret").await;
         let session_id = fixture
-            .seed_session(ORG, Some(app_id), Some(channel_id), vec![])
+            .seed_session(ORG, Some(owner_agent_id), Some(channel_id), vec![])
             .await;
 
         let outcome = fixture
@@ -1250,11 +1189,10 @@ mod tests {
     async fn an_upload_without_the_session_thread_is_rejected_before_slack() {
         let server = crate::channels::slack::events::tests_support::mock_provider().await;
         let fixture = Fixture::new();
-        let (app_id, channel_id, _) = fixture
-            .seed_app_with_channel(ORG, "slack", "xoxb-secret")
-            .await;
+        let (owner_agent_id, channel_id, _) =
+            fixture.seed_channel(ORG, "slack", "xoxb-secret").await;
         let session_id = fixture
-            .seed_session(ORG, Some(app_id), Some(channel_id), vec![])
+            .seed_session(ORG, Some(owner_agent_id), Some(channel_id), vec![])
             .await;
 
         let error = fixture
@@ -1298,11 +1236,10 @@ mod tests {
             .await;
 
         let fixture = Fixture::new();
-        let (app_id, channel_id, _) = fixture
-            .seed_app_with_channel(ORG, "slack", "xoxb-secret")
-            .await;
+        let (owner_agent_id, channel_id, _) =
+            fixture.seed_channel(ORG, "slack", "xoxb-secret").await;
         let session_id = fixture
-            .seed_session(ORG, Some(app_id), Some(channel_id), vec![])
+            .seed_session(ORG, Some(owner_agent_id), Some(channel_id), vec![])
             .await;
 
         let error = fixture

@@ -1,7 +1,7 @@
-//! FCP (Free Communication Protocol) app channel integration tests.
+//! FCP (Free Communication Protocol) channel integration tests.
 //!
 //! These tests cover the public FCP endpoint end-to-end:
-//! - handshake (`GET`) returns Markdown without leaking app state
+//! - handshake (`GET`) returns Markdown without leaking channel state
 //! - text-in / text-out (`POST`) round-trips through the durable runtime
 //! - auth/rate-limit/timeout isolation invariants
 //! - error bodies are sanitized Markdown with actionable instructions
@@ -15,7 +15,7 @@ use everruns_core::DEFAULT_ORG_ID;
 use serde_json::{Value, json};
 use test_harness::TestServer;
 
-use everruns_server::domains::apps::record::App;
+use crate::test_harness::ChannelBundle;
 
 fn unique_id(prefix: &str) -> String {
     use std::sync::atomic::{AtomicU64, Ordering};
@@ -86,26 +86,26 @@ async fn create_llmsim_agent(server: &TestServer) -> String {
     agent["id"].as_str().unwrap().to_string()
 }
 
-async fn create_fcp_app(server: &TestServer, channel_config: Value) -> App {
+async fn create_fcp_channel(server: &TestServer, channel_config: Value) -> ChannelBundle {
     let agent_id = create_llmsim_agent(server).await;
 
     serde_json::from_value(
         server
-            .seed_app_channel(&unique_id("FCP App"), &agent_id, "fcp", channel_config)
+            .seed_channel_bundle(&unique_id("FCP Channel"), &agent_id, "fcp", channel_config)
             .await,
     )
-    .expect("fixture App")
+    .expect("fixture channel")
 }
 
-async fn create_published_fcp_app(server: &TestServer, channel_config: Value) -> App {
-    let app = create_fcp_app(server, channel_config).await;
+async fn create_published_fcp_channel(server: &TestServer, channel_config: Value) -> ChannelBundle {
+    let bundle = create_fcp_channel(server, channel_config).await;
 
     serde_json::from_value(
         server
-            .set_app_channels_live(&app.public_id.to_string(), true)
+            .set_bundle_live(&bundle.public_id.to_string(), true)
             .await,
     )
-    .expect("published fixture App")
+    .expect("published fixture channel")
 }
 
 async fn create_published_native_fcp_channel(server: &TestServer, channel_config: Value) -> String {
@@ -134,13 +134,13 @@ async fn create_published_native_fcp_channel(server: &TestServer, channel_config
 
 async fn get_handshake(
     server: &TestServer,
-    app_id: impl std::fmt::Display,
+    ingress_id: impl std::fmt::Display,
     headers: Vec<(&str, &str)>,
 ) -> test_harness::TestResponse {
     server
         .request_raw(
             Method::GET,
-            &format!("/v1/apps/{}/fcp", app_id),
+            &format!("/v1/channels/{}/fcp", ingress_id),
             headers,
             Vec::new(),
         )
@@ -149,11 +149,17 @@ async fn get_handshake(
 
 async fn send_fcp_post(
     server: &TestServer,
-    app_id: impl std::fmt::Display,
+    ingress_id: impl std::fmt::Display,
     body: impl Into<Vec<u8>>,
     headers: Vec<(&str, &str)>,
 ) -> test_harness::TestResponse {
-    send_fcp_post_to_path(server, &format!("/v1/apps/{}/fcp", app_id), body, headers).await
+    send_fcp_post_to_path(
+        server,
+        &format!("/v1/channels/{}/fcp", ingress_id),
+        body,
+        headers,
+    )
+    .await
 }
 
 async fn send_fcp_post_to_path(
@@ -245,15 +251,15 @@ fn assert_body_no_leaks(body: &str) {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn fcp_handshake_returns_markdown_for_published_app() {
     let server = TestServer::in_memory().await;
-    let app = create_published_fcp_app(&server, json!({})).await;
+    let bundle = create_published_fcp_channel(&server, json!({})).await;
 
-    let response = get_handshake(&server, &app.public_id, vec![]).await;
+    let response = get_handshake(&server, &bundle.public_id, vec![]).await;
     let body = response.text();
     let agent = server
         .db
         .get_agent(
             DEFAULT_ORG_ID,
-            app.agent_id.expect("endpoint-owned App has an Agent"),
+            bundle.agent_id.expect("channel has an agent"),
         )
         .await
         .expect("get endpoint Agent")
@@ -273,33 +279,13 @@ async fn fcp_handshake_returns_markdown_for_published_app() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn fcp_channel_handshake_matches_legacy_alias() {
-    let server = TestServer::in_memory().await;
-    let app = create_published_fcp_app(&server, json!({})).await;
-    let channel_id = app.channels[0].public_id;
-
-    let endpoint = server
-        .request_raw(
-            Method::GET,
-            &format!("/v1/channels/{channel_id}/fcp"),
-            vec![],
-            Vec::new(),
-        )
-        .await;
-    let legacy = get_handshake(&server, &app.public_id, vec![]).await;
-
-    assert_eq!(endpoint.status(), StatusCode::OK);
-    assert_eq!(endpoint.status(), legacy.status());
-    assert_eq!(endpoint.text(), legacy.text());
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn fcp_handshake_advertises_auth_when_token_configured() {
     let server = TestServer::in_memory().await;
-    let app =
-        create_published_fcp_app(&server, json!({"anonymous": true, "token": "fcp-secret"})).await;
+    let bundle =
+        create_published_fcp_channel(&server, json!({"anonymous": true, "token": "fcp-secret"}))
+            .await;
 
-    let response = get_handshake(&server, &app.public_id, vec![]).await;
+    let response = get_handshake(&server, &bundle.public_id, vec![]).await;
     assert_eq!(response.status(), StatusCode::OK);
     let body = response.text();
     assert!(body.contains("Authorization: Bearer"));
@@ -313,7 +299,7 @@ async fn fcp_handshake_advertises_auth_when_token_configured() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn fcp_handshake_returns_404_for_unknown_app() {
     let server = TestServer::in_memory().await;
-    let response = get_handshake(&server, "app_does_not_exist", vec![]).await;
+    let response = get_handshake(&server, "appchan_does_not_exist", vec![]).await;
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
     assert_markdown(&response);
     let body = response.text();
@@ -324,11 +310,11 @@ async fn fcp_handshake_returns_404_for_unknown_app() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn fcp_handshake_returns_404_for_unpublished_app() {
     let server = TestServer::in_memory().await;
-    let app = create_fcp_app(&server, json!({})).await;
+    let bundle = create_fcp_channel(&server, json!({})).await;
 
-    // App is draft — handshake must look identical to "unknown app" so the
+    // Channel is draft — handshake must look identical to "unknown channel" so the
     // caller cannot distinguish lifecycle state.
-    let response = get_handshake(&server, &app.public_id, vec![]).await;
+    let response = get_handshake(&server, &bundle.public_id, vec![]).await;
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
     let body = response.text();
     let lower = body.to_lowercase();
@@ -343,9 +329,10 @@ async fn fcp_handshake_returns_404_for_unpublished_app() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn fcp_handshake_returns_custom_body_when_configured() {
     let server = TestServer::in_memory().await;
-    let app = create_published_fcp_app(&server, json!({"handshake": "# Custom\nGo away."})).await;
+    let bundle =
+        create_published_fcp_channel(&server, json!({"handshake": "# Custom\nGo away."})).await;
 
-    let response = get_handshake(&server, &app.public_id, vec![]).await;
+    let response = get_handshake(&server, &bundle.public_id, vec![]).await;
     assert_eq!(response.status(), StatusCode::OK);
     assert_eq!(response.text(), "# Custom\nGo away.");
 }
@@ -357,11 +344,11 @@ async fn fcp_handshake_returns_custom_body_when_configured() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn fcp_post_plain_text_returns_markdown_reply_and_sets_cookie() {
     let server = TestServer::in_memory().await;
-    let app = create_published_fcp_app(&server, fast_timeout_config()).await;
+    let bundle = create_published_fcp_channel(&server, fast_timeout_config()).await;
 
     let response = send_fcp_post(
         &server,
-        &app.public_id,
+        &bundle.public_id,
         "Hello, FCP!",
         vec![("content-type", "text/plain")],
     )
@@ -382,11 +369,11 @@ async fn fcp_post_plain_text_returns_markdown_reply_and_sets_cookie() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn fcp_post_json_body_is_parsed_via_message_field() {
     let server = TestServer::in_memory().await;
-    let app = create_published_fcp_app(&server, fast_timeout_config()).await;
+    let bundle = create_published_fcp_channel(&server, fast_timeout_config()).await;
 
     let response = send_fcp_post(
         &server,
-        &app.public_id,
+        &bundle.public_id,
         r#"{"message":"hi from JSON"}"#,
         vec![("content-type", "application/json")],
     )
@@ -415,7 +402,7 @@ async fn fcp_post_session_cookie_reuses_same_session() {
     let cookie = test_harness::extract_cookie(first.headers(), "fcp_session");
 
     // Inspect the channel's sessions: first POST must have created exactly one.
-    let expected_tag = format!("app_channel:{channel_id}");
+    let expected_tag = format!("channel:{channel_id}");
     let first_count = count_sessions_with_tag(&server, &expected_tag).await;
     assert_eq!(first_count, 1);
 
@@ -438,11 +425,11 @@ async fn fcp_post_session_cookie_reuses_same_session() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn fcp_post_cookie_reuses_matching_session_when_multiple_exist() {
     let server = TestServer::in_memory().await;
-    let app = create_published_fcp_app(&server, fast_timeout_config()).await;
+    let bundle = create_published_fcp_channel(&server, fast_timeout_config()).await;
 
     let first = send_fcp_post(
         &server,
-        &app.public_id,
+        &bundle.public_id,
         "client one",
         vec![("content-type", "text/plain")],
     )
@@ -452,7 +439,7 @@ async fn fcp_post_cookie_reuses_matching_session_when_multiple_exist() {
 
     let second = send_fcp_post(
         &server,
-        &app.public_id,
+        &bundle.public_id,
         "client two",
         vec![("content-type", "text/plain")],
     )
@@ -461,14 +448,14 @@ async fn fcp_post_cookie_reuses_matching_session_when_multiple_exist() {
 
     let third = send_fcp_post(
         &server,
-        &app.public_id,
+        &bundle.public_id,
         "client one again",
         vec![("content-type", "text/plain"), ("cookie", &first_cookie)],
     )
     .await;
     assert_accepted_or_timeout(third.status());
 
-    let expected_tag = format!("app:{}", app.public_id);
+    let expected_tag = format!("ingress:{}", bundle.public_id);
     let tagged_count = count_sessions_with_tag(&server, &expected_tag).await;
     assert_eq!(
         tagged_count, 2,
@@ -479,12 +466,12 @@ async fn fcp_post_cookie_reuses_matching_session_when_multiple_exist() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn fcp_post_stale_cookie_creates_new_session() {
     let server = TestServer::in_memory().await;
-    let app = create_published_fcp_app(&server, fast_timeout_config()).await;
+    let bundle = create_published_fcp_channel(&server, fast_timeout_config()).await;
 
     // Use a random UUID for the cookie — the server has no matching session.
     let response = send_fcp_post(
         &server,
-        &app.public_id,
+        &bundle.public_id,
         "hello with stale cookie",
         vec![
             ("content-type", "text/plain"),
@@ -504,17 +491,17 @@ async fn fcp_post_stale_cookie_creates_new_session() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn fcp_post_requires_token_when_configured() {
     let server = TestServer::in_memory().await;
-    let app = create_published_fcp_app(
+    let bundle = create_published_fcp_channel(
         &server,
         json!({"anonymous": true, "token": "fcp-secret", "response_timeout_seconds": 2}),
     )
     .await;
-    let channel_id = app.channels[0].public_id;
+    let channel_id = bundle.channels[0].public_id;
 
     // No header — 401 with actionable Markdown body.
     let response = send_fcp_post(
         &server,
-        &app.public_id,
+        &bundle.public_id,
         "hi",
         vec![("content-type", "text/plain")],
     )
@@ -532,7 +519,7 @@ async fn fcp_post_requires_token_when_configured() {
     // Wrong token — same 401, no oracle on validity.
     let wrong = send_fcp_post(
         &server,
-        &app.public_id,
+        &bundle.public_id,
         "hi",
         vec![
             ("content-type", "text/plain"),
@@ -557,7 +544,7 @@ async fn fcp_post_requires_token_when_configured() {
     // Right token via Authorization header.
     let ok = send_fcp_post(
         &server,
-        &app.public_id,
+        &bundle.public_id,
         "hi",
         vec![
             ("content-type", "text/plain"),
@@ -582,7 +569,7 @@ async fn fcp_post_requires_token_when_configured() {
     // Right token via dedicated header.
     let ok2 = send_fcp_post(
         &server,
-        &app.public_id,
+        &bundle.public_id,
         "hi",
         vec![
             ("content-type", "text/plain"),
@@ -596,7 +583,7 @@ async fn fcp_post_requires_token_when_configured() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn fcp_invalid_token_does_not_consume_channel_rate_limit() {
     let server = TestServer::in_memory().await;
-    let app = create_published_fcp_app(
+    let bundle = create_published_fcp_channel(
         &server,
         json!({
             "token": "fcp-secret",
@@ -605,7 +592,7 @@ async fn fcp_invalid_token_does_not_consume_channel_rate_limit() {
         }),
     )
     .await;
-    let path = format!("/v1/channels/{}/fcp", app.channels[0].public_id);
+    let path = format!("/v1/channels/{}/fcp", bundle.channels[0].public_id);
     let client_headers = || {
         vec![
             ("content-type", "text/plain"),
@@ -637,11 +624,11 @@ async fn fcp_anonymous_false_without_token_rejects_all_requests() {
     // The config validator accepts `anonymous=false` without a token (the
     // operator might intend to fill it in later). But every POST must then
     // 401, because there is no way to authenticate.
-    let app = create_published_fcp_app(&server, json!({"anonymous": false})).await;
+    let bundle = create_published_fcp_channel(&server, json!({"anonymous": false})).await;
 
     let response = send_fcp_post(
         &server,
-        &app.public_id,
+        &bundle.public_id,
         "hi",
         vec![("content-type", "text/plain")],
     )
@@ -651,7 +638,7 @@ async fn fcp_anonymous_false_without_token_rejects_all_requests() {
     // Even with a bearer token — the channel has nothing to compare to.
     let with_token = send_fcp_post(
         &server,
-        &app.public_id,
+        &bundle.public_id,
         "hi",
         vec![
             ("content-type", "text/plain"),
@@ -669,11 +656,11 @@ async fn fcp_anonymous_false_without_token_rejects_all_requests() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn fcp_post_empty_body_returns_actionable_400() {
     let server = TestServer::in_memory().await;
-    let app = create_published_fcp_app(&server, json!({})).await;
+    let bundle = create_published_fcp_channel(&server, json!({})).await;
 
     let response = send_fcp_post(
         &server,
-        &app.public_id,
+        &bundle.public_id,
         "",
         vec![("content-type", "text/plain")],
     )
@@ -687,11 +674,11 @@ async fn fcp_post_empty_body_returns_actionable_400() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn fcp_post_invalid_json_returns_actionable_400() {
     let server = TestServer::in_memory().await;
-    let app = create_published_fcp_app(&server, json!({})).await;
+    let bundle = create_published_fcp_channel(&server, json!({})).await;
 
     let response = send_fcp_post(
         &server,
-        &app.public_id,
+        &bundle.public_id,
         "not actually json",
         vec![("content-type", "application/json")],
     )
@@ -705,13 +692,13 @@ async fn fcp_post_invalid_json_returns_actionable_400() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn fcp_post_oversized_body_returns_413() {
     let server = TestServer::in_memory().await;
-    let app = create_published_fcp_app(&server, json!({})).await;
+    let bundle = create_published_fcp_channel(&server, json!({})).await;
 
     // 257 KiB > the 256 KiB FCP limit.
     let body = vec![b'x'; 257 * 1024];
     let response = send_fcp_post(
         &server,
-        &app.public_id,
+        &bundle.public_id,
         body,
         vec![("content-type", "text/plain")],
     )
@@ -727,7 +714,7 @@ async fn fcp_post_oversized_body_returns_413() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn fcp_per_channel_rate_limit_returns_429_with_retry_after() {
     let server = TestServer::in_memory().await;
-    let app = create_published_fcp_app(
+    let bundle = create_published_fcp_channel(
         &server,
         json!({"rate_limit_per_minute": 1, "response_timeout_seconds": 2}),
     )
@@ -738,7 +725,7 @@ async fn fcp_per_channel_rate_limit_returns_429_with_retry_after() {
     // rate-limit bucket was decremented.
     let first = send_fcp_post(
         &server,
-        &app.public_id,
+        &bundle.public_id,
         "first",
         vec![("content-type", "text/plain")],
     )
@@ -748,7 +735,7 @@ async fn fcp_per_channel_rate_limit_returns_429_with_retry_after() {
     // The next one must 429 with a Retry-After header.
     let second = send_fcp_post(
         &server,
-        &app.public_id,
+        &bundle.public_id,
         "second",
         vec![("content-type", "text/plain")],
     )
@@ -768,7 +755,7 @@ async fn fcp_per_channel_rate_limit_returns_429_with_retry_after() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn fcp_rate_limit_zero_disables_per_channel_cap() {
     let server = TestServer::in_memory().await;
-    let app = create_published_fcp_app(
+    let bundle = create_published_fcp_channel(
         &server,
         json!({"rate_limit_per_minute": 0, "response_timeout_seconds": 2}),
     )
@@ -780,7 +767,7 @@ async fn fcp_rate_limit_zero_disables_per_channel_cap() {
     for i in 0..3 {
         let response = send_fcp_post(
             &server,
-            &app.public_id,
+            &bundle.public_id,
             format!("turn {i}"),
             vec![("content-type", "text/plain")],
         )
@@ -801,11 +788,11 @@ async fn fcp_rate_limit_zero_disables_per_channel_cap() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn fcp_post_returns_404_for_unpublished_app() {
     let server = TestServer::in_memory().await;
-    let app = create_fcp_app(&server, json!({})).await;
+    let bundle = create_fcp_channel(&server, json!({})).await;
 
     let response = send_fcp_post(
         &server,
-        &app.public_id,
+        &bundle.public_id,
         "hi",
         vec![("content-type", "text/plain")],
     )
@@ -819,15 +806,13 @@ async fn fcp_post_returns_404_for_unpublished_app() {
 // ----------------------------------------------------------------------------
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn fcp_token_is_redacted_in_app_reads() {
+async fn fcp_token_is_redacted_in_channel_reads() {
     let server = TestServer::in_memory().await;
-    let app = create_published_fcp_app(&server, json!({"token": "fcp-secret-12345"})).await;
+    let bundle = create_published_fcp_channel(&server, json!({"token": "fcp-secret-12345"})).await;
 
     let response: Value = server
-        .get(&format!("/v1/platform/apps/{}", app.public_id))
-        .await
-        .assert_success()
-        .json();
+        .read_channel_bundle(&bundle.public_id.to_string())
+        .await;
 
     let channel = response["channels"]
         .as_array()
@@ -838,7 +823,7 @@ async fn fcp_token_is_redacted_in_app_reads() {
     let config = &channel["channel_config"];
     assert!(
         config.get("token").is_none(),
-        "FCP token must not be returned in app reads"
+        "FCP token must not be returned in bundle reads"
     );
     assert_eq!(
         config["token_configured"], true,

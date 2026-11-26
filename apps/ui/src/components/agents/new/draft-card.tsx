@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 import { Check, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { describeCronExpression } from "@/components/apps/cron-label";
+import { describeCronExpression } from "@/components/schedules/cron-label";
 import { useAgentNameAvailability } from "@/hooks/use-name-availability";
 import { useModels } from "@/hooks/use-providers";
 import type { AgentDraft } from "@/lib/api/agent-draft";

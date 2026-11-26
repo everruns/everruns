@@ -332,3 +332,11 @@ because nothing ran it. The option is recorded in
 - **Spawning in-process turns onto their own task.** It would let a turn run
   while the session actor applies overrides or runs hooks, which the actor's
   read-modify-write of the session record relies on not happening.
+
+## Interpreter options are separate
+
+[Python Code Mode](../execution/python-code-mode.md) is a Monty interpreter option
+inside a turn, alongside Bashkit. It does not select the session authority,
+replace either platform or implement a full session sandbox lifecycle. Its
+private effect journal and the enclosing session both need durable hosting for
+recovery after host loss.

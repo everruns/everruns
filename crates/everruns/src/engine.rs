@@ -47,7 +47,7 @@ pub(crate) struct EngineBackends {
     pub(crate) cutover: Arc<dyn LegacyCutoverStore>,
     /// Engines sharing these local backends, for coordination threads.
     #[cfg(feature = "local")]
-    hub: Option<Arc<crate::coordination::EngineHub>>,
+    hub: Option<Arc<crate::threads::EngineHub>>,
 }
 
 #[async_trait]
@@ -917,11 +917,10 @@ async fn initialize_backends(agent: &Agent) -> Result<Arc<EngineBackends>, Backe
         );
         // Coordination: assignment updates wake the coordinator, and threads
         // run as sessions of the engine that owns it.
-        let hub = Arc::new(crate::coordination::EngineHub::default());
-        let registry =
-            crate::coordination::observed_registry(local.task_registry.clone(), hub.clone());
+        let hub = Arc::new(crate::threads::EngineHub::default());
+        let registry = crate::threads::observed_registry(local.task_registry.clone(), hub.clone());
         let runner: Arc<dyn crate::local::LocalSessionRunner> =
-            Arc::new(crate::coordination::EngineSessionRunner::new(
+            Arc::new(crate::threads::EngineSessionRunner::new(
                 hub.clone(),
                 session_store.clone(),
                 registry.clone(),

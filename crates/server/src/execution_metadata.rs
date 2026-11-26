@@ -4,7 +4,9 @@
 // - Keep provenance in event.metadata so it does not change message payload shape.
 // - Record both initiator and acting_principal, but keep external_actor separate.
 
-use everruns_contracts::typed_id::{AppId, PrincipalId, ScheduleId, TriggerId, VirtualUserId};
+use everruns_contracts::typed_id::{
+    AgentChannelId, PrincipalId, ScheduleId, TriggerId, VirtualUserId,
+};
 use serde_json::{Value, json};
 use uuid::Uuid;
 
@@ -55,18 +57,9 @@ pub fn agent_trigger_message_metadata(
 
 /// Metadata for a message arriving through an agent channel.
 ///
-/// `channel_id` is the public identifier the caller addressed, which for a
-/// channel migrated from an App is still that App's public id — that is what
-/// keeps the permanent `/v1/platform/apps/{app_id}/…` ingress aliases resolving. The
-/// `AppId` type name is the frozen schema's, not a claim that Apps are live.
-///
-/// Emits `type: "channel"`: these rows are written on every inbound Slack,
-/// AG-UI, FCP and A2A message, so a retired entity name here would keep
-/// accruing in fresh data rather than only in the archive. Channel is the
-/// management terminology; the
-/// Endpoint name this briefly carried was retired with the App surface.
+/// `channel_id` is the stable public channel identifier the caller addressed.
 pub fn channel_message_metadata(
-    channel_id: AppId,
+    channel_id: AgentChannelId,
     owner_principal_id: PrincipalId,
     virtual_user_id: Option<VirtualUserId>,
 ) -> Value {

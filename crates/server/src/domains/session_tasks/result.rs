@@ -1,7 +1,7 @@
 // Structured task result retrieval (EVE-678 → EVE-728).
 //
 // A task declared with a `result_schema` records a deterministic, schema-valid
-// `result.json` when its child calls `report_result` (see EVE-678,
+// `result.json` when its child calls `finish` (see EVE-678,
 // `everruns_capabilities::capabilities::subagents::ReportResultTool`). The validated
 // object is written to the owning session's virtual filesystem at
 // `/.tasks/{task_id}/result.json` and the owning `session_tasks` row gets a
@@ -34,7 +34,7 @@ use crate::storage::StorageBackend;
 ///
 /// Every read is scoped by `org_id`. The session is loaded via
 /// `get_session(org_id, ..)`, which both enforces the tenant boundary and
-/// yields the `workspace_id` that owns the VFS where `report_result` wrote the
+/// yields the `workspace_id` that owns the VFS where `finish` wrote the
 /// file — so a caller in one org can never read another org's result file even
 /// if it guesses a session id.
 pub async fn read_structured_task_result(
@@ -43,7 +43,7 @@ pub async fn read_structured_task_result(
     session_id: SessionId,
 ) -> anyhow::Result<Option<Value>> {
     // Org-scoped session load. Also yields the workspace id backing the VFS:
-    // `report_result` writes keyed by the owning session's workspace, so we
+    // `finish` writes keyed by the owning session's workspace, so we
     // read it back with the same key.
     let Some(session) = db.get_session(org_id, session_id).await? else {
         return Ok(None);

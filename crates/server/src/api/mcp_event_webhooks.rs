@@ -82,6 +82,7 @@ async fn receive(
         Ok(InboundOutcome::Challenge(challenge)) => {
             (StatusCode::OK, Json(json!({ "challenge": challenge }))).into_response()
         }
+        Ok(InboundOutcome::Control) => StatusCode::OK.into_response(),
         Ok(InboundOutcome::Event(outcome)) => {
             let (delivery, session_id) = match outcome {
                 TriggerEventOutcome::Dispatched(result) => {

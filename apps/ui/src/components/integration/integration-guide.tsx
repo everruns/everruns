@@ -139,11 +139,7 @@ export function IntegrationGuide({ kind, id, name }: IntegrationGuideProps) {
           </CardHeader>
           <CardContent className="space-y-3 text-sm text-muted-foreground">
             {kind === "agent" ? (
-              <p>
-                {ui(
-                  "Existing App channels keep working. New external integrations will use agent-owned endpoints as they become available.",
-                )}
-              </p>
+              <p>{ui("Publish agent channels to connect external integrations.")}</p>
             ) : (
               <p>
                 {ui("Harnesses are infrastructure. Most integrations call an")}{" "}

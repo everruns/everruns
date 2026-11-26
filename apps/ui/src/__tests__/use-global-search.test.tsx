@@ -101,7 +101,6 @@ const mockFeatureFlags = {
   extractions: true,
   skills: true,
   memory: true,
-  plugins: true,
   observers: true,
 };
 jest.mock("@/providers/feature-flags-provider", () => ({
@@ -154,7 +153,6 @@ describe("useGlobalSearch", () => {
       extractions: true,
       skills: true,
       memory: true,
-      plugins: true,
       observers: true,
     });
   });
@@ -170,7 +168,6 @@ describe("useGlobalSearch", () => {
       evals: false,
       skills: false,
       memory: false,
-      plugins: false,
     });
 
     const { result } = renderHook(() => useGlobalSearch("memory"));
@@ -179,7 +176,7 @@ describe("useGlobalSearch", () => {
     expect(mockUseEvals).toHaveBeenCalledWith({ enabled: false });
     expect(mockUseMemories).toHaveBeenCalledWith({ enabled: false });
     expect(mockUseKnowledgeCollections).toHaveBeenCalledWith({ enabled: true });
-    expect(mockUseInstalledPlugins).toHaveBeenCalledWith({ enabled: false });
+    expect(mockUseInstalledPlugins).toHaveBeenCalledWith({ enabled: true });
     expect(result.current).not.toContainEqual(expect.objectContaining({ href: "/memory" }));
     expect(result.current).not.toContainEqual(
       expect.objectContaining({ href: "/memory/mem_product" }),
@@ -267,7 +264,7 @@ describe("useGlobalSearch", () => {
     ["new side chat", "/chats/new"],
     ["all chats", "/chats/history"],
     ["knowledge", "/knowledge"],
-    ["plugins", "/plugins"],
+    ["plugins", "/settings/plugins"],
     ["observers", "/observers"],
     ["circuit breakers", "/durable/circuit-breakers"],
   ])("finds the %s navigation page", (query, href) => {
@@ -373,7 +370,7 @@ describe("useGlobalSearch", () => {
   it.each([
     ["product notes", "memory:mem_product", "/memory/mem_product"],
     ["documentation collection", "knowledge:kn_docs", "/knowledge/kn_docs"],
-    ["email service", "plugin:plugin_email", "/plugins"],
+    ["email service", "plugin:plugin_email", "/settings/plugins"],
     ["answer quality", "observer:observer_quality", "/observers/observer_quality"],
   ])("finds the %s entity", (query, id, href) => {
     const { result } = renderHook(() => useGlobalSearch(query));

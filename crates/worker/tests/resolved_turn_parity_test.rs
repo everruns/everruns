@@ -333,7 +333,6 @@ macro_rules! mock_worker_adapters {
             async fn invoke_scheduled_channel(
                 &self,
                 _org_id: i64,
-                _app_id: &str,
                 _channel_id: &str,
             ) -> CoreResult<serde_json::Value> {
                 unimplemented!()

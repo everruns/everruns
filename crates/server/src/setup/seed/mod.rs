@@ -1490,7 +1490,7 @@ mod tests {
             .iter()
             .find(|m| m.name == "everruns")
             .expect("seed_all must create the default 'everruns' marketplace");
-        assert_eq!(default.source["repo"], "everruns/plugins");
+        assert_eq!(default.source["repo"], "everruns/plugin-directory");
     }
 
     #[tokio::test]

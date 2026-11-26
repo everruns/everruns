@@ -22,11 +22,11 @@ async fn missing_message_is_actionable_and_exact_timestamp_succeeds() {
         .mount(&server)
         .await;
     let fixture = Fixture::new();
-    let (app_id, endpoint_id, _) = fixture
-        .seed_app_with_channel(ORG, "slack", "xoxb-endpoint-secret")
+    let (agent_id, endpoint_id, _) = fixture
+        .seed_channel(ORG, "slack", "xoxb-endpoint-secret")
         .await;
     let session_id = fixture
-        .seed_session(ORG, Some(app_id), Some(endpoint_id), vec![])
+        .seed_session(ORG, Some(agent_id), Some(endpoint_id), vec![])
         .await;
     let invoker = fixture.invoker(ORG, session_id).with_api_base(server.uri());
     let reaction = |timestamp: &str| SlackAction::AddReaction {
@@ -61,9 +61,7 @@ async fn missing_reaction_scope_explains_how_to_reconnect() {
         .mount(&server)
         .await;
     let fixture = Fixture::new();
-    let (app, endpoint, _) = fixture
-        .seed_app_with_channel(ORG, "slack", "test-token")
-        .await;
+    let (app, endpoint, _) = fixture.seed_channel(ORG, "slack", "test-token").await;
     let session = fixture
         .seed_session(ORG, Some(app), Some(endpoint), vec![])
         .await;

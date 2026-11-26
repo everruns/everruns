@@ -3,8 +3,8 @@ import { HarnessCapabilitiesPane } from "@/components/harnesses/harness-capabili
 import type { HarnessDraft } from "@/components/harnesses/use-harness-draft";
 import type { Capability } from "@/lib/api/types";
 
-jest.mock("@/components/chat/streamdown-message", () => ({
-  InlineStreamdownMessage: ({ children }: { children: React.ReactNode }) => <span>{children}</span>,
+jest.mock("@/components/markdown/markdown-message", () => ({
+  InlineMarkdownMessage: ({ children }: { children: React.ReactNode }) => <span>{children}</span>,
 }));
 
 jest.mock("next/link", () => ({

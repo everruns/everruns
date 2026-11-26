@@ -3,7 +3,7 @@ schema_version = 1
 name = "builder-verifier"
 display_name = "Builder and verifier"
 description = "Writes a small function, then has a verifier on another provider check it before answering"
-tags = ["demo", "subagents", "helper-models"]
+tags = ["demo", "spawn-agents", "helper-models"]
 
 # The builder runs on gpt-6.2-sol. Its verifier runs on `second_opinion`: the
 # Default job of the first connected provider other than OpenAI.
@@ -11,13 +11,16 @@ tags = ["demo", "subagents", "helper-models"]
 provider = "openai"
 model = "gpt-6.2-sol"
 
+# Spawn agents: one-off calls. The builder spawns a copy of itself as the
+# verifier, gets its review back, and answers.
 [[capabilities]]
-ref = "subagents"
+ref = "spawn_agents"
 
 [capabilities.config]
+self = true
 helper_model_pick = "agent"
 # The verifier reviews; it does not spawn a verifier of its own.
-max_subagent_depth = 1
+max_depth = 1
 
 [[capabilities.config.helper_models]]
 key = "same"

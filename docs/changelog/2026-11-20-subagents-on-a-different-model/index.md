@@ -7,7 +7,7 @@ significance: notable
 products: [platform, cloud]
 surfaces: [ui, api, cli]
 links:
-  docs: [/capabilities/sub-agents/]
+  docs: [/capabilities/spawn-agents/]
 ---
 
 A builder on GPT-6.2 Sol can now hand its diff to a verifier on another
@@ -25,4 +25,4 @@ let the Decision model pick one. The **Subagents** tab shows each subagent's
 key, model and who picked it.
 
 A child also keeps the model you chose for the parent chat instead of falling
-back to the agent's default. See [Helper models](/capabilities/sub-agents/#helper-models).
+back to the agent's default. See [Helper models](/capabilities/spawn-agents/#helper-models).

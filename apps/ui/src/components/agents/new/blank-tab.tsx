@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { describeCronExpression } from "@/components/apps/cron-label";
+import { describeCronExpression } from "@/components/schedules/cron-label";
 import { useAgentNameAvailability } from "@/hooks/use-name-availability";
 import type { AgentDraft, DraftChannelKind } from "@/lib/api/agent-draft";
 import {

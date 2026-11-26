@@ -38,6 +38,18 @@
 //!   sealed. Rejected: reporting progress on every lease (a write per turn
 //!   for the rare case) and resetting on any append (a resume always appends
 //!   its repair, so a poison turn would look alive).
+//! - A lease lost to renewals that did not get through is not a holder
+//!   death. A shard or control plane slow under load (the Mac mini's R9
+//!   soak, 2026-11-25: 2,963 turns on 9 cores, renewals past the TTL) cost
+//!   healthy turns three leases each, and the poison guard sealed them as
+//!   "repeatedly failed without making progress". The holder is alive, so
+//!   it says so once the turn has stopped
+//!   ([`SessionActorStore::forgive_actor_lease`]) and the store takes the
+//!   lease's attempt back. A holder that dies never does, so a turn that
+//!   kills its holder is still sealed; the store bounds how often it
+//!   forgives, so a turn that wedges its own holder is sealed too. A lease
+//!   the watchdog stopped (`stalled`) or another holder took is not
+//!   forgiven.
 //! - A cancel targets the turn it was requested for: the control plane reports
 //!   the inbox position it was requested at, and the lease raises `cancel`
 //!   only for a turn whose input is at or before it. The cancel stays on the
@@ -112,6 +124,8 @@ pub(crate) struct Lease {
     stalled: watch::Sender<bool>,
     /// Raised once a pending cancel targets this lease's turn.
     cancel: watch::Sender<bool>,
+    /// Lost because no renew got through within the TTL (module notes).
+    timed_out: std::sync::atomic::AtomicBool,
     target: Mutex<CancelTarget>,
     /// The renewer is poked on every admission, so an in-turn inbox check
     /// may rely on its renewals (see [`Lease::refresh`]).
@@ -160,6 +174,7 @@ impl Lease {
             watchdog: Mutex::new(Some(Instant::now())),
             stalled: watch::channel(false).0,
             cancel: watch::channel(false).0,
+            timed_out: std::sync::atomic::AtomicBool::new(false),
             target: Mutex::new(CancelTarget {
                 pending: actor.cancel_inbox_seq,
                 turn_input: None,
@@ -411,6 +426,7 @@ impl Lease {
         let renewal = match renewal {
             Ok(result) => result,
             Err(_) => {
+                self.timed_out.store(true, Ordering::SeqCst);
                 self.lost.send_replace(true);
                 return Err(super::store::actor_lease_lost(
                     self.session_id,
@@ -441,9 +457,36 @@ impl Lease {
             }
             Err(error) => {
                 if self.since_renewed() >= self.ttl {
+                    self.timed_out.store(true, Ordering::SeqCst);
                     self.lost.send_replace(true);
                 }
                 Err(error)
+            }
+        }
+    }
+
+    /// The lease was lost only because renewals did not get through: tell
+    /// the store this holder is alive (module notes). Best effort, bounded
+    /// by a TTL; a store that cannot keeps counting the lease.
+    pub(crate) async fn forgive_if_timed_out(&self) {
+        if !self.timed_out.load(Ordering::SeqCst) || self.check_watchdog() {
+            return;
+        }
+        let forgiven = everruns_contracts::rt::timeout(
+            self.ttl,
+            self.store
+                .forgive_actor_lease(self.session_id, &self.holder, self.fence),
+        )
+        .await;
+        match forgiven {
+            Ok(Ok(forgiven)) => {
+                tracing::info!(session_id = %self.session_id, forgiven, "Lease lost to slow renewals; the holder is alive");
+            }
+            Ok(Err(error)) => {
+                tracing::warn!(session_id = %self.session_id, error = %error, "Reporting a lease lost to slow renewals failed");
+            }
+            Err(_) => {
+                tracing::warn!(session_id = %self.session_id, "Reporting a lease lost to slow renewals timed out");
             }
         }
     }
@@ -698,6 +741,7 @@ pub(crate) async fn renew_loop(lease: Arc<Lease>, poke: Arc<Notify>, epoch: Inst
         }
         if lease.is_lost() {
             tracing::warn!(session_id = %lease.session_id, "Actor lease lost; stopping the turn");
+            lease.forgive_if_timed_out().await;
             return;
         }
     }

@@ -44,7 +44,7 @@ pub fn router(node: Arc<Node>) -> Router {
         .route("/shard/snapshot", post(trigger_snapshot))
         .route("/shard/registry", get(registry))
         .route("/shard/load", get(load))
-        .route("/shard/pressure", get(crate::pressure::reading))
+        .route("/shard/pressure", crate::pressure::route())
         .route("/shard/tools", get(tools))
         .route("/shard/movable", get(movable))
         .route("/shard/members", get(members).post(add_member))
@@ -230,7 +230,9 @@ fn cpu_usage() -> (f32, f32) {
 }
 
 async fn stats(State(node): State<Arc<Node>>) -> Json<Stats> {
-    let (sessions, active_turns, queued_inputs, turns_completed, unloaded_sessions) = {
+    // One guard for every read here: two temporary reads in one expression
+    // deadlock the fair lock when a write queues between them (CI soak).
+    let (sessions, active_turns, queued_inputs, turns_completed, unloaded_sessions, feed) = {
         let state = node.shared.state.read();
         (
             state.sessions.len(),
@@ -242,6 +244,7 @@ async fn stats(State(node): State<Arc<Node>>) -> Json<Stats> {
                 .values()
                 .filter(|s| s.events.is_empty() && s.offloaded > 0)
                 .count(),
+            (state.feed.records.len(), state.feed.held_bytes() >> 20),
         )
     };
     let (resident_bytes, resident_events) = node.shared.resident();
@@ -261,8 +264,8 @@ async fn stats(State(node): State<Arc<Node>>) -> Json<Stats> {
         rss_mb: rss_mb(),
         wal: node.wal.stats(),
         wal_held_mb: node.wal.held_bytes() >> 20,
-        feed_held_mb: node.shared.state.read().feed.held_bytes() >> 20,
-        feed_pending: node.shared.state.read().feed.records.len(),
+        feed_held_mb: feed.1,
+        feed_pending: feed.0,
         heap: crate::heap::heap(),
         container_mb: crate::memwatch::working().0 >> 20,
         container_limit_mb: crate::memwatch::working().1 >> 20,

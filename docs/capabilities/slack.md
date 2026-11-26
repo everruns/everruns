@@ -154,7 +154,7 @@ Use this flow only when you cannot use **Add to Slack** or **Create Slack app**.
 
 ## Existing Installs
 
-Existing Slack installs that use `/v1/platform/apps/{app_id}/…` URLs continue to work. Everruns keeps those routes as permanent compatibility aliases. New installs use `/v1/channels/{channel_id}/…`, which is the canonical channel-owned form.
+Use the channel Request URL shown in Everruns, under `/v1/channels/{channel_id}/…`. The retired Apps ingress aliases have been removed; update older Slack Request URLs before upgrading. Existing channel IDs, signing secrets and bot tokens are preserved.
 
 ## Channel Configuration
 

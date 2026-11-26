@@ -68,7 +68,7 @@ if ! grep -Fq 'D->>D: Unregister delivery' "$message_flow_mmd" ||
   exit 1
 fi
 
-apps_guide="$ROOT/docs/features/channels.md"
+channels_guide="$ROOT/docs/features/channels.md"
 required_lifecycle_text=(
   'Draft ⇄ Live'
   'Draft → Disabled'
@@ -77,7 +77,7 @@ required_lifecycle_text=(
 )
 
 for text in "${required_lifecycle_text[@]}"; do
-  if ! grep -Fq "$text" "$apps_guide"; then
+  if ! grep -Fq "$text" "$channels_guide"; then
     printf 'Channels guide omits an channel lifecycle transition: %s\n' "$text" >&2
     exit 1
   fi

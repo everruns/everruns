@@ -279,8 +279,8 @@ export const messages: Readonly<Record<string, string>> = {
   "Execution pressure": "Ausführungsdruck",
   Executions: "Ausführungen",
   Exhausted: "Erschöpft",
-  "Existing App channels keep working. New external integrations will use agent-owned endpoints as they become available.":
-    "Bestehende App-Kanäle funktionieren weiterhin. Neue externe Integrationen nutzen agenteneigene Endpunkte, sobald sie verfügbar sind.",
+  "Publish agent channels to connect external integrations.":
+    "Veröffentlichen Sie Agentenkanäle, um externe Integrationen anzubinden.",
   "Expanded Thinking": "Erweitertes Denken",
   Experimental: "Experimentell",
   Expired: "Abgelaufen",

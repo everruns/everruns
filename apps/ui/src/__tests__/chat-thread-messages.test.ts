@@ -51,6 +51,17 @@ describe("coordinator messages", () => {
       body: "Add the dates.",
     });
   });
+  it("reads the Threads framing from a parent", () => {
+    expect(
+      parseCoordinatorMessage(
+        "New assignment from your parent: Add release dates\n\nAdd the dates.\n\nKeep your checklist current with report_progress. When the work is done, call finish.",
+      ),
+    ).toEqual({ kind: "assignment", title: "Add release dates", body: "Add the dates." });
+    expect(parseCoordinatorMessage("Message from your parent:\n\nUse B.")).toEqual({
+      kind: "relay",
+      body: "Use B.",
+    });
+  });
   it("shows a relayed follow-up as written", () => {
     expect(parseCoordinatorMessage("Message from the coordinator:\n\nUse A.")).toEqual({
       kind: "relay",

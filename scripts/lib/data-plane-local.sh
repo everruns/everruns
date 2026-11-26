@@ -55,7 +55,7 @@ data_plane_local_env() {
   export AGENTD_CONTROL_PLANE="http://127.0.0.1:${API_PORT}/api"
   # Injected capabilities and Memory are served to the shards at the address
   # they reach the API on, which they trust as their control plane.
-  export INJECTED_CAPABILITIES_BASE_URL="$AGENTD_CONTROL_PLANE"
+  export INJECTED_CAPABILITIES_BASE_URL="$AGENTD_CONTROL_PLANE/v1"
   export AGENTD_JWKS_URL="http://127.0.0.1:${API_PORT}/api/.well-known/jwks.json"
   export DP_EDGE_PORT="${PORT_PREFIX}45"
   export SESSIONS_UPSTREAM="127.0.0.1:${DP_EDGE_PORT}"

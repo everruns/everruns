@@ -380,13 +380,13 @@ pub async fn create_api_session(
         Some(user) => (user.principal_id, None),
         None => (context.owner_principal_id, context.resolved_owner_user_id),
     };
+    let capabilities = personal_plugins(db, context, channel, caller).await?;
     let session = session_service
-        .create_from_app(
+        .create_from_channel(
             &everruns_core::Caller::internal(context.org_id),
             context.harness_id.uuid(),
             Some(context.agent_internal_id),
             context.agent_id,
-            context.historical_app_id,
             Some(channel.internal_id),
             None,
             owner_principal_id,
@@ -406,7 +406,7 @@ pub async fn create_api_session(
                 locale: None,
                 tags: caller.session_tags(channel),
                 model_id: None,
-                capabilities: vec![],
+                capabilities,
                 sandbox: None,
                 tools: vec![],
                 mcp_servers: Default::default(),
@@ -428,6 +428,42 @@ pub async fn create_api_session(
     db.get_session(context.org_id, session.id)
         .await?
         .ok_or_else(|| CommandError::not_found("Session"))
+}
+
+/// A Work Chat person's own plugin choices, as session-level refs for a new
+/// conversation, when the channel lets them make any. Other channels and key
+/// callers get none.
+async fn personal_plugins(
+    db: &StorageBackend,
+    context: &IngressContext,
+    channel: &IngressChannel,
+    caller: &ApiCaller,
+) -> Result<Vec<everruns_contracts::CapabilityRef>, CommandError> {
+    use crate::domains::plugins::choices;
+    let (Some(user), super::record::ChannelType::WorkChat) =
+        (caller.end_user_id(), &channel.channel_type)
+    else {
+        return Ok(Vec::new());
+    };
+    let Ok(config) = serde_json::from_value::<super::record::work_chat::WorkChatConfig>(
+        channel.channel_config.clone(),
+    ) else {
+        return Ok(Vec::new());
+    };
+    if config.plugins.is_locked() {
+        return Ok(Vec::new());
+    }
+    let owner = choices::choice_owner(db, context.org_id, user.principal_id).await?;
+    let refs = choices::agent_refs(
+        db,
+        context.org_id,
+        context.harness_id,
+        context.agent_internal_id,
+    )
+    .await?;
+    let options =
+        choices::options(db, context.org_id, owner, Some((&refs, config.plugins))).await?;
+    Ok(choices::session_capabilities(&options))
 }
 
 /// Check a caller's message before anything is stored for it: a user

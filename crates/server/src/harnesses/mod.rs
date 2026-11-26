@@ -84,7 +84,9 @@ mod tests {
                 preset == BuiltInHarnessPreset::BashkitWorker
             );
             assert_eq!(tools.contains(&"read_file"), worker);
-            assert_eq!(tools.contains(&"spawn_agent"), worker);
+            // No base preset starts other agents: Spawn agents or Threads is
+            // the agent's choice (knowledge/runtime-resources/threads.md).
+            assert!(!tools.contains(&"spawn_agent") && !tools.contains(&"start_thread"));
             assert_eq!(tools.contains(&"list_tasks"), worker);
             assert!(!tools.contains(&"secret_store"));
             assert!(

@@ -42,8 +42,8 @@ describe("integration snippets", () => {
     const all = [
       ...sessionFlowSamples({ origin: ORIGIN, agentId: "a" }),
       ...sdkSessionSamples({ origin: ORIGIN, agentId: "a" }),
-      ...webhookSamples({ origin: ORIGIN, channelUrl: "/api/v1/apps/x/webhooks/y" }),
-      ...a2aSamples({ origin: ORIGIN, channelUrl: "https://h/api/v1/apps/x/a2a/y" }),
+      ...webhookSamples({ origin: ORIGIN, channelUrl: "/api/v1/channels/y/webhook" }),
+      ...a2aSamples({ origin: ORIGIN, channelUrl: "https://h/api/v1/channels/y/a2a" }),
     ];
     for (const sample of all) {
       expect(sample.code).not.toContain("${");
@@ -63,8 +63,8 @@ describe("integration snippets", () => {
   });
 
   it("absolutizes relative webhook endpoints", () => {
-    const [curl] = webhookSamples({ origin: ORIGIN, channelUrl: "/api/v1/apps/x/webhooks/y" });
-    expect(curl.code).toContain("https://app.example.com/api/v1/apps/x/webhooks/y");
+    const [curl] = webhookSamples({ origin: ORIGIN, channelUrl: "/api/v1/channels/y/webhook" });
+    expect(curl.code).toContain("https://app.example.com/api/v1/channels/y/webhook");
   });
 
   it("builds a coding-agent prompt that references the entity, flow, and SDKs", () => {

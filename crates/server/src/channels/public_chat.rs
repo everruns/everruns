@@ -1,11 +1,11 @@
-// Public Chat channel — isolated, public-facing chat web app bound to one App.
+// Public Chat channel — isolated, public-facing chat bound to one agent channel.
 //
 // Design Decision: Public Chat reuses the AG-UI streaming core
-// (`ag_ui::run_app_agent_stream`) and the shared App endpoint auth verifier,
+// (`ag_ui::run_channel_agent_stream`) and the shared channel auth verifier,
 // but mounts its own routes, its own rate-limiter namespace, and its own
 // bot-mitigation gate (Cloudflare Turnstile). A thread is a conversation of
 // the channel host, bound per channel row and per visitor, so a thread ID can
-// never collide with AG-UI, another app/channel, or another visitor
+// never collide with AG-UI, another ingress/channel, or another visitor
 // (TM-TENANT-009). See `knowledge/integrations/public-chat.md`.
 //
 // Design Decision: Anonymous visitors must pass a Turnstile challenge before a
@@ -33,7 +33,7 @@ use crate::api::channel_auth::{ChannelAuthError, ChannelAuthPrincipal, LegacyCha
 use crate::api::common::ErrorResponse;
 use crate::api::turnstile::{TurnstileOutcome, TurnstileVerifier};
 use crate::auth::rate_limit::extract_client_ip_from_parts;
-use crate::channels::ag_ui::{AgUiState, AgUiSurface, run_app_agent_stream};
+use crate::channels::ag_ui::{AgUiState, AgUiSurface, run_channel_agent_stream};
 use crate::middleware::RequestId;
 
 /// Headers a client may use to carry the Turnstile token.
@@ -44,14 +44,6 @@ const VISITOR_COOKIE: &str = "everruns_public_chat_visitor";
 
 pub fn routes(state: AgUiState) -> Router {
     Router::new()
-        .route(
-            "/v1/apps/{app_id}/public-chat",
-            post(run_public_chat_legacy),
-        )
-        .route(
-            "/v1/apps/{app_id}/public-chat/config",
-            get(get_config_legacy),
-        )
         .route(
             "/v1/channels/{channel_id}/public-chat",
             post(run_public_chat_channel),
@@ -72,19 +64,18 @@ pub fn routes(state: AgUiState) -> Router {
         .merge(crate::api::agentid_login::routes(state))
 }
 enum PublicChatTarget {
-    LegacyApp(String),
     Channel(String),
 }
 
-/// Non-secret bootstrap configuration the public web app needs to render the
+/// Non-secret bootstrap configuration the public web client needs to render the
 /// chat: branding, whether anonymous access is allowed, the sign-in method (if
 /// any), and the Turnstile site key (if enforced). No secrets are ever
 /// returned — not the shared token, the Turnstile secret, or auth client
 /// secrets.
 #[derive(Debug, Serialize)]
 struct PublicChatBootstrap {
-    app_id: String,
-    /// Display name (branding override or the App name).
+    channel_id: String,
+    /// Display name (branding override or the agent name).
     name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     logo_url: Option<String>,
@@ -119,13 +110,6 @@ struct PublicChatCaptchaBootstrap {
     site_key: String,
 }
 
-async fn get_config_legacy(
-    State(state): State<AgUiState>,
-    Path(app_id): Path<String>,
-) -> Result<Json<PublicChatBootstrap>, Response> {
-    get_config(state, PublicChatTarget::LegacyApp(app_id)).await
-}
-
 async fn get_config_channel(
     State(state): State<AgUiState>,
     Path(channel_id): Path<String>,
@@ -137,13 +121,13 @@ async fn get_config(
     state: AgUiState,
     target: PublicChatTarget,
 ) -> Result<Json<PublicChatBootstrap>, Response> {
-    let (app, _channel, config) = resolve_published_channel(&state, target).await?;
+    let (ingress, _channel, config) = resolve_published_channel(&state, target).await?;
 
     let branding = &config.branding;
     let name = branding
         .display_name
         .clone()
-        .unwrap_or_else(|| app.name.clone());
+        .unwrap_or_else(|| ingress.name.clone());
 
     let sign_in = config
         .auth
@@ -181,7 +165,7 @@ async fn get_config(
             });
 
     Ok(Json(PublicChatBootstrap {
-        app_id: app.public_id.to_string(),
+        channel_id: ingress.public_id.to_string(),
         name,
         logo_url: branding.logo_url.clone(),
         primary_color: branding.primary_color.clone(),
@@ -190,25 +174,6 @@ async fn get_config(
         sign_in,
         captcha,
     }))
-}
-
-async fn run_public_chat_legacy(
-    State(state): State<AgUiState>,
-    Path(app_id): Path<String>,
-    req_id: Option<Extension<RequestId>>,
-    connect_info: Option<Extension<ConnectInfo<std::net::SocketAddr>>>,
-    headers: HeaderMap,
-    request: Request,
-) -> Result<Response, Response> {
-    run_public_chat(
-        state,
-        PublicChatTarget::LegacyApp(app_id),
-        req_id,
-        connect_info,
-        headers,
-        request,
-    )
-    .await
 }
 
 async fn run_public_chat_channel(
@@ -242,9 +207,8 @@ async fn run_public_chat(
     let peer_addr = connect_info.map(|Extension(ConnectInfo(addr))| addr);
     let runtime_channel = match &target {
         PublicChatTarget::Channel(id) => Some(id.clone()),
-        _ => None,
     };
-    let (app, channel, config) = resolve_published_channel(&state, target).await?;
+    let (ingress, channel, config) = resolve_published_channel(&state, target).await?;
 
     // 1. Authentication. A channel with a real inline `auth` provider requires
     //    a verified credential (e.g. Google sign-in); those visitors are
@@ -337,14 +301,14 @@ async fn run_public_chat(
         verify_turnstile(&config, &headers, peer_addr).await?;
     }
 
-    // 3. Per-app, per-IP rate limit (own namespace via the state's limiter).
+    // 3. Per-ingress, per-IP rate limit (own namespace via the state's limiter).
     if let Some(limit) = config.rate_limit_per_minute
         && limit > 0
     {
         let client_ip = extract_client_ip_from_parts(peer_addr, &headers);
         if state
             .rate_limiter
-            .check(&app.public_id.to_string(), client_ip, limit)
+            .check(&ingress.public_id.to_string(), client_ip, limit)
             .await
             .is_err()
         {
@@ -357,7 +321,11 @@ async fn run_public_chat(
             Some(id) => id,
             None => {
                 super::ag_ui::resolve_ingress_identity(
-                    &state, app.org_id, &provider, &realm, &subject,
+                    &state,
+                    ingress.org_id,
+                    &provider,
+                    &realm,
+                    &subject,
                 )
                 .await?
             }
@@ -367,9 +335,9 @@ async fn run_public_chat(
     };
     // 4. Delegate to the shared AG-UI streaming core; a thread belongs to its
     //    visitor, so the visitor is part of its conversation key.
-    let sse = run_app_agent_stream(
+    let sse = run_channel_agent_stream(
         state,
-        app,
+        ingress,
         channel,
         config.ag_ui_stream_config(),
         AgUiSurface::PublicChat,
@@ -473,9 +441,9 @@ async fn verify_turnstile(
     }
 }
 
-/// Resolve a published App with an enabled Public Chat channel and its parsed
+/// Resolve a live Public Chat channel and its parsed
 /// config. Errors are deliberately generic so a caller cannot distinguish "no
-/// app" from "unpublished" from "channel disabled" (mirrors the FCP/AG-UI
+/// ingress" from "unpublished" from "channel disabled" (mirrors the FCP/AG-UI
 /// public-surface contract).
 async fn resolve_published_channel(
     state: &AgUiState,
@@ -492,24 +460,7 @@ async fn resolve_published_channel(
     if !state.public_chat_enabled {
         return Err(ErrorResponse::feature_not_enabled("public_chat").into_response());
     }
-    let (app, channel) = match target {
-        PublicChatTarget::LegacyApp(app_id) => {
-            match crate::api::channel_ingress::resolve_legacy_channel(
-                &state.db,
-                state.encryption.as_ref(),
-                &app_id,
-                ChannelType::PublicChat,
-            )
-            .await
-            .map_err(internal_error)?
-            {
-                crate::api::channel_ingress::LegacyChannelMatch::One(endpoint) => *endpoint,
-                crate::api::channel_ingress::LegacyChannelMatch::NotFound
-                | crate::api::channel_ingress::LegacyChannelMatch::Ambiguous => {
-                    return Err(not_found());
-                }
-            }
-        }
+    let (ingress, channel) = match target {
         PublicChatTarget::Channel(channel_id) => crate::api::channel_ingress::resolve_channel(
             &state.db,
             state.encryption.as_ref(),
@@ -522,9 +473,9 @@ async fn resolve_published_channel(
     if channel.channel_type != ChannelType::PublicChat {
         return Err(not_found());
     }
-    if let Err(reason) = crate::api::channel_ingress::channel_liveness(&app, &channel) {
+    if let Err(reason) = crate::api::channel_ingress::channel_liveness(&ingress, &channel) {
         tracing::debug!(
-            app_id = %app.public_id,
+            ingress_id = %ingress.public_id,
             channel_id = %channel.public_id,
             reason = reason.as_str(),
             "Public chat request rejected: endpoint not live"
@@ -533,7 +484,7 @@ async fn resolve_published_channel(
     }
     let mut config = channel.public_chat_config().ok_or_else(not_found)?;
     config.auth = channel.auth.as_deref().cloned();
-    Ok((app, channel, config))
+    Ok((ingress, channel, config))
 }
 
 fn auth_mode_str(mode: &ChannelAuthMode) -> &'static str {

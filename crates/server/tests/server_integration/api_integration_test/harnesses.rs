@@ -1,9 +1,7 @@
 //! API integration tests: harnesses.
 
-use super::support::seed_archival_app;
 use crate::test_harness;
 use axum::http::StatusCode;
-use everruns_contracts::typed_id::AgentId;
 use everruns_core::DEFAULT_ORG_ID;
 use everruns_server::domains::agents::record::Agent;
 use everruns_server::domains::harnesses::record::Harness;
@@ -305,51 +303,6 @@ async fn test_session_features_generic_harness() {
 // ============================================
 // User Profile Tests
 // ============================================
-
-#[tokio::test]
-async fn test_delete_harness_referenced_by_app_returns_conflict() {
-    let server = TestServer::in_memory().await;
-
-    let agent: Value = server
-        .post(
-            "/v1/platform/agents",
-            json!({
-                "name": "delete-harness-app-agent",
-                "display_name": "Delete Harness App Agent",
-                "system_prompt": "Test"
-            }),
-        )
-        .await
-        .assert_status(StatusCode::CREATED)
-        .json();
-
-    let harness: Harness = server
-        .post(
-            "/v1/platform/harnesses",
-            json!({
-                "name": "delete-app-harness",
-                "display_name": "Delete App Harness",
-                "system_prompt": "Test"
-            }),
-        )
-        .await
-        .assert_status(StatusCode::CREATED)
-        .json();
-
-    seed_archival_app(
-        &server,
-        "Harness Delete Blocker",
-        harness.id,
-        Some(agent["id"].as_str().unwrap().parse::<AgentId>().unwrap()),
-        None,
-    )
-    .await;
-
-    server
-        .delete(&format!("/v1/platform/harnesses/{}", harness.id))
-        .await
-        .assert_status(StatusCode::CONFLICT);
-}
 
 #[tokio::test]
 async fn test_delete_harness_with_child_returns_conflict() {

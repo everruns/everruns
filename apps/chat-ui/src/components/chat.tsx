@@ -1,4 +1,6 @@
 "use client";
+
+import { apiPath } from "./api-path";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MessageContent } from "./message-content";
 import { FilePreview, downloadFile } from "./file-preview";
@@ -14,6 +16,7 @@ import {
 } from "./reactions";
 import { SharedChat } from "./shared-chat";
 import { Account } from "./account";
+import { Customizations } from "./customizations";
 import { PublishedLanding, PublishedView, useWorkChatView } from "./published-view";
 import { consumeSse, streamFailure } from "../client/sse";
 import { presentViewer, type Viewer } from "../profile";
@@ -98,7 +101,7 @@ async function api<T>(
   body?: unknown,
   idempotencyKey?: string,
 ): Promise<T> {
-  const response = await fetch(`/api/${path}`, {
+  const response = await fetch(apiPath(`${path}`), {
     method,
     headers:
       body === undefined
@@ -220,7 +223,8 @@ function WorkChat({ config }: { config: Config }) {
     [file, setFile] = useState<FileContent | null>(null),
     [edit, setEdit] = useState("");
   const [upload, setUpload] = useState<File[]>([]),
-    [sidebar, setSidebar] = useState(false);
+    [sidebar, setSidebar] = useState(false),
+    [customizing, setCustomizing] = useState(false);
   const [search, setSearch] = useState(""),
     [archived, setArchived] = useState(false),
     [nextPage, setNextPage] = useState<string | null>(null);
@@ -269,7 +273,7 @@ function WorkChat({ config }: { config: Config }) {
   useEffect(() => {
     const timer = setInterval(async () => {
       try {
-        const response = await fetch("/api/chat/config", { cache: "no-store" });
+        const response = await fetch(apiPath("chat/config"), { cache: "no-store" });
         if (!response.ok) return;
         const next: Config = await response.json();
         if (
@@ -374,7 +378,7 @@ function WorkChat({ config }: { config: Config }) {
         try {
           controller = new AbortController();
           const response = await fetch(
-            `/api/sessions/${selected}/sse?after_sequence=${lastSequence.current}`,
+            apiPath(`sessions/${selected}/sse?after_sequence=${lastSequence.current}`),
             { signal: controller.signal },
           );
           if (stopped || generation.current !== epoch) {
@@ -672,6 +676,7 @@ function WorkChat({ config }: { config: Config }) {
     setUpload([]);
     setNotice("");
     setSidebar(false);
+    setCustomizing(false);
     setWork([]);
   };
   return (
@@ -774,6 +779,17 @@ function WorkChat({ config }: { config: Config }) {
             </button>
           )}
         </nav>
+        {signedIn && (
+          <button
+            className={customizing ? "row customize selected" : "row customize"}
+            onClick={() => {
+              setCustomizing(true);
+              setSidebar(false);
+            }}
+          >
+            Customizations
+          </button>
+        )}
         <footer>
           {viewer ? <Account viewer={viewer} /> : <span>Work Chat</span>}
           {signedIn ? (
@@ -804,7 +820,8 @@ function WorkChat({ config }: { config: Config }) {
           )}
         </footer>
       </aside>
-      <main>
+      {customizing && <Customizations onBack={() => setCustomizing(false)} />}
+      <main hidden={customizing}>
         <header>
           <button
             className="mobile-menu"

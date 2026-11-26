@@ -517,10 +517,10 @@ async fn bundled_agents_import_as_created_here_and_linked_agents_by_name() {
         .as_array()
         .unwrap()
         .iter()
-        .find(|c| c["ref"] == "agent_handoff")
-        .expect("Agents capability")
+        .find(|c| c["ref"] == "spawn_agents")
+        .expect("Spawn agents capability")
         .clone();
-    let ids: Vec<_> = cap["config"]["targets"]
+    let ids: Vec<_> = cap["config"]["agents"]
         .as_array()
         .unwrap()
         .iter()
@@ -528,7 +528,7 @@ async fn bundled_agents_import_as_created_here_and_linked_agents_by_name() {
         .collect();
     assert_eq!(ids, ["implement", "review"], "{cap}");
     assert_eq!(
-        cap["config"]["targets"][0]["description"],
+        cap["config"]["agents"][0]["description"],
         "Implements changes."
     );
 
@@ -585,7 +585,10 @@ async fn bundled_agents_import_as_created_here_and_linked_agents_by_name() {
     assert!(
         exported["capabilities"]
             .as_array()
-            .is_none_or(|caps| caps.iter().all(|c| *c != "agent_handoff")),
+            .is_none_or(|caps| caps.iter().all(|c| c
+                .get("config")
+                .and_then(|config| config.get("agents"))
+                .is_none())),
         "{exported}"
     );
 

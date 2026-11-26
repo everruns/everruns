@@ -151,7 +151,7 @@ async fn park(f: &Fixture, tool_calls: Value) -> SessionId {
         .assert_success()
         .json();
     // The thread is the channel's only conversation here.
-    let tag = format!("app_channel:{}", f.channel_id);
+    let tag = format!("channel:{}", f.channel_id);
     let session_id: SessionId = sessions["data"]
         .as_array()
         .unwrap()

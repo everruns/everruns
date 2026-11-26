@@ -1,3 +1,4 @@
+import { messages as applications } from "./messages/uk/applications";
 import { messages as qualityMonitoring } from "./messages/uk/quality-monitoring";
 import { messages as mcpApps } from "./messages/uk/mcp-apps";
 import { messages as extractions } from "./messages/uk/extractions";
@@ -49,6 +50,7 @@ import { messages as catalog18 } from "./messages/uk/settings-02";
 
 export const uiMessages: Readonly<Record<string, string>> = Object.assign(
   Object.create(null) as Record<string, string>,
+  applications,
   // First, so a translation another catalog already owns keeps its wording.
   toolApproval,
   sandboxBuilds,

@@ -313,24 +313,7 @@ impl Command for ExportSessionMessages {
             });
         }
 
-        let messages = match &plane {
-            Some(plane) => plane
-                .log()
-                .await?
-                .into_iter()
-                .filter_map(|event| {
-                    let data = serde_json::to_value(&event.data).ok()?;
-                    crate::domains::messages::service::MessageService::event_to_message(
-                        session_id.uuid(),
-                        &data,
-                        &event.event_type,
-                        event.sequence.unwrap_or(0),
-                    )
-                    .ok()
-                })
-                .collect(),
-            None => q::message_service(ctx)?.list(session_id.uuid()).await?,
-        };
+        let messages = session_messages(ctx, session_id, plane.as_ref()).await?;
 
         let mut body = String::new();
         for message in &messages {
@@ -345,6 +328,34 @@ impl Command for ExportSessionMessages {
             atif_images_omitted: 0,
         })
     }
+}
+
+/// A session's messages: from the control plane, or folded from the
+/// session's own log on its data plane (step 11.6). Room memory publishes a
+/// session's conversation from the same list the JSONL export writes.
+pub(crate) async fn session_messages(
+    ctx: &Ctx,
+    session_id: SessionId,
+    plane: Option<&crate::domains::data_plane::session_plane::SessionPlane>,
+) -> Result<Vec<Message>, CommandError> {
+    Ok(match plane {
+        Some(plane) => plane
+            .log()
+            .await?
+            .into_iter()
+            .filter_map(|event| {
+                let data = serde_json::to_value(&event.data).ok()?;
+                crate::domains::messages::service::MessageService::event_to_message(
+                    session_id.uuid(),
+                    &data,
+                    &event.event_type,
+                    event.sequence.unwrap_or(0),
+                )
+                .ok()
+            })
+            .collect(),
+        None => q::message_service(ctx)?.list(session_id.uuid()).await?,
+    })
 }
 
 /// A session's whole event log for an export: from the control plane's
@@ -549,7 +560,7 @@ mod tests {
                 playground_user_id: None,
                 source: crate::domains::sessions::record::SessionSource::Api,
                 org_id: DEFAULT_ORG_ID,
-                app_id: None,
+
                 channel_id: None,
                 trigger_id: None,
                 harness_id: Some(harness.id),
@@ -718,7 +729,7 @@ mod tests {
                 playground_user_id: None,
                 source: crate::domains::sessions::record::SessionSource::Api,
                 org_id: DEFAULT_ORG_ID,
-                app_id: None,
+
                 channel_id: None,
                 trigger_id: None,
                 harness_id: Some(harness.id),

@@ -477,12 +477,11 @@ async fn existing_shared_webhook_sessions_keep_their_conversation() {
         let sessions = SessionService::new(fixture.db.clone());
         async move {
             sessions
-                .create_from_app(
+                .create_from_channel(
                     &everruns_core::Caller::internal(DEFAULT_ORG_ID),
                     context.harness_id.uuid(),
                     Some(context.agent_internal_id),
                     context.agent_id,
-                    None,
                     Some(channel.internal_id),
                     None,
                     context.owner_principal_id,
@@ -512,12 +511,11 @@ async fn existing_shared_webhook_sessions_keep_their_conversation() {
     let shared = create(tags.clone()).await;
     create(tags).await;
 
-    sqlx::raw_sql(include_str!(
-        "../../../migrations/legacy/211_webhook_channel_bindings.sql"
-    ))
-    .execute(fixture.db.database().pool())
-    .await
-    .unwrap();
+    crate::storage::test_database::apply_historical_channel_bindings(
+        fixture.db.database().pool(),
+        include_str!("../../../migrations/legacy/211_webhook_channel_bindings.sql"),
+    )
+    .await;
 
     assert_eq!(
         fixture
@@ -611,12 +609,11 @@ async fn tagged_session(fixture: &Fixture, tags: &[String]) -> SessionId {
         context, channel, ..
     } = &fixture.scope;
     SessionService::new(fixture.db.clone())
-        .create_from_app(
+        .create_from_channel(
             &everruns_core::Caller::internal(DEFAULT_ORG_ID),
             context.harness_id.uuid(),
             Some(context.agent_internal_id),
             context.agent_id,
-            None,
             Some(channel.internal_id),
             None,
             context.owner_principal_id,
@@ -671,12 +668,11 @@ async fn existing_threads_keep_their_conversation() {
     .await;
 
     for fixture in [&ag_ui, &public_chat, &fcp] {
-        sqlx::raw_sql(include_str!(
-            "../../../migrations/legacy/212_thread_channel_bindings.sql"
-        ))
-        .execute(fixture.db.database().pool())
-        .await
-        .unwrap();
+        crate::storage::test_database::apply_historical_channel_bindings(
+            fixture.db.database().pool(),
+            include_str!("../../../migrations/legacy/212_thread_channel_bindings.sql"),
+        )
+        .await;
     }
 
     let bound = |fixture: &Fixture, key: String| {
@@ -715,6 +711,7 @@ async fn an_existing_shared_a2a_session_keeps_its_conversation() {
         "app_channel_type:a2a".to_string(),
         "__internal:app_invocation".to_string(),
     ];
+    // Frozen backfills need the original tags, before the retirement migration.
     // Per-invocation and per-caller sessions carried an `app_invocation:` tag.
     let mut per_caller = tags.clone();
     per_caller.push(format!("app_invocation:{}", Uuid::now_v7()));
@@ -722,12 +719,11 @@ async fn an_existing_shared_a2a_session_keeps_its_conversation() {
     tagged_session(&fixture, &per_caller).await;
     let shared = tagged_session(&fixture, &tags).await;
 
-    sqlx::raw_sql(include_str!(
-        "../../../migrations/legacy/213_a2a_channel_bindings.sql"
-    ))
-    .execute(fixture.db.database().pool())
-    .await
-    .unwrap();
+    crate::storage::test_database::apply_historical_channel_bindings(
+        fixture.db.database().pool(),
+        include_str!("../../../migrations/legacy/213_a2a_channel_bindings.sql"),
+    )
+    .await;
 
     assert_eq!(
         fixture

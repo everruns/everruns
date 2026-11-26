@@ -67,16 +67,6 @@ impl Modify for SdkMetadata {
         // aliased routes see them too.
         api::command_http::add_command_paths(openapi);
         channel_aliases::add_route_aliases(openapi);
-        for path in ["/v1/platform/apps", "/v1/platform/apps/{app_id}"] {
-            if let Some(operation) = openapi
-                .paths
-                .paths
-                .get_mut(path)
-                .and_then(|item| item.get.as_mut())
-            {
-                operation.deprecated = Some(Deprecated::True);
-            }
-        }
         // Pause agent replaced "suspend exposures"; the old routes stay as aliases.
         for path in [
             "/v1/platform/agents/{agent_id}/exposures/suspend",
@@ -184,6 +174,19 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         api::search_providers::list_search_providers,
         api::search_providers::preview_search_plan,
         api::runtime_auth::exchange,
+        api::applications::application_host,
+        api::applications::application_config,
+        api::applications::application_exchange,
+        api::applications::application_manifest,
+        api::applications::application_launchers,
+        api::applications::resources::application_room,
+        api::applications::resources::application_messages,
+        api::applications::resources::application_replies,
+        api::applications::resources::application_post_message,
+        api::applications::resources::application_memory,
+        api::applications::resources::application_write_memory,
+        api::applications::resources::application_delete_memory,
+
         api::user_connections::list_runtime_connectors,
         api::user_connections::runtime_accounts::authorize_target_connection,
         api::user_connections::runtime_accounts::start_target_connection,
@@ -231,6 +234,8 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         api::agent_api::work_chat::experience::read_work_chat_share,
         api::agent_api::work_chat::resolve_work_chat_main,
         api::agent_api::work_chat::list_work_chat_tasks,
+        api::agent_api::work_chat::list_work_chat_plugins,
+        api::agent_api::work_chat::set_work_chat_plugin,
         api::agent_api::work_chat::get_work_chat_files,
         api::agent_api::work_chat::write_work_chat_file,
         api::agent_api::work_chat::delete_work_chat_file,
@@ -287,14 +292,9 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         crate::channels::voice::create_call,
         crate::channels::voice::end_call,
         crate::channels::voice::create_channel_call,
-        api::channel_webhooks::invoke_webhook_legacy,
         api::channel_webhooks::invoke_webhook_channel,
-        crate::channels::a2a::invoke_a2a_legacy,
         crate::channels::a2a::invoke_a2a_channel,
-        crate::channels::a2a::agent_card::agent_card_legacy,
         crate::channels::a2a::agent_card::agent_card_channel,
-        crate::channels::fcp::handshake,
-        crate::channels::fcp::message_legacy,
         crate::channels::fcp::message_channel,
         // Agent triggers (EVE-757)
         api::agent_scripts::list_agent_scripts,
@@ -310,8 +310,6 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         api::agent_triggers::update_agent_trigger,
         api::agent_triggers::delete_agent_trigger,
         api::agent_triggers::trigger_agent_trigger,
-        api::apps::list_apps,
-        api::apps::get_app,
         api::events::stream_sse,
         api::events::list_events,
         api::events::events_summary,
@@ -612,6 +610,9 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         api::plugins::delete_plugin_marketplace,
         api::plugins::sync_plugin_marketplace,
         api::plugins::get_marketplace_catalog,
+        api::plugins::plugin_config,
+        api::plugins::list_my_plugins,
+        api::plugins::set_my_plugin_choice,
     ),
     components(
         schemas(
@@ -940,6 +941,7 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
     ),
     tags(
         (name = "agents", description = "Agent management endpoints"),
+        (name = "applications", description = "Publish named workspaces with Chats, Rooms, shared Memory and one audience"),
         (name = "sessions", description = "Session management endpoints"),
         (name = "messages", description = "Message management endpoints"),
         (name = "rooms", description = "Rooms: org-owned conversations where people, agents and guests talk, and addressed agents are woken"),

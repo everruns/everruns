@@ -59,6 +59,14 @@ pub fn session_layer(
             .system_prompt
             .clone()
             .filter(|prompt| !prompt.trim().is_empty()),
+        // Rooms require explicit sends, including when their sessions run on v2.
+        communication: request
+            .hints
+            .as_ref()
+            .and_then(|hints| {
+                hints.get(everruns_contracts::runtime::config_layer::COMMUNICATION_HINT)
+            })
+            .and_then(|value| serde_json::from_value(value.clone()).ok()),
         capabilities: request.capabilities.clone(),
         tools: request.tools.clone(),
         mcp_servers: request.mcp_servers.clone(),
@@ -73,7 +81,8 @@ pub fn session_layer(
         && layer.mcp_servers.is_empty()
         && layer.network_access.is_none()
         && layer.max_iterations.is_none()
-        && layer.parallel_tool_calls.is_none();
+        && layer.parallel_tool_calls.is_none()
+        && layer.communication.is_none();
     (!empty).then_some(layer)
 }
 

@@ -309,67 +309,6 @@ async fn test_search_skills() {
     assert_eq!(results[0].name, "Code Formatter");
 }
 
-#[tokio::test]
-async fn test_search_apps() {
-    let db = StorageBackend::test_database();
-    let agent = create_test_agent(&db, "Agent", None).await;
-    // The fixture harness.
-    let harness_id = Uuid::nil();
-
-    db.create_app(
-        DEFAULT_ORG_ID,
-        CreateAppRow {
-            public_id: format!("app_{}", uuid::Uuid::now_v7().simple()),
-            name: "Slack Bot".to_string(),
-            description: Some("Slack integration for support".to_string()),
-            harness_id,
-            agent_id: Some(agent.id.into()),
-            virtual_user_id: None,
-            owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
-            resolved_owner_user_id: None,
-            channel_type: Some("slack".to_string()),
-            channel_config: serde_json::json!({}),
-            channel_config_encrypted: None,
-        },
-    )
-    .await
-    .unwrap();
-
-    db.create_app(
-        DEFAULT_ORG_ID,
-        CreateAppRow {
-            public_id: format!("app_{}", uuid::Uuid::now_v7().simple()),
-            name: "Web Widget".to_string(),
-            description: Some("Embeddable chat widget".to_string()),
-            harness_id,
-            agent_id: Some(agent.id.into()),
-            virtual_user_id: None,
-            owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
-            resolved_owner_user_id: None,
-            channel_type: Some("ag_ui".to_string()),
-            channel_config: serde_json::json!({}),
-            channel_config_encrypted: None,
-        },
-    )
-    .await
-    .unwrap();
-
-    let results = db
-        .list_apps(DEFAULT_ORG_ID, Some("slack"), false)
-        .await
-        .unwrap();
-    assert_eq!(results.len(), 1);
-    assert_eq!(results[0].name, "Slack Bot");
-
-    // Multi-word across name + description
-    let results = db
-        .list_apps(DEFAULT_ORG_ID, Some("widget chat"), false)
-        .await
-        .unwrap();
-    assert_eq!(results.len(), 1);
-    assert_eq!(results[0].name, "Web Widget");
-}
-
 // ─── MessageFilter::Search tests (EVE-87) ───
 
 #[tokio::test]

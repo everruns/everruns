@@ -1,4 +1,4 @@
-# MCP, integrations, and apps
+# MCP, integrations, and Applications
 
 * [Slack Response Policy](slack-response-policy.md) - Decide whether an agent should participate before starting a turn.
 
@@ -16,10 +16,10 @@
 * [MCP Apps host: showing connected servers' views](mcp-apps-host.md) - Interactive views from connected MCP servers under their tool call in the console and as a picture in Slack; sandbox, confirmation and owner rules.
 * [Inbound Form Mode Elicitation](mcp-form-elicitation.md) - Answering an attached MCP server's form mode elicitation through ask_user, and the trust rules that shape it.
 * [Integrations](integrations.md) - Integration specs index.
-* [Archived Apps](apps.md) - Frozen App compatibility data and permanent ingress aliases.
-* [Agent Exposure (retiring the App abstraction)](agent-exposure.md) - Make Agent the addressable entity by making channels Agent-owned and folding invocation into Triggers, retiring App.
+* [Applications](applications.md) - Published workspaces with Chats, Rooms, memory and a shared audience.
+* [Agent exposure](agent-exposure.md) - Agent-owned channel and trigger boundaries.
 * [Public Chat (Hosted Chat App)](public-chat.md) - Public Chat (hosted, isolated chat app), product spec/proposal.
-* [Legacy App Invocation Aliases](app-invocation-channels.md) - Frozen App-shaped aliases for channel-owned webhook and schedule ingress.
+* [Channel Invocation](channel-invocation.md) - Channel-owned webhook and scheduled execution.
 * [Channel Authentication](channel-auth.md) - Shared inbound auth framework for Agent-owned channels.
 * [AgentID](agentid.md) - AgentID (OIDC for AI agents): channel preset, consumer sign-in, and agents finishing other apps' AgentID sign-ins.
 * [Agent Execution API](agent-execution-api.md) - Proposal: expose one agent to code with an API channel, agent keys, customer OAuth, session and run routes, shared with serve; the SDK becomes the agent client.

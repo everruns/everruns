@@ -24,7 +24,8 @@ otherwise, and requires `OPENAI_API_KEY`. `agent_decisions` also requires
 | [`workspace_heads.rs`](workspace_heads.rs) | Isolated Git-worktree heads, Environments, and durable session binding | `cargo run -p everruns --features local,openai --example workspace_heads -- /path/to/repo /path/to/state` |
 | [`canonical_events.rs`](canonical_events.rs) | Lossless recording and typed rendering of live canonical events | `cargo run -p everruns --features openai --example canonical_events` |
 | [`explicit_communication.rs`](explicit_communication.rs) | An agent whose text is private notes and that talks only through `send_message`, with sent messages read from the event stream | `cargo run -p everruns --features openai --example explicit_communication` |
-| [`subagents.rs`](subagents.rs) | Concurrent child agents managed by an application-owned task registry | `cargo run -p everruns --features openai --example subagents` |
+| [`spawn_agents.rs`](spawn_agents.rs) | Spawn agents: the lead spawns copies of itself in parallel and a named reviewer on a lighter model | `cargo run -p everruns --features openai,local --example spawn_agents` |
+| [`custom_child_agents.rs`](custom_child_agents.rs) | Concurrent child agents managed by an application-owned task registry | `cargo run -p everruns --features openai --example custom_child_agents` |
 | [`observe_and_cancel.rs`](observe_and_cancel.rs) | Live event streaming and cooperative cancellation | `cargo run -p everruns --features openai --example observe_and_cancel` |
 | [`advanced_capability.rs`](advanced_capability.rs) | Curated capability SPI with typed protocol, metadata, progress, and structured errors | `cargo run -p everruns --features openai --example advanced_capability` |
 | [`lifecycle_hooks.rs`](lifecycle_hooks.rs) | Awaited agent, turn, tool, and completion handlers | `cargo run -p everruns --features openai --example lifecycle_hooks` |
@@ -51,3 +52,11 @@ See [Batch Model Requests](https://everruns.com/docs/framework/batch-model-reque
 ## Application services
 
 See the [service guides](https://everruns.com/docs/framework/service-integrations/) for `mcp_oauth`, `slack_actions`, `service_data`, `service_credentials`, `service_triggers` and `service_evaluation`. Each source file lists its required features, secrets and run command. All use real provider calls.
+
+## Python Code Mode
+
+[`python_code_mode.rs`](python_code_mode.rs) runs a real Framework agent using
+Monty and authorized workspace tools. Enable `monty,openai`, provision the pinned
+worker and private state directory, then run `cargo run -p everruns --features
+monty,openai --example python_code_mode`. See the public Python Code Mode docs
+for installation, Linux isolation, approval/resume and coexistence with Bashkit.

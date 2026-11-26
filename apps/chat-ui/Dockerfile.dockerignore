@@ -1,0 +1,19 @@
+# The build uses the repository root so it can include the shared UI package.
+# Keep local credentials, dependencies and unrelated repositories out of layers.
+**
+!apps/
+!apps/chat-ui/
+!apps/chat-ui/**
+!apps/ui/
+!apps/ui/generative-ui/
+!apps/ui/generative-ui/**
+!apps/ui/scripts/
+!apps/ui/scripts/patch-zod-v3.mjs
+!apps/ui/scripts/zod-v3-compatibility.json
+**/node_modules
+**/.next
+**/.env*
+**/*.log
+**/test-results
+**/playwright-report
+**/coverage

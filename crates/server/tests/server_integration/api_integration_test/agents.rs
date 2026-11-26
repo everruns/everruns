@@ -1,9 +1,8 @@
 //! API integration tests: agents.
 
-use super::support::seed_archival_app;
 use crate::test_harness;
 use axum::http::StatusCode;
-use everruns_contracts::typed_id::{AgentId, HarnessId, VirtualUserId};
+use everruns_contracts::typed_id::HarnessId;
 use everruns_core::DEFAULT_ORG_ID;
 use everruns_server::domains::agents::record::Agent;
 use everruns_server::domains::models::record::Model;
@@ -1210,91 +1209,6 @@ async fn test_session_features_with_agent_capabilities() {
         "Agent capability should contribute features, got: {:?}",
         features,
     );
-}
-
-#[tokio::test]
-async fn test_delete_agent_referenced_by_app_returns_conflict() {
-    let server = TestServer::in_memory().await;
-
-    let agent: Value = server
-        .post(
-            "/v1/platform/agents",
-            json!({
-                "name": "delete-app-agent",
-                "display_name": "Delete App Agent",
-                "system_prompt": "Test"
-            }),
-        )
-        .await
-        .assert_status(StatusCode::CREATED)
-        .json();
-
-    seed_archival_app(
-        &server,
-        "Agent Delete Blocker",
-        server.seed_generic_harness_id.parse::<HarnessId>().unwrap(),
-        Some(agent["id"].as_str().unwrap().parse::<AgentId>().unwrap()),
-        None,
-    )
-    .await;
-
-    server
-        .delete(&format!(
-            "/v1/platform/agents/{}",
-            agent["id"].as_str().unwrap()
-        ))
-        .await
-        .assert_status(StatusCode::CONFLICT);
-}
-
-#[tokio::test]
-async fn test_delete_virtual_user_referenced_by_app_returns_conflict() {
-    let server = TestServer::in_memory().await;
-
-    let agent: Value = server
-        .post(
-            "/v1/platform/agents",
-            json!({
-                "name": "delete-identity-app-agent",
-                "display_name": "Delete Identity App Agent",
-                "system_prompt": "Test"
-            }),
-        )
-        .await
-        .assert_status(StatusCode::CREATED)
-        .json();
-
-    let identity: Value = server
-        .post(
-            "/v1/platform/virtual-users",
-            json!({"name": "Delete App Identity"}),
-        )
-        .await
-        .assert_status(StatusCode::CREATED)
-        .json();
-
-    seed_archival_app(
-        &server,
-        "Identity Delete Blocker",
-        server.seed_generic_harness_id.parse::<HarnessId>().unwrap(),
-        Some(agent["id"].as_str().unwrap().parse::<AgentId>().unwrap()),
-        Some(
-            identity["id"]
-                .as_str()
-                .unwrap()
-                .parse::<VirtualUserId>()
-                .unwrap(),
-        ),
-    )
-    .await;
-
-    server
-        .delete(&format!(
-            "/v1/platform/virtual-users/{}",
-            identity["id"].as_str().unwrap()
-        ))
-        .await
-        .assert_status(StatusCode::CONFLICT);
 }
 
 #[tokio::test]

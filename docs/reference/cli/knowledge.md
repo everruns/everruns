@@ -216,6 +216,7 @@ everruns knowledge files list [OPTIONS] --collection-id <collection_id>
 | `--offset <OFFSET>` |  |
 | `--path <PATH>` |  |
 | `--tree` | List only the immediate children of `path`: its files plus one entry per subfolder (`kind: "f... |
+| `--version <VERSION>` |  |
 
 Example:
 
@@ -350,6 +351,7 @@ everruns knowledge okf validate [OPTIONS] --collection-id <collection_id>
 | `--offset <OFFSET>` |  |
 | `--path <PATH>` |  |
 | `--tree` | List only the immediate children of `path`: its files plus one entry per subfolder (`kind: "f... |
+| `--version <VERSION>` |  |
 
 Example:
 

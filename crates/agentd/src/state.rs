@@ -149,12 +149,15 @@ pub enum Command {
         now_ms: i64,
     },
     /// A resumed epoch's turn made progress: the poison guard counts from
-    /// this epoch again.
+    /// this epoch again. `forgive`: instead, the epoch was lost to slow
+    /// renewals while its holder stayed alive (`Authority::forgive`).
     Progress {
         session: SessionId,
         holder: String,
         fence: u64,
         now_ms: i64,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        forgive: bool,
     },
     /// Give an epoch back (`hand_off`: mid-turn, still runnable), with the
     /// receipts riding on it, as on `Renew`.
@@ -1030,15 +1033,17 @@ impl ShardState {
                 holder,
                 fence,
                 now_ms,
+                forgive,
             } => {
                 let Some(state) = self.session_mut(session) else {
                     return self.missing(session);
                 };
-                if state.progress(&holder, fence, now_ms) {
-                    Response::Ok
+                let done = if forgive {
+                    state.forgive(&holder, fence)
                 } else {
-                    Response::Fenced
-                }
+                    state.progress(&holder, fence, now_ms)
+                };
+                if done { Response::Ok } else { Response::Fenced }
             }
             Command::Release {
                 session,

@@ -52,8 +52,8 @@ pub const TASK_KIND_BACKGROUND_TOOL: &str = "background_tool";
 /// Long-lived monitor task linked to a session schedule. Stays `running`
 /// until the linked schedule is exhausted (one-shot) or `cancel_task` is called.
 pub const TASK_KIND_MONITOR: &str = "monitor";
-/// One unit of work a coordinator gave a thread (a child session). The thread
-/// finishes it explicitly with `complete_assignment`; a thread keeps its
+/// One unit of work a parent gave a thread (a child session). The thread
+/// finishes it explicitly with `finish`; a thread keeps its
 /// session across assignments, so several assignment tasks can link the same
 /// child session.
 pub const TASK_KIND_ASSIGNMENT: &str = "assignment";

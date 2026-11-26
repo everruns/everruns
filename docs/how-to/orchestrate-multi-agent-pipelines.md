@@ -75,9 +75,9 @@ for aid in (researcher.id, writer.id):
 
 For pipelines you'll re-run, *don't* recreate the agents, create them once, store the IDs, and reuse them.
 
-## When to use subagents instead
+## When to let the agent start agents instead
 
-If one agent needs to delegate to another *during a turn*, use the [Sub Agents capability](/capabilities/sub-agents/) instead of an application-level pipeline. Subagents run inside the parent session and are tracked as session tasks that emit `task.*` events (`task.created`, `task.updated`, `task.message.sent`, `task.message.received`) on the parent session.
+If one agent needs to delegate to another *during a turn*, use the [Spawn agents capability](/capabilities/spawn-agents/) instead of an application-level pipeline. Spawned agents run inside the parent session and are tracked as session tasks that emit `task.*` events (`task.created`, `task.updated`, `task.message.sent`, `task.message.received`) on the parent session.
 
 Pick application-level pipelines when:
 
@@ -85,12 +85,15 @@ Pick application-level pipelines when:
 - Stages run at different cadences (e.g., scheduled research → on-demand writeup).
 - You want to reuse intermediate output across multiple downstream agents.
 
-Pick subagents when:
+Pick Spawn agents when:
 
-- The parent agent decides at runtime which subagent to call.
+- The parent agent decides at runtime which agent to call.
 - The work feels like a single user request, not a pipeline.
+
+For work the person follows and continues (a checklist, follow-ups, a result to review), use [Threads](/capabilities/threads/).
 
 ## See also
 
-- [Sub Agents capability](/capabilities/sub-agents/)
+- [Spawn agents capability](/capabilities/spawn-agents/)
+- [Threads capability](/capabilities/threads/)
 - [Stream events](/how-to/stream-events/)

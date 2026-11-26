@@ -12,7 +12,7 @@ tags:
 
 ## Abstract
 
-Slack integration allows deploying agents as Slack bots. Each enabled Slack channel connects one Slack App with its own identity, name, and avatar. The owning Everruns App binds the harness and optional agent. The channel binds a Slack workspace with signing secret verification and configurable session strategies. Setup is streamlined via per-channel manifest generation.
+Slack integration allows deploying agents as Slack bots. Each enabled Slack channel connects one Slack App with its own identity, name, and avatar. The owning Agent selects the harness. The channel binds a Slack workspace with signing secret verification and configurable session strategies. Setup is streamlined via per-channel manifest generation.
 
 Slack is the reference implementation for the [messaging integrations](messaging-integrations.md) channel abstraction layer. It uses `InboundChannelEvent` for platform-agnostic message parsing, `build_session_routing_tag()` for session routing, `ThreadContext` for participant tracking, and `SlackDeliveryAdapter` implementing the `ChannelDeliveryAdapter` trait.
 
@@ -20,7 +20,7 @@ Slack is the reference implementation for the [messaging integrations](messaging
 
 ```
 Per-channel manifest (recommended):
-  Publish the App        -->  webhook endpoint goes live (required first)
+  Publish the channel        -->  webhook endpoint goes live (required first)
                               |
   UI "Create Slack App"  -->  GET /v1/channels/{channel_id}/slack/manifest  (returns YAML + create URL)
                               |
@@ -46,13 +46,13 @@ Slack runs on the shared channel host ([Channels](channels.md), "Server on the h
 
 ## Design Decisions
 
-- **One Slack App per enabled Slack channel**: Each channel has its own credentials and endpoint identity. Multiple Slack channels can share the owning Everruns App's harness and agent.
-- **Per-channel manifest generation**: The manifest endpoint generates a YAML with correct scopes, bot user, and `event_subscriptions`. The webhook URL is fully determined by the channel's public ID before the Slack app exists, so it can be declared up front; the real constraint is ordering, since Slack verifies `request_url` when the manifest is saved. That is why the endpoint serves published apps only — publish, then create the Slack app. (An earlier revision of this spec claimed `event_subscriptions` "requires a live webhook URL, must be configured after publishing" and therefore omitted it. The live-URL part is right, the conclusion was not: the fix is ordering, not manual setup.)
+- **One Slack App per enabled Slack channel**: Each channel has its own credentials and endpoint identity. Multiple Slack channels can share the owning Agent's harness.
+- **Per-channel manifest generation**: The manifest endpoint generates a YAML with correct scopes, bot user, and `event_subscriptions`. The webhook URL is fully determined by the channel's public ID before the Slack app exists, so it can be declared up front; the real constraint is ordering, since Slack verifies `request_url` when the manifest is saved. That is why the endpoint serves published channels only — publish, then create the Slack app. (An earlier revision of this spec claimed `event_subscriptions` "requires a live webhook URL, must be configured after publishing" and therefore omitted it. The live-URL part is right, the conclusion was not: the fix is ordering, not manual setup.)
 - **Agent surface is one boolean, resolved per event**: `SlackChannelConfig.agent_surface_enabled` adds Slack's agent pane *alongside* the channel bot rather than replacing it, so it is not a third `reply_mode` or a separate channel type. One app serves both surfaces and the event says which: a DM (`channel_type: "im"`) is the pane, an `app_mention` is a channel thread. Recovery has no event and falls back to the channel id, since Slack DM ids start with `D` — both paths go through `classify_surface` so they cannot disagree. Pane sessions force `per_thread` (a pane conversation is a thread); rejecting `per_channel`/`per_user` at config time would be wrong because the same app still serves channels. Enabling it needs a manifest update *and* a workspace reinstall, because `assistant:write` is a new scope. New apps use `features.agent_view`; `assistant_view` is the legacy spelling Slack is deprecating.
 - **Streaming is a pane behaviour, probed not required**: `ChannelDeliveryAdapter::streaming()` returns `Some` only where the platform supports progressive delivery, and the dispatcher streams only for `SlackSurface::Pane` — token-by-token into a shared channel is not wanted. A stream is per output message (`chat.startStream`/`appendStream`/`stopStream`), so a turn with three messages is three streams. Every terminal state, cancellation included, closes any stream still open. `sent` is claimed under the delivery lock before the network call so two concurrent flushes cannot transmit the same text twice — found against a real workspace, where the 500ms flush tick overlapped an event-driven flush. `chat.startStream` needs only `chat:write`, but requires `recipient_user_id`/`recipient_team_id` when streaming into a channel.
-- **Endpoint-scoped route**: Slack is keyed by channel ID at `POST /v1/channels/{channel_id}/slack/events`. The App defines the harness and optional agent. The channel defines the signing secret and session strategy. App-scoped paths remain permanent aliases when exactly one enabled Slack channel matches; ambiguous aliases return `409 Conflict`.
+- **Endpoint-scoped route**: Slack is keyed by channel ID at `POST /v1/channels/{channel_id}/slack/events`. The Agent selects the harness. The channel defines the signing secret and session strategy.
 - **Unauthenticated**: Webhook and manifest requests come from Slack or the browser. Security is via Slack signing secret verification (HMAC-SHA256), not API key auth.
-- **Unscoped app lookup**: `get_app_by_public_id_unscoped()` looks up apps across all orgs since webhooks have no auth context.
+- **Ingress lookup**: the channel resolver finds the owning organization from the channel public ID, then verifies that channel’s signature before accepting webhook data.
 - **Session binding**: A conversation is one row in `channel_bindings` under the key `slack:thread:{ts}`, `slack:channel:{id}` or `slack:user:{id}` depending on the session strategy (the pane is always a thread). The first writer wins, so two first messages of one thread cannot start two sessions. The keys are the routing tags sessions carried before the host; migration 217 bound every existing conversation under them.
 - **Response delivery**: The webhook acks Slack immediately (<3s) and hands the event to the channel host, which follows the session's events (live, with replay from the input message) and delivers each turn through one `TurnDelivery`, with no fixed deadline. Posts are retried with exponential backoff (3 attempts) on transient failures; non-retryable errors (invalid token, channel not found) fail immediately. What a turn looks like (stream and status in the pane, approval cards for the requester, the session link) is the Slack planner's per-turn choice.
 - **Agent-surface status and title** (EVE-975): in the pane, `turn.started` sets a generic thinking status, `tool.started` replaces it with whatever `everruns_platform::exposure::public_tool_activity_text` allows for the channel's `tool_visibility` (`None` narrates nothing, `Generic`/`Narrated` show the configured safe text — never a tool name), and any terminal turn event clears it. Running tools are counted, so one of two finishing does not clear the line early. `session.title.updated` pushes the agent's title to the thread; an inbound `agent_session_title_changed` writes the user's rename back to the session, scoped like the stop button and suppressed when it matches the stored title so the two directions cannot echo. Both calls go through the `ChannelAgentSurface` capability probe and are advisory — a failure is logged, never fatal to the turn.
@@ -68,7 +68,7 @@ Slack runs on the shared channel host ([Channels](channels.md), "Server on the h
 
 ## Channel Config
 
-See `crates/core/src/app.rs` for `SlackChannelConfig` struct.
+See `crates/server/src/domains/agent_channels/record/slack_channel.rs` for `SlackChannelConfig` struct.
 
 Key fields:
 - `signing_secret`: Slack app signing secret for HMAC-SHA256 verification
@@ -98,22 +98,13 @@ Key fields:
 |--------|------|------|-------------|
 | POST | `/v1/channels/{channel_id}/slack/events` | Slack signing secret | Slack Events API webhook |
 | GET | `/v1/channels/{channel_id}/slack/manifest` | None | Returns Slack App manifest YAML + create URL |
-| POST | `/v1/apps/{app_id}/slack/events` | Slack signing secret | Permanent app-scoped alias |
-| GET | `/v1/apps/{app_id}/slack/manifest` | None | Permanent app-scoped alias |
 
-All other App CRUD endpoints remain under standard API key auth at `/v1/platform/apps`.
+Channel management uses the authenticated Agent channel API.
 
 ## UI
 
-Apps page at `/apps` with:
-- List of apps with status badges
-- Create page at `/apps/new` with name, harness, and optional agent/channel selection
-- Detail page at `/apps/{id}` with:
-  - "Create Slack App" button (opens Slack with pre-filled manifest), offered only once published
-  - Manual configuration fields (signing secret, bot token)
-  - Webhook URL display, informational — the manifest already declares it
-- Publish/Unpublish actions
-- Delete confirmation
+Agent Integrations provides channel creation, Slack installation, manual credentials,
+webhook URLs and publish/unpublish controls.
 
 ## Message Attachments
 
@@ -176,17 +167,13 @@ Doppler vars: `TEST_SLACK_BOT_TOKEN`, `TEST_SLACK_SIGNING_SECRET`, `TEST_SLACK_T
 ## Files
 
 - `crates/contracts/src/runtime/channel.rs` - Channel abstractions: `InboundChannelEvent`, `ChannelDeliveryAdapter`, `SessionRoutingStrategy`, `ThreadContext`, `build_session_routing_tag()`
-- `crates/core/src/app.rs` - `SlackChannelConfig`, `SessionStrategy` (converts to/from `SessionRoutingStrategy`)
+- `crates/server/src/domains/agent_channels/record/slack_channel.rs` - `SlackChannelConfig`, `SessionStrategy` (converts to/from `SessionRoutingStrategy`)
 - `crates/contracts/src/runtime/message.rs` - `ExternalActor` struct
 - `crates/contracts/src/runtime/channel_messaging.rs` - Channel-neutral posting tool, sender contract, mode instructions and stored-tag normalization
 - `crates/server/src/api/messages.rs` - API `Message` response includes `external_actor`
 - `crates/server/src/channels/slack/events/` - Webhook endpoint, `parse_slack_inbound_event()`, manifest generation, signing verification, session routing via `build_session_routing_tag()`, user name resolution
 - `crates/server/src/channels/slack/delivery/mod.rs` - `SlackDeliveryAdapter` (implements `ChannelDeliveryAdapter`) with retry
 - `crates/server/src/channels/slack/host.rs` - Slack driver and per-turn planner on the channel host
-- `crates/server/src/services/app.rs` - `get_by_public_id_unscoped()` method
-- `apps/ui/src/app/(main)/apps/page.tsx` - Apps list UI page
-- `apps/ui/src/app/(main)/apps/new/page.tsx` - App creation page
-- `apps/ui/src/app/(main)/apps/[appId]/page.tsx` - App detail page with manifest + config
-- `apps/ui/src/lib/api/apps.ts` - App API functions including `getSlackManifest()`
-- `apps/ui/src/hooks/use-apps.ts` - React Query hooks
-- `docs/integrations/slack.md` - User-facing setup guide
+- `crates/server/src/domains/agent_channels/ingress.rs` - Native channel resolution and publication checks
+- `apps/ui/src/hooks/use-agent-channels.ts` - React Query hooks
+- `docs/how-to/publish-to-slack.md` - User-facing setup guide

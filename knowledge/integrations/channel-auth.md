@@ -141,11 +141,7 @@ Each agent channel has a stable channel ID. Canonical ingress routes use
   subroutes.
 - Public Chat: `GET /public-chat/config` and `POST /public-chat`.
 
-Existing `/v1/platform/apps/{app_id}/...` routes are permanent aliases. They resolve
-from channel-owned `legacy_alias_id` and never read `apps` or
-`app_channels`. Channel-less aliases resolve the only live channel of the
-requested type. They return `409 Conflict` when multiple live channels match,
-with a detail that directs the caller to the channel-scoped URL.
+App-scoped aliases have been removed; callers use the channel address.
 
 ## Enforcement
 
@@ -160,8 +156,7 @@ AG-UI behavior:
   `X-Everruns-AG-UI-Token`.
 - With first-class `auth`, the shared verifier is authoritative and the legacy token gate
   is ignored.
-- Stream and image-upload routes use the same auth decision on channel-scoped
-  and app-scoped addresses.
+- Stream and image-upload routes use the same auth decision on channel-scoped addresses.
 
 A2A behavior:
 
@@ -202,7 +197,7 @@ routes are retired.
 
 See `knowledge/security/threat-model.md` entries:
 
-- `TM-AUTH-020`, public App channel auth bypass.
+- `TM-AUTH-020`, public channel auth bypass.
 - `TM-AUTH-021`, mTLS identity header spoofing.
 - `TM-AUTH-022`, JWKS / OIDC discovery abuse or poisoning.
 - `TM-A2A-014`, Agent Card advertises the wrong or stale auth scheme.
@@ -217,13 +212,13 @@ Required coverage:
 3. A2A regression tests for legacy API key behavior and Agent Card scheme
    generation.
 4. AG-UI regression tests that stream and image upload use the same auth gate.
-5. Route-parity tests for canonical channel addresses and permanent aliases.
+5. Canonical channel route coverage and regressions that retired App routes return 404.
 
 ## References
 
-- [`knowledge/integrations/apps.md`](apps.md)
+- [`knowledge/integrations/agent-exposure.md`](agent-exposure.md)
 - [`knowledge/integrations/a2a-channel.md`](a2a-channel.md)
-- [`knowledge/integrations/app-invocation-channels.md`](app-invocation-channels.md)
+- [`knowledge/integrations/channel-invocation.md`](channel-invocation.md)
 - [`knowledge/security/authentication.md`](../security/authentication.md)
 - [`knowledge/security/threat-model.md`](../security/threat-model.md)
 - RFC 7519 (JWT), RFC 7662 (OAuth2 Introspection), RFC 8414 (Authorization

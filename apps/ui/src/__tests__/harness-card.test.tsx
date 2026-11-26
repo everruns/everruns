@@ -3,8 +3,8 @@ import { HarnessCard } from "@/components/harnesses/harness-card";
 import type { Harness } from "@/lib/api/types";
 import { resolveHarnessInheritance } from "@/lib/harness-inheritance";
 
-jest.mock("@/components/chat/streamdown-message", () => ({
-  InlineStreamdownMessage: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+jest.mock("@/components/markdown/markdown-message", () => ({
+  InlineMarkdownMessage: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 
 function harness(overrides: Partial<Harness> = {}): Harness {

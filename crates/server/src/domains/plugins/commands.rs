@@ -114,32 +114,29 @@ fn parse_marketplace_json(content: &str) -> Result<serde_json::Value, CommandErr
     Ok(value)
 }
 
-/// Read marketplace.json for a local_path marketplace.
+/// Catalog files a marketplace may publish, in the order they are tried.
+///
+/// Decision: the Everruns Plugin directory (everruns/plugin-directory)
+/// publishes `directory.json` in the marketplace layout, so the same parser
+/// reads both. It comes first: a repository that has one is a directory,
+/// even if it also carries a Claude Code `marketplace.json`.
+const CATALOG_PATHS: [&str; 3] = [
+    "directory.json",
+    ".claude-plugin/marketplace.json",
+    "marketplace.json",
+];
+
+/// Read the catalog of a local_path marketplace.
 fn read_local_marketplace_json(path: &str) -> Result<(String, Option<String>), CommandError> {
-    let manifest_path = std::path::Path::new(path)
-        .join(".claude-plugin")
-        .join("marketplace.json");
-    // Also try the root directly.
-    let manifest_path = if manifest_path.exists() {
-        manifest_path
-    } else {
-        std::path::Path::new(path).join("marketplace.json")
-    };
-    // Also try .claude-plugin/marketplace.json at root level.
-    let content = std::fs::read_to_string(&manifest_path)
-        .or_else(|_| {
-            let alt = std::path::Path::new(path)
-                .join(".claude-plugin")
-                .join("marketplace.json");
-            std::fs::read_to_string(alt)
-        })
-        .map_err(|e| {
-            CommandError::bad_request(format!(
-                "Cannot read marketplace.json from local_path '{}': {e}",
-                path
-            ))
-        })?;
-    Ok((content, None)) // no SHA for local_path
+    let root = std::path::Path::new(path);
+    for candidate in CATALOG_PATHS {
+        if let Ok(content) = std::fs::read_to_string(root.join(candidate)) {
+            return Ok((content, None)); // no SHA for local_path
+        }
+    }
+    Err(CommandError::bad_request(format!(
+        "Cannot read directory.json or marketplace.json from local_path '{path}'"
+    )))
 }
 
 /// Sync a GitHub-hosted marketplace: resolve the HEAD SHA and fetch
@@ -195,21 +192,35 @@ async fn sync_github(
         })?
         .to_string();
 
-    // Fetch marketplace.json at the resolved SHA.
-    let raw_url = format!(
-        "https://raw.githubusercontent.com/{owner}/{repo_name}/{sha}/.claude-plugin/marketplace.json"
-    );
-
-    // Size cap enforced while streaming inside download_bytes.
-    let catalog_bytes = download_bytes(
-        &raw_url,
-        egress,
-        GITHUB_TIMEOUT_MS,
-        URL_MARKETPLACE_RESPONSE_CAP,
-        &[],
-    )
-    .await
-    .map_err(CommandError::bad_request)?;
+    // Fetch the catalog at the resolved SHA: directory.json, else the Claude
+    // Code marketplace.json. Only a missing file moves on to the next.
+    let mut catalog_bytes = None;
+    let mut last_error = String::new();
+    for candidate in &CATALOG_PATHS[..2] {
+        let raw_url =
+            format!("https://raw.githubusercontent.com/{owner}/{repo_name}/{sha}/{candidate}");
+        // Size cap enforced while streaming inside download_bytes.
+        match download_bytes(
+            &raw_url,
+            egress,
+            GITHUB_TIMEOUT_MS,
+            URL_MARKETPLACE_RESPONSE_CAP,
+            &[],
+        )
+        .await
+        {
+            Ok(bytes) => {
+                catalog_bytes = Some(bytes);
+                break;
+            }
+            Err(error) => last_error = error,
+        }
+    }
+    let catalog_bytes = catalog_bytes.ok_or_else(|| {
+        CommandError::bad_request(format!(
+            "{repo} has neither directory.json nor .claude-plugin/marketplace.json: {last_error}"
+        ))
+    })?;
 
     let catalog_str = String::from_utf8(catalog_bytes).map_err(|_| {
         CommandError::bad_request("marketplace.json from GitHub is not valid UTF-8")
@@ -413,6 +424,48 @@ fn require_egress_for_source(
         _ => ctx.egress_service.clone().ok_or_else(|| {
             CommandError::bad_request("no egress service configured for remote fetch")
         }),
+    }
+}
+
+/// Decide sign-in for the portable MCP servers the compiler could not
+/// (`CompiledPlugin::auth_probe`): a server that asks for OAuth acts as the
+/// person who uses it (`actsAs: user`, each person signs in), the safe
+/// default for a plugin; any other stays public. On update, a server that
+/// still wants OAuth keeps the identity an admin chose before (`previous`).
+async fn resolve_probed_mcp_auth(
+    ctx: &Ctx,
+    compiled: &mut everruns_core::plugins::CompiledPlugin,
+    previous: Option<&serde_json::Value>,
+) {
+    if compiled.auth_probe.is_empty() {
+        return;
+    }
+    let Some(egress) = ctx.egress_service.clone() else {
+        compiled.warnings.push(
+            "no egress service to ask MCP servers about sign-in; they were installed as public"
+                .to_string(),
+        );
+        return;
+    };
+    let Some(servers) = compiled.definition.mcp_servers.as_mut() else {
+        return;
+    };
+    for name in &compiled.auth_probe {
+        let Some(server) = servers.get_mut(name) else {
+            continue;
+        };
+        if !super::fetcher::mcp_server_wants_oauth(&server.url, &egress).await {
+            continue;
+        }
+        let kept = previous
+            .and_then(|definition| definition["mcp_servers"][name]["actsAs"].as_str())
+            .and_then(|acts_as| match acts_as {
+                "service" => Some(everruns_core::McpServerActsAs::Service),
+                "user" => Some(everruns_core::McpServerActsAs::User),
+                _ => None,
+            });
+        server.auth_mode = everruns_core::McpServerAuthMode::OAuth;
+        server.acts_as = kept.unwrap_or(everruns_core::McpServerActsAs::User);
     }
 }
 
@@ -917,8 +970,9 @@ impl Command for InstallPluginCmd {
             .await
             .map_err(CommandError::bad_request)?;
 
-        let compiled = compile_plugin(&file_set)
+        let mut compiled = compile_plugin(&file_set)
             .map_err(|e| CommandError::bad_request(format!("Plugin compilation failed: {e}")))?;
+        resolve_probed_mcp_auth(ctx, &mut compiled, None).await;
         validate_compiled_plugin_identity(&req.plugin_name, &compiled.definition)?;
         validate_compiled_mcp_servers(&compiled.definition)?;
 
@@ -1117,8 +1171,9 @@ impl Command for UpdatePlugin {
             .await
             .map_err(CommandError::bad_request)?;
 
-        let compiled = compile_plugin(&file_set)
+        let mut compiled = compile_plugin(&file_set)
             .map_err(|e| CommandError::bad_request(format!("Plugin compilation failed: {e}")))?;
+        resolve_probed_mcp_auth(ctx, &mut compiled, Some(&install.definition)).await;
         validate_compiled_plugin_identity(&install.name, &compiled.definition)?;
         validate_compiled_mcp_servers(&compiled.definition)?;
 

@@ -143,16 +143,15 @@ export const messages: Readonly<Record<string, string>> = {
     "Wie viele Anbieterressourcen diese Sandbox hatte. Über 1 bedeutet, dass es verloren ging und wieder aufgebaut wurde.",
   "How SessionCards appear in a list layout":
     "Wie SessionCards in einem Listenlayout angezeigt werden",
-  "How Streamdown gracefully handles unterminated markdown syntax":
-    "Wie Streamdown nicht abgeschlossene Markdown-Syntax elegant handhabt",
+  "How Words handles unterminated markdown syntax":
+    "Wie Words nicht abgeschlossene Markdown-Syntax elegant handhabt",
   "How the agent is named and how it presents itself in chat.":
     "Wie der Agent heißt und wie er sich im Chat präsentiert.",
   "How the harness is named and how it presents itself when the bound agent leaves a field empty.":
     "Wie die Ausführungsumgebung heißt und wie sie sich darstellt, wenn der gebundene Agent ein Feld leer lässt.",
   "How to use the ModelPicker in your components":
     "So verwenden Sie den ModelPicker in Ihren Komponenten",
-  "How to use the StreamdownMessage components":
-    "So verwenden Sie die StreamdownMessage-Komponenten",
+  "How to use the MarkdownMessage components": "So verwenden Sie die MarkdownMessage-Komponenten",
   "HTML preview": "HTML-Vorschau",
   "HTML Preview": "HTML-Vorschau",
   "HTTP service": "HTTP-Dienst",

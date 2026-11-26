@@ -146,7 +146,8 @@ inherited from [Bashkit Worker](/built-ins/harnesses/bashkit-worker/).
 | Ask User | Pause for structured user input when required |
 | Error Disclosure | Return detailed platform errors to the managed operator Agent |
 | User MCP Servers | Use the MCP servers the person added for themselves, and add, remove and connect them in chat ([User MCP servers](/features/user-mcp-servers/)) |
-| Coordination | Hand focused work to threads you can open and follow, in Main chat and every side chat |
+| Threads | Hand focused work to threads you can open and follow, in Main chat and every side chat ([Threads](/capabilities/threads/)) |
+| Coordinator | Answer quick questions directly and route real work to threads ([Coordinator](/capabilities/coordinator/)) |
 | Poppy Personal Agent | Talk to companies' agents for the person over the Personal Agent Protocol ([Poppy Personal Agent](/capabilities/poppy-personal-agent/)) |
 | Tool Search | Discover native operations on demand with bounded schema disclosure ([Tool Search](/capabilities/tool-search/)) |
 | Image Generation | Draw images, animated GIFs and SVGs on the organization's default image model ([Image Generation](/capabilities/image-generation/)) |

@@ -357,7 +357,9 @@ impl EventFeed {
 /// every [`LOCK_RETRY`]; when the connection fails, lets every partition go
 /// and starts over, so another replica can take them.
 async fn keep_locks(inner: Arc<Inner>) {
-    let options = inner.db.pool().connect_options();
+    // A session lock: the background pool's URL is the direct one when
+    // DATABASE_URL is a transaction pooler.
+    let options = inner.db.background_pool().connect_options();
     loop {
         if inner.stop.is_cancelled() {
             return;

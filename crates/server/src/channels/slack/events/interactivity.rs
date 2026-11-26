@@ -24,7 +24,7 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::{Extension, Json};
 use serde::Deserialize;
 
-use super::{SlackState, SlackTarget, resolve_slack_channel};
+use super::{SlackState, SlackTarget, resolve_slack_channel, verify_slack_signature};
 use crate::api::ErrorResponse;
 use crate::api::channel_ingress::{IngressChannel, IngressContext};
 use crate::channels::slack::approvals::{
@@ -232,16 +232,6 @@ pub(crate) async fn handle_slack_interactivity_channel(
     .await
 }
 
-pub(crate) async fn handle_slack_interactivity_legacy(
-    State(state): State<SlackState>,
-    Path(app_id): Path<String>,
-    req_id: Option<Extension<RequestId>>,
-    headers: HeaderMap,
-    body: Bytes,
-) -> Result<(StatusCode, Json<serde_json::Value>), ApiError> {
-    handle_slack_interactivity(state, SlackTarget::LegacyApp(app_id), req_id, headers, body).await
-}
-
 /// Acknowledge without acting.
 ///
 /// Slack retries anything that is not a prompt 200, and a retry cannot fix a
@@ -260,15 +250,21 @@ async fn handle_slack_interactivity(
     body: Bytes,
 ) -> Result<(StatusCode, Json<serde_json::Value>), ApiError> {
     let request_id = req_id.map(|Extension(r)| r.0);
-    let (app, slack_channel) = resolve_slack_channel(&state, target).await?;
-    let app_id = app.public_id.to_string();
+    let (ingress, slack_channel) = resolve_slack_channel(&state, target).await?;
+    let ingress_id = ingress.public_id.to_string();
 
     let slack_config: SlackChannelConfig =
         serde_json::from_value(slack_channel.channel_config.clone()).map_err(|e| {
-            tracing::error!(app_id = %app_id, error = %e, "Invalid Slack channel config");
+            tracing::error!(ingress_id = %ingress_id, error = %e, "Invalid Slack channel config");
             ErrorResponse::new("Invalid Slack channel configuration")
                 .into_response(StatusCode::INTERNAL_SERVER_ERROR)
         })?;
+
+    // THREAT[TM-SLACK-001]: reject forged requests before parsing or provider discovery.
+    verify_slack_signature(&headers, &body, &slack_config.signing_secret).map_err(|e| {
+        tracing::warn!(ingress_id = %ingress_id, error = %e, "Slack interactivity signature verification failed");
+        ErrorResponse::new("Invalid signature").into_response(StatusCode::UNAUTHORIZED)
+    })?;
 
     let request = everruns_contracts::runtime::channel_driver::ChannelRequest {
         path: String::new(),
@@ -283,7 +279,7 @@ async fn handle_slack_interactivity(
             .collect(),
         body: body.to_vec(),
     };
-    let egress = super::super::provider::egress(&state, app.org_id);
+    let egress = super::super::provider::egress(&state, ingress.org_id);
     let received = super::super::provider::receive(
         &slack_channel.public_id.to_string(),
         &slack_config,
@@ -297,12 +293,13 @@ async fn handle_slack_interactivity(
         )
     })?;
     let everruns_integrations::slack_channel::ingress::VerifiedHttpIngress::Events {
-        ingress, ..
+        ingress: slack_ingress,
+        ..
     } = received
     else {
         return Ok(ack());
     };
-    if !ingress
+    if !slack_ingress
         .ingress
         .events
         .iter()
@@ -323,13 +320,13 @@ async fn handle_slack_interactivity(
         ErrorResponse::new("Slack interaction temporarily unavailable")
             .into_response(StatusCode::SERVICE_UNAVAILABLE)
     })?;
-    let Some(payload) = InteractionPayload::from_ingress(*ingress, client) else {
+    let Some(payload) = InteractionPayload::from_ingress(*slack_ingress, client) else {
         return Ok(ack());
     };
 
     handle_block_action(
         &state,
-        &app,
+        &ingress,
         &slack_channel,
         &slack_config,
         payload,
@@ -340,10 +337,10 @@ async fn handle_slack_interactivity(
 
 /// A button click delivered over Socket Mode: the same handling as the HTTP
 /// route after its signature check, which the socket replaces (the
-/// connection was opened with the channel's own app token).
+/// connection was opened with the channel's own ingress token).
 pub(crate) async fn handle_socket_interaction(
     state: &SlackState,
-    app: &IngressContext,
+    ingress: &IngressContext,
     slack_channel: &IngressChannel,
     slack_config: &SlackChannelConfig,
     payload: serde_json::Value,
@@ -353,7 +350,7 @@ pub(crate) async fn handle_socket_interaction(
         headers: vec![],
         body: payload.to_string().into_bytes(),
     };
-    let egress = super::super::provider::egress(state, app.org_id);
+    let egress = super::super::provider::egress(state, ingress.org_id);
     let received = super::super::provider::receive(
         &slack_channel.public_id.to_string(),
         slack_config,
@@ -362,7 +359,7 @@ pub(crate) async fn handle_socket_interaction(
     )
     .await;
     let Ok(everruns_integrations::slack_channel::ingress::VerifiedHttpIngress::Events {
-        ingress,
+        ingress: slack_ingress,
         ..
     }) = received
     else {
@@ -371,11 +368,11 @@ pub(crate) async fn handle_socket_interaction(
     let Some(client) = interaction_client(slack_channel, slack_config, egress).await else {
         return;
     };
-    let Some(payload) = InteractionPayload::from_ingress(*ingress, client) else {
+    let Some(payload) = InteractionPayload::from_ingress(*slack_ingress, client) else {
         return;
     };
     if let Err(error) =
-        handle_block_action(state, app, slack_channel, slack_config, payload, None).await
+        handle_block_action(state, ingress, slack_channel, slack_config, payload, None).await
     {
         tracing::warn!(channel_id = %slack_channel.public_id, ?error, "Slack Socket Mode interaction failed");
     }
@@ -411,13 +408,13 @@ fn parse_interaction(body: &[u8]) -> Option<InteractionPayload> {
 
 async fn handle_block_action(
     state: &SlackState,
-    app: &IngressContext,
+    ingress: &IngressContext,
     slack_channel: &IngressChannel,
     slack_config: &SlackChannelConfig,
     payload: InteractionPayload,
     request_id: Option<String>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), ApiError> {
-    let app_id = app.public_id.to_string();
+    let ingress_id = ingress.public_id.to_string();
 
     let Some(action) = payload.actions.first() else {
         return Ok(ack());
@@ -429,7 +426,7 @@ async fn handle_block_action(
     let Some(clicker) = payload.user.as_ref().map(|user| user.id.as_str()) else {
         // Slack always names the clicking user on a block action. Without one
         // there is no identity to authorize, so the click cannot be honoured.
-        tracing::warn!(app_id = %app_id, "Slack block action carried no user");
+        tracing::warn!(ingress_id = %ingress_id, "Slack block action carried no user");
         return Ok(ack());
     };
     let Some(binding) = action
@@ -437,7 +434,7 @@ async fn handle_block_action(
         .as_deref()
         .and_then(|value| serde_json::from_str::<ApprovalBinding>(value).ok())
     else {
-        tracing::warn!(app_id = %app_id, "Slack approval click carried no usable binding");
+        tracing::warn!(ingress_id = %ingress_id, "Slack approval click carried no usable binding");
         return Ok(ack());
     };
 
@@ -448,21 +445,21 @@ async fn handle_block_action(
         .session_id
         .parse::<everruns_contracts::typed_id::SessionId>()
     else {
-        tracing::warn!(app_id = %app_id, "Slack approval click named an unparseable session");
+        tracing::warn!(ingress_id = %ingress_id, "Slack approval click named an unparseable session");
         return Ok(ack());
     };
-    let session = match state.db.get_session(app.org_id, session_id).await {
+    let session = match state.db.get_session(ingress.org_id, session_id).await {
         Ok(Some(session)) => session,
         Ok(None) => {
             tracing::warn!(
-                app_id = %app_id,
+                ingress_id = %ingress_id,
                 %session_id,
                 "Slack approval click named a session this endpoint cannot reach"
             );
             return Ok(ack());
         }
         Err(error) => {
-            tracing::error!(app_id = %app_id, %error, "Failed to load session for Slack approval");
+            tracing::error!(ingress_id = %ingress_id, %error, "Failed to load session for Slack approval");
             return Err(ErrorResponse::new("Internal server error")
                 .into_response(StatusCode::INTERNAL_SERVER_ERROR));
         }
@@ -473,7 +470,7 @@ async fn handle_block_action(
     // answer a pause raised through the other.
     if session.channel_id != Some(slack_channel.internal_id) {
         tracing::warn!(
-            app_id = %app_id,
+            ingress_id = %ingress_id,
             %session_id,
             "Slack approval click named a session from another endpoint"
         );
@@ -485,7 +482,7 @@ async fn handle_block_action(
         // Refusals are visible rather than silent: the person who clicked is
         // told why, in the thread, and the decision is not recorded.
         tracing::info!(
-            app_id = %app_id,
+            ingress_id = %ingress_id,
             %session_id,
             clicker = %clicker,
             "Refused a Slack approval click from someone other than the requester"
@@ -495,12 +492,12 @@ async fn handle_block_action(
     }
 
     let Some(turn_id) = binding.turn_id.as_deref() else {
-        tracing::warn!(app_id = %app_id, %session_id, "Slack approval click had no originating turn");
+        tracing::warn!(ingress_id = %ingress_id, %session_id, "Slack approval click had no originating turn");
         return Ok(ack());
     };
 
     let Some(event) = payload.approval_event(clicker, &binding) else {
-        tracing::warn!(app_id = %app_id, %session_id, "Slack approval click had no reply destination");
+        tracing::warn!(ingress_id = %ingress_id, %session_id, "Slack approval click had no reply destination");
         return Ok(ack());
     };
     if slack_config
@@ -516,19 +513,19 @@ async fn handle_block_action(
     // concurrent clicks, prose replies, and superseding asks all fail closed.
     let claimed = crate::channels::slack::approvals::claim_card(
         &state.db,
-        app.org_id,
+        ingress.org_id,
         session.id,
         &binding.card_id,
         turn_id,
     )
         .await
         .map_err(|error| {
-            tracing::error!(app_id = %app_id, %session_id, %error, "Failed to claim Slack approval card");
+            tracing::error!(ingress_id = %ingress_id, %session_id, %error, "Failed to claim Slack approval card");
             ErrorResponse::new("Internal server error")
                 .into_response(StatusCode::INTERNAL_SERVER_ERROR)
         })?;
     if !claimed {
-        tracing::info!(app_id = %app_id, %session_id, card_id = %binding.card_id, "Ignored stale or already answered Slack approval card");
+        tracing::info!(ingress_id = %ingress_id, %session_id, card_id = %binding.card_id, "Ignored stale or already answered Slack approval card");
         respond_ephemeral(&payload, "This approval request is no longer pending.").await;
         return Ok(ack());
     }
@@ -539,7 +536,7 @@ async fn handle_block_action(
     // is waiting for, so the turn resumes with no approval-specific plumbing.
     if let Err(error) = post_decision_message(
         state,
-        app,
+        ingress,
         slack_channel,
         &session,
         &event,
@@ -550,7 +547,7 @@ async fn handle_block_action(
     )
     .await
     {
-        tracing::error!(app_id = %app_id, %session_id, %error, "Failed to record Slack approval decision");
+        tracing::error!(ingress_id = %ingress_id, %session_id, %error, "Failed to record Slack approval decision");
         return Err(ErrorResponse::new("Internal server error")
             .into_response(StatusCode::INTERNAL_SERVER_ERROR));
     }
@@ -603,7 +600,7 @@ async fn handle_block_action(
     }
 
     tracing::info!(
-        app_id = %app_id,
+        ingress_id = %ingress_id,
         %session_id,
         clicker = %clicker,
         approved = decision == ApprovalDecision::Approved,
@@ -693,7 +690,7 @@ fn slack_response_url(raw: &str) -> Option<url::Url> {
 #[allow(clippy::too_many_arguments)]
 async fn post_decision_message(
     state: &SlackState,
-    app: &IngressContext,
+    ingress: &IngressContext,
     slack_channel: &IngressChannel,
     session: &crate::storage::SessionRow,
     event: &super::SlackEvent,
@@ -715,7 +712,7 @@ async fn post_decision_message(
         .resolver
         .channel_for(ServerChannelScope {
             request_id,
-            ..ServerChannelScope::new(app.clone(), slack_channel.clone())
+            ..ServerChannelScope::new(ingress.clone(), slack_channel.clone())
         })
         .ok_or_else(|| anyhow::anyhow!("Slack channel config did not deserialize"))?;
 
@@ -733,7 +730,7 @@ async fn post_decision_message(
         metadata: (!actor_metadata.is_empty()).then_some(actor_metadata),
     };
     let mut message = InputMessage::user(text);
-    message.metadata = Some(super::slack_message_metadata(app, slack_channel, event));
+    message.metadata = Some(super::slack_message_metadata(ingress, slack_channel, event));
     message.external_actor = Some(actor);
 
     let mut target = DeliveryTarget::new(

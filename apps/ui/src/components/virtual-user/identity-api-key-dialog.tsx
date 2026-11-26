@@ -16,7 +16,7 @@ import {
 import { useCreateIdentityApiKeyConnection } from "@/hooks/use-identity-connections";
 import { AlertCircle } from "lucide-react";
 import type { ConnectionProvider } from "@/lib/api/types";
-import { InlineStreamdownMessage } from "@/components/chat/streamdown-message";
+import { InlineMarkdownMessage } from "@/components/markdown/markdown-message";
 import { ProviderIcon } from "@/components/connections/provider-icon";
 import {
   createConnectionFormSchema,
@@ -101,9 +101,9 @@ export function IdentityApiKeyDialog({
         </DialogHeader>
 
         <form onSubmit={handleSubmit}>
-          <InlineStreamdownMessage className="text-sm text-muted-foreground mb-4 leading-relaxed">
+          <InlineMarkdownMessage className="text-sm text-muted-foreground mb-4 leading-relaxed">
             {formSchema.instructions_markdown}
-          </InlineStreamdownMessage>
+          </InlineMarkdownMessage>
 
           <div className="space-y-4 mb-4">
             {formSchema.fields.map((field) => (

@@ -10,7 +10,7 @@ links:
   docs: [/features/markdown-diagrams/]
 ---
 
-Mermaid code blocks in chats, agent descriptions, prompts, and Markdown file previews now render with Pele. Diagrams retain the zoom and reset controls and adapt to their available space. See [Markdown diagrams](/features/markdown-diagrams/) for where to use them.
+Mermaid code blocks in chats, agent descriptions, prompts, and Markdown file previews now render with Pele. Diagrams have zoom controls, follow the light or dark theme, and adapt to their available space. See [Markdown diagrams](/features/markdown-diagrams/) for where to use them.
 
 ![A Mermaid flowchart rendered with Pele in the Everruns Markdown UI](./mermaid-diagram@2x.png)
 

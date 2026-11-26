@@ -118,6 +118,19 @@ impl DirectWorkerAdapters {
         ))
     }
 
+    pub(super) fn command_plugins_invoker(
+        &self,
+        org_id: i64,
+        session_id: everruns_contracts::typed_id::SessionId,
+    ) -> Arc<dyn everruns_capabilities::capabilities::PluginsInvoker> {
+        Arc::new(
+            everruns_worker::internal_commands::CommandPluginsInvoker::new(
+                self.internal_commands(org_id),
+                session_id,
+            ),
+        )
+    }
+
     pub(super) fn command_connection_resolver(
         &self,
         org_id: i64,

@@ -823,6 +823,7 @@ async fn a_v2_session_with_its_own_settings_runs_its_own_declaration() {
     let request: crate::domains::sessions::types::CreateSessionRequest =
         serde_json::from_value(json!({
             "system_prompt": "Grade the answer.",
+            "hints": { "communication": "explicit" },
             "tools": [{
                 "type": "client_side",
                 "name": "submit_grade",
@@ -852,6 +853,12 @@ async fn a_v2_session_with_its_own_settings_runs_its_own_declaration() {
     );
     assert_eq!(manifest.tools.len(), 1);
     assert_eq!(manifest.max_iterations, Some(4));
+    assert_eq!(
+        manifest.communication,
+        Some(everruns_contracts::runtime::conversation::Communication::Explicit)
+    );
+    let only_hint = serde_json::from_value(json!({"hints":{"communication":"explicit"}})).unwrap();
+    assert!(sessions::session_layer(&only_hint).is_some());
     // No setting of its own: no declaration of its own.
     let plain: crate::domains::sessions::types::CreateSessionRequest =
         serde_json::from_value(json!({ "system_prompt": "  " })).unwrap();

@@ -368,48 +368,25 @@ struct RuntimeExecutionCapabilities {
 fn subagent_nesting_policy_from_configs(
     resolved_capability_configs: &[everruns_contracts::CapabilityRef],
 ) -> crate::delegation_services::SubagentNestingPolicy {
-    let subagents_config = resolved_capability_configs
-        .iter()
-        .find(|config| config.capability_id() == "subagents");
-
-    let configured_depth = subagents_config
-        .and_then(|config| {
-            config
-                .config_value()
-                .get("max_subagent_depth")
-                .or_else(|| config.config_value().get("max_depth"))
-        })
-        .and_then(|value| value.as_u64())
-        .and_then(|value| u32::try_from(value).ok());
-    let configured_max_active = subagents_config
-        .and_then(|config| {
-            config
-                .config_value()
-                .get("max_active_descendant_tasks")
-                .or_else(|| config.config_value().get("max_concurrent_descendant_tasks"))
-        })
-        .and_then(|value| value.as_u64())
-        .and_then(|value| u32::try_from(value).ok());
-    let configured_max_total = subagents_config
-        .and_then(|config| config.config_value().get("max_total_descendant_tasks"))
-        .and_then(|value| value.as_u64())
-        .and_then(|value| u32::try_from(value).ok());
-    let configured_max_active_detached = subagents_config
-        .and_then(|config| config.config_value().get("max_active_detached_tasks"))
-        .and_then(|value| value.as_u64())
-        .and_then(|value| u32::try_from(value).ok());
-    let configured_max_total_detached = subagents_config
-        .and_then(|config| config.config_value().get("max_total_detached_tasks"))
-        .and_then(|value| value.as_u64())
-        .and_then(|value| u32::try_from(value).ok());
+    // Limits live on `spawn_agents` (`max_depth`, `max_open`, `max_total`);
+    // retired `subagents` configs were rewritten into it on resolve.
+    let spawn_config = resolved_capability_configs.iter().find(|config| {
+        config.capability_id()
+            == everruns_contracts::capability::delegation::SPAWN_AGENTS_CAPABILITY_ID
+    });
+    let read = |key: &str| {
+        spawn_config
+            .and_then(|config| config.config_value().get(key))
+            .and_then(|value| value.as_u64())
+            .and_then(|value| u32::try_from(value).ok())
+    };
+    let configured_depth = read("max_depth");
+    let configured_max_active = read("max_open");
+    let configured_max_total = read("max_total");
 
     crate::delegation_services::SubagentNestingPolicy::default()
         .with_agent_override(configured_depth)
         .with_agent_task_caps_override(configured_max_active, configured_max_total)
-        .with_agent_detached_task_caps_override(
-            configured_max_active_detached,
-            configured_max_total_detached,
-        )
 }
 
 /// Collect and finalize user-hook specs for a session from its resolved

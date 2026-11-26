@@ -2,7 +2,7 @@
 // See knowledge/security/multitenancy.md (Cross-Org Resource Resolution).
 //
 // When a user follows a direct link to a top-level entity (session, agent,
-// app, ...) that lives in an org they are a member of but have not currently
+// application, ...) that lives in an org they are a member of but have not currently
 // selected, the entity API returns 404. This hook detects that condition,
 // asks the backend which of the caller's orgs owns the id, and triggers an
 // org switch that stays on the current page so the detail view re-fetches

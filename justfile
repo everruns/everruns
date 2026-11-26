@@ -286,3 +286,7 @@ chaos *args:
 [no-cd]
 bench-chat-capacity *args:
     cd scripts && "${CAPACITY_PYTHON:-python3}" -m capacity.local {{args}}
+
+# Monty interpreter, durable resume and Linux kernel isolation (Landlock ABI >= 3).
+test-monty:
+    ./.github/scripts/qualify-monty.sh

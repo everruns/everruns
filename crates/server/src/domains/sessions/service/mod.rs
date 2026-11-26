@@ -64,15 +64,16 @@ use crate::domains::sessions::types::{CreateSessionRequest, UpdateSessionRequest
 // reason to release it.
 const RESERVED_SESSION_TAG_PREFIXES: &[&str] = &[
     "__internal:",
+    "ingress:",
+    "channel:",
+    "channel_type:",
     "app:",
     "app_channel:",
     "slack:app:",
     // Per-transport endpoint namespaces. Added with EVE-1004, which made them
-    // attribution inputs: migration 137 reads all three endpoint tag spellings
-    // to decide which endpoint a session arrived through. Not exploitable
-    // before this — every routing lookup also anchors on `app_id`, which only
-    // internal callers can set — but the list is what keeps that true as
-    // readers are added.
+    // attribution inputs. Historical migrations read these spellings to
+    // identify an ingress; current routing anchors on the server-assigned
+    // channel/trigger IDs. Keep these namespaces unavailable to user tags.
     "slack:endpoint:",
     "fcp:endpoint:",
     "ag_ui:app:",
@@ -212,6 +213,8 @@ fn reserved_memory_path(path: &str) -> Option<&'static str> {
     let path = normalize_initial_file_path(path);
     if path == "/memory" || path.starts_with("/memory/") {
         Some("/memory/*")
+    } else if path == "/application" || path.starts_with("/application/") {
+        Some("/application/*")
     } else {
         None
     }

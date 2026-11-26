@@ -4,7 +4,7 @@ import { useUiTranslations } from "@/providers/locale-provider";
 import { useState } from "react";
 import { Textarea } from "./textarea";
 import { cn } from "@/lib/utils";
-import { StreamdownMessage } from "@/components/chat/streamdown-message";
+import { MarkdownMessage } from "@/components/markdown/markdown-message";
 import { SectionTabs } from "@/components/layout/page-layout";
 
 interface PromptEditorProps {
@@ -54,7 +54,7 @@ export function PromptEditor({
       ) : (
         <div className="min-h-[300px] border bg-muted/50 p-4 text-sm">
           {value ? (
-            <StreamdownMessage variant="compact">{value}</StreamdownMessage>
+            <MarkdownMessage variant="compact">{value}</MarkdownMessage>
           ) : (
             <p className="text-muted-foreground italic">{ui("Nothing to preview")}</p>
           )}
@@ -70,5 +70,5 @@ interface MarkdownDisplayProps {
 }
 
 export function MarkdownDisplay({ content, className }: MarkdownDisplayProps) {
-  return <StreamdownMessage className={cn("text-sm", className)}>{content}</StreamdownMessage>;
+  return <MarkdownMessage className={cn("text-sm", className)}>{content}</MarkdownMessage>;
 }

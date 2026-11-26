@@ -26,6 +26,51 @@ use super::RouteAccess::{self, Never, PerCommand, Read, Write};
 /// `(method, path, class)` for hand-written routes in the OpenAPI document,
 /// sorted by path.
 pub const ROUTES: &[(&str, &str, RouteAccess)] = &[
+    ("GET", "/v1/application-hosts/{slug}", Read),
+    ("GET", "/v1/applications/{application_id}/config", Read),
+    ("GET", "/v1/applications/{application_id}/manifest", Read),
+    (
+        "GET",
+        "/v1/applications/{application_id}/memory/{slug}",
+        Read,
+    ),
+    (
+        "PUT",
+        "/v1/applications/{application_id}/memory/{slug}",
+        Write,
+    ),
+    (
+        "DELETE",
+        "/v1/applications/{application_id}/memory/{slug}",
+        Write,
+    ),
+    // Reading a Room can enroll the admitted Application participant.
+    (
+        "GET",
+        "/v1/applications/{application_id}/rooms/{slug}",
+        Write,
+    ),
+    (
+        "GET",
+        "/v1/applications/{application_id}/rooms/{slug}/messages",
+        Read,
+    ),
+    (
+        "POST",
+        "/v1/applications/{application_id}/rooms/{slug}/messages",
+        Write,
+    ),
+    (
+        "GET",
+        "/v1/applications/{application_id}/rooms/{slug}/replies/{message_id}",
+        Read,
+    ),
+    (
+        "POST",
+        "/v1/applications/{application_id}/runtime-auth",
+        Never,
+    ),
+    ("GET", "/v1/platform/application-launchers", Read),
     ("GET", "/v1/channels/{channel_id}/chat/shared/{token}", Read),
     (
         "POST",
@@ -77,6 +122,12 @@ pub const ROUTES: &[(&str, &str, RouteAccess)] = &[
     ("GET", "/v1/channels/{channel_id}/chat/view", Read),
     ("PUT", "/v1/channels/{channel_id}/chat/view", Write),
     ("POST", "/v1/channels/{channel_id}/chat/main", Write),
+    ("GET", "/v1/channels/{channel_id}/chat/plugins", Read),
+    (
+        "PUT",
+        "/v1/channels/{channel_id}/chat/plugins/{plugin_id}",
+        Write,
+    ),
     (
         "GET",
         "/v1/channels/{channel_id}/sessions/{session_id}/work",
@@ -101,6 +152,8 @@ pub const ROUTES: &[(&str, &str, RouteAccess)] = &[
     ("GET", "/v1/e/{channel_id}/chat/view", Read),
     ("PUT", "/v1/e/{channel_id}/chat/view", Write),
     ("POST", "/v1/e/{channel_id}/chat/main", Write),
+    ("GET", "/v1/e/{channel_id}/chat/plugins", Read),
+    ("PUT", "/v1/e/{channel_id}/chat/plugins/{plugin_id}", Write),
     ("GET", "/v1/e/{channel_id}/sessions/{session_id}/work", Read),
     (
         "GET",
@@ -340,17 +393,6 @@ pub const ROUTES: &[(&str, &str, RouteAccess)] = &[
         "/v1/platform/agents/{agent_id}/triggers/{trigger_id}/trigger",
         Write,
     ),
-    ("GET", "/v1/platform/apps", Read),
-    ("GET", "/v1/platform/apps/{app_id}", Read),
-    ("POST", "/v1/apps/{app_id}/a2a/{channel_id}", Write),
-    (
-        "GET",
-        "/v1/apps/{app_id}/a2a/{channel_id}/.well-known/agent-card.json",
-        Read,
-    ),
-    ("GET", "/v1/apps/{app_id}/fcp", Read),
-    ("POST", "/v1/apps/{app_id}/fcp", Write),
-    ("POST", "/v1/apps/{app_id}/webhooks/{channel_id}", Write),
     ("GET", "/v1/avatar-presets", Read),
     ("GET", "/v1/avatar-presets/{preset_id}/{variant}", Read),
     ("GET", "/v1/avatars/{avatar_id}/{variant}", Read),
@@ -831,6 +873,7 @@ pub const ROUTES: &[(&str, &str, RouteAccess)] = &[
     ("GET", "/v1/platform/plugin_marketplaces/{id}/plugins", Read),
     ("POST", "/v1/platform/plugin_marketplaces/{id}/sync", Write),
     ("GET", "/v1/platform/plugins", Read),
+    ("GET", "/v1/platform/plugins/config", Read),
     ("POST", "/v1/platform/plugins", Write),
     ("DELETE", "/v1/platform/plugins/{id}", Write),
     ("GET", "/v1/platform/plugins/{id}", Read),
@@ -1130,6 +1173,8 @@ pub const ROUTES: &[(&str, &str, RouteAccess)] = &[
     ("DELETE", "/v1/platform/users/me", Never),
     ("PATCH", "/v1/platform/users/me", Write),
     ("GET", "/v1/platform/users/me/export", Never),
+    ("GET", "/v1/platform/users/me/plugins", Read),
+    ("PUT", "/v1/platform/users/me/plugins/{id}", Write),
     ("POST", "/v1/platform/users/me/switch-org", Never),
     ("GET", "/v1/platform/virtual-users", Read),
     ("POST", "/v1/platform/virtual-users", Write),

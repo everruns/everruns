@@ -26,6 +26,8 @@ async fn an_automated_coordinator_run_starts_threads_only_on_its_team() {
     let member = agent(&server, json!([])).await;
     let coordinator = agent(
         &server,
+        // Retired ids on purpose: they are rewritten into Threads (self plus
+        // the member) and Coordinator on save.
         json!([
             {"ref": "coordination", "config": {"role": "coordinator", "workers": [{"id": "self"}]}},
             {"ref": "agent_handoff", "config": {"members": [{"agent_id": member}]}}

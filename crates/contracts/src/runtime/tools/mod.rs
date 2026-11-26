@@ -221,6 +221,13 @@ pub trait Tool: Send + Sync {
         ToolHints::default()
     }
 
+    /// Rewrite arguments written in a retired form into the current schema
+    /// before they are checked against it. Default: unchanged. The tool sees
+    /// the call as sent and upgrades it again when it runs.
+    fn upgrade_arguments(&self, arguments: Value) -> Value {
+        arguments
+    }
+
     /// Returns backend-authored narration for a call to this tool, e.g.
     /// "Read AGENTS.md".
     ///
@@ -530,7 +537,7 @@ impl std::fmt::Debug for ToolRegistry {
 /// dispatch a nested call (`spawn_background`), so a nested call is held to
 /// the target's own schema (EVE-1186).
 pub fn validate_tool_arguments(tool: &dyn Tool, tool_call: &ToolCall) -> Result<Option<String>> {
-    let arguments = tool_call.execution_arguments();
+    let arguments = tool.upgrade_arguments(tool_call.execution_arguments());
     let definition = tool.to_definition();
     let validator = jsonschema::validator_for(definition.parameters()).map_err(|error| {
         AgentLoopError::config(format!(

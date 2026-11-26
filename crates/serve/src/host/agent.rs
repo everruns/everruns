@@ -92,7 +92,7 @@ impl Host {
                 .app
                 .agent(name)
                 .ok_or_else(|| anyhow!("agent `{}`: unknown member `{name}`", entry.name))?;
-            builder = builder.member(self.build_agent_with(member, None, None, None)?);
+            builder = builder.spawns(self.build_agent_with(member, None, None, None)?);
         }
         for connection in &self.app.inner.connections {
             let Some(mcp) = &connection.value.mcp else {

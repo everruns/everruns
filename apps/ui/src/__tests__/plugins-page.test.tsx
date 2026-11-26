@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactElement, ReactNode } from "react";
-import { CatalogEntryRow, InstalledPluginCard } from "@/app/(main)/plugins/page";
+import { CatalogEntryRow, InstalledPluginCard } from "@/components/plugins/plugin-sources";
 import { ApiError } from "@/lib/api/client";
 import type { InstalledPlugin, MarketplaceCatalogEntry } from "@/lib/api/types";
 import { queryKeys } from "@/lib/query-keys";

@@ -69,7 +69,7 @@ fn session_input(owner_user_id: Option<Uuid>) -> CreateSessionRow {
         source: crate::domains::sessions::record::SessionSource::Api,
         org_id: DEFAULT_ORG_ID,
         workspace_id: None,
-        app_id: None,
+
         channel_id: None,
         trigger_id: None,
         harness_id: None,

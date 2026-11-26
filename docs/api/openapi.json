@@ -16,27 +16,243 @@
     }
   ],
   "paths": {
-    "/v1/apps/{app_id}/a2a/{channel_id}": {
-      "post": {
+    "/v1/application-hosts/{slug}": {
+      "get": {
         "tags": [
-          "apps"
+          "applications"
         ],
-        "summary": "Invoke a2a legacy",
-        "operationId": "invoke_a2a_legacy",
+        "summary": "Application host",
+        "description": "Resolve a published Application hostname.",
+        "operationId": "application_host",
         "parameters": [
           {
-            "name": "app_id",
+            "name": "slug",
             "in": "path",
-            "description": "App ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Sign-in required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "404": {
+            "description": "Unavailable"
+          }
+        },
+        "security": [],
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agents-authoring",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/applications/{application_id}/config": {
+      "get": {
+        "tags": [
+          "applications"
+        ],
+        "summary": "Application config",
+        "description": "Read public Application presentation.",
+        "operationId": "application_config",
+        "parameters": [
+          {
+            "name": "application_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Sign-in required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "404": {
+            "description": "Unavailable"
+          }
+        },
+        "security": [],
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agents-authoring",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/applications/{application_id}/manifest": {
+      "get": {
+        "tags": [
+          "applications"
+        ],
+        "summary": "Application manifest",
+        "description": "List resources available to the signed-in Application audience.",
+        "operationId": "application_manifest",
+        "parameters": [
+          {
+            "name": "application_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Sign-in required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "404": {
+            "description": "Unavailable"
+          }
+        },
+        "security": [
+          {
+            "ApplicationCredential": []
+          }
+        ],
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agents-authoring",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/applications/{application_id}/memory/{slug}": {
+      "get": {
+        "tags": [
+          "applications"
+        ],
+        "summary": "Application memory",
+        "description": "List shared memory files or read a text file from the bound organization Memory.",
+        "operationId": "application_memory",
+        "parameters": [
+          {
+            "name": "application_id",
+            "in": "path",
             "required": true,
             "schema": {
               "type": "string"
             }
           },
           {
-            "name": "channel_id",
+            "name": "slug",
             "in": "path",
-            "description": "A2A channel ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "path",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "file",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "204": {
+            "description": "Deleted"
+          },
+          "401": {
+            "description": "Sign-in required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "404": {
+            "description": "Resource unavailable"
+          }
+        },
+        "security": [
+          {
+            "ApplicationCredential": []
+          }
+        ],
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agents-authoring",
+          "support": "preview"
+        }
+      },
+      "put": {
+        "tags": [
+          "applications"
+        ],
+        "summary": "Application write memory",
+        "description": "Create or update a text file when the bound Memory grants write access.",
+        "operationId": "application_write_memory",
+        "parameters": [
+          {
+            "name": "application_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "slug",
+            "in": "path",
             "required": true,
             "schema": {
               "type": "string"
@@ -46,46 +262,115 @@
         "requestBody": {
           "content": {
             "application/json": {
-              "schema": {}
+              "schema": {
+                "$ref": "#/components/schemas/WriteMemory"
+              }
             }
           },
           "required": true
         },
         "responses": {
           "200": {
-            "description": "JSON-RPC 2.0 response. For message/send and tasks/* the body is a single JSON envelope; for message/stream the body is text/event-stream of JSON-RPC envelopes. tasks/get and tasks/cancel surface -32001 Task not found for unknown task ids."
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "204": {
+            "description": "Deleted"
           },
           "401": {
-            "description": "Missing or invalid API key",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
+            "description": "Sign-in required"
+          },
+          "403": {
+            "description": "Access denied"
           },
           "404": {
-            "description": "App or channel not found, not published, or channel disabled (collapsed to a single generic 404 to prevent app-existence enumeration)",
+            "description": "Resource unavailable"
+          }
+        },
+        "security": [
+          {
+            "ApplicationCredential": []
+          }
+        ],
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agents-authoring",
+          "support": "preview"
+        }
+      },
+      "delete": {
+        "tags": [
+          "applications"
+        ],
+        "summary": "Application delete memory",
+        "description": "Delete a file or empty directory when the bound Memory grants write access.",
+        "operationId": "application_delete_memory",
+        "parameters": [
+          {
+            "name": "application_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "path",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "file",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
             "content": {
               "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
+                "schema": {}
               }
             }
           },
-          "429": {
-            "description": "Per-channel A2A rate limit exceeded, or SSE connection limit reached for the org/session",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
+          "204": {
+            "description": "Deleted"
+          },
+          "401": {
+            "description": "Sign-in required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "404": {
+            "description": "Resource unavailable"
           }
         },
+        "security": [
+          {
+            "ApplicationCredential": []
+          }
+        ],
         "x-docs": {
           "audience": "public",
           "availability": "Everruns Cloud and self-hosted Platform",
@@ -94,28 +379,26 @@
         }
       }
     },
-    "/v1/apps/{app_id}/a2a/{channel_id}/.well-known/agent-card.json": {
+    "/v1/applications/{application_id}/rooms/{slug}": {
       "get": {
         "tags": [
-          "apps"
+          "applications"
         ],
-        "summary": "Get an A2A agent card (legacy app route)",
-        "description": "GET /v1/apps/{app_id}/a2a/{channel_id}/.well-known/agent-card.json",
-        "operationId": "agent_card_legacy",
+        "summary": "Application room",
+        "description": "Read the bound Room and its public participant roster.",
+        "operationId": "application_room",
         "parameters": [
           {
-            "name": "app_id",
+            "name": "application_id",
             "in": "path",
-            "description": "App ID",
             "required": true,
             "schema": {
               "type": "string"
             }
           },
           {
-            "name": "channel_id",
+            "name": "slug",
             "in": "path",
-            "description": "A2A channel ID",
             "required": true,
             "schema": {
               "type": "string"
@@ -124,19 +407,31 @@
         ],
         "responses": {
           "200": {
-            "description": "Agent Card JSON"
-          },
-          "404": {
-            "description": "App or channel not found / unpublished / disabled",
+            "description": "Success",
             "content": {
               "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
+                "schema": {}
               }
             }
+          },
+          "204": {
+            "description": "Deleted"
+          },
+          "401": {
+            "description": "Sign-in required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "404": {
+            "description": "Resource unavailable"
           }
         },
+        "security": [
+          {
+            "ApplicationCredential": []
+          }
+        ],
         "x-docs": {
           "audience": "public",
           "availability": "Everruns Cloud and self-hosted Platform",
@@ -145,45 +440,84 @@
         }
       }
     },
-    "/v1/apps/{app_id}/fcp": {
+    "/v1/applications/{application_id}/rooms/{slug}/messages": {
       "get": {
         "tags": [
-          "apps"
+          "applications"
         ],
-        "summary": "`GET /v1/apps/{app_id}/fcp` — handshake",
-        "description": "`GET /v1/apps/{app_id}/fcp` — handshake. Always returns the same\ngeneric 404 body for unknown apps so the endpoint cannot be used to\nprobe which app ids are real.",
-        "operationId": "handshake",
+        "summary": "Application messages",
+        "description": "Read a bounded page of messages from the bound Room.",
+        "operationId": "application_messages",
         "parameters": [
           {
-            "name": "app_id",
+            "name": "application_id",
             "in": "path",
-            "description": "App ID",
             "required": true,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
             }
           }
         ],
         "responses": {
           "200": {
-            "description": "Markdown handshake describing the FCP endpoint and how to authenticate. Always `text/markdown`.",
+            "description": "Success",
             "content": {
-              "text/markdown": {}
+              "application/json": {
+                "schema": {}
+              }
             }
+          },
+          "204": {
+            "description": "Deleted"
+          },
+          "401": {
+            "description": "Sign-in required"
+          },
+          "403": {
+            "description": "Access denied"
           },
           "404": {
-            "description": "No FCP endpoint at this URL. Single sanitized body covers unknown apps, unpublished apps, apps without an FCP channel, and disabled FCP channels — operator state is never disclosed.",
-            "content": {
-              "text/markdown": {}
-            }
-          },
-          "429": {
-            "description": "Per-channel FCP rate limit exceeded. `Retry-After: 60` header is set.",
-            "content": {
-              "text/markdown": {}
-            }
+            "description": "Resource unavailable"
           }
         },
+        "security": [
+          {
+            "ApplicationCredential": []
+          }
+        ],
         "x-docs": {
           "audience": "public",
           "availability": "Everruns Cloud and self-hosted Platform",
@@ -193,15 +527,23 @@
       },
       "post": {
         "tags": [
-          "apps"
+          "applications"
         ],
-        "summary": "`POST /v1/apps/{app_id}/fcp` — text-in, text-out",
-        "operationId": "message_legacy",
+        "summary": "Application post message",
+        "description": "Post as the signed-in Application participant; caller-selected attribution is rejected.",
+        "operationId": "application_post_message",
         "parameters": [
           {
-            "name": "app_id",
+            "name": "application_id",
             "in": "path",
-            "description": "App ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "slug",
+            "in": "path",
             "required": true,
             "schema": {
               "type": "string"
@@ -209,11 +551,10 @@
           }
         ],
         "requestBody": {
-          "description": "Plain UTF-8 text, or `application/json` of shape `{\"message\": \"...\"}`. Maximum 256 KiB.",
           "content": {
-            "text/plain": {
+            "application/json": {
               "schema": {
-                "type": "string"
+                "$ref": "#/components/schemas/Post"
               }
             }
           },
@@ -221,54 +562,31 @@
         },
         "responses": {
           "200": {
-            "description": "Agent reply as Markdown. The `Set-Cookie: fcp_session=...` header is emitted so subsequent POSTs can resume the same conversation.",
+            "description": "Success",
             "content": {
-              "text/markdown": {}
+              "application/json": {
+                "schema": {}
+              }
             }
           },
-          "400": {
-            "description": "Malformed body. Distinct messages for empty body, non-UTF-8 bytes, and JSON that did not parse into the expected shape — each Markdown body points back at the handshake.",
-            "content": {
-              "text/markdown": {}
-            }
+          "204": {
+            "description": "Deleted"
           },
           "401": {
-            "description": "Token required but missing or wrong. Markdown body explains both accepted headers (`Authorization: Bearer` and `X-Everruns-FCP-Token`) and points at the handshake.",
-            "content": {
-              "text/markdown": {}
-            }
+            "description": "Sign-in required"
+          },
+          "403": {
+            "description": "Access denied"
           },
           "404": {
-            "description": "Same generic 404 as the handshake — operator state is never disclosed.",
-            "content": {
-              "text/markdown": {}
-            }
-          },
-          "410": {
-            "description": "FCP session expired. Body tells the client to drop the `fcp_session` cookie and POST again.",
-            "content": {
-              "text/markdown": {}
-            }
-          },
-          "413": {
-            "description": "Body exceeds 256 KiB.",
-            "content": {
-              "text/markdown": {}
-            }
-          },
-          "429": {
-            "description": "Per-channel FCP rate limit exceeded. `Retry-After: 60` header is set.",
-            "content": {
-              "text/markdown": {}
-            }
-          },
-          "504": {
-            "description": "Agent did not reply within the configured timeout. The same `fcp_session` cookie is set so the client can retry the same conversation.",
-            "content": {
-              "text/markdown": {}
-            }
+            "description": "Resource unavailable"
           }
         },
+        "security": [
+          {
+            "ApplicationCredential": []
+          }
+        ],
         "x-docs": {
           "audience": "public",
           "availability": "Everruns Cloud and self-hosted Platform",
@@ -277,86 +595,142 @@
         }
       }
     },
-    "/v1/apps/{app_id}/webhooks/{channel_id}": {
-      "post": {
+    "/v1/applications/{application_id}/rooms/{slug}/replies/{message_id}": {
+      "get": {
         "tags": [
-          "apps"
+          "applications"
         ],
-        "summary": "Invoke webhook legacy",
-        "description": "Invoke a webhook channel for a published App. The body is forwarded to the agent as a message.",
-        "operationId": "invoke_webhook_legacy",
+        "summary": "Application replies",
+        "description": "Read replies in a thread of the bound Room.",
+        "operationId": "application_replies",
         "parameters": [
           {
-            "name": "app_id",
+            "name": "application_id",
             "in": "path",
-            "description": "App ID",
             "required": true,
             "schema": {
               "type": "string"
             }
           },
           {
-            "name": "channel_id",
+            "name": "slug",
             "in": "path",
-            "description": "Webhook channel ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "message_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "204": {
+            "description": "Deleted"
+          },
+          "401": {
+            "description": "Sign-in required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "404": {
+            "description": "Resource unavailable"
+          }
+        },
+        "security": [
+          {
+            "ApplicationCredential": []
+          }
+        ],
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agents-authoring",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/applications/{application_id}/runtime-auth": {
+      "post": {
+        "tags": [
+          "applications"
+        ],
+        "summary": "Application exchange",
+        "description": "Exchange a verified deployment identity for Application access.",
+        "operationId": "application_exchange",
+        "parameters": [
+          {
+            "name": "application_id",
+            "in": "path",
             "required": true,
             "schema": {
               "type": "string"
             }
           }
         ],
-        "requestBody": {
-          "content": {
-            "application/octet-stream": {
-              "schema": {
-                "type": "string"
-              }
-            }
-          },
-          "required": true
-        },
         "responses": {
-          "202": {
-            "description": "Webhook accepted",
+          "200": {
+            "description": "Success",
             "content": {
               "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/WebhookInvocationResponse"
-                }
+                "schema": {}
               }
             }
           },
           "401": {
-            "description": "Invalid or missing webhook token",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
+            "description": "Sign-in required"
+          },
+          "403": {
+            "description": "Access denied"
           },
           "404": {
-            "description": "App or channel not found, not published, or channel disabled (collapsed to a single generic 404 to prevent app-existence enumeration)",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Internal server error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
+            "description": "Unavailable"
           }
         },
+        "security": [
+          {
+            "ApplicationCredential": []
+          }
+        ],
         "x-docs": {
           "audience": "public",
           "availability": "Everruns Cloud and self-hosted Platform",
@@ -570,7 +944,7 @@
     "/v1/channels/{channel_id}/a2a": {
       "post": {
         "tags": [
-          "apps"
+          "agent-channels"
         ],
         "summary": "Invoke a2a channel",
         "description": "Invoke a published A2A endpoint with JSON-RPC 2.0. Authentication follows the endpoint channel configuration.",
@@ -612,7 +986,7 @@
             }
           },
           "404": {
-            "description": "Channel not found, app not published, or channel disabled",
+            "description": "Channel not found, ingress not published, or channel disabled",
             "content": {
               "application/json": {
                 "schema": {
@@ -643,7 +1017,7 @@
     "/v1/channels/{channel_id}/a2a/.well-known/agent-card.json": {
       "get": {
         "tags": [
-          "apps"
+          "agent-channels"
         ],
         "summary": "Agent card channel",
         "description": "Get the public Agent Card for a published A2A endpoint.",
@@ -664,7 +1038,7 @@
             "description": "Agent Card JSON"
           },
           "404": {
-            "description": "Endpoint not found, app not published, or channel disabled",
+            "description": "Endpoint not found, ingress not published, or channel disabled",
             "content": {
               "application/json": {
                 "schema": {
@@ -757,6 +1131,128 @@
           },
           "404": {
             "description": "Channel or resource unavailable"
+          }
+        },
+        "security": [
+          {
+            "AgentCredential": []
+          }
+        ],
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agent-api",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/channels/{channel_id}/chat/plugins": {
+      "get": {
+        "tags": [
+          "agent-execution"
+        ],
+        "summary": "List work chat plugins",
+        "description": "The signed-in person's plugins in this Work Chat: the agent's, the ones they added, and approved ones they could add. Choices apply to new conversations.",
+        "operationId": "list_work_chat_plugins",
+        "parameters": [
+          {
+            "name": "channel_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkChatPluginList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Consumer sign-in required"
+          },
+          "404": {
+            "description": "Channel or resource unavailable"
+          }
+        },
+        "security": [
+          {
+            "AgentCredential": []
+          }
+        ],
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agent-api",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/channels/{channel_id}/chat/plugins/{plugin_id}": {
+      "put": {
+        "tags": [
+          "agent-execution"
+        ],
+        "summary": "Set work chat plugin",
+        "description": "Add an approved plugin to your conversations in this Work Chat, or turn one off, as the channel allows.",
+        "operationId": "set_work_chat_plugin",
+        "parameters": [
+          {
+            "name": "channel_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "plugin_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetPluginChoice"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Saved; the updated list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkChatPluginList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The agent cannot run this plugin"
+          },
+          "401": {
+            "description": "Consumer sign-in required"
+          },
+          "403": {
+            "description": "The channel does not allow this choice"
+          },
+          "404": {
+            "description": "Channel or plugin unavailable"
           }
         },
         "security": [
@@ -942,7 +1438,7 @@
     "/v1/channels/{channel_id}/fcp": {
       "post": {
         "tags": [
-          "apps"
+          "agent-channels"
         ],
         "summary": "Message channel",
         "description": "Send a message to a published FCP endpoint. Authenticate with Authorization: Bearer or X-Everruns-FCP-Token when the endpoint requires a token.",
@@ -989,7 +1485,7 @@
             }
           },
           "404": {
-            "description": "Channel not found, app not published, or channel disabled",
+            "description": "Channel not found, ingress not published, or channel disabled",
             "content": {
               "text/markdown": {}
             }
@@ -2689,7 +3185,7 @@
     "/v1/channels/{channel_id}/webhook": {
       "post": {
         "tags": [
-          "apps"
+          "agent-channels"
         ],
         "summary": "Invoke webhook channel",
         "description": "Invoke a published webhook endpoint. Authenticate with its channel token in Authorization: Bearer or X-Everruns-Webhook-Token.",
@@ -2737,7 +3233,7 @@
             }
           },
           "404": {
-            "description": "Channel not found, app not published, or channel disabled",
+            "description": "Channel not found, ingress not published, or channel disabled",
             "content": {
               "application/json": {
                 "schema": {
@@ -2809,7 +3305,7 @@
     "/v1/e/{channel_id}/a2a": {
       "post": {
         "tags": [
-          "apps"
+          "agent-channels"
         ],
         "summary": "Invoke a2a endpoint",
         "description": "Invoke a published A2A endpoint with JSON-RPC 2.0. Authentication follows the endpoint channel configuration.",
@@ -2851,7 +3347,7 @@
             }
           },
           "404": {
-            "description": "Channel not found, app not published, or channel disabled",
+            "description": "Channel not found, ingress not published, or channel disabled",
             "content": {
               "application/json": {
                 "schema": {
@@ -2887,7 +3383,7 @@
     "/v1/e/{channel_id}/a2a/.well-known/agent-card.json": {
       "get": {
         "tags": [
-          "apps"
+          "agent-channels"
         ],
         "summary": "Agent card endpoint",
         "description": "Get the public Agent Card for a published A2A endpoint.",
@@ -2908,7 +3404,7 @@
             "description": "Agent Card JSON"
           },
           "404": {
-            "description": "Endpoint not found, app not published, or channel disabled",
+            "description": "Endpoint not found, ingress not published, or channel disabled",
             "content": {
               "application/json": {
                 "schema": {
@@ -3029,6 +3525,138 @@
           "support": "preview"
         },
         "x-superseded-by": "resolve_work_chat_main"
+      }
+    },
+    "/v1/e/{channel_id}/chat/plugins": {
+      "get": {
+        "tags": [
+          "agent-execution"
+        ],
+        "summary": "List work chat plugins legacy",
+        "description": "The signed-in person's plugins in this Work Chat: the agent's, the ones they added, and approved ones they could add. Choices apply to new conversations.",
+        "operationId": "list_work_chat_plugins_legacy",
+        "parameters": [
+          {
+            "name": "channel_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkChatPluginList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Consumer sign-in required"
+          },
+          "404": {
+            "description": "Channel or resource unavailable"
+          }
+        },
+        "deprecated": true,
+        "security": [
+          {
+            "AgentCredential": []
+          }
+        ],
+        "x-deprecation": {
+          "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agent-api",
+          "support": "preview"
+        },
+        "x-superseded-by": "list_work_chat_plugins"
+      }
+    },
+    "/v1/e/{channel_id}/chat/plugins/{plugin_id}": {
+      "put": {
+        "tags": [
+          "agent-execution"
+        ],
+        "summary": "Set work chat plugin legacy",
+        "description": "Add an approved plugin to your conversations in this Work Chat, or turn one off, as the channel allows.",
+        "operationId": "set_work_chat_plugin_legacy",
+        "parameters": [
+          {
+            "name": "channel_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "plugin_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetPluginChoice"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Saved; the updated list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkChatPluginList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The agent cannot run this plugin"
+          },
+          "401": {
+            "description": "Consumer sign-in required"
+          },
+          "403": {
+            "description": "The channel does not allow this choice"
+          },
+          "404": {
+            "description": "Channel or plugin unavailable"
+          }
+        },
+        "deprecated": true,
+        "security": [
+          {
+            "AgentCredential": []
+          }
+        ],
+        "x-deprecation": {
+          "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agent-api",
+          "support": "preview"
+        },
+        "x-superseded-by": "set_work_chat_plugin"
       }
     },
     "/v1/e/{channel_id}/chat/shared/{token}": {
@@ -3216,7 +3844,7 @@
     "/v1/e/{channel_id}/fcp": {
       "post": {
         "tags": [
-          "apps"
+          "agent-channels"
         ],
         "summary": "Message endpoint",
         "description": "Send a message to a published FCP endpoint. Authenticate with Authorization: Bearer or X-Everruns-FCP-Token when the endpoint requires a token.",
@@ -3263,7 +3891,7 @@
             }
           },
           "404": {
-            "description": "Channel not found, app not published, or channel disabled",
+            "description": "Channel not found, ingress not published, or channel disabled",
             "content": {
               "text/markdown": {}
             }
@@ -4473,7 +5101,7 @@
     "/v1/e/{channel_id}/webhook": {
       "post": {
         "tags": [
-          "apps"
+          "agent-channels"
         ],
         "summary": "Invoke webhook endpoint",
         "description": "Invoke a published webhook endpoint. Authenticate with its channel token in Authorization: Bearer or X-Everruns-Webhook-Token.",
@@ -4521,7 +5149,7 @@
             }
           },
           "404": {
-            "description": "Channel not found, app not published, or channel disabled",
+            "description": "Channel not found, ingress not published, or channel disabled",
             "content": {
               "application/json": {
                 "schema": {
@@ -10211,58 +10839,32 @@
         }
       }
     },
-    "/v1/platform/apps": {
+    "/v1/platform/application-launchers": {
       "get": {
         "tags": [
-          "apps"
+          "applications"
         ],
-        "summary": "List apps",
-        "description": "List archival App records. This endpoint is read-only and deprecated.",
-        "operationId": "list_apps",
-        "parameters": [
-          {
-            "name": "search",
-            "in": "query",
-            "description": "Search by name or description (case-insensitive substring match).",
-            "required": false,
-            "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
-            }
-          },
-          {
-            "name": "include_archived",
-            "in": "query",
-            "description": "Include archived apps. Deleted apps never appear in lists.",
-            "required": false,
-            "schema": {
-              "type": [
-                "boolean",
-                "null"
-              ]
-            }
-          }
-        ],
+        "summary": "Application launchers",
+        "description": "List published Application sidebar launchers.",
+        "operationId": "application_launchers",
         "responses": {
           "200": {
-            "description": "Archival list of Apps",
+            "description": "Success",
             "content": {
               "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ListResponse_WithUrls_App"
-                }
+                "schema": {}
               }
             }
           },
-          "500": {
-            "description": "Internal server error"
+          "401": {
+            "description": "Sign-in required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "404": {
+            "description": "Unavailable"
           }
-        },
-        "deprecated": true,
-        "x-deprecation": {
-          "migration": "Read-only archival App records. Use agent channels for new integrations; there is no drop-in replacement."
         },
         "x-docs": {
           "audience": "public",
@@ -10272,19 +10874,74 @@
         }
       }
     },
-    "/v1/platform/apps/{app_id}": {
+    "/v1/platform/applications": {
       "get": {
         "tags": [
-          "apps"
+          "applications"
         ],
-        "summary": "Get app",
-        "description": "Get an archival App record. This endpoint is read-only and deprecated.",
-        "operationId": "get_app",
+        "summary": "List Applications in the current organization",
+        "operationId": "list_applications",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Application"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agents-authoring",
+          "support": "preview"
+        }
+      },
+      "post": {
+        "tags": [
+          "applications"
+        ],
+        "summary": "Create Application",
+        "description": "Create an Application with a permanently reserved stable name.",
+        "operationId": "create_application",
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Application"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agents-authoring",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/platform/applications/{application_id}": {
+      "get": {
+        "tags": [
+          "applications"
+        ],
+        "summary": "Get an Application's configuration and resources",
+        "operationId": "get_application",
         "parameters": [
           {
-            "name": "app_id",
+            "name": "application_id",
             "in": "path",
-            "description": "App ID",
+            "description": "Prefixed public identifier",
             "required": true,
             "schema": {
               "type": "string"
@@ -10293,28 +10950,130 @@
         ],
         "responses": {
           "200": {
-            "description": "Archival App record",
+            "description": "Success",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/WithUrls_App"
+                  "$ref": "#/components/schemas/Application"
                 }
               }
             }
-          },
-          "400": {
-            "description": "Invalid App ID"
-          },
-          "404": {
-            "description": "App not found"
-          },
-          "500": {
-            "description": "Internal server error"
           }
         },
-        "deprecated": true,
-        "x-deprecation": {
-          "migration": "Read-only archival App records. Use agent channels for new integrations; there is no drop-in replacement."
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agents-authoring",
+          "support": "preview"
+        }
+      },
+      "patch": {
+        "tags": [
+          "applications"
+        ],
+        "summary": "Update Application",
+        "description": "Update an Application and its resource bindings, checking its version.",
+        "operationId": "update_application",
+        "parameters": [
+          {
+            "name": "application_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Application"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agents-authoring",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/platform/applications/{application_id}/resources": {
+      "post": {
+        "tags": [
+          "applications"
+        ],
+        "summary": "Create Application resource",
+        "description": "Create and attach a Chat, Room or Memory atomically to an Application.",
+        "operationId": "create_application_resource",
+        "parameters": [
+          {
+            "name": "application_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Application"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agents-authoring",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/platform/applications/{application_id}/status": {
+      "post": {
+        "tags": [
+          "applications"
+        ],
+        "summary": "Publish, unpublish or archive an Application",
+        "description": "Publish, unpublish or archive an Application. Archiving retains its stable name.",
+        "operationId": "set_application_status",
+        "parameters": [
+          {
+            "name": "application_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Application"
+                }
+              }
+            }
+          }
         },
         "x-docs": {
           "audience": "public",
@@ -24770,6 +25529,33 @@
         }
       }
     },
+    "/v1/platform/plugins/config": {
+      "get": {
+        "tags": [
+          "plugins"
+        ],
+        "summary": "Plugin config",
+        "operationId": "plugin_config",
+        "responses": {
+          "200": {
+            "description": "Resource config for plugins",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResourceConfigResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "models-integrations",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/platform/plugins/{id}": {
       "get": {
         "tags": [
@@ -26022,7 +26808,7 @@
           "rooms"
         ],
         "summary": "Change a room's name, topic or settings",
-        "description": "Change a room's name, topic, metadata, link template or loop limits. Owners and org admins only.",
+        "description": "Change a room's name, topic, metadata, link template, loop limits or whether it records facts on its own. Owners and org admins only.",
         "operationId": "update_room",
         "parameters": [
           {
@@ -26673,7 +27459,7 @@
           "rooms"
         ],
         "summary": "Change a room member's settings",
-        "description": "Change a room member's settings. Name, role, wake setting, session scope or instructions; owners and org admins only.",
+        "description": "Change a room member's settings. Name, role, wake setting, session scope, instructions or memory recall; owners and org admins only.",
         "operationId": "update_room_member",
         "parameters": [
           {
@@ -26702,6 +27488,303 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/RoomMember"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "sessions-workspaces",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/platform/rooms/{room_id}/memory/entries/{entry_id}": {
+      "get": {
+        "tags": [
+          "rooms"
+        ],
+        "summary": "Open one thing a room remembers",
+        "description": "Get one fact or note with the message it rests on and, for a fact, every fact on its subject in time order.",
+        "operationId": "get_room_memory_entry",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "entry_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoomMemoryEntryDetail"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "sessions-workspaces",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/platform/rooms/{room_id}/memory/entries/{entry_id}/forget": {
+      "post": {
+        "tags": [
+          "rooms"
+        ],
+        "summary": "Take a wrong fact or note out of a room's memory",
+        "description": "Hide a fact or note from recall. A forgotten fact gives its place back to the fact it replaced. The member it came from, room owners and org admins only; nothing is deleted.",
+        "operationId": "forget_room_memory_entry",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "entry_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoomMemoryEntry"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "sessions-workspaces",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/platform/rooms/{room_id}/memory/facts": {
+      "get": {
+        "tags": [
+          "rooms"
+        ],
+        "summary": "List what a room has settled",
+        "description": "List a room's current facts (decisions, rules, claims, deadlines, open questions, observations), newest first, or as they stood at an earlier time.",
+        "operationId": "list_room_facts",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "description": "Only facts of this kind: decision, rule, claim, deadline, question or observation.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "subject",
+            "in": "query",
+            "description": "Only facts on this subject.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "as_of",
+            "in": "query",
+            "description": "The facts as they stood at this time.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "include_replaced",
+            "in": "query",
+            "description": "Also list facts that were replaced.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Most facts, 50 by default, 200 at most.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoomFactListResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "sessions-workspaces",
+          "support": "preview"
+        }
+      },
+      "post": {
+        "tags": [
+          "rooms"
+        ],
+        "summary": "Record a fact in a room's memory",
+        "description": "Record a decision, rule, claim, deadline, question or observation in a room's memory. A newer fact on the same subject replaces the older one; both stay.",
+        "operationId": "remember_room_fact",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoomMemoryRecorded"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "sessions-workspaces",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/platform/rooms/{room_id}/memory/notes": {
+      "post": {
+        "tags": [
+          "rooms"
+        ],
+        "summary": "Add outside text to a room's memory",
+        "description": "Add a note to a room's memory, such as meeting notes or a summary from another tool, so recall finds it next to the room's messages. A caller id makes re-sending safe.",
+        "operationId": "ingest_room_note",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoomMemoryRecorded"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "sessions-workspaces",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/platform/rooms/{room_id}/memory/sessions": {
+      "post": {
+        "tags": [
+          "rooms"
+        ],
+        "summary": "Add a session's conversation to a room's memory",
+        "description": "Publish a session's conversation into a room's memory as notes: the person's messages and the agent's answers, without tool calls, with secrets scrubbed. Publishing again updates what changed.",
+        "operationId": "publish_session_to_room",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoomSessionPublished"
                 }
               }
             }
@@ -27248,6 +28331,74 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/RoomReadMark"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "sessions-workspaces",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/platform/rooms/{room_id}/recall": {
+      "get": {
+        "tags": [
+          "rooms"
+        ],
+        "summary": "Recall what a room knows about something",
+        "description": "Search a room's messages and memory (facts and notes) together by their words, best match first. Current facts lead; a replaced fact says what replaced it.",
+        "operationId": "recall_room",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "description": "What to look for, in plain words: any of them may match.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "as_of",
+            "in": "query",
+            "description": "Recall as of this time: later messages and facts are left out, and a\nfact replaced after it still counts as current.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Most results, 10 by default, 50 at most.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoomRecallResponse"
                 }
               }
             }
@@ -35255,6 +36406,117 @@
         }
       }
     },
+    "/v1/platform/users/me/plugins": {
+      "get": {
+        "tags": [
+          "plugins"
+        ],
+        "summary": "List my plugins",
+        "operationId": "list_my_plugins",
+        "responses": {
+          "200": {
+            "description": "Approved plugins with your own choices",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PluginOption"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "models-integrations",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/platform/users/me/plugins/{id}": {
+      "put": {
+        "tags": [
+          "plugins"
+        ],
+        "summary": "Set my plugin choice",
+        "operationId": "set_my_plugin_choice",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Plugin install ID (plugin_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetPluginChoice"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Choice saved; the updated list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PluginOption"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No approved plugin with that ID",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "models-integrations",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/platform/users/me/switch-org": {
       "post": {
         "tags": [
@@ -38819,7 +40081,7 @@
           },
           "status": {
             "$ref": "#/components/schemas/ChannelStatus",
-            "description": "Per-channel lifecycle. Authoritative for ingress (EVE-1007); `enabled`\nis retained for the App API's existing shape."
+            "description": "Per-channel lifecycle. Authoritative for ingress (EVE-1007); `enabled`\nis retained for the Channel API's existing shape."
           },
           "updated_at": {
             "type": "string",
@@ -40617,16 +41879,10 @@
             "type": "object",
             "required": [
               "session_count",
-              "app_count",
               "effective_harness",
               "channels"
             ],
             "properties": {
-              "app_count": {
-                "type": "integer",
-                "format": "int64",
-                "minimum": 0
-              },
               "channels": {
                 "type": "array",
                 "items": {
@@ -40742,469 +41998,6 @@
           }
         }
       },
-      "App": {
-        "type": "object",
-        "description": "App configuration for deploying agents to channels.\nAn app binds a harness and optional agent to distribution channels with a\npublish lifecycle.",
-        "required": [
-          "id",
-          "name",
-          "harness_id",
-          "owner_principal_id",
-          "status",
-          "created_at",
-          "updated_at"
-        ],
-        "properties": {
-          "agent_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Optional ID of the agent to use (format: agent_{32-hex}).",
-            "example": "agent_01933b5a00007000800000000000001"
-          },
-          "archived_at": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "date-time",
-            "description": "Timestamp when the app was archived."
-          },
-          "channels": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/AgentChannel"
-            },
-            "description": "Distribution channels attached to this app."
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "description": "Timestamp when the app was created."
-          },
-          "deleted_at": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "date-time",
-            "description": "Timestamp when the app was deleted."
-          },
-          "description": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Human-readable description of what the app does."
-          },
-          "effective_owner": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/PrincipalSummary",
-                "description": "Effective human owner summary."
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "harness_id": {
-            "type": "string",
-            "description": "ID of the harness to use (format: harness_{32-hex}).",
-            "example": "harness_01933b5a00007000800000000000001"
-          },
-          "id": {
-            "type": "string",
-            "description": "External identifier (app_<32-hex>). Shown as \"id\" in API.",
-            "example": "app_01933b5a000070008000000000000001"
-          },
-          "name": {
-            "type": "string",
-            "description": "Display name of the app."
-          },
-          "owner": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/PrincipalSummary",
-                "description": "Owning principal summary."
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "owner_principal_id": {
-            "type": "string",
-            "description": "Owning principal for this app.",
-            "example": "principal_01933b5a000070008000000000000001"
-          },
-          "published_at": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "date-time",
-            "description": "Timestamp when the app was last published."
-          },
-          "resolved_owner_user_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "uuid",
-            "description": "Denormalized effective human owner of the owning principal lineage."
-          },
-          "status": {
-            "$ref": "#/components/schemas/AppStatus",
-            "description": "Current lifecycle status."
-          },
-          "updated_at": {
-            "type": "string",
-            "format": "date-time",
-            "description": "Timestamp when the app was last updated."
-          },
-          "virtual_user_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Optional virtual identity that represents the app in unattended/channel execution.",
-            "example": "identity_01933b5a00007000800000000000001"
-          }
-        }
-      },
-      "AppChannel": {
-        "type": "object",
-        "description": "An independently published communication channel owned by an Agent.\nEach channel has its own type, config, and lifecycle status.",
-        "required": [
-          "id",
-          "channel_type",
-          "created_at",
-          "updated_at"
-        ],
-        "properties": {
-          "agent_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "The agent that owns this channel. Also what lets responses carry a\n`view_url` to the channel's page (`/agents/{agent_id}/channels/{id}`),\nso a caller can hand out a direct link.",
-            "example": "agent_01933b5a000070008000000000000001"
-          },
-          "auth": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/ChannelAuthConfig",
-                "description": "Authentication policy for this channel."
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "channel_config": {
-            "description": "Channel-specific configuration (validated per channel type)."
-          },
-          "channel_type": {
-            "$ref": "#/components/schemas/ChannelType",
-            "description": "Channel type (e.g. slack)."
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "description": "Timestamp when this channel was created."
-          },
-          "enabled": {
-            "type": "boolean",
-            "description": "Whether this channel is enabled."
-          },
-          "id": {
-            "type": "string",
-            "description": "External identifier (appchan_<32-hex>). Shown as \"id\" in API.",
-            "example": "appchan_01933b5a000070008000000000000001"
-          },
-          "status": {
-            "$ref": "#/components/schemas/ChannelStatus",
-            "description": "Per-channel lifecycle. Authoritative for ingress (EVE-1007); `enabled`\nis retained for the App API's existing shape."
-          },
-          "updated_at": {
-            "type": "string",
-            "format": "date-time",
-            "description": "Timestamp when this channel was last updated."
-          }
-        }
-      },
-      "AppEndpointAuthConfig": {
-        "type": "object",
-        "description": "Authentication config for one channel/channel.",
-        "required": [
-          "mode"
-        ],
-        "properties": {
-          "mode": {
-            "$ref": "#/components/schemas/ChannelAuthMode"
-          },
-          "provider": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/ChannelAuthProviderConfig"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "requirements": {
-            "$ref": "#/components/schemas/ChannelAuthRequirements"
-          }
-        },
-        "example": {
-          "mode": "api_key",
-          "requirements": {
-            "audiences": [
-              "everruns-api"
-            ],
-            "scopes": [
-              "app:invoke"
-            ]
-          }
-        }
-      },
-      "AppEndpointAuthMode": {
-        "type": "string",
-        "description": "Agent channel authentication mode.\n\nStored on `AgentChannel.auth` so users can protect one endpoint without first\ncreating org-level identity-provider state.",
-        "enum": [
-          "anonymous",
-          "shared_secret",
-          "api_key",
-          "google_oidc",
-          "oidc",
-          "oauth2_introspection",
-          "http_basic",
-          "mtls"
-        ]
-      },
-      "AppEndpointAuthProviderConfig": {
-        "oneOf": [
-          {
-            "type": "object",
-            "required": [
-              "client_id",
-              "type"
-            ],
-            "properties": {
-              "allowed_domains": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              },
-              "client_id": {
-                "type": "string"
-              },
-              "type": {
-                "type": "string",
-                "enum": [
-                  "google_oidc"
-                ]
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-              "issuer",
-              "type"
-            ],
-            "properties": {
-              "issuer": {
-                "type": "string"
-              },
-              "jwks_url": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "type": {
-                "type": "string",
-                "enum": [
-                  "oidc"
-                ]
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-              "introspection_url",
-              "type"
-            ],
-            "properties": {
-              "client_id": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "client_secret": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "client_secret_configured": {
-                "type": "boolean"
-              },
-              "introspection_url": {
-                "type": "string"
-              },
-              "type": {
-                "type": "string",
-                "enum": [
-                  "oauth2_introspection"
-                ]
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-              "username",
-              "type"
-            ],
-            "properties": {
-              "password": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "password_configured": {
-                "type": "boolean"
-              },
-              "password_hash": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "type": {
-                "type": "string",
-                "enum": [
-                  "http_basic"
-                ]
-              },
-              "username": {
-                "type": "string"
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-              "header_name",
-              "type"
-            ],
-            "properties": {
-              "allowed_values": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              },
-              "header_name": {
-                "type": "string"
-              },
-              "proxy_secret": {
-                "type": [
-                  "string",
-                  "null"
-                ],
-                "description": "Shared secret the trusted proxy includes in `proxy_secret_header`.\nWrite-only: redacted in GET responses. See TM-AUTH-021."
-              },
-              "proxy_secret_configured": {
-                "type": "boolean"
-              },
-              "proxy_secret_header": {
-                "type": [
-                  "string",
-                  "null"
-                ],
-                "description": "Header the trusted reverse proxy uses to prove its identity.\nRequired. Configs without this field fail closed at verification time."
-              },
-              "type": {
-                "type": "string",
-                "enum": [
-                  "mtls"
-                ]
-              }
-            }
-          }
-        ],
-        "description": "OIDC/OAuth/basic/mTLS provider details for one channel."
-      },
-      "AppEndpointAuthRequirements": {
-        "type": "object",
-        "description": "Claim and credential requirements common to channel auth providers.",
-        "properties": {
-          "audiences": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "JWT `aud` values to require on inbound tokens. Empty list disables audience checking."
-          },
-          "claims": {
-            "type": "object",
-            "description": "Arbitrary claim equality predicates. Empty map disables claim filtering.",
-            "additionalProperties": {},
-            "propertyNames": {
-              "type": "string"
-            }
-          },
-          "domains": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "Allowlist of email/identifier domains. Empty list disables domain filtering."
-          },
-          "groups": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "Allowlist of group memberships (from `groups` claim). Empty list disables group filtering."
-          },
-          "scopes": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "OAuth scope strings to require (space-delimited per scope entry). Empty list disables scope checking."
-          },
-          "subjects": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "Allowlist of `sub` claim values. Empty list disables subject filtering."
-          }
-        }
-      },
-      "AppStatus": {
-        "type": "string",
-        "description": "App lifecycle status.\n- `draft`: App is configured but not accepting requests\n- `published`: App is live, accepting incoming requests\n- `archived`: App is hidden from listings and cannot be modified or assigned\n- `deleted`: App is a tombstone kept only for historical references",
-        "enum": [
-          "draft",
-          "published",
-          "archived",
-          "deleted"
-        ],
-        "example": "published"
-      },
       "AppendManagerContextRequest": {
         "type": "object",
         "description": "Add a paragraph to an entity's manager context.",
@@ -41217,6 +42010,145 @@
             "description": "The paragraph to add, markdown."
           }
         }
+      },
+      "Application": {
+        "type": "object",
+        "description": "An organization-owned publication with a permanent name and versioned configuration.",
+        "required": [
+          "id",
+          "name",
+          "slug",
+          "description",
+          "status",
+          "config",
+          "resources",
+          "version",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "config": {
+            "$ref": "#/components/schemas/ApplicationConfig",
+            "description": "Current audience and workspace settings."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Time the Application and its stable name were created."
+          },
+          "description": {
+            "type": "string",
+            "description": "Participant-facing overview text."
+          },
+          "id": {
+            "$ref": "#/components/schemas/applicationId",
+            "description": "Stable public Application identifier."
+          },
+          "name": {
+            "type": "string",
+            "description": "Display name shown in the editor and published workspace."
+          },
+          "public_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Published hostname, or null when the deployment has no publication domain."
+          },
+          "resources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ApplicationResource"
+            },
+            "description": "Ordered navigation entries and explicit shared-resource grants."
+          },
+          "slug": {
+            "type": "string",
+            "description": "Permanently reserved hostname label."
+          },
+          "status": {
+            "type": "string",
+            "description": "Publication state: draft, published, or archived."
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Time of the latest configuration or publication change."
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Optimistic concurrency version required for updates and status changes."
+          }
+        }
+      },
+      "ApplicationConfig": {
+        "type": "object",
+        "description": "Audience admission and optional workspace features.",
+        "properties": {
+          "automations": {
+            "type": "boolean",
+            "description": "Reserved until the automation runtime is available. Enabling is rejected."
+          },
+          "invites": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Verified email addresses admitted when membership is invites."
+          },
+          "membership": {
+            "$ref": "#/components/schemas/WorkChatMembership",
+            "description": "Who may sign in: organization members by default, invited people, or anyone."
+          },
+          "show_in_sidebar": {
+            "type": "boolean",
+            "description": "Show a launcher for published Applications in the organization sidebar."
+          }
+        },
+        "additionalProperties": false
+      },
+      "ApplicationResource": {
+        "type": "object",
+        "description": "One named navigation entry and its explicitly shared resource.",
+        "required": [
+          "slug",
+          "name",
+          "kind",
+          "resource_id"
+        ],
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/ApplicationResourceKind",
+            "description": "The existing resource type exposed by this navigation entry."
+          },
+          "name": {
+            "type": "string",
+            "description": "Display label shown to participants."
+          },
+          "resource_id": {
+            "type": "string",
+            "description": "Public ID of a Chat channel, Room, or organization Memory."
+          },
+          "slug": {
+            "type": "string",
+            "description": "Unique navigation path within the Application."
+          },
+          "writable": {
+            "type": "boolean",
+            "description": "Allow Memory writes; false for read-only Memory and all other resource kinds."
+          }
+        },
+        "additionalProperties": false
+      },
+      "ApplicationResourceKind": {
+        "type": "string",
+        "description": "Existing runtime resource exposed through the Application.",
+        "enum": [
+          "chat",
+          "room",
+          "memory"
+        ]
       },
       "ApplyModelPresetResult": {
         "type": "object",
@@ -42989,7 +43921,7 @@
       },
       "ChannelStatus": {
         "type": "string",
-        "description": "Per-channel lifecycle (EVE-1007).\n\nThis is the authority for whether an exposure accepts traffic. It replaced\nthe two-dimensional `App.status × AppChannel.enabled` matrix, which could\nexpress \"published App, disabled channel\" and forced publishing a whole App —\nand therefore every sibling channel on it — to make one endpoint reachable.\n\nLiveness also depends on agent-level conditions, which are folded in at\nresolution time rather than stored here.",
+        "description": "Per-channel lifecycle (EVE-1007).\n\nAuthoritative lifecycle for whether this channel accepts traffic.\n\nLiveness also depends on agent-level conditions, which are folded in at\nresolution time rather than stored here.",
         "enum": [
           "draft",
           "live",
@@ -49192,7 +50124,7 @@
       },
       "EndpointStatus": {
         "type": "string",
-        "description": "Per-channel lifecycle (EVE-1007).\n\nThis is the authority for whether an exposure accepts traffic. It replaced\nthe two-dimensional `App.status × AppChannel.enabled` matrix, which could\nexpress \"published App, disabled channel\" and forced publishing a whole App —\nand therefore every sibling channel on it — to make one endpoint reachable.\n\nLiveness also depends on agent-level conditions, which are folded in at\nresolution time rather than stored here.",
+        "description": "Per-channel lifecycle (EVE-1007).\n\nAuthoritative lifecycle for whether this channel accepts traffic.\n\nLiveness also depends on agent-level conditions, which are folded in at\nresolution time rather than stored here.",
         "enum": [
           "draft",
           "live",
@@ -50766,25 +51698,6 @@
           },
           {
             "type": "object",
-            "description": "Reference to a deployed app.",
-            "required": [
-              "app_id",
-              "type"
-            ],
-            "properties": {
-              "app_id": {
-                "type": "string"
-              },
-              "type": {
-                "type": "string",
-                "enum": [
-                  "app"
-                ]
-              }
-            }
-          },
-          {
-            "type": "object",
             "description": "Label-only target for externally-executed runs (e.g. imported from Mira).\n\nCarries provider/model labels and opaque params instead of session setup:\nexternal runs are ingested already-complete, so everruns never builds a\nsession from this. Mirrors a provider-agnostic `(provider, model)` pair.",
             "required": [
               "provider",
@@ -50808,7 +51721,7 @@
             }
           }
         ],
-        "description": "Defines how to instantiate a session for an eval case.\n\nTwo modes:\n- `Session`: mirrors `CreateSessionRequest` — full control over session creation parameters.\n- `App`: references a deployed app by ID.\n\nResolution order: EvalRun.target → EvalCase.target → Eval.target → org default harness."
+        "description": "Defines how to instantiate a session for an eval case.\n\nTwo modes:\n- `Session`: mirrors `CreateSessionRequest` — full control over session creation parameters.\n- `External`: labels imported results.\n\nResolution order: EvalRun.target → EvalCase.target → Eval.target → org default harness."
       },
       "Event": {
         "type": "object",
@@ -59780,185 +60693,6 @@
           }
         }
       },
-      "ListResponse_WithUrls_App": {
-        "type": "object",
-        "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
-        "required": [
-          "data"
-        ],
-        "properties": {
-          "data": {
-            "type": "array",
-            "items": {
-              "allOf": [
-                {
-                  "type": "object",
-                  "description": "App configuration for deploying agents to channels.\nAn app binds a harness and optional agent to distribution channels with a\npublish lifecycle.",
-                  "required": [
-                    "id",
-                    "name",
-                    "harness_id",
-                    "owner_principal_id",
-                    "status",
-                    "created_at",
-                    "updated_at"
-                  ],
-                  "properties": {
-                    "agent_id": {
-                      "type": [
-                        "string",
-                        "null"
-                      ],
-                      "description": "Optional ID of the agent to use (format: agent_{32-hex}).",
-                      "example": "agent_01933b5a00007000800000000000001"
-                    },
-                    "archived_at": {
-                      "type": [
-                        "string",
-                        "null"
-                      ],
-                      "format": "date-time",
-                      "description": "Timestamp when the app was archived."
-                    },
-                    "channels": {
-                      "type": "array",
-                      "items": {
-                        "$ref": "#/components/schemas/AgentChannel"
-                      },
-                      "description": "Distribution channels attached to this app."
-                    },
-                    "created_at": {
-                      "type": "string",
-                      "format": "date-time",
-                      "description": "Timestamp when the app was created."
-                    },
-                    "deleted_at": {
-                      "type": [
-                        "string",
-                        "null"
-                      ],
-                      "format": "date-time",
-                      "description": "Timestamp when the app was deleted."
-                    },
-                    "description": {
-                      "type": [
-                        "string",
-                        "null"
-                      ],
-                      "description": "Human-readable description of what the app does."
-                    },
-                    "effective_owner": {
-                      "oneOf": [
-                        {
-                          "$ref": "#/components/schemas/PrincipalSummary",
-                          "description": "Effective human owner summary."
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
-                    "harness_id": {
-                      "type": "string",
-                      "description": "ID of the harness to use (format: harness_{32-hex}).",
-                      "example": "harness_01933b5a00007000800000000000001"
-                    },
-                    "id": {
-                      "type": "string",
-                      "description": "External identifier (app_<32-hex>). Shown as \"id\" in API.",
-                      "example": "app_01933b5a000070008000000000000001"
-                    },
-                    "name": {
-                      "type": "string",
-                      "description": "Display name of the app."
-                    },
-                    "owner": {
-                      "oneOf": [
-                        {
-                          "$ref": "#/components/schemas/PrincipalSummary",
-                          "description": "Owning principal summary."
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
-                    "owner_principal_id": {
-                      "type": "string",
-                      "description": "Owning principal for this app.",
-                      "example": "principal_01933b5a000070008000000000000001"
-                    },
-                    "published_at": {
-                      "type": [
-                        "string",
-                        "null"
-                      ],
-                      "format": "date-time",
-                      "description": "Timestamp when the app was last published."
-                    },
-                    "resolved_owner_user_id": {
-                      "type": [
-                        "string",
-                        "null"
-                      ],
-                      "format": "uuid",
-                      "description": "Denormalized effective human owner of the owning principal lineage."
-                    },
-                    "status": {
-                      "$ref": "#/components/schemas/AppStatus",
-                      "description": "Current lifecycle status."
-                    },
-                    "updated_at": {
-                      "type": "string",
-                      "format": "date-time",
-                      "description": "Timestamp when the app was last updated."
-                    },
-                    "virtual_user_id": {
-                      "type": [
-                        "string",
-                        "null"
-                      ],
-                      "description": "Optional virtual identity that represents the app in unattended/channel execution.",
-                      "example": "identity_01933b5a00007000800000000000001"
-                    }
-                  }
-                },
-                {
-                  "type": "object",
-                  "required": [
-                    "self_url",
-                    "view_url",
-                    "ui_link"
-                  ],
-                  "properties": {
-                    "allowed_actions": {
-                      "type": "array",
-                      "items": {
-                        "$ref": "#/components/schemas/AllowedAction"
-                      },
-                      "description": "State-aware hypermedia actions the caller can take on this resource\nnext (e.g. `cancel`, `events`, `update`). Omitted from the wire\nshape when empty so resources that haven't opted into the\nconvention don't grow their payloads."
-                    },
-                    "self_url": {
-                      "type": "string",
-                      "description": "Full API endpoint URL for this resource."
-                    },
-                    "ui_link": {
-                      "type": "string",
-                      "description": "Alias for `view_url`, used by command and MCP outputs."
-                    },
-                    "view_url": {
-                      "type": "string",
-                      "description": "Full UI URL for viewing this resource."
-                    }
-                  }
-                }
-              ],
-              "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer). The\n`allowed_actions` array carries state-aware hypermedia links — empty\n(and omitted from the wire shape) until the underlying resource opts\ninto the convention by overriding `ResourceUrlable::allowed_actions`."
-            },
-            "description": "Array of items returned by the list operation."
-          }
-        }
-      },
       "ListResponse_WithUrls_DeclarativeCapability": {
         "type": "object",
         "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
@@ -60935,16 +61669,9 @@
                     {
                       "type": "object",
                       "required": [
-                        "session_count",
-                        "app_count"
+                        "session_count"
                       ],
                       "properties": {
-                        "app_count": {
-                          "type": "integer",
-                          "format": "int64",
-                          "description": "Number of non-deleted apps using this resource.",
-                          "minimum": 0
-                        },
                         "session_count": {
                           "type": "integer",
                           "format": "int64",
@@ -67849,16 +68576,10 @@
                       "type": "object",
                       "required": [
                         "session_count",
-                        "app_count",
                         "effective_harness",
                         "channels"
                       ],
                       "properties": {
-                        "app_count": {
-                          "type": "integer",
-                          "format": "int64",
-                          "minimum": 0
-                        },
                         "channels": {
                           "type": "array",
                           "items": {
@@ -68994,6 +69715,85 @@
           }
         }
       },
+      "PluginOption": {
+        "type": "object",
+        "description": "One approved plugin as a person sees it.",
+        "required": [
+          "id",
+          "name",
+          "description",
+          "environment",
+          "origin",
+          "enabled",
+          "fits",
+          "needs_admin_setup"
+        ],
+        "properties": {
+          "description": {
+            "type": "string",
+            "description": "What the plugin does.",
+            "example": "Publish web pages from the conversation"
+          },
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Name to show people, when the manifest gives one.",
+            "example": "Stend"
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "Whether it is in this person's new conversations.",
+            "example": true
+          },
+          "environment": {
+            "type": "string",
+            "description": "What the plugin needs from the agent.",
+            "example": "workspace"
+          },
+          "fits": {
+            "type": "boolean",
+            "description": "Whether the agent provides what the plugin needs. Always true outside\nan agent (Settings > Personal > Plugins).",
+            "example": true
+          },
+          "id": {
+            "type": "string",
+            "description": "Installed plugin id (`plugin_…`).",
+            "example": "plugin_01933b5a00007000800000000000001"
+          },
+          "name": {
+            "type": "string",
+            "description": "Name from the plugin manifest.",
+            "example": "stend"
+          },
+          "needs_admin_setup": {
+            "type": "boolean",
+            "description": "An admin still has to choose how one of its MCP servers signs in.",
+            "example": false
+          },
+          "origin": {
+            "$ref": "#/components/schemas/PluginOrigin"
+          },
+          "version": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Installed version.",
+            "example": "1.2.0"
+          }
+        }
+      },
+      "PluginOrigin": {
+        "type": "string",
+        "description": "Where a plugin in a person's list comes from.",
+        "enum": [
+          "agent",
+          "added",
+          "available"
+        ]
+      },
       "PolicySource": {
         "type": "string",
         "description": "Which usage a policy counts. Absent counts everything.",
@@ -69030,6 +69830,24 @@
           "ask",
           "stop"
         ]
+      },
+      "Post": {
+        "type": "object",
+        "required": [
+          "text"
+        ],
+        "properties": {
+          "reply_to": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
       },
       "PostRoomMessageResponse": {
         "type": "object",
@@ -71200,6 +72018,7 @@
           "name",
           "metadata",
           "loop_limits",
+          "auto_facts",
           "archived",
           "created_at",
           "updated_at"
@@ -71209,6 +72028,11 @@
             "type": "boolean",
             "description": "Whether the room is archived: it keeps everything but takes no posts and wakes no agents.",
             "example": false
+          },
+          "auto_facts": {
+            "type": "boolean",
+            "description": "Whether the room records facts from its messages on its own (room\nmemory). On unless turned off.",
+            "example": true
           },
           "created_at": {
             "type": "string",
@@ -71354,7 +72178,7 @@
           },
           "type": {
             "type": "string",
-            "description": "`room.created`, `room.updated`, `room.archived`, `room.unarchived`,\n`member.joined`, `member.left`, `message.posted`, `message.edited`,\n`message.deleted`, `message.pinned`, `message.unpinned`,\n`reaction.added`, `reaction.removed`, `agent.woken`, `agent.limited`.",
+            "description": "`room.created`, `room.updated`, `room.archived`, `room.unarchived`,\n`member.joined`, `member.left`, `message.posted`, `message.edited`,\n`message.deleted`, `message.pinned`, `message.unpinned`,\n`reaction.added`, `reaction.removed`, `agent.woken`, `agent.limited`,\n`agent.considered`, `file.written`, `file.moved`, `file.deleted`,\n`memory.recorded`, `memory.forgotten`, `memory.extraction`.",
             "example": "message.posted"
           }
         }
@@ -71379,6 +72203,22 @@
             "format": "int64",
             "description": "Pass as `after` to read on.",
             "example": 120
+          }
+        }
+      },
+      "RoomFactListResponse": {
+        "type": "object",
+        "description": "A room's facts.",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RoomMemoryEntry"
+            },
+            "description": "Newest first."
           }
         }
       },
@@ -71606,6 +72446,7 @@
           "role",
           "wake",
           "session_scope",
+          "memory_recall",
           "left",
           "joined_at"
         ],
@@ -71654,6 +72495,11 @@
           "left": {
             "type": "boolean",
             "description": "Whether the member left. Left members still name their old messages.",
+            "example": false
+          },
+          "memory_recall": {
+            "type": "boolean",
+            "description": "For an agent member: whether a wake also carries what the room\nremembers about the message.",
             "example": false
           },
           "role": {
@@ -71716,6 +72562,225 @@
           "owner",
           "member"
         ]
+      },
+      "RoomMemoryEntry": {
+        "type": "object",
+        "description": "A fact or a note a room remembers.",
+        "required": [
+          "id",
+          "kind",
+          "statement",
+          "status",
+          "occurred_at",
+          "source",
+          "recorded_by",
+          "current",
+          "forgotten",
+          "created_at"
+        ],
+        "properties": {
+          "author": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RoomAuthor",
+                "description": "Who said it, when a member did."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When it was recorded."
+          },
+          "current": {
+            "type": "boolean",
+            "description": "Whether it is current: not replaced and not forgotten.",
+            "example": true
+          },
+          "fact_kind": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "For a fact: decision, rule, claim, deadline, question or observation.",
+            "example": "decision"
+          },
+          "forgotten": {
+            "type": "boolean",
+            "description": "Whether it was forgotten (taken out of recall).",
+            "example": false
+          },
+          "id": {
+            "type": "string",
+            "description": "Prefixed entry id (`rmm_...`).",
+            "example": "rmm_01933b5a000070008000000000000004"
+          },
+          "kind": {
+            "type": "string",
+            "description": "`fact` or `note`.",
+            "example": "fact"
+          },
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A short name, such as a session's title."
+          },
+          "occurred_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When it happened, which is not always when it was recorded.",
+            "example": "2026-11-24T15:04:05Z"
+          },
+          "quote": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The exact words it rests on.",
+            "example": "let's move deploys to Tuesdays, 3pm Central"
+          },
+          "recorded_by": {
+            "type": "string",
+            "description": "`extraction` (the room read it from a message), `member`, `ingest` or `session`.",
+            "example": "extraction"
+          },
+          "replaced_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the replacing fact happened."
+          },
+          "replaced_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The fact that replaced it."
+          },
+          "source": {
+            "$ref": "#/components/schemas/RoomMemorySource"
+          },
+          "statement": {
+            "type": "string",
+            "description": "The fact in one sentence, or the note's text.",
+            "example": "Deploys happen Tuesdays at 15:00 CT."
+          },
+          "status": {
+            "type": "string",
+            "description": "stated, proposed (an option nobody adopted), hypothetical, or retracted.",
+            "example": "stated"
+          },
+          "subject": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "For a fact: what it is about. A newer fact on the same subject\nreplaces the older one.",
+            "example": "deploy window"
+          }
+        }
+      },
+      "RoomMemoryEntryDetail": {
+        "type": "object",
+        "description": "One entry with where it came from and, for a fact, its subject's history.",
+        "required": [
+          "entry",
+          "history"
+        ],
+        "properties": {
+          "entry": {
+            "$ref": "#/components/schemas/RoomMemoryEntry"
+          },
+          "history": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RoomMemoryEntry"
+            },
+            "description": "Every live fact on the same subject, oldest first."
+          },
+          "source_message": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RoomMessage",
+                "description": "The message it rests on, when there is one."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "RoomMemoryRecorded": {
+        "type": "object",
+        "description": "What recording an entry did.",
+        "required": [
+          "entry",
+          "replaced",
+          "unchanged"
+        ],
+        "properties": {
+          "entry": {
+            "$ref": "#/components/schemas/RoomMemoryEntry"
+          },
+          "replaced": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Facts the new one replaces."
+          },
+          "unchanged": {
+            "type": "boolean",
+            "description": "Whether the same content was already recorded under that caller id,\nso nothing changed.",
+            "example": false
+          }
+        }
+      },
+      "RoomMemorySource": {
+        "type": "object",
+        "description": "Where a memory entry came from.",
+        "required": [
+          "kind"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "description": "`message`, `session`, `ingest` or `member`.",
+            "example": "message"
+          },
+          "message_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The message the entry rests on.",
+            "example": "rmsg_01933b5a000070008000000000000002"
+          },
+          "session_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The session it was published from.",
+            "example": "session_01933b5a000070008000000000000003"
+          },
+          "source_ref": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The caller's own id for an ingested note or a session piece.",
+            "example": "standup-2026-11-24"
+          }
+        }
       },
       "RoomMention": {
         "type": "object",
@@ -71988,6 +73053,93 @@
               "$ref": "#/components/schemas/RoomReader"
             },
             "description": "Members who have read up to the message."
+          }
+        }
+      },
+      "RoomRecallHit": {
+        "type": "object",
+        "description": "One thing recall found: a message or a memory entry.",
+        "required": [
+          "kind",
+          "score"
+        ],
+        "properties": {
+          "entry": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RoomMemoryEntry"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "excerpt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The matching words in context, with matches in `**bold**`."
+          },
+          "kind": {
+            "type": "string",
+            "description": "`message` or `entry`.",
+            "example": "entry"
+          },
+          "message": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RoomMessage"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "score": {
+            "type": "number",
+            "format": "float",
+            "description": "How well it matched, higher is better; comparable within one answer.",
+            "example": 0.42
+          }
+        }
+      },
+      "RoomRecallResponse": {
+        "type": "object",
+        "description": "What a room remembers about a question.",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RoomRecallHit"
+            },
+            "description": "Best first."
+          }
+        }
+      },
+      "RoomSessionPublished": {
+        "type": "object",
+        "description": "What publishing a session did.",
+        "required": [
+          "notes",
+          "unchanged"
+        ],
+        "properties": {
+          "notes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RoomMemoryEntry"
+            },
+            "description": "The session's conversation, in pieces, as room notes."
+          },
+          "unchanged": {
+            "type": "integer",
+            "description": "Pieces already in room memory unchanged.",
+            "example": 0,
+            "minimum": 0
           }
         }
       },
@@ -74798,7 +75950,7 @@
           },
           "target": {
             "$ref": "#/components/schemas/ScheduleTargetResponse",
-            "description": "What the schedule invokes when it fires (a session, an agent, an app channel, etc.)."
+            "description": "What the schedule invokes when it fires (a session, an agent, a channel, etc.)."
           },
           "timezone": {
             "type": "string",
@@ -78134,6 +79286,20 @@
           }
         }
       },
+      "SetPluginChoice": {
+        "type": "object",
+        "description": "Request body for a person's choice about one plugin.",
+        "required": [
+          "enabled"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "description": "In this person's new conversations, or not.",
+            "example": true
+          }
+        }
+      },
       "SetPreferenceRequest": {
         "type": "object",
         "description": "Request body for setting a preference value.",
@@ -81039,7 +82205,7 @@
           },
           "parent_tool_call_id": {
             "type": "string",
-            "description": "The `bash` tool call the script ran in."
+            "description": "The execution tool call (`bash` or `python`) the script ran in."
           },
           "status": {
             "type": "string",
@@ -87096,16 +88262,10 @@
                 "type": "object",
                 "required": [
                   "session_count",
-                  "app_count",
                   "effective_harness",
                   "channels"
                 ],
                 "properties": {
-                  "app_count": {
-                    "type": "integer",
-                    "format": "int64",
-                    "minimum": 0
-                  },
                   "channels": {
                     "type": "array",
                     "items": {
@@ -87160,172 +88320,6 @@
           "kind": "resource",
           "model": "#/components/schemas/Agent"
         }
-      },
-      "WithUrls_App": {
-        "allOf": [
-          {
-            "type": "object",
-            "description": "App configuration for deploying agents to channels.\nAn app binds a harness and optional agent to distribution channels with a\npublish lifecycle.",
-            "required": [
-              "id",
-              "name",
-              "harness_id",
-              "owner_principal_id",
-              "status",
-              "created_at",
-              "updated_at"
-            ],
-            "properties": {
-              "agent_id": {
-                "type": [
-                  "string",
-                  "null"
-                ],
-                "description": "Optional ID of the agent to use (format: agent_{32-hex}).",
-                "example": "agent_01933b5a00007000800000000000001"
-              },
-              "archived_at": {
-                "type": [
-                  "string",
-                  "null"
-                ],
-                "format": "date-time",
-                "description": "Timestamp when the app was archived."
-              },
-              "channels": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/AgentChannel"
-                },
-                "description": "Distribution channels attached to this app."
-              },
-              "created_at": {
-                "type": "string",
-                "format": "date-time",
-                "description": "Timestamp when the app was created."
-              },
-              "deleted_at": {
-                "type": [
-                  "string",
-                  "null"
-                ],
-                "format": "date-time",
-                "description": "Timestamp when the app was deleted."
-              },
-              "description": {
-                "type": [
-                  "string",
-                  "null"
-                ],
-                "description": "Human-readable description of what the app does."
-              },
-              "effective_owner": {
-                "oneOf": [
-                  {
-                    "$ref": "#/components/schemas/PrincipalSummary",
-                    "description": "Effective human owner summary."
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              },
-              "harness_id": {
-                "type": "string",
-                "description": "ID of the harness to use (format: harness_{32-hex}).",
-                "example": "harness_01933b5a00007000800000000000001"
-              },
-              "id": {
-                "type": "string",
-                "description": "External identifier (app_<32-hex>). Shown as \"id\" in API.",
-                "example": "app_01933b5a000070008000000000000001"
-              },
-              "name": {
-                "type": "string",
-                "description": "Display name of the app."
-              },
-              "owner": {
-                "oneOf": [
-                  {
-                    "$ref": "#/components/schemas/PrincipalSummary",
-                    "description": "Owning principal summary."
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              },
-              "owner_principal_id": {
-                "type": "string",
-                "description": "Owning principal for this app.",
-                "example": "principal_01933b5a000070008000000000000001"
-              },
-              "published_at": {
-                "type": [
-                  "string",
-                  "null"
-                ],
-                "format": "date-time",
-                "description": "Timestamp when the app was last published."
-              },
-              "resolved_owner_user_id": {
-                "type": [
-                  "string",
-                  "null"
-                ],
-                "format": "uuid",
-                "description": "Denormalized effective human owner of the owning principal lineage."
-              },
-              "status": {
-                "$ref": "#/components/schemas/AppStatus",
-                "description": "Current lifecycle status."
-              },
-              "updated_at": {
-                "type": "string",
-                "format": "date-time",
-                "description": "Timestamp when the app was last updated."
-              },
-              "virtual_user_id": {
-                "type": [
-                  "string",
-                  "null"
-                ],
-                "description": "Optional virtual identity that represents the app in unattended/channel execution.",
-                "example": "identity_01933b5a00007000800000000000001"
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-              "self_url",
-              "view_url",
-              "ui_link"
-            ],
-            "properties": {
-              "allowed_actions": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/AllowedAction"
-                },
-                "description": "State-aware hypermedia actions the caller can take on this resource\nnext (e.g. `cancel`, `events`, `update`). Omitted from the wire\nshape when empty so resources that haven't opted into the\nconvention don't grow their payloads."
-              },
-              "self_url": {
-                "type": "string",
-                "description": "Full API endpoint URL for this resource."
-              },
-              "ui_link": {
-                "type": "string",
-                "description": "Alias for `view_url`, used by command and MCP outputs."
-              },
-              "view_url": {
-                "type": "string",
-                "description": "Full UI URL for viewing this resource."
-              }
-            }
-          }
-        ],
-        "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer). The\n`allowed_actions` array carries state-aware hypermedia links — empty\n(and omitted from the wire shape) until the underlying resource opts\ninto the convention by overriding `ResourceUrlable::allowed_actions`."
       },
       "WithUrls_Budget": {
         "allOf": [
@@ -88768,16 +89762,9 @@
               {
                 "type": "object",
                 "required": [
-                  "session_count",
-                  "app_count"
+                  "session_count"
                 ],
                 "properties": {
-                  "app_count": {
-                    "type": "integer",
-                    "format": "int64",
-                    "description": "Number of non-deleted apps using this resource.",
-                    "minimum": 0
-                  },
                   "session_count": {
                     "type": "integer",
                     "format": "int64",
@@ -89462,6 +90449,43 @@
           "question",
           "action"
         ]
+      },
+      "WorkChatMembership": {
+        "type": "string",
+        "description": "Who may sign in. Further modes, such as a publisher-chosen identity\nprovider, are additional variants.",
+        "enum": [
+          "open",
+          "invites",
+          "org_users"
+        ]
+      },
+      "WorkChatPluginList": {
+        "type": "object",
+        "description": "A person's plugins in one Work Chat channel.",
+        "required": [
+          "allow_adding",
+          "allow_turning_off",
+          "plugins"
+        ],
+        "properties": {
+          "allow_adding": {
+            "type": "boolean",
+            "description": "The channel lets people add approved plugins.",
+            "example": true
+          },
+          "allow_turning_off": {
+            "type": "boolean",
+            "description": "The channel lets people turn off the agent's plugins.",
+            "example": false
+          },
+          "plugins": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PluginOption"
+            },
+            "description": "The agent's plugins, the ones this person added, and ones they could add."
+          }
+        }
       },
       "WorkFact": {
         "type": "object",
@@ -90233,11 +91257,38 @@
           }
         }
       },
+      "WriteMemory": {
+        "type": "object",
+        "required": [
+          "path"
+        ],
+        "properties": {
+          "content": {
+            "type": "string"
+          },
+          "create": {
+            "type": "boolean"
+          },
+          "is_directory": {
+            "type": "boolean"
+          },
+          "path": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
       "agentId": {
         "type": "string",
         "description": "Prefixed identifier with 'agent' prefix",
         "example": "agent_01933b5a000070008000000000000001",
         "pattern": "^agent_[0-9a-f]{32}$"
+      },
+      "applicationId": {
+        "type": "string",
+        "description": "Prefixed identifier with 'application' prefix",
+        "example": "application_01933b5a000070008000000000000001",
+        "pattern": "^application_[0-9a-f]{32}$"
       },
       "eventId": {
         "type": "string",
@@ -90275,6 +91326,11 @@
         "type": "http",
         "scheme": "bearer",
         "description": "Agent key (evr_ak_…), channel runtime token, or a token accepted by the channel's configured identity provider. Personal access tokens require org_members. Runtime-auth accepts an agent key with End-User or a configured identity-provider token; runtime tokens cannot renew themselves."
+      },
+      "ApplicationCredential": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Application runtime token. Only runtime-auth accepts a fresh identity token from the deployment OIDC provider; Application tokens cannot renew themselves."
       }
     }
   },
@@ -90287,6 +91343,11 @@
       "name": "agents",
       "description": "Agent management endpoints",
       "x-displayName": "Agents"
+    },
+    {
+      "name": "applications",
+      "description": "Publish named workspaces with Chats, Rooms, shared Memory and one audience",
+      "x-displayName": "Applications"
     },
     {
       "name": "agent-channels",
@@ -90333,10 +91394,6 @@
       "name": "history",
       "description": "Recorded changes to entities (who changed what, through which surface, and why) and the manager context their managers keep about them",
       "x-displayName": "History"
-    },
-    {
-      "name": "apps",
-      "x-displayName": "Apps"
     },
     {
       "name": "voice",
@@ -90548,6 +91605,7 @@
       "name": "Agents & authoring",
       "tags": [
         "agents",
+        "applications",
         "agent-channels",
         "harnesses",
         "capabilities",
@@ -90558,7 +91616,6 @@
         "agent-examples",
         "harness-examples",
         "history",
-        "apps",
         "voice"
       ],
       "x-description": "Configure agents, harnesses, capabilities, skills and channels. Manage keys, triggers and recorded changes.",

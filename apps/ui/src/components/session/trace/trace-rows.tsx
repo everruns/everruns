@@ -23,7 +23,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { StreamdownMessage } from "@/components/chat/streamdown-message";
+import { MarkdownMessage } from "@/components/markdown/markdown-message";
 import type { TraceBatch, TraceGap, TraceStep, TraceTurn } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 import { ORIGIN_ICON } from "@/components/chat/message-origin-icon";
@@ -562,9 +562,9 @@ function StepContent({
               {plainText ? (
                 <p className="whitespace-pre-wrap">{step.narration}</p>
               ) : (
-                <StreamdownMessage variant="compact" skipHtml>
+                <MarkdownMessage variant="compact" skipHtml>
                   {step.narration}
-                </StreamdownMessage>
+                </MarkdownMessage>
               )}
             </div>
           )}

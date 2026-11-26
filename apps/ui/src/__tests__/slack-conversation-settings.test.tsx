@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import {
   SlackConversationSettings,
   SlackPrivateApprovalSettings,
-} from "@/components/apps/slack-conversation-settings";
+} from "@/components/agents/channels/slack-conversation-settings";
 
 // Reply behavior moved to the agent-level Communication setting; Slack channels no longer
 // carry a per-channel reply mode.

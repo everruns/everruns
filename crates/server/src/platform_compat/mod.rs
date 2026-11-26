@@ -101,8 +101,7 @@ impl Aliases {
         let platform_paths = self.platform.get(resource)?;
         // Shared agent namespaces only alias their declared management paths.
         // Other management roots include handlers absent from OpenAPI as well.
-        if matches!(resource, "apps" | "channels" | "e")
-            && !platform_paths.iter().any(|p| matches(p, rest))
+        if matches!(resource, "channels" | "e") && !platform_paths.iter().any(|p| matches(p, rest))
         {
             return None;
         }

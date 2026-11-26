@@ -64,7 +64,20 @@ const LONGEST_WAIT: Duration = Duration::from_secs(30 * 60);
 /// Give `session`'s activation its task registry and, when the gateway is
 /// reachable, the platform store its subagents run through.
 pub(crate) async fn attach(session: SessionId, backends: HostBackends, port: Port) -> HostBackends {
-    let backends = backends.with_session_task_registry(Arc::new(ShardTasks::new(port.clone())));
+    // A child reaches its parent's tasks (a thread's assignment) wherever
+    // the parent runs.
+    let parent = port
+        .read(session, |s| {
+            s.platform
+                .origin
+                .as_ref()
+                .and_then(|origin| origin.parent_session_id.parse().ok())
+        })
+        .await
+        .ok()
+        .flatten();
+    let backends = backends
+        .with_session_task_registry(Arc::new(ShardTasks::new(port.clone()).with_parent(parent)));
     let Some(gateway) = port.gateway() else {
         return backends;
     };
@@ -536,9 +549,10 @@ impl PlatformStore for ShardPlatformStore {
         // Memory mounts and servers. Its create reports it on the feed
         // (`Record::Subagent`), where the control plane gives it a session
         // record under that id, as a v1 subagent has; nothing waits on the
-        // control plane. A session no org owns (standalone) reports nothing.
+        // control plane. A session no org owns (standalone) reports nothing,
+        // but still records its parent, which its parent tools need.
         let id = SessionId::new();
-        let subagent = parent.org.as_ref().map(|_| SubagentOrigin {
+        let subagent = Some(SubagentOrigin {
             parent_session_id: self.parent.to_string(),
             harness_id: request.harness_id.to_string(),
             agent_id: request.agent_id.map(|id| id.to_string()),

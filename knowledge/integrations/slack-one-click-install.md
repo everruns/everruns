@@ -289,7 +289,7 @@ replayed, or unknown callbacks return to the agents list without revealing the
 owning agent. Both destinations are real UI routes; installation must not leave
 the operator on a 404 after credentials have been saved.
 
-Native channel config writes must not decode the archival App-linked row: native channels have no `app_id`. The ingress config writer updates the encrypted transport payload directly, preserves first-class channel authentication, and requires an existing row. The installation regression exercises both memory and PostgreSQL storage.
+The ingress config writer updates the encrypted transport payload directly, preserves first-class channel authentication, and requires an existing row. The installation regression exercises both memory and PostgreSQL storage.
 
 See the [installation regression](../../crates/server/tests/domain/slack_install_integration_test.rs).
 
@@ -320,7 +320,7 @@ reverse-engineering.
 - `crates/server/src/channels/slack/provisioning/manager_app.rs` — the manager app consent, its sealed state, and grant refresh
 - `crates/server/migrations/20261013113828_org_slack_connection_grant_kind.sql` — which token source a connection came from
 - `crates/server/src/channels/slack/events/manifest.rs` — manifest generation and the endpoint URLs it declares
-- `apps/ui/src/components/apps/channel-form.tsx` — the setup states the capability drives, and the workspace choice
+- `apps/ui/src/components/agents/channels/channel-form.tsx` — the setup states the capability drives, and the workspace choice
 - `apps/ui/src/components/slack/slack-workspaces.tsx` — the connect wizard and token-shape check; the settings page lives at `apps/ui/src/app/(main)/settings/slack/`
 - [Slack Integration Modernization](slack-modernization.md) — where setup ordering was decided
 - [Slack Agent Actions](slack-agent-actions.md) — the capability and approval work this sits beside

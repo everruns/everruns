@@ -10,6 +10,6 @@ fn analyst() -> Agent {
         .model("openai/gpt-6.2-sol")
         .instructions(md!("instructions.md"))
         // Another agent of this app the analyst hands drafts to for review.
-        .member("reviewer")
+        .spawns("reviewer")
         .build()
 }

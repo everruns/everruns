@@ -79,6 +79,11 @@ modes: HTTP Basic, OIDC or Google JWT bearer tokens, OAuth2 token
 introspection, or mTLS. The Agent Card advertises whichever scheme is in use
 and never includes a credential.
 
+When HMAC signing is enabled, sign `v0:{timestamp}:{channel_id}:{channel_id}:{body}`
+with the configured secret. Both identity components are the native channel's
+public ID. Clients migrating from App-scoped routes must update that scope as
+well as the request URL.
+
 ### Call it
 
 Any A2A 1.0 client works. With the official
@@ -387,7 +392,7 @@ cargo run -p serve-example-a2a --bin writer -- "tide pools"
 
 ## See also
 
-- [Sub-agents](/capabilities/sub-agents/), the shared `spawn_agent` tool.
+- [Spawn agents](/capabilities/spawn-agents/), the shared `spawn_agent` tool.
 - [ARD Discovery](/integrations/ard/), for finding A2A agents at runtime.
 - [Channels](/features/channels/), for channel lifecycle and legacy routes.
 

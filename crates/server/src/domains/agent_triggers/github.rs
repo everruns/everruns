@@ -472,7 +472,6 @@ pub(super) async fn dispatch_to_trigger(
             session_mode: config.session_mode,
             filter: filter.as_ref(),
             session_source: crate::domains::sessions::record::SessionSource::Webhook,
-            webhook_compat: None,
             script: None,
             channel: None,
         },

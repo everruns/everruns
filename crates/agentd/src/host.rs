@@ -130,6 +130,12 @@ pub fn package_with_bindings(
     let mut manifest: everruns::AgentManifest =
         serde_json::from_value(definition.clone()).map_err(|e| e.to_string())?;
     let bindings = crate::mcp::take_bindings(&mut manifest.mcp_servers);
+    // Retired delegation ids (`subagents`, `agent_handoff`, `coordination`,
+    // `run_conversation`) become the current ones before anything reads them.
+    manifest.capabilities =
+        everruns_contracts::capability::delegation::canonicalize_delegation_capabilities(
+            &manifest.capabilities,
+        );
     // Decision: a definition's bundled agents are members this agent hands
     // work to. In a shard a member is its own durable session, created by a
     // hand-off tool from the member's definition, not an in-process member
@@ -207,14 +213,16 @@ impl Host for StandardHost {
             services =
                 services.register(everruns_capabilities::capabilities::SessionScheduleCapability);
         }
-        // Subagents run as sessions of their own through the activation's
-        // platform store (`subagents.rs`).
-        if manifest
-            .capabilities
-            .iter()
-            .any(|c| c.id() == everruns_capabilities::capabilities::SUBAGENTS_CAPABILITY_ID)
+        // Spawned agents run as sessions of their own through the
+        // activation's platform store (`subagents.rs`). A Framework built with
+        // `local` already carries the capability (feature unification), and
+        // registering it twice refuses the agent as a duplicate.
+        let spawn_id = everruns_capabilities::capabilities::SPAWN_AGENTS_CAPABILITY_ID;
+        if manifest.capabilities.iter().any(|c| c.id() == spawn_id)
+            && !everruns::hosting::services::is_framework_capability(spawn_id)
         {
-            services = services.register(everruns_capabilities::capabilities::SubagentCapability);
+            services =
+                services.register(everruns_capabilities::capabilities::SpawnAgentsCapability);
         }
         services = hosted_capabilities(services, &manifest.capabilities);
         let model = match (manifest.model.as_ref(), orgs) {

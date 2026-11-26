@@ -75,12 +75,15 @@ impl AppState {
         auth: AuthState,
         host_composition: &HostComposition,
         built_in_harnesses: &[crate::domains::harnesses::record::BuiltInHarnessDefinition],
-        event_delivery: crate::live_updates::event_delivery::EventDelivery,
+        event_service: Arc<EventService>,
         encryption: Option<Arc<crate::storage::encryption::EncryptionService>>,
         workflow_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
         capability_service: Arc<CapabilityService>,
         sqldb_store: Option<Arc<dyn SessionSqlDbStore>>,
     ) -> Self {
+        // REST and the v2 feed derive their context from this state. Preserve
+        // the composition's listeners instead of creating an empty service.
+        let event_delivery = event_service.event_delivery().clone();
         Self {
             app_router: None,
             session_service: Arc::new(SessionService::with_registry(
@@ -92,7 +95,7 @@ impl AppState {
                 runner.clone(),
                 event_delivery.clone(),
             )),
-            event_service: Arc::new(EventService::new(db.clone(), event_delivery)),
+            event_service,
             session_file_service: Arc::new(WorkspaceFileService::new(db.clone())),
             egress: host_composition.egress_service(),
             session_sandbox_service: None,

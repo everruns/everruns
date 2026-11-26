@@ -82,7 +82,6 @@ async function mockAgentDetailApi(page: Page, displayName = "Jokes Agent") {
         capabilities: [],
         status: "active",
         session_count: 12,
-        app_count: 3,
         created_at: "2026-08-01T00:00:00Z",
         updated_at: "2026-08-01T00:00:00Z",
         archived_at: null,
@@ -103,7 +102,12 @@ async function mockAgentDetailApi(page: Page, displayName = "Jokes Agent") {
         input_tokens: 1200,
         output_tokens: 600,
       };
-    } else if (pathname === "/api/v1/platform/agents/config" || pathname === "/api/v1/platform/harnesses/config") {
+    } else if (pathname === "/api/v1/platform/plugins/config") {
+      json = { policies: { "plugin.view": true, "plugin.manage": true } };
+    } else if (
+      pathname === "/api/v1/platform/agents/config" ||
+      pathname === "/api/v1/platform/harnesses/config"
+    ) {
       json = { policies: { "agent.manage": true, "harness.manage": true } };
     } else if (pathname === `/api/v1/platform/history/${AGENT_ID}`) {
       json = [];
@@ -124,7 +128,6 @@ async function mockAgentDetailApi(page: Page, displayName = "Jokes Agent") {
         is_built_in: false,
         status: "active",
         session_count: 4,
-        app_count: 2,
         created_at: "2026-08-01T00:00:00Z",
         updated_at: "2026-08-01T00:00:00Z",
         archived_at: null,
@@ -211,7 +214,9 @@ for (const scenario of [
       else if (path.endsWith(`/triggers/${triggerId}`)) await route.fulfill({ json: trigger });
       else await route.fulfill({ json: [] });
     });
-    await page.route(`**/api/v1/platform/history/${triggerId}**`, (route) => route.fulfill({ json: [] }));
+    await page.route(`**/api/v1/platform/history/${triggerId}**`, (route) =>
+      route.fulfill({ json: [] }),
+    );
     // The page alone is the Classic layout; Chat first keeps Chat beside it.
     await (scenario.open ? useChatFirstLayout(page) : useClassicLayout(page));
     await page.setViewportSize({ width: scenario.width, height: scenario.height });
@@ -488,26 +493,12 @@ test.describe("Page masthead responsive layout", () => {
   });
 
   for (const width of [390, 1440]) {
-    test(`keeps plugin overview counts and cards contained at ${width}px`, async ({ page }) => {
+    test(`keeps the approved plugins list contained at ${width}px`, async ({ page }) => {
       await page.setViewportSize({ width, height: 900 });
-      await page.goto("/plugins");
+      await page.goto("/settings/plugins");
       await expect(page.getByText("Send transactional email")).toBeVisible();
-      const installed = page.getByRole("tab", { name: "Installed Plugins", exact: true });
-      await expect(installed).toHaveAttribute("aria-selected", "true");
-      await expect(installed).toContainText("1");
-      await expect(
-        page.locator('[data-slot="page-masthead"]').getByText("1", { exact: true }),
-      ).toHaveCount(0);
-      await expect(page.getByRole("button", { name: "Copy ID: plugin:plugin-test" })).toBeVisible();
-      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
-        width,
-      );
-      await page.getByRole("tab", { name: "Marketplaces", exact: true }).click();
-      await expect(
-        page
-          .locator('[data-slot="page-masthead"]')
-          .getByRole("button", { name: "Add Marketplace" }),
-      ).toBeVisible();
+      await expect(page.getByText("Approved · 1")).toBeVisible();
+      await expect(page.getByRole("button", { name: "Sources" })).toBeVisible();
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
         width,
       );

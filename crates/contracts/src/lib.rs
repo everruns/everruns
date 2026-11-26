@@ -27,11 +27,11 @@ pub mod runtime;
 #[cfg(feature = "definition")]
 pub use async_trait::async_trait;
 pub use capability::{
-    ActivationSet, CapabilityError, CapabilityId, CapabilityIdIndex, CapabilityRef, CapabilitySpec,
-    CapabilitySpecParts, GENERIC_HARNESS_NAME, IntoCapability, PLUGIN_CAPABILITY_PREFIX,
-    RESERVED_CAPABILITY_ID_NAMESPACE, generic_capabilities, is_plugin_capability,
-    parse_plugin_capability_id, plugin_capability_id, validate_capability_config,
-    validate_capability_id,
+    ALL_APPROVED_PLUGINS_REF, ActivationSet, CapabilityError, CapabilityId, CapabilityIdIndex,
+    CapabilityRef, CapabilitySpec, CapabilitySpecParts, GENERIC_HARNESS_NAME, IntoCapability,
+    PLUGIN_CAPABILITY_PREFIX, RESERVED_CAPABILITY_ID_NAMESPACE, generic_capabilities,
+    is_all_approved_plugins, is_plugin_capability, parse_plugin_capability_id,
+    plugin_capability_id, validate_capability_config, validate_capability_id,
 };
 #[cfg(feature = "definition")]
 pub use capability::{Definition, json_schema_for};

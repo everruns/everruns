@@ -46,7 +46,10 @@ use crate::services::{EventService, ProviderResolverService};
 use crate::storage::{AgentCapabilityRow, AgentRow, UpdateSession};
 use crate::storage::{EncryptionService, StorageBackend};
 use async_trait::async_trait;
-use everruns_capabilities::capabilities::PoppyInvoker;
+use everruns_capabilities::capabilities::{
+    PluginsInvoker, PoppyInvoker, UserMcpCallInvoker as UserMcpInvoker,
+};
+use everruns_capabilities::slack_action::SlackActionInvoker as SlackAction;
 use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
 use everruns_contracts::error::{AgentLoopError, Result};
 use everruns_contracts::typed_id::{AgentId, BudgetId, HarnessId, SessionId};
@@ -1134,24 +1137,20 @@ impl WorkerAdapters for DirectWorkerAdapters {
         self.sqldb_store.clone()
     }
 
-    fn slack_action_invoker(
-        &self,
-        org_id: i64,
-        session_id: everruns_contracts::typed_id::SessionId,
-    ) -> Option<Arc<dyn everruns_capabilities::slack_action::SlackActionInvoker>> {
-        Some(self.slack_invoker_for(org_id, session_id))
+    fn slack_action_invoker(&self, org: i64, session: SessionId) -> Option<Arc<dyn SlackAction>> {
+        Some(self.slack_invoker_for(org, session))
     }
 
-    fn user_mcp_invoker(
-        &self,
-        org_id: i64,
-        session_id: everruns_contracts::typed_id::SessionId,
-    ) -> Option<Arc<dyn everruns_capabilities::capabilities::UserMcpCallInvoker>> {
-        Some(self.user_mcp_invoker_for(org_id, session_id))
+    fn user_mcp_invoker(&self, org: i64, session: SessionId) -> Option<Arc<dyn UserMcpInvoker>> {
+        Some(self.user_mcp_invoker_for(org, session))
     }
 
     fn poppy_invoker(&self, org: i64, session: SessionId) -> Option<Arc<dyn PoppyInvoker>> {
         Some(self.command_poppy_invoker(org, session))
+    }
+
+    fn plugins_invoker(&self, org: i64, session: SessionId) -> Option<Arc<dyn PluginsInvoker>> {
+        Some(self.command_plugins_invoker(org, session))
     }
 
     fn sandbox_persistence_store(
@@ -1340,7 +1339,6 @@ impl WorkerAdapters for DirectWorkerAdapters {
     async fn invoke_scheduled_channel(
         &self,
         org_id: i64,
-        app_id: &str,
         channel_id: &str,
     ) -> Result<serde_json::Value> {
         let runner = self
@@ -1359,17 +1357,16 @@ impl WorkerAdapters for DirectWorkerAdapters {
             self.event_service.event_delivery().clone(),
         );
 
-        let result = crate::domains::agent_channels::invoke_scheduled_legacy_alias_channel(
+        let result = crate::domains::agent_channels::invoke_scheduled_agent_channel(
             &self.db,
             self.encryption.as_ref(),
             &session_service,
             &message_service,
             org_id,
-            app_id,
             channel_id,
         )
         .await
-        .map_err(|error| store_error(format!("Failed to invoke scheduled app channel: {error}")))?;
+        .map_err(|error| store_error(format!("Failed to invoke scheduled channel: {error}")))?;
 
         Ok(serde_json::json!({
             "session_id": result.session_id.to_string(),

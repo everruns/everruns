@@ -5,8 +5,8 @@
 //! enrich it: a summary leading with the result, how it checked the work, and
 //! links to what it produced. The report reducer reads the call's arguments;
 //! the tool itself only validates them, so it has no side effect and nothing
-//! else to fail on. It shares its shape with a coordinated worker's
-//! `complete_assignment`, which the reducer reads the same way.
+//! else to fail on. It shares its shape with a thread's
+//! `finish`, which the reducer reads the same way.
 
 use crate::builtins::tool_narration::{ToolNarrationContext, ToolNarrationPhase, generic_phrase};
 use crate::builtins::tool_types::{ToolCall, ToolHints};

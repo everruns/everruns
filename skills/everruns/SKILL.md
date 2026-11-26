@@ -5,7 +5,7 @@ license: MIT
 compatibility: Framework work needs Rust 1.96+. Platform work needs the everruns CLI, an Everruns MCP connection, or HTTP access to an Everruns deployment.
 metadata:
   category: platform
-  version: "6.2"
+  version: "6.3"
   homepage: https://everruns.com
   docs: https://everruns.com/docs/
   repository: https://github.com/everruns/everruns
@@ -43,8 +43,10 @@ the task needs before acting, and nothing else.
 | Call Platform agents from Python, TypeScript, or Rust code | [sdk.md](references/sdk.md) |
 | Build or improve an agent from a plain-language brief | [build-agent.md](references/build-agent.md) |
 | Design or revise an agent definition: harness, capabilities, model, packages | [agent-authoring.md](references/agent-authoring.md) |
+| Let an agent start other agents: one-off calls, followed threads, a coordinator | [agents-starting-agents.md](references/agents-starting-agents.md) |
 | Hand a task to an existing agent and bring back the result | [run-agent.md](references/run-agent.md) |
 | Find out why a session failed, stalled, or answered badly | [debug-session.md](references/debug-session.md) |
+| Choose Bashkit, Monty Python Code Mode, native tools or session sandboxes | [execution-options.md](references/execution-options.md) |
 | Build regression evals, compare models, score live traffic | [evaluate-agent.md](references/evaluate-agent.md) |
 | Put an agent on Slack, the web, A2A, webhooks, or a schedule | [ship-agent.md](references/ship-agent.md) |
 | Check spending, health, or who changed what | [operate.md](references/operate.md) |
@@ -99,6 +101,9 @@ install first; offer the demo only as a way to look around.
 - **Capability**: tools, context, files, or behavior added to an agent or
   harness. Availability does not prove that an agent has it attached or that
   the person has connected the required account.
+- **Spawn agents and Threads**: the two ways an agent starts other agents,
+  never both on one agent. Spawn agents makes one-off calls (brief in, result
+  out); Threads hands off followed work the agent messages and closes.
 - **Session**: a conversation or run with its own messages, events, state, and
   workspace. Creating a session is distinct from completing its task.
 - **Workspace**: durable files used by an agent. A virtual workspace does not

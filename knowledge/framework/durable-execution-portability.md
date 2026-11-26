@@ -63,7 +63,7 @@ defines the failure semantics and qualification tests.
 | [TurnLogFold and resume](../../crates/core/src/host/turn_resume.rs) | Recover open turns, skip completed calls, classify unfinished calls | Portable placement and versioned reconstruction requirements |
 | [HostBackends](../../crates/core/src/host/backends.rs) and [EventLog](../../crates/core/src/host/events.rs) | Custom stores, canonical identity/sequences, bounded reads, conditional append, declared crash durability | Atomic log/control updates and execution-epoch fencing across ports |
 | [Platform actor runtime](../../crates/worker/src/actor_runtime/mod.rs) | Runnable-session leasing, inbox progress, cancellation, restart pickup | Host-neutral extraction of semantics currently in worker code |
-| [Tool result store](../../crates/core/src/durability.rs) and [durable start barrier](../../crates/core/src/engine/execution/act_start_record.rs) | Claim/settle, known-result reuse, conservative handling of unsafe interrupted calls | Consistent operation durability and recovery across all host profiles |
+| [Tool result store](../../crates/contracts/src/runtime/durability.rs) and [durable start barrier](../../crates/core/src/engine/execution/act_start_record.rs) | Claim/settle, known-result reuse, conservative handling of unsafe interrupted calls | Consistent operation durability and recovery across all host profiles |
 | [serve hosting seam](../../crates/serve/src/hosting.rs) | Host wrappers around the existing application and `/v1` API | Injecting distributed session services instead of assuming local Engine/SQLite |
 
 The [actor backend design](execution-backends.md) is the right starting point.

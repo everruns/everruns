@@ -73,19 +73,6 @@ everruns_core::database_failure::DatabaseFailureKind::PoolExhausted	variant
 everruns_core::database_failure::DatabaseFailureKind::shared_message	function
 everruns_core::database_failure::log_database_failure	function
 everruns_core::decision_driver	module
-everruns_core::durability	module
-everruns_core::durability::DurableToolCallStatus	enum
-everruns_core::durability::DurableToolCallStatus::Interrupted	variant
-everruns_core::durability::DurableToolCallStatus::Running	variant
-everruns_core::durability::DurableToolCallStatus::Settled	variant
-everruns_core::durability::DurableToolResultStore	trait
-everruns_core::durability::PartialStreamState	struct
-everruns_core::durability::PartialStreamStore	trait
-everruns_core::durability::ToolCallClaimResult	enum
-everruns_core::durability::ToolCallClaimResult::AlreadyRunning	variant
-everruns_core::durability::ToolCallClaimResult::AlreadySettled	variant
-everruns_core::durability::ToolCallClaimResult::Claimed	variant
-everruns_core::durability::ToolCallClaimResult::DeterminismViolation	variant
 everruns_core::error_reporter	module
 everruns_core::error_reporter::ErrorReport	struct
 everruns_core::error_reporter::ErrorReporter	trait
@@ -241,9 +228,6 @@ everruns_core::permissions::Permission	enum
 everruns_core::permissions::Permission::OrgAgentsDangerous	variant
 everruns_core::permissions::Permission::OrgAgentsManage	variant
 everruns_core::permissions::Permission::OrgApiKeysManage	variant
-everruns_core::permissions::Permission::OrgAppsDangerous	variant
-everruns_core::permissions::Permission::OrgAppsManage	variant
-everruns_core::permissions::Permission::OrgAppsView	variant
 everruns_core::permissions::Permission::OrgAuditLogsView	variant
 everruns_core::permissions::Permission::OrgCapabilitiesManage	variant
 everruns_core::permissions::Permission::OrgCapabilitiesView	variant
@@ -268,6 +252,7 @@ everruns_core::permissions::Permission::OrgSettingsView	variant
 everruns_core::permissions::Permission::OrgSkillsDangerous	variant
 everruns_core::permissions::Permission::OrgSkillsManage	variant
 everruns_core::permissions::Permission::OrgSkillsView	variant
+everruns_core::permissions::Permission::OrgVirtualUsersDangerous	variant
 everruns_core::permissions::Permission::OrgVirtualUsersManage	variant
 everruns_core::permissions::Permission::OrgVirtualUsersView	variant
 everruns_core::permissions::PermissionResolver	trait
@@ -297,6 +282,9 @@ everruns_core::plugins	module
 everruns_core::plugins::compiler	module
 everruns_core::plugins::compiler::CompiledPlugin	struct
 everruns_core::plugins::compiler::compile_plugin	function
+everruns_core::plugins::environment::EVERRUNS_EXTENSION	constant
+everruns_core::plugins::environment::PluginRequirement	struct
+everruns_core::plugins::environment::plugin_requirement	function
 everruns_core::plugins::file_set	module
 everruns_core::plugins::file_set::MAX_PLUGIN_FILES	constant
 everruns_core::plugins::file_set::MAX_PLUGIN_FILE_BYTES	constant
@@ -341,6 +329,7 @@ everruns_core::session_mcp_servers::SESSION_MCP_SERVER_KV_PREFIX	constant
 everruns_core::session_mcp_servers::SessionMcpServer	struct
 everruns_core::session_mcp_servers::SessionMcpServerSource	enum
 everruns_core::session_mcp_servers::SessionMcpServerSource::Ard	variant
+everruns_core::session_mcp_servers::SessionMcpServerSource::Plugin	variant
 everruns_core::session_mcp_servers::SessionMcpServerSource::UserMcp	variant
 everruns_core::session_mcp_servers::get_session_mcp_server	function
 everruns_core::session_mcp_servers::load_session_mcp_servers	function

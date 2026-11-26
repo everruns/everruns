@@ -321,9 +321,11 @@ fn interaction_steps<'a>(
                     continue;
                 };
                 let mut result = content_items(&message.content);
+                let mut native_result = false;
                 let name = match native(call) {
                     Some((name, _)) => {
                         result = computer_use::result_items(result, &call.arguments);
+                        native_result = true;
                         name
                     }
                     None => call.name.as_str(),
@@ -331,6 +333,13 @@ fn interaction_steps<'a>(
                 if result.is_empty() {
                     result.push(json!({ "type": "text", "text": "" }));
                 }
+                // Native computer use is Gemini 4 only, which takes the
+                // multimodal form; a regular tool result goes back as text.
+                let result = if native_result {
+                    Value::Array(result)
+                } else {
+                    tool_result(result)
+                };
                 steps.push(json!({
                     "type": "function_result",
                     "call_id": call_id,
@@ -392,6 +401,29 @@ fn interaction_steps<'a>(
         }
     }
     steps
+}
+
+/// The `result` payload for a `function_result` step.
+///
+/// Gemini documents the array form as the *multimodal* function response: each
+/// entry is a content block with its own `type`, and only Gemini 3 and later
+/// models accept it. A text-only result therefore goes back as a plain string,
+/// which every model takes; media parts (a computer-use screenshot, a document
+/// the tool returned) still need the array.
+fn tool_result(result: Vec<Value>) -> Value {
+    let text_only = result.iter().all(|part| {
+        part.get("type").and_then(Value::as_str) == Some("text")
+            && part.get("text").is_some_and(Value::is_string)
+    });
+    if !text_only {
+        return Value::Array(result);
+    }
+    let text = result
+        .iter()
+        .filter_map(|part| part.get("text").and_then(Value::as_str))
+        .collect::<Vec<_>>()
+        .join("\n");
+    Value::String(text)
 }
 
 /// Interactions content items: text, images and documents. Audio is

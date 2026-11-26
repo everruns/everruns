@@ -99,10 +99,6 @@ pub enum ManagementAction {
     McpServerCreated,
     McpServerUpdated,
     McpServerDeleted,
-    // Apps
-    AppCreated,
-    AppUpdated,
-    AppDeleted,
     // Skills
     SkillCreated,
     SkillUpdated,
@@ -136,9 +132,6 @@ impl ManagementAction {
             Self::McpServerCreated => "management.mcp_server.created",
             Self::McpServerUpdated => "management.mcp_server.updated",
             Self::McpServerDeleted => "management.mcp_server.deleted",
-            Self::AppCreated => "management.app.created",
-            Self::AppUpdated => "management.app.updated",
-            Self::AppDeleted => "management.app.deleted",
             Self::SkillCreated => "management.skill.created",
             Self::SkillUpdated => "management.skill.updated",
             Self::SkillDeleted => "management.skill.deleted",
@@ -165,7 +158,7 @@ pub enum AgentAction {
     RunFailed,
     ToolExecuted,
     LlmRequest,
-    AppInvocationStarted,
+    ChannelInvocationStarted,
     /// An agent paused in front of a critical action and asked for consent.
     ApprovalRequested,
     /// A human's spoken consent for a critical action was recorded.
@@ -183,7 +176,7 @@ impl AgentAction {
             Self::RunFailed => "agent.run.failed",
             Self::ToolExecuted => "agent.tool.executed",
             Self::LlmRequest => "agent.llm.request",
-            Self::AppInvocationStarted => "agent.app_invocation.started",
+            Self::ChannelInvocationStarted => "agent.channel_invocation.started",
             Self::ApprovalRequested => "agent.approval.requested",
             Self::ApprovalGranted => "agent.approval.granted",
             Self::AutoReviewed => "agent.approval.auto_reviewed",
@@ -286,9 +279,6 @@ impl std::str::FromStr for ManagementAction {
             "management.mcp_server.created" => Ok(Self::McpServerCreated),
             "management.mcp_server.updated" => Ok(Self::McpServerUpdated),
             "management.mcp_server.deleted" => Ok(Self::McpServerDeleted),
-            "management.app.created" => Ok(Self::AppCreated),
-            "management.app.updated" => Ok(Self::AppUpdated),
-            "management.app.deleted" => Ok(Self::AppDeleted),
             "management.skill.created" => Ok(Self::SkillCreated),
             "management.skill.updated" => Ok(Self::SkillUpdated),
             "management.skill.deleted" => Ok(Self::SkillDeleted),
@@ -306,7 +296,7 @@ impl std::str::FromStr for AgentAction {
             "agent.run.failed" => Ok(Self::RunFailed),
             "agent.tool.executed" => Ok(Self::ToolExecuted),
             "agent.llm.request" => Ok(Self::LlmRequest),
-            "agent.app_invocation.started" => Ok(Self::AppInvocationStarted),
+            "agent.channel_invocation.started" => Ok(Self::ChannelInvocationStarted),
             other => Err(format!("unknown agent action: {other}")),
         }
     }

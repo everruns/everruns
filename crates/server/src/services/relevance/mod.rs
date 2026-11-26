@@ -92,6 +92,12 @@ pub trait FallbackModels: Send + Sync {
         org_id: i64,
         agent: &AgentRow,
     ) -> anyhow::Result<Option<FallbackModel>>;
+
+    /// The org's default model, for work no agent owns (a room reading its
+    /// messages for facts). `None` when it resolves to no usable provider.
+    async fn for_org(&self, _org_id: i64) -> anyhow::Result<Option<FallbackModel>> {
+        Ok(None)
+    }
 }
 
 /// The fallback the server runs: the agent's model on the org's provider.
@@ -115,6 +121,21 @@ impl FallbackModels for AgentModelFallback {
             }
             None => self.provider_resolver.resolve_default_model(org_id).await?,
         };
+        self.model(org_id, resolved).await
+    }
+
+    async fn for_org(&self, org_id: i64) -> anyhow::Result<Option<FallbackModel>> {
+        let resolved = self.provider_resolver.resolve_default_model(org_id).await?;
+        self.model(org_id, resolved).await
+    }
+}
+
+impl AgentModelFallback {
+    async fn model(
+        &self,
+        org_id: i64,
+        resolved: Option<crate::services::provider_resolver::ResolvedModel>,
+    ) -> anyhow::Result<Option<FallbackModel>> {
         let Some(resolved) = resolved else {
             return Ok(None);
         };

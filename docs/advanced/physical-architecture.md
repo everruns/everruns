@@ -39,7 +39,7 @@ Operational requirements:
 
 - **PostgreSQL 17.** UUIDv7 is implemented via a custom SQL function; PG 18's native `uuidv7()` will be adopted once it is widely available on managed services.
 - **Direct connection for `LISTEN/NOTIFY`.** Pooled or proxied endpoints (PgBouncer, Neon `-pooler`, RDS Proxy) interleave notification frames with query traffic. Set `DATABASE_URL` to the pooled endpoint for normal queries and `DATABASE_UNPOOLED_URL` to a direct session-scoped endpoint for listeners. Startup fails fast if the configured listener URL looks pooled.
-- **Pool sizing.** With `EXPECTED_INSTANCES=N` set, each instance sizes its pool so that `pool × instances` stays under 80% of `PG_MAX_CONNECTIONS`.
+- **Pool sizing.** Each instance reads the database's `max_connections` at startup and, with `EXPECTED_INSTANCES=N` set, takes its share of it, so resizing PostgreSQL resizes the pools ([pool sizing](/sre/environment-variables/#database-pool-sizing)).
 - **Migrations.** Auto-applied on server startup via embedded sqlx migrations, protected by a PostgreSQL advisory lock so multiple control-plane instances can boot together without racing.
 
 See [`docs/sre/environment-variables.md`](/sre/environment-variables/) for the full list of database-related variables.
@@ -164,7 +164,7 @@ Multiple control-plane instances can run behind a load balancer with no session 
 
 | Concern | How it stays correct |
 |---------|---------------------|
-| Database connections | `EXPECTED_INSTANCES=N` divides the pool so `pool × instances ≤ 80% of PG_MAX_CONNECTIONS` |
+| Database connections | Pools derived from `max_connections`; `EXPECTED_INSTANCES=N` splits it across instances |
 | SSE delivery | NATS subjects fan out to every instance (required for more than one instance; without it, instances poll PostgreSQL and report `degraded`); reconnects are idempotent |
 | Turn and task claiming | `SKIP LOCKED` on session leases and the durable task queue partitions work naturally; a session's fenced lease keeps one worker on it |
 | Migrations | PostgreSQL advisory lock prevents concurrent runs |

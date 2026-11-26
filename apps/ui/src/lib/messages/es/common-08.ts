@@ -204,8 +204,8 @@ export const messages: Readonly<Record<string, string>> = {
   "Waiting on tools": "Esperando herramientas",
   warning: "advertencia",
   "was invited as": "fue invitado como",
-  "Watch how Streamdown handles incomplete markdown during streaming":
-    "Vea cómo Streamdown maneja el descuento incompleto durante la transmisión",
+  "Watch how Words handles incomplete markdown during streaming":
+    "Vea cómo Words maneja el descuento incompleto durante la transmisión",
   "Wave bar thinking indicator": "Indicador de pensamiento de barra de ondas",
   "We couldn't verify your authentication state. Protected routes stay blocked until auth bootstrap succeeds.":
     "No pudimos verificar su estado de autenticación. Las rutas protegidas permanecen bloqueadas hasta que el arranque de autenticación se realice correctamente.",
@@ -300,5 +300,7 @@ export const messages: Readonly<Record<string, string>> = {
   "Your workspace": "Tu espacio de trabajo",
   "your-api-key": "tu-clave-api",
   "ZIP Archive": "Archivo ZIP",
+  "Zoom in": "Acercar",
+  "Zoom out": "Alejar",
   "Zulu (South Africa)": "Zulú (Sudáfrica)",
 };

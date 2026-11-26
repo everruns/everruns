@@ -21,7 +21,7 @@ use everruns_server::api::common::Pagination;
 use everruns_server::setup::org_init;
 use everruns_server::storage::UpdateField;
 use everruns_server::storage::{
-    CreateAgentCapabilityRow, CreateAgentHealthCheckRunRow, CreateAgentRow, CreateAppRow,
+    CreateAgentCapabilityRow, CreateAgentHealthCheckRunRow, CreateAgentRow,
     CreateDeclarativeCapabilityRow, CreateEvalRow, CreateEventRow, CreateHarnessRow,
     CreateImageRow, CreateMcpServerRow, CreateModelRow, CreateOrganizationRow, CreatePrincipalRow,
     CreateProviderRow, CreateSessionFileRow, CreateSessionRow, CreateSessionScheduleRow,
@@ -589,53 +589,8 @@ async fn test_session_crud() {
 
     // Create session
     let owner_principal_id = create_test_principal(&backend, TEST_ORG_ID).await;
-    let app_harness = backend
-        .create_harness(
-            TEST_ORG_ID,
-            CreateHarnessRow {
-                localizations: Default::default(),
-                name: format!("repo-test-app-harness-{}", Uuid::now_v7()),
-                display_name: Some("Repo Test App Harness".to_string()),
-                icon: None,
-                description: None,
-                intro_markdown: None,
-                short_description: None,
-                starters: serde_json::json!([]),
-                system_prompt: Some("Test".to_string()),
-                parent_harness_id: None,
-                default_model_id: None,
-                tags: vec![],
-                initial_files: serde_json::json!([]),
-                mcp_servers: serde_json::json!({}),
-                network_access: None,
-                embedder_metadata: serde_json::json!({}),
-                is_built_in: false,
-            },
-        )
-        .await
-        .expect("Failed to create app harness");
-    let app = backend
-        .create_app(
-            TEST_ORG_ID,
-            CreateAppRow {
-                public_id: everruns_contracts::typed_id::AppId::new().to_string(),
-                name: "Repository Test App".to_string(),
-                description: None,
-                harness_id: app_harness.id.uuid(),
-                agent_id: None,
-                virtual_user_id: None,
-                owner_principal_id,
-                resolved_owner_user_id: None,
-                channel_type: Some("webhook".to_string()),
-                channel_config: json!({}),
-                channel_config_encrypted: None,
-            },
-        )
-        .await
-        .expect("Failed to create app");
     let session = backend
         .create_session(CreateSessionRow {
-            app_id: Some(app.id),
             agent_id: Some(agent.id),
             owner_principal_id,
             title: Some("Test Session".to_string()),
@@ -645,7 +600,6 @@ async fn test_session_crud() {
         .expect("Failed to create session");
 
     assert_eq!(session.agent_id, Some(agent.id));
-    assert_eq!(session.app_id, Some(app.id));
 
     // Get session
     let fetched = backend
@@ -654,7 +608,6 @@ async fn test_session_crud() {
         .expect("Failed to get session")
         .expect("Session not found");
     assert_eq!(fetched.id, session.id);
-    assert_eq!(fetched.app_id, Some(app.id));
 
     // Update session
     let updated = backend

@@ -239,8 +239,8 @@ async fn a2a_agent_card_advertises_the_avatar_as_icon_url() {
     let server = TestServer::in_memory().await;
     let agent = create_agent(&server, "avatar-a2a").await;
     let agent_id = agent["id"].as_str().unwrap();
-    let app = server
-        .seed_app_channel(
+    let bundle = server
+        .seed_channel_bundle(
             "avatar-a2a",
             agent_id,
             "a2a",
@@ -252,9 +252,9 @@ async fn a2a_agent_card_advertises_the_avatar_as_icon_url() {
             }),
         )
         .await;
-    let app_id = app["id"].as_str().unwrap();
-    let channel_id = app["channels"][0]["id"].as_str().unwrap();
-    server.set_app_channels_live(app_id, true).await;
+    let ingress_id = bundle["id"].as_str().unwrap();
+    let channel_id = bundle["channels"][0]["id"].as_str().unwrap();
+    server.set_bundle_live(ingress_id, true).await;
     let card_path = format!("/v1/channels/{channel_id}/a2a/.well-known/agent-card.json");
 
     let card: Value = server

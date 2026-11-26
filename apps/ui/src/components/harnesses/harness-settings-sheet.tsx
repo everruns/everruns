@@ -335,12 +335,10 @@ function UsageSection({ harness }: { harness: Harness }) {
   const { displayLocale } = useFormattingLocale();
   const ui = useUiTranslations();
   const sessions = harness.session_count ?? 0;
-  const apps = harness.app_count ?? 0;
 
   return (
     <p className="text-sm text-muted-foreground">
-      {sessions} {pluralize(sessions, "session", undefined, displayLocale)} {ui("and")} {apps}{" "}
-      {pluralize(apps, "app", undefined, displayLocale)}{" "}
+      {sessions} {pluralize(sessions, "session", undefined, displayLocale)}
       {ui("use this harness. The Stats tab breaks usage down over time.")}
     </p>
   );

@@ -21,11 +21,11 @@ use sha2::{Digest, Sha256};
 use std::sync::Arc;
 use test_harness::TestServer;
 
-async fn create_app_with_a2a(server: &TestServer, name: &str, message: &str) -> (Value, String) {
-    create_app_with_a2a_mode(server, name, message, "shared_session").await
+async fn create_a2a_bundle(server: &TestServer, name: &str, message: &str) -> (Value, String) {
+    create_a2a_bundle_mode(server, name, message, "shared_session").await
 }
 
-async fn create_app_with_a2a_mode(
+async fn create_a2a_bundle_mode(
     server: &TestServer,
     name: &str,
     message: &str,
@@ -46,8 +46,8 @@ async fn create_app_with_a2a_mode(
 
     let api_key = format!("evr_app_{}", uuid::Uuid::new_v4().simple());
     let api_key_hash = hex::encode(Sha256::digest(api_key.as_bytes()));
-    let app = server
-        .seed_app_channel(
+    let bundle = server
+        .seed_channel_bundle(
             name,
             agent["id"].as_str().unwrap(),
             "a2a",
@@ -61,11 +61,11 @@ async fn create_app_with_a2a_mode(
             }),
         )
         .await;
-    (app, api_key)
+    (bundle, api_key)
 }
 
-async fn publish_app(server: &TestServer, app_id: &str) {
-    server.set_app_channels_live(app_id, true).await;
+async fn publish_channel(server: &TestServer, ingress_id: &str) {
+    server.set_bundle_live(ingress_id, true).await;
 }
 
 async fn list_user_message_texts(server: &TestServer, session_id: &str) -> Vec<String> {
@@ -94,7 +94,7 @@ async fn list_user_message_texts(server: &TestServer, session_id: &str) -> Vec<S
 /// Send a JSON-RPC request to an A2A channel and return the parsed envelope.
 async fn a2a_rpc(
     server: &TestServer,
-    app_id: &str,
+    _ingress_id: &str,
     channel_id: &str,
     api_key: &str,
     method: &str,
@@ -110,7 +110,7 @@ async fn a2a_rpc(
     server
         .request_raw(
             Method::POST,
-            &format!("/v1/apps/{app_id}/a2a/{channel_id}"),
+            &format!("/v1/channels/{channel_id}/a2a"),
             vec![
                 ("content-type", "application/json"),
                 ("authorization", &format!("Bearer {api_key}")),
@@ -173,14 +173,14 @@ async fn parked_a2a_task(
     name: &str,
     card_arguments: Value,
 ) -> (String, String, String, String) {
-    let (app, api_key) = create_app_with_a2a(server, name, "{{a2a.text}}").await;
-    let app_id = app["id"].as_str().unwrap().to_string();
-    let channel_id = app["channels"][0]["id"].as_str().unwrap().to_string();
-    publish_app(server, &app_id).await;
+    let (bundle, api_key) = create_a2a_bundle(server, name, "{{a2a.text}}").await;
+    let ingress_id = bundle["id"].as_str().unwrap().to_string();
+    let channel_id = bundle["channels"][0]["id"].as_str().unwrap().to_string();
+    publish_channel(server, &ingress_id).await;
 
     let send = a2a_rpc(
         server,
-        &app_id,
+        &ingress_id,
         &channel_id,
         &api_key,
         "message/send",
@@ -222,7 +222,7 @@ async fn parked_a2a_task(
         .expect("park the session")
         .expect("session exists");
 
-    (app_id, channel_id, api_key, task_id)
+    (ingress_id, channel_id, api_key, task_id)
 }
 
 fn choice_card_arguments() -> Value {
@@ -287,12 +287,12 @@ async fn a2a_tasks_get_projects_parked_ask_user_as_prose_and_data_part() {
         resumes: std::sync::atomic::AtomicUsize::new(0),
     }))
     .await;
-    let (app_id, channel_id, api_key, task_id) =
+    let (ingress_id, channel_id, api_key, task_id) =
         parked_a2a_task(&server, "a2a-ask-user-get", choice_card_arguments()).await;
 
     let got = a2a_rpc(
         &server,
-        &app_id,
+        &ingress_id,
         &channel_id,
         &api_key,
         "tasks/get",
@@ -343,12 +343,12 @@ async fn a2a_message_send_data_part_answer_resumes_the_parked_turn() {
         resumes: std::sync::atomic::AtomicUsize::new(0),
     });
     let server = TestServer::in_memory_with_runner(runner.clone()).await;
-    let (app_id, channel_id, api_key, task_id) =
+    let (ingress_id, channel_id, api_key, task_id) =
         parked_a2a_task(&server, "a2a-ask-user-answer", choice_card_arguments()).await;
 
     let answered = a2a_rpc(
         &server,
-        &app_id,
+        &ingress_id,
         &channel_id,
         &api_key,
         "message/send",
@@ -400,12 +400,12 @@ async fn a2a_data_part_answer_cannot_invent_an_option() {
         resumes: std::sync::atomic::AtomicUsize::new(0),
     });
     let server = TestServer::in_memory_with_runner(runner.clone()).await;
-    let (app_id, channel_id, api_key, task_id) =
+    let (ingress_id, channel_id, api_key, task_id) =
         parked_a2a_task(&server, "a2a-ask-user-invalid", choice_card_arguments()).await;
 
     let rejected = a2a_rpc(
         &server,
-        &app_id,
+        &ingress_id,
         &channel_id,
         &api_key,
         "message/send",
@@ -442,12 +442,12 @@ async fn a2a_data_part_answer_without_a_task_id_is_refused() {
         resumes: std::sync::atomic::AtomicUsize::new(0),
     }))
     .await;
-    let (app_id, channel_id, api_key, _task_id) =
+    let (ingress_id, channel_id, api_key, _task_id) =
         parked_a2a_task(&server, "a2a-ask-user-no-task", choice_card_arguments()).await;
 
     let rejected = a2a_rpc(
         &server,
-        &app_id,
+        &ingress_id,
         &channel_id,
         &api_key,
         "message/send",
@@ -479,12 +479,12 @@ async fn a2a_secret_question_projects_as_auth_required_never_as_a_question_to_an
         resumes: std::sync::atomic::AtomicUsize::new(0),
     }))
     .await;
-    let (app_id, channel_id, api_key, task_id) =
+    let (ingress_id, channel_id, api_key, task_id) =
         parked_a2a_task(&server, "a2a-ask-user-secret", secret_card_arguments()).await;
 
     let got = a2a_rpc(
         &server,
-        &app_id,
+        &ingress_id,
         &channel_id,
         &api_key,
         "tasks/get",
@@ -524,7 +524,7 @@ async fn a2a_secret_question_projects_as_auth_required_never_as_a_question_to_an
     // And an answer is refused at the channel boundary, not merely downstream.
     let refused = a2a_rpc(
         &server,
-        &app_id,
+        &ingress_id,
         &channel_id,
         &api_key,
         "message/send",
@@ -559,12 +559,12 @@ async fn a2a_text_only_reply_to_a_parked_question_still_supersedes_it() {
         resumes: std::sync::atomic::AtomicUsize::new(0),
     });
     let server = TestServer::in_memory_with_runner(runner).await;
-    let (app_id, channel_id, api_key, task_id) =
+    let (ingress_id, channel_id, api_key, task_id) =
         parked_a2a_task(&server, "a2a-ask-user-text", choice_card_arguments()).await;
 
     let sent = a2a_rpc(
         &server,
-        &app_id,
+        &ingress_id,
         &channel_id,
         &api_key,
         "message/send",

@@ -7,6 +7,7 @@ export * from "./mcp-server-types";
 export * from "./agent-mcp-types";
 export * from "./agent-sandbox-types";
 export * from "./tool-event-types";
+export * from "./plugin-types";
 export * from "./web-search-types";
 export * from "./background-limits-types";
 export * from "./tool-approval-types";

@@ -73,6 +73,14 @@ jest.mock("@/hooks/use-organizations", () => ({
   }),
 }));
 
+let mockApplicationLaunchers: { id: string; name: string; url: string }[] = [];
+jest.mock("@/hooks/use-applications", () => ({
+  useApplicationLaunchers: () => ({ data: mockApplicationLaunchers }),
+}));
+beforeEach(() => {
+  mockApplicationLaunchers = [];
+});
+
 jest.mock("@/components/layout/mcp-connect-button", () => ({
   McpConnectButton: () => <button type="button" aria-label="Connect your coding agent" />,
   McpConnectDialog: ({ open }: { open: boolean }) =>
@@ -135,7 +143,6 @@ const mockFeatureFlags = {
   extractions: true,
   skills: true,
   memory: true,
-  plugins: true,
   voice: true,
   observers: true,
   public_chat: true,
@@ -175,7 +182,6 @@ describe("Sidebar", () => {
       extractions: true,
       skills: true,
       memory: true,
-      plugins: true,
       voice: true,
       observers: true,
       public_chat: true,
@@ -205,6 +211,25 @@ describe("Sidebar", () => {
     expect(screen.getByRole("link", { name: "Main chat" })).toHaveAttribute("href", "/chats");
     expect(screen.getByTestId("sidebar-chat-threads")).toBeInTheDocument();
     expect(screen.getByText("Side conversation")).toBeInTheDocument();
+  });
+
+  it("opens admitted published Applications without management permission", () => {
+    mockApplicationLaunchers = [
+      { id: "application_1", name: "Content Studio", url: "https://studio.work.example.com" },
+    ];
+    render(<Sidebar />);
+    const launchers = screen.getByRole("navigation", { name: "Published applications" });
+    const link = within(launchers).getByRole("link", { name: "Content Studio" });
+    expect(link).toHaveAttribute("href", "https://studio.work.example.com");
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link).toHaveAttribute("rel", "noreferrer");
+  });
+
+  it("omits the published Applications section when no launchers are admitted", () => {
+    render(<Sidebar />);
+    expect(
+      screen.queryByRole("navigation", { name: "Published applications" }),
+    ).not.toBeInTheDocument();
   });
 
   it.each([true, false])("gates Extractions on model management permission: %s", (allowed) => {
@@ -398,7 +423,6 @@ describe("Sidebar", () => {
       evals: false,
       skills: false,
       memory: false,
-      plugins: false,
       observers: false,
     });
 
@@ -408,7 +432,6 @@ describe("Sidebar", () => {
     expect(screen.queryByText("Skills")).not.toBeInTheDocument();
     expect(screen.queryByText("Memory")).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Knowledge" })).toHaveAttribute("href", "/knowledge");
-    expect(screen.queryByText("Plugins")).not.toBeInTheDocument();
     expect(screen.queryByText("Quality")).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Approvals" })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Main chat" })).toHaveAttribute("href", "/chats");

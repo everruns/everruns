@@ -54,7 +54,7 @@ pub async fn get_by_id(
 }
 
 /// Validate that `agent_id` names an active agent in `org_id` and return the
-/// row (callers need its harness + internal id). Mirrors `apps::validate_agent`.
+/// row (callers need its harness + internal id).
 pub async fn require_active_agent(
     db: &Arc<StorageBackend>,
     org_id: i64,

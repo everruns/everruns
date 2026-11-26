@@ -143,6 +143,13 @@ async fn mint_pat(db: &StorageBackend, scopes: &[&str]) -> String {
 /// `insufficient_scope`, each for a reason that is not a scope bypass. A row
 /// that starts answering `insufficient_scope` fails the sweep as stale.
 const NOT_DENIED_BY_THE_EXTRACTOR: &[(&str, &str, &str)] = &[
+    // Application consumer operations validate their own scoped runtime
+    // credential (or deployment OIDC for exchange), never an organization PAT.
+    ("POST", "/v1/applications/{}/runtime-auth", APPLICATION),
+    ("GET", "/v1/applications/{}/rooms/{}", APPLICATION),
+    ("POST", "/v1/applications/{}/rooms/{}/messages", APPLICATION),
+    ("PUT", "/v1/applications/{}/memory/{}", APPLICATION),
+    ("DELETE", "/v1/applications/{}/memory/{}", APPLICATION),
     // Agent Execution API, A2A, FCP, webhook and runtime-auth ingress: the
     // caller is authenticated by the channel's own credential (agent key,
     // signature, runtime token) after the channel is found, so a placeholder
@@ -150,13 +157,11 @@ const NOT_DENIED_BY_THE_EXTRACTOR: &[(&str, &str, &str)] = &[
     // (`agent_api_auth::org_member`), restricted to `*` in rollout step 3.
     // Work Chat mutations also have valid-channel read-PAT denial coverage in
     // `work_chat_org_members_require_full_scope_on_both_url_spellings`.
-    ("POST", "/v1/apps/{}/a2a/{}", INGRESS),
-    ("POST", "/v1/apps/{}/fcp", INGRESS),
-    ("POST", "/v1/apps/{}/webhooks/{}", INGRESS),
     ("POST", "/v1/channels/{}/a2a", INGRESS),
     ("POST", "/v1/channels/{}/fcp", INGRESS),
     ("POST", "/v1/channels/{}/chat/main", INGRESS),
     ("PUT", "/v1/channels/{}/chat/view", INGRESS),
+    ("PUT", "/v1/channels/{}/chat/plugins/{}", INGRESS),
     ("POST", "/v1/channels/{}/sessions/{}/files", INGRESS),
     ("DELETE", "/v1/channels/{}/sessions/{}/files", INGRESS),
     ("POST", "/v1/channels/{}/sessions/{}/settings", INGRESS),
@@ -191,6 +196,7 @@ const NOT_DENIED_BY_THE_EXTRACTOR: &[(&str, &str, &str)] = &[
     ("POST", "/v1/e/{}/fcp", INGRESS),
     ("POST", "/v1/e/{}/chat/main", INGRESS),
     ("PUT", "/v1/e/{}/chat/view", INGRESS),
+    ("PUT", "/v1/e/{}/chat/plugins/{}", INGRESS),
     ("POST", "/v1/e/{}/sessions/{}/files", INGRESS),
     ("DELETE", "/v1/e/{}/sessions/{}/files", INGRESS),
     ("POST", "/v1/e/{}/sessions/{}/settings", INGRESS),
@@ -224,6 +230,7 @@ const NOT_DENIED_BY_THE_EXTRACTOR: &[(&str, &str, &str)] = &[
     ("POST", "/v1/platform/sessions/{}/sandbox", NOT_ROUTED),
 ];
 const INGRESS: &str = "channel ingress, own credential";
+const APPLICATION: &str = "Application consumer surface, own credential";
 const CALLBACK: &str = "flow callback, bound to flow state";
 const NOT_ROUTED: &str = "not routed without a voice alias or sandbox provider";
 
@@ -361,6 +368,74 @@ async fn sweep(port: u16, context: ServerContext) {
         .unwrap();
     let read_token = mint_pat(&context.db, &["read"]).await;
     let full_token = mint_pat(&context.db, &["*"]).await;
+
+    // Organization navigation is readable, but even a full organization PAT
+    // cannot act as an Application participant on the consumer surface.
+    let (status, _) = call(
+        &client,
+        &base,
+        &read_token,
+        Method::GET,
+        "/v1/platform/application-launchers",
+        None,
+    )
+    .await;
+    assert_eq!(status, 200, "read PAT may list Application launchers");
+    let (status, application) = call(
+        &client,
+        &base,
+        &full_token,
+        Method::POST,
+        "/v1/platform/applications",
+        Some(serde_json::json!({
+            "name": "PAT boundary",
+            "slug": format!("pat-{}", uuid::Uuid::now_v7().simple()),
+        })),
+    )
+    .await;
+    assert_eq!(status, 201, "{application}");
+    let id = application["id"].as_str().expect("Application ID");
+    context
+        .db
+        .set_application_status(DEFAULT_ORG_ID, id.parse().unwrap(), 1, "published")
+        .await
+        .expect("publish Application fixture");
+    for token in [&read_token, &full_token] {
+        for (method, suffix, body) in [
+            (Method::GET, "manifest", None),
+            (Method::GET, "rooms/editorial", None),
+            (Method::GET, "rooms/editorial/messages", None),
+            (
+                Method::POST,
+                "rooms/editorial/messages",
+                Some(serde_json::json!({"text": "refused"})),
+            ),
+            (Method::GET, "memory/handbook", None),
+            (
+                Method::PUT,
+                "memory/handbook",
+                Some(
+                    serde_json::json!({"path": "/notes.md", "content": "refused", "create": true}),
+                ),
+            ),
+            (
+                Method::DELETE,
+                "memory/handbook?path=/notes.md&file=true",
+                None,
+            ),
+        ] {
+            let (status, _) = call(
+                &client,
+                &base,
+                token,
+                method.clone(),
+                &format!("/v1/applications/{id}/{suffix}"),
+                body,
+            )
+            .await;
+            assert_eq!(status, 401, "organization PAT reached {method} {suffix}");
+        }
+    }
 
     // A documented read route can return 404 for a missing entity, just like
     // an unmounted route. Require the domain's response for each review route
@@ -611,6 +686,8 @@ const READ_ONLY_MCP_TOOLS: &[&str] = &[
     "me",
     "query",
     "room_file_history",
+    "room_recall",
+    "room_facts",
     "room_list",
     "room_list_files",
     "room_read",

@@ -1,0 +1,7 @@
+{
+  "private": true,
+  "description": "Released official MCP conformance runner for the base protocol",
+  "dependencies": {
+    "@modelcontextprotocol/conformance": "0.1.16"
+  }
+}

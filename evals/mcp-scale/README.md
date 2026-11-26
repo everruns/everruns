@@ -2,7 +2,7 @@
 
 This is a Mira study of actual Everruns Framework behavior. Its subject attaches Rust fixture servers with `McpServer::stdio`, then runs the current working-tree Framework and its canonical MCP discovery, bounded `tool_search`, and Shell Code Mode implementation. The fixture speaks newline-delimited MCP JSON-RPC, paginates `tools/list`, dispatches `tools/call`, and persists isolated ticket and deployment state in per-trial fixture files across MCP process launches. No independent search algorithm or gateway stands between Framework and the fixture.
 
-The study varies total catalog size (50, 600, 2,000, 10,000), server count (one or ten), and call surface (native, CLI, hybrid). Cases include an ordinary read, a server-description-only disambiguation, an explicitly read-only request, and a staged rollback that must be verified while production remains unchanged. Scores use Framework tool events and returned fixture state. A successful final response by itself does not pass.
+The study varies total catalog size (50, 600, 2,000, 10,000), server count (one or ten), and call surface (native, CLI, hybrid, Monty). Cases include an ordinary read, a server-description-only disambiguation, an explicitly read-only request, and a staged rollback that must be verified while production remains unchanged. Scores use Framework tool events and returned fixture state. A successful final response by itself does not pass.
 
 ## Build and inspect the fixture
 
@@ -235,3 +235,37 @@ The Rust fixture limits each page to 100 operations so catalog sizes above one p
 ## Historical prototype evidence
 
 `historical/python-prototype/` preserves the previous Python gateway, retrieval comparison, scripts, runtime probe, and result files. Those reports describe the old prototype and are not measurements from this Rust Mira study. The Python evaluator and gateway are archived and are no longer the canonical runner or fixture.
+
+## Monty comparison arm
+
+`surface=monty` adds the shipped Python Code Mode capability alongside the same
+bounded native discovery used by the native/hybrid arms. It keeps native schemas
+visible; this is not a hypothetical Python schema-compression implementation.
+Use the same target, catalog size, server count, cases and repetitions when
+comparing surfaces. The shared surface scorer rejects completed task work that
+bypasses Python; native discovery remains available.
+
+Set `EVERRUNS_MONTY_BIN` and private `EVERRUNS_MONTY_STATE_DIR` as described by the
+[Code Mode comparison study](../shell-code-mode/README.md). The configured runtime
+must pass preflight before the model runs. For a focused first comparison:
+
+```bash
+EVERRUNS_EVAL_TARGETS=openai/gpt-6.2-sol EVERRUNS_EVAL_TRIALS=3 \
+EVERRUNS_EVAL_CONCURRENCY=1 cargo run --locked -- --run \
+  --sample readonly-ticket,staged-rollback --filter 'catalog_size=50,servers=1,' \
+  --runs-report results/monty-comparison.jsonl
+```
+
+All four surfaces run when the surface is unfiltered. Existing committed evidence
+above predates the Monty arm and does **not** qualify it. New transcripts record
+placement, surface and operator-declared isolation scope. The separate approval
+study checks saved-program continuation, which this catalog study does not.
+
+The Monty integration smoke and its isolation limitations are recorded with the
+[shared Code Mode qualification](../shell-code-mode/results/monty-2026-11-25/).
+Those results do not extend the older large-catalog performance claims to Monty.
+
+Nested read results are matched to the fixture's own call journal by exact
+operation and arguments. Python or shell output may discard or transform a
+result, and cannot substitute invented evidence. Regression tests cover missing
+journal records, unrelated calls and discarded program output.

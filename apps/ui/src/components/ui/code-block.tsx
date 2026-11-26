@@ -2,17 +2,33 @@
 
 import { useUiTranslations } from "@/providers/locale-provider";
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
-import type { HighlightResult } from "@streamdown/code";
+import type { TokensResult } from "@pierre/highlights";
 import { Check, Copy } from "lucide-react";
 import { Button } from "./button";
 import { cn } from "@/lib/utils";
 
-type CodeHighlighter = (typeof import("@streamdown/code"))["code"];
+type Highlight = (code: string, language: string) => TokensResult | null;
 
-let highlighterPromise: Promise<CodeHighlighter> | undefined;
+let highlighterPromise: Promise<Highlight> | undefined;
 
+// Same highlighter and themes as Markdown code blocks (markdown-message.tsx). The dark
+// theme's colors land in `--shiki-dark`, which the token spans below already read.
 function loadHighlighter() {
-  highlighterPromise ??= import("@streamdown/code").then(({ code }) => code);
+  highlighterPromise ??= Promise.all([
+    import("@pierre/highlights"),
+    import("@pierre/highlights/themes/github-light"),
+    import("@pierre/highlights/themes/github-dark"),
+  ]).then(([{ codeToTokens, isSupportedLanguage }, light, dark]) => {
+    const highlight: Highlight = (code, language) =>
+      isSupportedLanguage(language)
+        ? codeToTokens(code, {
+            lang: language,
+            themes: { light: light.default, dark: dark.default },
+            cssVariablePrefix: "--shiki-",
+          })
+        : null;
+    return highlight;
+  });
   return highlighterPromise;
 }
 
@@ -110,7 +126,7 @@ export function CodeBlock({ samples, className }: CodeBlockProps) {
 }
 
 function HighlightedCode({ code, language }: { code: string; language?: string }) {
-  const [highlighted, setHighlighted] = useState<HighlightResult | null>(null);
+  const [highlighted, setHighlighted] = useState<TokensResult | null>(null);
 
   useEffect(() => {
     if (!language || language === "text") return;
@@ -118,18 +134,9 @@ function HighlightedCode({ code, language }: { code: string; language?: string }
     let active = true;
 
     void loadHighlighter()
-      .then((highlighter) => {
-        const shikiLanguage = language as Parameters<CodeHighlighter["supportsLanguage"]>[0];
-        if (!highlighter.supportsLanguage(shikiLanguage)) return;
-
-        const update = (result: HighlightResult) => {
-          if (active) setHighlighted(result);
-        };
-        const result = highlighter.highlight(
-          { code, language: shikiLanguage, themes: highlighter.getThemes() },
-          update,
-        );
-        if (result) update(result);
+      .then((highlight) => {
+        const result = highlight(code, language);
+        if (active && result) setHighlighted(result);
       })
       .catch(() => {
         // Plain code remains readable if the lazy-loaded highlighter is unavailable.

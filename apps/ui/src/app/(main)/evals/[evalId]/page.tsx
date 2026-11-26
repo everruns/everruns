@@ -96,12 +96,6 @@ function TargetBadge({ target }: { target?: EvalTarget }) {
           {ui("session")}
         </Badge>
       );
-    case "app":
-      return (
-        <Badge variant="outline" className="text-xs">
-          {ui("app:")} {target.app_id}
-        </Badge>
-      );
     default:
       return null;
   }

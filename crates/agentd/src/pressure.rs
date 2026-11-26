@@ -109,6 +109,18 @@ pub const EMERGENCY_FOR: Duration = Duration::from_secs(30);
 /// How long a due restart is announced before it happens: two rounds of
 /// asking peers (1 s each) plus a read's timeout, so every peer has read it.
 pub const ANNOUNCE: Duration = Duration::from_secs(3);
+/// How long a node at its restart threshold waits for its peers before it
+/// restarts without them.
+///
+/// Decision: waiting for every peer is right while the wait is short, but a
+/// node still at 98% after a minute is about to be killed by the kernel,
+/// which takes it down just the same, without stopping Raft first. In the
+/// U13 proof on the Mac mini (2026-11-25) a leader sat at 98-100% for 12
+/// minutes, its peers slow to answer under the load, and was killed at
+/// 105%; meanwhile it started no turns and 980 of 1,000 sessions failed.
+pub const FORCE_AFTER: Duration = Duration::from_secs(60);
+/// How long a restarting leader waits for its successor to take over.
+pub const HAND_OVER: Duration = Duration::from_secs(5);
 
 /// Set by the `node` binary: a node that wants a restart may exit.
 static RESTART_ENABLED: AtomicBool = AtomicBool::new(false);
@@ -358,8 +370,9 @@ impl Pressure {
             }
             *pending.get_or_insert(now)
         };
-        if !peers_answer || now.duration_since(since) < ANNOUNCE || self.peer_holds_restart(me, now)
-        {
+        let waited = now.duration_since(since);
+        let forced = waited >= FORCE_AFTER && own >= RESTART_AT;
+        if !forced && (!peers_answer || waited < ANNOUNCE || self.peer_holds_restart(me, now)) {
             return false;
         }
         !self.restarting.swap(true, Ordering::Relaxed)
@@ -372,6 +385,22 @@ impl Pressure {
             now.saturating_duration_since(*at) < PEER_STALE
                 && (r.restarting || r.behind || (r.pending && *id < me))
         })
+    }
+
+    /// The peer to hand leadership to before a restart: the lowest id whose
+    /// fresh reading is neither restarting nor behind.
+    pub(crate) fn successor(&self, me: NodeId, now: Instant) -> Option<NodeId> {
+        self.peer_flags
+            .lock()
+            .iter()
+            .filter(|(id, (r, at))| {
+                **id != me
+                    && now.saturating_duration_since(*at) < PEER_STALE
+                    && !r.restarting
+                    && !r.behind
+            })
+            .map(|(id, _)| *id)
+            .min()
     }
 
     pub fn restarting(&self) -> bool {
@@ -534,10 +563,47 @@ impl Node {
             "out of memory: restarting before the kernel kills this node"
         );
         crate::memwatch::note_restart(&self.cfg.data_dir);
+        if self.is_leader() {
+            self.hand_over().await;
+        }
         if let Err(error) = self.raft.shutdown().await {
             tracing::warn!(%error, "raft did not stop cleanly");
         }
         RESTART.notify_one();
+    }
+
+    /// A leader about to restart asks an up-to-date follower to call an
+    /// election, and waits up to [`HAND_OVER`] for leadership to move.
+    ///
+    /// Decision: openraft 0.9 has no leader transfer, and stopping Raft does
+    /// not make followers elect: they wait out their election timeout (1.5
+    /// to 3 s), while a restarted node is back in about a second and calls
+    /// its own election first. In the U13 proof the restarted leader took
+    /// leadership back every time; turns waited on its catch-up instead of
+    /// moving on. A follower's election, with a log as long as the leader's,
+    /// wins: the leader votes for it and steps down.
+    async fn hand_over(&self) {
+        let me = self.cfg.node_id;
+        let Some(addr) = self
+            .pressure
+            .successor(me, Instant::now())
+            .and_then(|id| self.members().get(&id).cloned())
+        else {
+            return;
+        };
+        let asked = self
+            .http
+            .post(format!("http://{addr}/shard/pressure"))
+            .timeout(Duration::from_secs(2))
+            .send()
+            .await;
+        if asked.is_err() {
+            return;
+        }
+        let deadline = Instant::now() + HAND_OVER;
+        while Instant::now() < deadline && live_leader(&self.raft) == Some(me) {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
     }
 
     /// Every second: read this node's resident set and ask the shard's other
@@ -615,6 +681,21 @@ impl Node {
                 was = level;
             }
         }
+    }
+}
+
+/// `/shard/pressure`: a node's reading, and a successor's take-over.
+pub fn route() -> axum::routing::MethodRouter<Arc<Node>> {
+    axum::routing::get(reading).post(take_over)
+}
+
+/// `POST /shard/pressure`: the shard's leader is about to restart for
+/// memory; this follower calls an election so leadership moves first
+/// (`Node::hand_over`).
+pub async fn take_over(State(node): State<Arc<Node>>) -> axum::http::StatusCode {
+    match node.raft.trigger().elect().await {
+        Ok(()) => axum::http::StatusCode::OK,
+        Err(_) => axum::http::StatusCode::SERVICE_UNAVAILABLE,
     }
 }
 
@@ -845,6 +926,51 @@ mod tests {
         assert!(!p.restart_due_at(true, 1, t0), "at 98%, announced first");
         assert!(p.restart_due_at(true, 1, t0 + ANNOUNCE), "then restarts");
         assert_eq!(p.actions.get(&[("action", "emergency")]), 1);
+    }
+
+    /// A node at its threshold whose peers keep it waiting restarts on its
+    /// own after a minute rather than wait for the kernel's kill; one only
+    /// in Emergency (below 98%) keeps waiting.
+    #[test]
+    fn a_node_held_at_98_percent_restarts_without_its_peers_after_a_minute() {
+        let t0 = Instant::now();
+        let at = |secs| t0 + Duration::from_secs(secs);
+        let p = Pressure::new(1000);
+        p.record_own(985);
+        assert!(!p.restart_due_at(false, 3, at(0)));
+        assert!(!p.restart_due_at(false, 3, at(59)), "peers silent: waits");
+        assert!(p.restart_due_at(false, 3, at(60)), "then restarts anyway");
+        let p = Pressure::new(1000);
+        p.record_own(960);
+        assert!(!p.restart_due_at(false, 3, at(0)));
+        assert!(
+            !p.restart_due_at(false, 3, at(200)),
+            "Emergency alone waits for its peers"
+        );
+    }
+
+    /// The successor is the lowest-id peer that answered lately and is
+    /// neither restarting nor behind.
+    #[test]
+    fn a_restarting_leader_hands_over_to_an_up_to_date_peer() {
+        let p = Pressure::new(1000);
+        let now = Instant::now();
+        let reading = |restarting, behind| Reading {
+            restarting,
+            behind,
+            ..Pressure::new(1000).own()
+        };
+        assert_eq!(p.successor(3, now), None, "no peer heard from");
+        p.peer_flags.lock().insert(1, (reading(false, true), now));
+        p.peer_flags.lock().insert(2, (reading(false, false), now));
+        assert_eq!(p.successor(3, now), Some(2), "node 1 is behind");
+        p.peer_flags.lock().insert(1, (reading(false, false), now));
+        assert_eq!(p.successor(3, now), Some(1));
+        assert_eq!(
+            p.successor(3, now + PEER_STALE),
+            None,
+            "readings gone stale"
+        );
     }
 
     #[test]

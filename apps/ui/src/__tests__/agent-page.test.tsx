@@ -81,11 +81,11 @@ jest.mock("next/link", () => ({
   ),
 }));
 
-jest.mock("@/components/chat/streamdown-message", () => ({
-  StreamdownMessage: ({ children }: { children: React.ReactNode }) => (
+jest.mock("@/components/markdown/markdown-message", () => ({
+  MarkdownMessage: ({ children }: { children: React.ReactNode }) => (
     <div data-testid="markdown">{children}</div>
   ),
-  InlineStreamdownMessage: ({ children }: { children: React.ReactNode }) => <span>{children}</span>,
+  InlineMarkdownMessage: ({ children }: { children: React.ReactNode }) => <span>{children}</span>,
 }));
 
 jest.mock("@/components/agents/agent-preview", () => ({
@@ -306,6 +306,9 @@ jest.mock("@/hooks/use-change-history", () => ({
 }));
 
 jest.mock("@/hooks/use-members", () => ({ useMembers: () => ({ data: [] }) }));
+jest.mock("@/hooks/use-plugins", () => ({
+  useInstalledPlugins: () => ({ data: [], isLoading: false }),
+}));
 jest.mock("@/hooks/use-organizations", () => ({
   useOrganization: () => ({ data: { id: "org_1", effective_research_model_id: null } }),
 }));

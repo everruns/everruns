@@ -6,12 +6,10 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Durable schedule target input for an endpoint addressed through its legacy
-/// App alias. Field names are persisted in schedule targets.
+/// Durable schedule target input for an agent channel.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScheduledChannelInput {
     pub org_id: i64,
-    pub app_id: String,
     pub channel_id: String,
 }
 
@@ -33,9 +31,8 @@ pub struct ScheduledAgentTriggerInput {
 pub mod activity_types {
     pub const LEASED_RESOURCE_CLEANUP: &str = "leased_resource_cleanup";
     pub const SESSION_TASK_REAPER: &str = "session_task_reaper";
-    /// The value is the App-era activity type: durable schedules created before
-    /// the App retirement persist it in their targets, so it cannot change.
-    pub const INVOKE_SCHEDULED_CHANNEL: &str = "invoke_scheduled_app_channel";
+    /// Persisted schedule targets are converted to this name by the contract migration.
+    pub const INVOKE_SCHEDULED_CHANNEL: &str = "invoke_scheduled_channel";
     pub const INVOKE_AGENT_TRIGGER: &str = "invoke_agent_trigger";
 }
 

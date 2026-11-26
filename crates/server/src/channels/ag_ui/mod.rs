@@ -1,15 +1,14 @@
-// AG-UI app channel — public streaming endpoint
+// AG-UI ingress channel — public streaming endpoint
 //
 // Design Decision: AG-UI ingress is keyed by channel ID at
-// `POST /v1/channels/{channel_id}/ag-ui`. The app-scoped route remains a permanent
-// alias when the App has exactly one enabled AG-UI channel.
+// `POST /v1/channels/{channel_id}/ag-ui`.
 //
 // Design Decision: The endpoint is public. Requests are accepted
-// without user API auth when the app is published and an enabled AG-UI channel
+// without user API auth when the ingress is published and an enabled AG-UI channel
 // is present, but a channel may require its own shared bearer token.
 //
 // Design Decision: The AG-UI stream is translated from Everruns session events
-// instead of bypassing the durable runtime. This keeps app-channel behavior
+// instead of bypassing the durable runtime. This keeps ingress-channel behavior
 // aligned with normal sessions and preserves streaming parity.
 
 use std::collections::HashMap;
@@ -154,13 +153,6 @@ impl AgUiState {
 
 pub fn routes(state: AgUiState) -> Router {
     Router::new()
-        .route("/v1/apps/{app_id}/ag-ui", post(run_agent_legacy))
-        .route(
-            "/v1/apps/{app_id}/ag-ui/images",
-            post(upload_image_legacy).layer(DefaultBodyLimit::max(
-                MAX_PUBLIC_AG_UI_IMAGE_SIZE + 1024 * 1024,
-            )),
-        )
         .route("/v1/channels/{channel_id}/ag-ui", post(run_agent_channel))
         .route("/v1/e/{channel_id}/ag-ui", post(run_agent_channel))
         .route(
@@ -186,7 +178,6 @@ pub fn routes(state: AgUiState) -> Router {
         .with_state(state)
 }
 enum AgUiTarget {
-    LegacyApp(String),
     Channel(String),
 }
 
@@ -196,23 +187,6 @@ struct AuthorizedAgUiRequest {
     channel: crate::domains::agent_channels::ingress::IngressChannel,
     channel_config: AgUiChannelConfig,
     runtime_user: Option<everruns_contracts::typed_id::VirtualUserId>,
-}
-
-async fn upload_image_legacy(
-    State(state): State<AgUiState>,
-    Path(app_id): Path<String>,
-    connect_info: Option<Extension<ConnectInfo<std::net::SocketAddr>>>,
-    headers: HeaderMap,
-    multipart: Multipart,
-) -> Result<(StatusCode, Json<ImageUploadResponse>), Response> {
-    upload_image(
-        state,
-        AgUiTarget::LegacyApp(app_id),
-        connect_info,
-        headers,
-        multipart,
-    )
-    .await
 }
 
 async fn upload_image_channel(
@@ -244,7 +218,7 @@ async fn upload_image(
         authorize_ag_ui_request(&state, target, &headers, peer_addr).await?;
 
     // THREAT[TM-DOS-010]: Public AG-UI image uploads are anonymous ingress.
-    // Mitigation: reuse the per-app public AG-UI gate/rate limit above, cap the
+    // Mitigation: reuse the per-ingress public AG-UI gate/rate limit above, cap the
     // multipart body at the router, and validate MIME type plus byte length
     // before writing image bytes to storage.
     let mut file_data: Option<(String, String, Vec<u8>)> = None;
@@ -318,25 +292,6 @@ async fn upload_image(
     ))
 }
 
-async fn run_agent_legacy(
-    State(state): State<AgUiState>,
-    Path(app_id): Path<String>,
-    req_id: Option<Extension<RequestId>>,
-    connect_info: Option<Extension<ConnectInfo<std::net::SocketAddr>>>,
-    headers: HeaderMap,
-    request: Request,
-) -> Result<Sse<impl Stream<Item = Result<SseEvent, Infallible>>>, Response> {
-    run_agent(
-        state,
-        AgUiTarget::LegacyApp(app_id),
-        req_id,
-        connect_info,
-        headers,
-        request,
-    )
-    .await
-}
-
 async fn run_agent_channel(
     State(state): State<AgUiState>,
     Path(channel_id): Path<String>,
@@ -389,15 +344,15 @@ async fn run_agent(
     let request_id = req_id.map(|Extension(r)| r.0);
     let peer_addr = connect_info.map(|Extension(ConnectInfo(addr))| addr);
     let AuthorizedAgUiRequest {
-        context: app,
+        context: ingress,
         channel,
         channel_config,
         runtime_user,
     } = authorize_ag_ui_request(&state, target, &headers, peer_addr).await?;
 
-    run_app_agent_stream(
+    run_channel_agent_stream(
         state,
-        app,
+        ingress,
         channel,
         channel_config,
         AgUiSurface::AgUi,
@@ -429,13 +384,13 @@ fn thread_binding_key(thread_id: &str, owner: Option<&str>) -> String {
 
 /// Shared AG-UI ingress + streaming core, reused by both the AG-UI channel and
 /// the Public Chat channel. A thread is a conversation of the channel host:
-/// bound per channel row (so a thread id reused across channels or apps can
+/// bound per channel row (so a thread id reused across channels can
 /// never merge tenants or sessions, TM-TENANT-009) and per `owner`, the key
 /// part that tells one caller's thread from another's.
 #[allow(clippy::too_many_arguments)]
-pub(crate) async fn run_app_agent_stream(
+pub(crate) async fn run_channel_agent_stream(
     state: AgUiState,
-    app: crate::api::channel_ingress::IngressContext,
+    ingress: crate::api::channel_ingress::IngressContext,
     channel: crate::domains::agent_channels::ingress::IngressChannel,
     channel_config: AgUiChannelConfig,
     surface: AgUiSurface,
@@ -503,12 +458,12 @@ pub(crate) async fn run_app_agent_stream(
     let runtime_principal = if let Some(id) = runtime_user {
         let principals = crate::domains::users::PrincipalService::new(state.db.clone());
         let parent = principals
-            .ensure_system_principal(app.org_id, "external-users")
+            .ensure_system_principal(ingress.org_id, "external-users")
             .await
             .map_err(internal_error)?;
         Some(
             principals
-                .ensure_virtual_user_principal(app.org_id, id, parent.id)
+                .ensure_virtual_user_principal(ingress.org_id, id, parent.id)
                 .await
                 .map_err(internal_error)?
                 .id,
@@ -516,7 +471,7 @@ pub(crate) async fn run_app_agent_stream(
     } else {
         None
     };
-    let mut scope = crate::channels::host::ServerChannelScope::new(app.clone(), channel);
+    let mut scope = crate::channels::host::ServerChannelScope::new(ingress.clone(), channel);
     scope.runtime_owner = runtime_principal;
     scope.request_id = request_id;
     let resolved =
@@ -536,7 +491,7 @@ pub(crate) async fn run_app_agent_stream(
         )
         .await
         .map_err(channel_error)?;
-    let session = load_thread_session(&state, &app, &conversation, &channel_config, &req)
+    let session = load_thread_session(&state, &ingress, &conversation, &channel_config, &req)
         .await
         .map_err(SessionError::into_response)?;
     // A consumer sends its frontend tools on every run; the turn this run
@@ -547,7 +502,7 @@ pub(crate) async fn run_app_agent_stream(
         state
             .db
             .update_session(
-                app.org_id,
+                ingress.org_id,
                 session.session.id,
                 crate::storage::UpdateSession {
                     tools: Some(tools_value),
@@ -568,8 +523,8 @@ pub(crate) async fn run_app_agent_stream(
     // before opening the stream.
     let sse_guard = state
         .sse_tracker
-        .try_acquire(app.org_id, session.session.id.uuid())
-        .map_err(|r| too_many_requests(&r.report("ag_ui", app.org_id, &session.session.id)))?;
+        .try_acquire(ingress.org_id, session.session.id.uuid())
+        .map_err(|r| too_many_requests(&r.report("ag_ui", ingress.org_id, &session.session.id)))?;
 
     // Seed prior history only on first use of the thread so a new AG-UI client can
     // carry conversation context into the durable session without triggering old runs.
@@ -600,7 +555,7 @@ pub(crate) async fn run_app_agent_stream(
                     .map_err(channel_error)?,
             );
             content.extend(
-                ag_ui_image_content_parts(&state, &app, req.forwarded_props.as_ref())
+                ag_ui_image_content_parts(&state, &ingress, req.forwarded_props.as_ref())
                     .await
                     .map_err(|err| *err)?,
             );
@@ -615,7 +570,7 @@ pub(crate) async fn run_app_agent_stream(
                         content,
                         controls: None,
                         metadata: Some(ag_ui_message_metadata(
-                            &app,
+                            &ingress,
                             thread_id.clone(),
                             run_id.clone(),
                         )),
@@ -649,7 +604,7 @@ pub(crate) async fn run_app_agent_stream(
             let outcome = if req.resume.is_empty() {
                 crate::channels::ag_ui::frontend_tools::submit_results(
                     &services,
-                    app.org_id,
+                    ingress.org_id,
                     &session.session,
                     &frontend_names,
                     &channel_config,
@@ -659,7 +614,7 @@ pub(crate) async fn run_app_agent_stream(
             } else {
                 crate::channels::ag_ui::interrupts::resume(
                     &services,
-                    app.org_id,
+                    ingress.org_id,
                     &session.session,
                     &channel_config,
                     &req.resume,
@@ -682,7 +637,7 @@ pub(crate) async fn run_app_agent_stream(
 
     // EVE-415: structured AG-UI ingress timing. `ag_ui_handler_ms` is the
     // wall-clock cost of every server-side step the handler performs before
-    // returning the SSE stream: validation, app/channel resolution, session
+    // returning the SSE stream: validation, ingress/channel resolution, session
     // resolution, history seed, event subscription, and the synchronous part
     // of message creation. The durable turn workflow itself is scheduled by
     // `MessageService::create` via a detached `tokio::spawn`, so this log
@@ -694,7 +649,7 @@ pub(crate) async fn run_app_agent_stream(
     let ag_ui_handler_ms = ingress_start.elapsed().as_millis();
     tracing::info!(
         phase = "ag_ui.ingress_complete",
-        app_id = %app.public_id,
+        ingress_id = %ingress.public_id,
         session_id = %session.session.id,
         message_id = input_message_id.as_deref().unwrap_or_default(),
         resuming,
@@ -805,14 +760,14 @@ pub(crate) async fn run_app_agent_stream(
 }
 
 fn ag_ui_message_metadata(
-    app: &crate::api::channel_ingress::IngressContext,
+    ingress: &crate::api::channel_ingress::IngressContext,
     thread_tag: String,
     run_tag: String,
 ) -> HashMap<String, Value> {
     [
         (
-            "_app_id".to_string(),
-            Value::String(app.public_id.to_string()),
+            "_ingress_id".to_string(),
+            Value::String(ingress.public_id.to_string()),
         ),
         ("ag_ui_thread_id".to_string(), Value::String(thread_tag)),
         ("ag_ui_run_id".to_string(), Value::String(run_tag)),
@@ -821,24 +776,24 @@ fn ag_ui_message_metadata(
     .collect()
 }
 
-fn ag_ui_image_metadata(app: &crate::api::channel_ingress::IngressContext) -> Value {
+fn ag_ui_image_metadata(ingress: &crate::api::channel_ingress::IngressContext) -> Value {
     serde_json::json!({
-        "_app_id": app.public_id.to_string(),
+        "_ingress_id": ingress.public_id.to_string(),
         "source": "ag_ui",
     })
 }
 
-fn is_ag_ui_app_image(metadata: &Value, app_public_id: &str) -> bool {
+fn is_ag_ui_channel_image(metadata: &Value, ingress_public_id: &str) -> bool {
     metadata
-        .get("_app_id")
+        .get("_ingress_id")
         .and_then(Value::as_str)
-        .is_some_and(|id| id == app_public_id)
+        .is_some_and(|id| id == ingress_public_id)
         && metadata.get("source").and_then(Value::as_str) == Some("ag_ui")
 }
 
 async fn ag_ui_image_content_parts(
     state: &AgUiState,
-    app: &crate::api::channel_ingress::IngressContext,
+    ingress: &crate::api::channel_ingress::IngressContext,
     forwarded_props: Option<&Value>,
 ) -> Result<Vec<ContentPart>, Box<Response>> {
     let Some(forwarded_props) = forwarded_props else {
@@ -850,18 +805,18 @@ async fn ag_ui_image_content_parts(
     }
 
     // THREAT[TM-TENANT-009]: Public clients must not attach arbitrary org
-    // images to an app run. Mitigation: resolve by org and require AG-UI image
-    // metadata for the same public app before constructing ImageFile parts.
-    let app_public_id = app.public_id.to_string();
+    // images to an ingress run. Mitigation: resolve by org and require AG-UI image
+    // metadata for the same public ingress before constructing ImageFile parts.
+    let ingress_public_id = ingress.public_id.to_string();
     let mut parts = Vec::with_capacity(image_ids.len());
     for image_id in image_ids {
         let row = state
             .db
-            .get_image(app.org_id, image_id.uuid())
+            .get_image(ingress.org_id, image_id.uuid())
             .await
             .map_err(|err| Box::new(internal_error(err)))?
             .ok_or_else(|| Box::new(bad_request("invalid_request")))?;
-        if !is_ag_ui_app_image(&row.metadata, &app_public_id) {
+        if !is_ag_ui_channel_image(&row.metadata, &ingress_public_id) {
             return Err(Box::new(bad_request("invalid_request")));
         }
         parts.push(ContentPart::ImageFile(
@@ -939,7 +894,7 @@ impl From<anyhow::Error> for SessionError {
 /// thread expiry.
 async fn load_thread_session(
     state: &AgUiState,
-    app: &crate::api::channel_ingress::IngressContext,
+    ingress: &crate::api::channel_ingress::IngressContext,
     conversation: &Conversation,
     config: &AgUiChannelConfig,
     req: &AgUiRunAgentInput,
@@ -950,7 +905,7 @@ async fn load_thread_session(
         .map_err(|_| anyhow::anyhow!("channel host bound a malformed session id"))?;
     let row = state
         .db
-        .get_session(app.org_id, session_id)
+        .get_session(ingress.org_id, session_id)
         .await?
         .ok_or_else(|| anyhow::anyhow!("AG-UI thread session {session_id} not found"))?;
     // THREAT[TM-AUTHZ-005]: Public AG-UI threads must not be resumable
@@ -964,7 +919,7 @@ async fn load_thread_session(
         )
     {
         tracing::info!(
-            app_id = %app.public_id,
+            ingress_id = %ingress.public_id,
             session_id = %row.id,
             age_seconds = age,
             max_seconds = config.session_expiration_seconds,
@@ -977,20 +932,20 @@ async fn load_thread_session(
     }
     if conversation.created {
         tracing::info!(
-            app_id = %app.public_id,
+            ingress_id = %ingress.public_id,
             session_id = %row.id,
             message_count = req.messages.len(),
-            "Created AG-UI app session"
+            "Created AG-UI ingress session"
         );
     }
     let org_public_id = state
         .db
-        .get_organization(app.org_id)
+        .get_organization(ingress.org_id)
         .await?
-        .ok_or_else(|| anyhow::anyhow!("Organization not found for app"))?
+        .ok_or_else(|| anyhow::anyhow!("Organization not found for ingress"))?
         .public_id;
     let fallback = if row.harness_id.is_none() {
-        Some(crate::setup::org_init::base_harness_id(&state.db, app.org_id).await?)
+        Some(crate::setup::org_init::base_harness_id(&state.db, ingress.org_id).await?)
     } else {
         None
     };
@@ -1328,7 +1283,7 @@ fn ag_ui_auth_error_response(error: ChannelAuthError) -> Response {
 }
 
 fn not_found() -> Response {
-    ErrorResponse::new("App not found".to_string())
+    ErrorResponse::new("Channel not found".to_string())
         .into_response(StatusCode::NOT_FOUND)
         .into_response()
 }

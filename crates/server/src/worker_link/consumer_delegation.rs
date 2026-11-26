@@ -5,10 +5,10 @@
 //! message, carrying no person) of a coordinator agent gets the same bounded
 //! commands. Automated messages deliberately carry no management authority,
 //! so before this every `start_thread` in a scheduled run was refused. The
-//! authority here is the agent's own coordination config, which a manager
-//! wrote, never anything in the event: threads run only on allowed workers
-//! (`workers`, plus the agent's Agents members), only as children of the run's
-//! first session, owned by the same principal.
+//! authority here is the agent's own Threads config, which a manager wrote,
+//! never anything in the event: threads run only on the agents it allows
+//! (`self`, its named `agents`, or any with `any_agent`), only as children of
+//! the run's first session, owned by the same principal.
 use crate::domains::common::CommandError;
 use crate::domains::sessions::{SessionService, types::CreateSessionRequest};
 use crate::storage::StorageBackend;
@@ -67,58 +67,34 @@ pub(crate) async fn dispatch(
     let capabilities =
         everruns_core::capabilities::resolve_capability_configs(&capabilities, &registry)
             .map_err(|e| CommandError::bad_request(e.to_string()))?;
-    let coordinator = capabilities.iter().find(|cap| {
-        cap.capability_id() == "coordination"
-            && cap.config_value().get("role").and_then(Value::as_str) != Some("worker")
-    });
-    let coordination = match coordinator {
-        Some(coordination) => coordination,
-        // An automated run of an agent that is no coordinator keeps the
-        // management path, which refuses it as before.
+    let threads = match capabilities.iter().find(|cap| {
+        cap.capability_id() == everruns_capabilities::capabilities::THREADS_CAPABILITY_ID
+    }) {
+        Some(threads) => threads,
+        // An automated run of an agent without Threads keeps the management
+        // path, which refuses it as before.
         None if channel.is_none() => return Ok(None),
-        None => {
-            let any = capabilities
-                .iter()
-                .any(|cap| cap.capability_id() == "coordination");
-            return Err(CommandError::forbidden(if any {
-                "Coordinator required"
-            } else {
-                "Coordinator capability required"
-            }));
-        }
+        None => return Err(CommandError::forbidden("Threads capability required")),
     };
-    // The agent's Agents members are allowed workers too (coordination.rs).
-    let members: Vec<String> = capabilities
-        .iter()
-        .filter(|cap| {
-            cap.capability_id()
-                == everruns_capabilities::capabilities::agent_handoff::AGENT_HANDOFF_CAPABILITY_ID
+    let config = threads.config_value();
+    let runs_self = config.get("self").and_then(Value::as_bool).unwrap_or(true);
+    let any_agent = config
+        .get("any_agent")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let named: Vec<String> = config
+        .get("agents")
+        .and_then(Value::as_array)
+        .map(|agents| {
+            agents
+                .iter()
+                .filter_map(|agent| agent.get("agent_id").and_then(Value::as_str))
+                .map(str::to_string)
+                .collect()
         })
-        .flat_map(|cap| {
-            let config = cap.config_value();
-            config
-                .get("targets")
-                .or_else(|| config.get("members"))
-                .and_then(Value::as_array)
-                .cloned()
-                .unwrap_or_default()
-        })
-        .filter_map(|member| member["agent_id"].as_str().map(str::to_string))
-        .collect();
-    let workers = coordination
-        .config_value()
-        .get("workers")
-        .and_then(Value::as_array);
+        .unwrap_or_default();
     let allowed = |id: AgentId| {
-        members.contains(&id.to_string())
-            || workers.map_or(id == root_agent, |workers| {
-                workers.iter().any(|worker| match worker["id"].as_str() {
-                    Some("self") => id == root_agent,
-                    Some("any") => true,
-                    Some(worker) => worker == id.to_string(),
-                    None => false,
-                })
-            })
+        (runs_self && id == root_agent) || any_agent || named.iter().any(|n| *n == id.to_string())
     };
     let target_id = params
         .get("agent_id")
@@ -275,12 +251,11 @@ pub(crate) async fn dispatch(
                 json!({"harness_id":target.harness_id,"agent_id":target.public_id,"title":params["title"],"goal":params["goal"],"parent_session_id":current,"tags":root.tags}),
             ).map_err(|e|CommandError::bad_request(e.to_string()))?;
             let child = sessions
-                .create_from_app(
+                .create_from_channel(
                     &everruns_core::Caller::internal(org),
                     target.harness_id.uuid(),
                     Some(target.internal_id),
                     Some(target.public_id),
-                    root.app_id,
                     channel,
                     None,
                     owner,

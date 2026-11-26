@@ -206,14 +206,6 @@ impl SlackState {
 pub fn routes(state: SlackState) -> Router {
     Router::new()
         .route(
-            "/v1/apps/{app_id}/slack/events",
-            post(handle_slack_event_legacy),
-        )
-        .route(
-            "/v1/apps/{app_id}/slack/manifest",
-            get(handle_slack_manifest_legacy),
-        )
-        .route(
             "/v1/channels/{channel_id}/slack/events",
             post(handle_slack_event_channel),
         )
@@ -233,10 +225,6 @@ pub fn routes(state: SlackState) -> Router {
         // created against the legacy URL keeps working without re-saving its
         // manifest.
         .route(
-            "/v1/apps/{app_id}/slack/interactivity",
-            post(handle_slack_interactivity_legacy),
-        )
-        .route(
             "/v1/channels/{channel_id}/slack/interactivity",
             post(handle_slack_interactivity_channel),
         )
@@ -248,7 +236,6 @@ pub fn routes(state: SlackState) -> Router {
 }
 
 pub(crate) enum SlackTarget {
-    LegacyApp(String),
     Channel(String),
 }
 

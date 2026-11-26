@@ -110,7 +110,9 @@ trusted data planes. Every authentication failure is the same 401. Source:
 
 The URLs it hands data planes (and the audiences it checks) use
 `INJECTED_CAPABILITIES_BASE_URL` when set, the address data planes reach it on
-(a cluster service, `127.0.0.1` locally), else the public base URL. A shard
+(a cluster service, `127.0.0.1` locally), including the versioned API prefix
+(`/api/v1` by default). Without an override, the auth base URL gains `/v1`
+to match the mounted routes. A shard
 trusts its configured control plane's origin (`AGENTD_CONTROL_PLANE`) and skips
 the MCP client's private-address check only there.
 

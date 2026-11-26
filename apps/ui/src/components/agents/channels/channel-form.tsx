@@ -26,8 +26,8 @@ import {
   SlackConversationSettings,
   SlackAgentPaneSettings,
   SlackPrivateApprovalSettings,
-} from "@/components/apps/slack-conversation-settings";
-import { CronInput, isSupportedCronExpression } from "@/components/apps/cron-label";
+} from "@/components/agents/channels/slack-conversation-settings";
+import { CronInput, isSupportedCronExpression } from "@/components/schedules/cron-label";
 import {
   DEFAULT_AG_UI_GENERIC_TOOL_TEXT,
   DEFAULT_AG_UI_SESSION_EXPIRATION_SECONDS,
@@ -107,6 +107,8 @@ export type ChannelFormState = {
   chatInterface: "single_with_threads" | "multi_chat";
   chatMembership: WorkChatMembership;
   chatViewPlacement: "none" | "panel" | "page";
+  /** Work Chat: what each person may change about the plugins in their conversations. */
+  chatPlugins: { allow_adding: boolean; allow_turning_off: boolean };
   chatMemberEmail: string;
   chatInvites: string;
   enabled: boolean;
@@ -239,6 +241,7 @@ export function getDefaultChannelFormState(
     chatInterface: "multi_chat",
     chatMembership: "open",
     chatViewPlacement: "none",
+    chatPlugins: { allow_adding: false, allow_turning_off: false },
     chatMemberEmail: "",
     chatInvites: "",
   };
@@ -353,6 +356,7 @@ export function getDefaultChannelFormState(
       interface_mode?: "single_with_threads" | "multi_chat";
       membership?: WorkChatMembership;
       view_placement?: ChannelFormState["chatViewPlacement"];
+      plugins?: Partial<ChannelFormState["chatPlugins"]>;
       member_email?: string;
       invites?: string[];
       execution?: ApiChannelConfig;
@@ -363,6 +367,10 @@ export function getDefaultChannelFormState(
       chatInterface: config.interface_mode ?? "multi_chat",
       chatMembership: config.membership ?? "open",
       chatViewPlacement: config.view_placement ?? "none",
+      chatPlugins: {
+        allow_adding: config.plugins?.allow_adding ?? false,
+        allow_turning_off: config.plugins?.allow_turning_off ?? false,
+      },
       chatMemberEmail: config.member_email ?? "",
       chatInvites: (config.invites ?? []).join("\n"),
       api: apiFormStateFromConfig(config.execution),
@@ -519,6 +527,10 @@ export function buildChannelConfig(state: ChannelFormState) {
         interface_mode: state.chatInterface,
         membership: state.chatMembership,
         ...(state.chatViewPlacement !== "none" ? { view_placement: state.chatViewPlacement } : {}),
+        // Locked (both off) is the server default and is left out.
+        ...(state.chatPlugins.allow_adding || state.chatPlugins.allow_turning_off
+          ? { plugins: state.chatPlugins }
+          : {}),
         ...(state.chatMembership === "invites"
           ? {
               member_email: state.chatMemberEmail.trim(),

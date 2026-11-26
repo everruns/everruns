@@ -2,9 +2,7 @@
 //
 // Turns an inbound schedule call into a session message (webhook and A2A
 // run on the channel host, `channels::host`), and owns the schedule and
-// template utilities shared by agent triggers. Tag, metadata and audit strings
-// keep their App-era values: they are persisted and matched by existing
-// sessions.
+// template utilities shared by agent triggers.
 
 use crate::auth::audit;
 use crate::domains::agent_channels::record::SessionBinding;
@@ -157,10 +155,10 @@ fn channel_session_tags(
     channel: &crate::domains::agent_channels::ingress::IngressChannel,
 ) -> Vec<String> {
     vec![
-        format!("app:{}", ingress.public_id),
-        format!("app_channel:{}", channel.public_id),
-        format!("app_channel_type:{}", channel.channel_type),
-        "__internal:app_invocation".to_string(),
+        format!("ingress:{}", ingress.public_id),
+        format!("channel:{}", channel.public_id),
+        format!("channel_type:{}", channel.channel_type),
+        "__internal:channel_invocation".to_string(),
     ]
 }
 
@@ -172,18 +170,18 @@ pub(crate) fn channel_invocation_message_metadata(
     [
         (
             "source".to_string(),
-            Value::String(format!("app_{}", source.as_str())),
+            Value::String(format!("channel_{}", source.as_str())),
         ),
         (
-            "_app_id".to_string(),
+            "_ingress_id".to_string(),
             Value::String(ingress.public_id.to_string()),
         ),
         (
-            "app_channel_id".to_string(),
+            "channel_id".to_string(),
             Value::String(channel.public_id.to_string()),
         ),
         (
-            "app_channel_type".to_string(),
+            "channel_type".to_string(),
             Value::String(channel.channel_type.to_string()),
         ),
     ]
@@ -199,16 +197,16 @@ pub(crate) fn emit_channel_invocation_audit_event(
     source: ChannelInvocationSource,
     created_session: bool,
 ) {
-    let mut event = AuditEvent::agent(AgentAction::AppInvocationStarted, ingress.org_id, None)
-        .target("app_channel", channel.public_id.to_string())
-        .detail("source", format!("app_{}", source.as_str()))
-        .detail("app_id", ingress.public_id.to_string())
-        .detail("app_channel_id", channel.public_id.to_string())
-        .detail("app_channel_type", channel.channel_type.to_string())
+    let mut event = AuditEvent::agent(AgentAction::ChannelInvocationStarted, ingress.org_id, None)
+        .target("channel", channel.public_id.to_string())
+        .detail("source", format!("channel_{}", source.as_str()))
+        .detail("ingress_id", ingress.public_id.to_string())
+        .detail("channel_id", channel.public_id.to_string())
+        .detail("channel_type", channel.channel_type.to_string())
         .detail("session_id", session_id.to_string())
         .detail("created_session", created_session)
         .detail(
-            "app_owner_principal_id",
+            "channel_owner_principal_id",
             ingress.owner_principal_id.to_string(),
         );
     if let Some(virtual_user_id) = ingress.virtual_user_id {
@@ -245,33 +243,21 @@ async fn find_or_create_invocation_session(
 ) -> Result<(SessionId, bool), CommandError> {
     let shared_tags = channel_session_tags(ingress, channel);
     if session_mode == SessionBinding::Shared
-        && let Some(existing) = match ingress.historical_app_id {
-            Some(app_id) => {
-                db.find_app_session_by_tags_and_owner(
-                    ingress.org_id,
-                    app_id,
-                    ingress.owner_principal_id,
-                    &shared_tags,
-                )
-                .await
-            }
-            None => {
-                db.find_channel_session_by_tags_and_owner(
-                    ingress.org_id,
-                    channel.internal_id,
-                    ingress.owner_principal_id,
-                    &shared_tags,
-                )
-                .await
-            }
-        }?
+        && let Some(existing) = db
+            .find_channel_session_by_tags_and_owner(
+                ingress.org_id,
+                channel.internal_id,
+                ingress.owner_principal_id,
+                &shared_tags,
+            )
+            .await?
     {
         return Ok((existing.id, false));
     }
 
     let mut tags = shared_tags;
     if session_mode == SessionBinding::Ephemeral {
-        tags.push(format!("app_invocation:{}", Uuid::now_v7()));
+        tags.push(format!("channel_invocation:{}", Uuid::now_v7()));
     }
 
     let title = if session_mode == SessionBinding::Shared {
@@ -281,18 +267,17 @@ async fn find_or_create_invocation_session(
     };
 
     let session = session_service
-        .create_from_app(
+        .create_from_channel(
             &everruns_core::Caller::internal(ingress.org_id),
             ingress.harness_id.uuid(),
             Some(ingress.agent_internal_id),
             ingress.agent_id,
-            ingress.historical_app_id,
             Some(channel.internal_id),
             // Channel ingress, not a trigger.
             None,
-            // Pass the App's owner so the resulting session matches the
-            // owner-keyed lookup in `find_app_session_by_tags_and_owner` —
-            // shared-session reuse depends on this. See `create_from_app` doc.
+            // Pass the Channel's owner so the resulting session matches the
+            // owner-keyed lookup in `find_channel_session_by_tags_and_owner` —
+            // shared-session reuse depends on this. See `create_from_channel` doc.
             ingress.owner_principal_id,
             ingress.resolved_owner_user_id,
             // The invocation channel *is* the session's origin.
@@ -442,7 +427,7 @@ async fn invoke_channel_inner(
     } = request;
 
     if !channel.status.is_live() {
-        return Err(CommandError::forbidden("App is not published".to_string()));
+        return Err(CommandError::forbidden("Channel is not live".to_string()));
     }
     // Webhook and A2A channels run on the channel host. What remains here is a
     // schedule's template.
@@ -503,26 +488,6 @@ async fn invoke_channel_inner(
     })
 }
 
-pub async fn invoke_scheduled_legacy_alias_channel(
-    db: &Arc<crate::storage::StorageBackend>,
-    encryption: Option<&Arc<crate::storage::encryption::EncryptionService>>,
-    session_service: &SessionService,
-    message_service: &MessageService,
-    org_id: i64,
-    legacy_app_id: &str,
-    channel_id: &str,
-) -> Result<ChannelInvocationResult, CommandError> {
-    let (ingress, channel) =
-        crate::domains::agent_channels::ingress::resolve_channel(db, encryption, channel_id)
-            .await?
-            .filter(|(context, _)| context.org_id == org_id)
-            .ok_or_else(|| CommandError::not_found("Channel"))?;
-    if !ingress.matches_legacy_app_id(legacy_app_id) {
-        return Err(CommandError::not_found("Channel"));
-    }
-    invoke_scheduled_channel_inner(db, session_service, message_service, ingress, channel).await
-}
-
 pub async fn invoke_scheduled_agent_channel(
     db: &Arc<crate::storage::StorageBackend>,
     encryption: Option<&Arc<crate::storage::encryption::EncryptionService>>,
@@ -550,8 +515,8 @@ async fn invoke_scheduled_channel_inner(
         .schedule_config()
         .ok_or_else(|| CommandError::bad_request("Invalid schedule channel configuration"))?;
     let template_context = json!({
-        "app": {
-            "id": ingress.public_id.to_string(),
+        "agent": {
+            "id": ingress.agent_id,
             "name": ingress.name.clone(),
         },
         "channel": {

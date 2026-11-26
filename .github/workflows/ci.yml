@@ -99,6 +99,7 @@ jobs:
       postgres_integration: ${{ steps.plan.outputs.force == 'true' || steps.core_filter.outputs.postgres_integration }}
       provider_live: ${{ steps.plan.outputs.mode == 'nightly' || steps.plan.outputs.mode == 'full' }}
       object_storage: ${{ steps.plan.outputs.force == 'true' || steps.core_filter.outputs.object_storage }}
+      monty_integration: ${{ steps.plan.outputs.force == 'true' || steps.core_filter.outputs.monty_integration }}
       brave_search_integration: ${{ steps.plan.outputs.force == 'true' || steps.core_filter.outputs.brave_search_integration }}
       duckduckgo_integration: ${{ steps.plan.outputs.force == 'true' || steps.core_filter.outputs.duckduckgo_integration }}
       parallel_integration: ${{ steps.plan.outputs.force == 'true' || steps.core_filter.outputs.parallel_integration }}
@@ -485,6 +486,37 @@ jobs:
               - 'Cargo.lock'
               - 'rust-toolchain.toml'
               - '.github/workflows/ci.yml'
+            monty_integration:
+              - 'crates/integrations/src/monty/**'
+              - 'crates/integrations/src/bin/everruns-monty-worker.rs'
+              - 'crates/integrations/src/code_mode_timeline.rs'
+              - 'crates/contracts/src/runtime/durability.rs'
+              - 'crates/core/src/engine/execution/act_client_policy.rs'
+              - 'crates/core/src/engine/execution/act_nested_policy.rs'
+              - 'crates/agentd/src/session_code_journal.rs'
+              - 'crates/agentd/src/session_records*.rs'
+              - 'crates/internal-protocol/src/commands/code_execution.rs'
+              - 'crates/server/src/domains/code_execution.rs'
+              - 'crates/server/src/storage/runtime/durable_tool_results.rs'
+              - 'crates/worker/src/grpc_worker_adapters.rs'
+              - 'crates/worker/src/runtime_host.rs'
+              - 'crates/worker/src/worker_adapters.rs'
+              - 'crates/everruns/Cargo.toml'
+              - 'crates/everruns/src/batteries.rs'
+              - 'crates/everruns/src/lib.rs'
+              - 'crates/capabilities/Cargo.toml'
+              - 'crates/capabilities/src/capabilities/mod.rs'
+              - 'crates/agentd/Cargo.toml'
+              - 'crates/server/Cargo.toml'
+              - 'crates/worker/Cargo.toml'
+              - 'crates/integrations/Cargo.toml'
+              - 'Cargo.toml'
+              - 'rust-toolchain.toml'
+              - '.github/scripts/qualify-monty.sh'
+              - 'evals/shell-code-mode/**'
+              - 'evals/common/code_mode.rs'
+              - 'Cargo.lock'
+              - '.github/workflows/ci.yml'
             brave_search_integration:
               - 'crates/integrations/src/brave_search/**'
             duckduckgo_integration:
@@ -703,6 +735,39 @@ jobs:
   # and MCP adapters live in focused integration crates. Core remains the
   # neutral contract/kernel boundary and the default Framework avoids those
   # opt-in execution stacks.
+  monty:
+    name: Monty Runtime and Kernel Isolation
+    runs-on: ubuntu-24.04
+    needs: changes
+    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.monty_integration == 'true'
+    timeout-minutes: 40
+    env:
+      CARGO_INCREMENTAL: 0
+      RUSTFLAGS: "-C debuginfo=0"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.changes.outputs.revision }}
+      - uses: dtolnay/rust-toolchain@1.96.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+          shared-key: monty-runtime
+      - uses: actions/cache@v6
+        with:
+          path: .local/monty/bin/monty
+          key: monty-runtime-1.5.0-${{ runner.os }}-${{ runner.arch }}
+      - name: Qualify hardened worker, bridge and durable resume
+        run: ./.github/scripts/qualify-monty.sh
+      - name: Qualify Framework approval eval with the hardened worker
+        env:
+          EVERRUNS_MONTY_BIN: ${{ github.workspace }}/.local/monty/bin/everruns-monty-worker
+          EVERRUNS_MONTY_STATE_DIR: ${{ runner.temp }}/monty-eval-state
+          CARGO_TARGET_DIR: ${{ github.workspace }}/target
+        run: |
+          install -d -m 0700 "$EVERRUNS_MONTY_STATE_DIR"
+          cargo test --locked --manifest-path evals/shell-code-mode/Cargo.toml --features monty-runtime-tests monty_approval_eval -- --nocapture
+
   environment-capability-isolation:
     name: Environment Capability Isolation Guard
     runs-on: ubuntu-latest
@@ -3402,6 +3467,7 @@ jobs:
       - clippy
       - wasm-portability
       - durable-isolation
+      - monty
       - focused-rust
       - unit-test
       - worker-test

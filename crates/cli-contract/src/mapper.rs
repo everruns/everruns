@@ -101,6 +101,14 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
     ),
     ("agents view", "Configure the view published by an agent."),
     (
+        "applications",
+        "Published workspaces with Chats, Rooms, shared Memory and one audience.",
+    ),
+    (
+        "applications resources",
+        "Create and attach resources to an Application.",
+    ),
+    (
         "budgets",
         "Usage policies: limits on what sessions, agents, people and the organization use.",
     ),
@@ -307,6 +315,10 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
         "Plugins a marketplace offers.",
     ),
     ("plugins", "Plugins installed in this organization."),
+    (
+        "plugins mine",
+        "Approved plugins in your own new conversations.",
+    ),
     ("providers", "LLM providers and their credentials."),
     (
         "providers check-credentials",
@@ -326,6 +338,14 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
     (
         "rooms files",
         "A room's shared files, edited in place with every version kept.",
+    ),
+    (
+        "rooms facts",
+        "What a room settled: decisions, rules, deadlines; newer ones replace older.",
+    ),
+    (
+        "rooms memory",
+        "A room's memory entries: open, forget, add notes, publish a session.",
     ),
     ("rooms members", "People, agents and guests in a room."),
     (

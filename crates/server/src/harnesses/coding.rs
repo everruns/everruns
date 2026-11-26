@@ -12,6 +12,9 @@
 //! - `github` is on with pull requests allowed, since a coding session that
 //!   pushed a branch ends in one. Without a writable repository nothing can be
 //!   pushed, so nothing can be opened either.
+//! - Spawn agents with `self` is on: a coding agent hands a self-contained
+//!   piece (a review, a test run in a forked sandbox) to a copy of itself.
+//!   An agent that sets Threads gets Threads instead (Threads supersedes it).
 
 use crate::domains::harnesses::record::{BuiltInCapabilityDefinition, BuiltInHarnessDefinition};
 
@@ -28,6 +31,10 @@ pub fn definition() -> BuiltInHarnessDefinition {
     .with_capabilities([
         BuiltInCapabilityDefinition::new("github_scout"),
         BuiltInCapabilityDefinition::new("session_tasks"),
+        BuiltInCapabilityDefinition::with_config(
+            "spawn_agents",
+            serde_json::json!({ "self": true }),
+        ),
         BuiltInCapabilityDefinition::new("repositories"),
         BuiltInCapabilityDefinition::with_config(
             "github",

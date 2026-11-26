@@ -38,7 +38,6 @@ use crate::storage::StorageBackend;
 use crate::storage::{
     CreateMemoryRow, MemoryFileInfoRow, MemoryRow, RoomFileAuthor, RoomFileChange, RoomFileStore,
 };
-use everruns_capabilities::capabilities::AGENT_HANDOFF_CAPABILITY_ID;
 
 /// Mount point of the memory owned by the session's host agent.
 pub const AGENT_MEMORY_MOUNT_PATH: &str = "/memory/agent";
@@ -46,9 +45,9 @@ pub const AGENT_MEMORY_MOUNT_PATH: &str = "/memory/agent";
 pub const USER_MEMORY_MOUNT_PATH: &str = "/memory/user";
 /// Mount point of the memory shared by every session of one chat surface.
 pub const SHARED_MEMORY_MOUNT_PATH: &str = "/memory/shared";
-/// Mount point of the team folder shared by every agent in one run
-/// (`knowledge/runtime-resources/agents-using-agents.md`).
-pub const TEAM_FOLDER_MOUNT_PATH: &str = "/team";
+/// Mount point of the folder shared by every agent in one run
+/// (`knowledge/runtime-resources/threads.md`, Shared files).
+pub const TEAM_FOLDER_MOUNT_PATH: &str = "/shared";
 /// Mount point of a room's shared files in an agent's room session
 /// (`knowledge/runtime-resources/rooms.md`).
 pub const ROOM_FOLDER_MOUNT_PATH: &str = "/room";
@@ -136,7 +135,20 @@ impl MemoryMountRouter {
 
     /// The mounts of one workspace, resolved from its session row.
     pub async fn mounts_for(&self, workspace_id: Uuid) -> Arc<Vec<MemoryMount>> {
-        if let Some(cached) = self.cache.read().get(&workspace_id) {
+        // Application bindings can change after session creation, including
+        // on an ancestor or Room. Re-resolve those before using a mount cache.
+        let session = self
+            .db
+            .get_session_unscoped(everruns_contracts::typed_id::SessionId::from_uuid(
+                workspace_id,
+            ))
+            .await
+            .ok()
+            .flatten();
+        let mutable = session.as_ref().is_some_and(|s| {
+            s.channel_id.is_some() || s.parent_session_id.is_some() || s.source == "room"
+        });
+        if !mutable && let Some(cached) = self.cache.read().get(&workspace_id) {
             return cached.clone();
         }
         let (mounts, cacheable) = self.resolve(workspace_id).await.unwrap_or_else(|error| {
@@ -150,7 +162,7 @@ impl MemoryMountRouter {
             (Vec::new(), true)
         });
         let resolved = Arc::new(mounts);
-        if cacheable {
+        if cacheable && !mutable {
             self.cache.write().insert(workspace_id, resolved.clone());
         }
         resolved
@@ -235,35 +247,71 @@ impl MemoryMountRouter {
             None => cacheable = session.source != "room",
         }
 
+        if let Some(application) = self
+            .db
+            .application_for_session(session.org_id, session.id)
+            .await?
+        {
+            cacheable = false;
+            if application.status == "published" {
+                for resource in self.db.application_resources(application.id).await? {
+                    if resource.kind
+                        != crate::domains::applications::ApplicationResourceKind::Memory
+                    {
+                        continue;
+                    }
+                    let memory = self
+                        .db
+                        .get_memory(session.org_id, resource.resource_id.parse()?)
+                        .await?
+                        .ok_or_else(|| anyhow!("Application memory unavailable"))?;
+                    if memory.status != "active" || memory.scope != "org" {
+                        continue;
+                    }
+                    let mut mount =
+                        mount_from_row(&memory, &format!("/application/memory/{}", resource.slug));
+                    mount.readonly = memory.is_readonly || !resource.writable;
+                    mounts.push(mount);
+                }
+            }
+        }
+
         // Longest mount path first so resolution is unambiguous if one ever
         // nests inside another.
         mounts.sort_by_key(|mount| std::cmp::Reverse(mount.mount_path.len()));
         Ok((mounts, cacheable))
     }
 
-    /// The first session of the run whose team folder `session` sees.
+    /// The first session of the run whose shared folder `session` sees.
     ///
     /// Decision: every session started under another one sees its run's
-    /// folder, and a first session sees it only when its agent can hand work
-    /// to other agents. Both are fixed for the session's life, which keeps the
-    /// per-process mount cache truthful on every replica.
+    /// folder, and a first session sees it when its agent starts other agents
+    /// (Spawn agents or Threads), so the parent reads what its children wrote.
+    /// Both are fixed for the session's life, which keeps the per-process
+    /// mount cache truthful on every replica.
     async fn team_folder_owner(
         &self,
         session: &crate::storage::SessionRow,
     ) -> Result<Option<everruns_contracts::typed_id::SessionId>> {
+        use everruns_contracts::capability::delegation::{
+            SPAWN_AGENTS_CAPABILITY_ID, THREADS_CAPABILITY_ID,
+        };
         if session.parent_session_id.is_some() {
             return self.db.get_run_root(session.id).await;
         }
         let Some(agent_id) = session.agent_id else {
             return Ok(None);
         };
-        let hands_off = self
+        let starts_agents = self
             .db
             .get_agent_capabilities(agent_id.uuid())
             .await?
             .iter()
-            .any(|capability| capability.capability_id == AGENT_HANDOFF_CAPABILITY_ID);
-        Ok(hands_off.then_some(session.id))
+            .any(|capability| {
+                capability.capability_id == SPAWN_AGENTS_CAPABILITY_ID
+                    || capability.capability_id == THREADS_CAPABILITY_ID
+            });
+        Ok(starts_agents.then_some(session.id))
     }
 
     /// Preserve the operator namespace across the Agent migration and resumed sessions.

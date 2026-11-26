@@ -5,11 +5,10 @@ use chrono::{DateTime, Utc};
 use sqlx::FromRow;
 use uuid::Uuid;
 
-/// `agent_channels` row as read through its archival `app_id` link.
+/// Stored agent channel configuration.
 #[derive(Debug, Clone, FromRow, everruns_server_macros::Columns)]
 pub struct AgentChannelRow {
     pub id: Uuid,
-    pub app_id: Uuid,
     pub public_id: String,
     pub channel_type: String,
     pub channel_config: serde_json::Value,
@@ -25,19 +24,6 @@ pub struct AgentChannelRow {
     pub updated_at: DateTime<Utc>,
 }
 
-/// Input for creating an endpoint under a legacy App alias (agent derived from the App).
-#[derive(Debug, Clone)]
-pub struct CreateLegacyAliasChannelRow {
-    pub public_id: String,
-    pub channel_type: String,
-    pub channel_config: serde_json::Value,
-    pub channel_config_encrypted: Option<Vec<u8>>,
-    pub auth: Option<serde_json::Value>,
-    pub auth_encrypted: Option<Vec<u8>>,
-    pub durable_schedule_id: Option<Uuid>,
-    pub enabled: bool,
-}
-
 /// Input for updating an endpoint by its internal row id.
 #[derive(Debug, Clone, Default)]
 pub struct UpdateChannelByIdRow {
@@ -49,7 +35,6 @@ pub struct UpdateChannelByIdRow {
     pub durable_schedule_id: UpdateField<Uuid>,
     pub enabled: Option<bool>,
     /// Set the endpoint lifecycle directly. When `None`, an `enabled` change
-    /// still moves `status` between `disabled` and the App's publish state so
-    /// the two cannot drift while the App API is still the everyday control.
+    /// keeps lifecycle status consistent.
     pub status: Option<String>,
 }

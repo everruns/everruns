@@ -224,6 +224,70 @@ pub mod poppy {
     }
 }
 
+/// The Plugins tools: the org's approved plugins, loaded into the session's
+/// own records here. Same answers as a v1 worker's.
+pub mod plugins {
+    use super::*;
+    use crate::domains::data_plane::calls::PLUGINS_CALL;
+    use everruns_capabilities::capabilities::{
+        PluginsCall, PluginsCapability, PluginsInvoker, PluginsInvokerExt,
+    };
+
+    struct Invoker {
+        calls: Calls,
+        org: OrgId,
+        session: SessionId,
+    }
+
+    #[async_trait]
+    impl PluginsInvoker for Invoker {
+        async fn invoke(&self, call: PluginsCall) -> std::result::Result<Value, String> {
+            let params =
+                serde_json::json!({ "session_id": self.session.to_string(), "call": call });
+            match self.calls.answer(self.org, PLUGINS_CALL, params).await {
+                Ok(Answer::Value(value)) => Ok(value),
+                Ok(Answer::Error { kind, message })
+                    if everruns_internal_protocol::commands::is_bad_request(
+                        &everruns_internal_protocol::proto::CommandError {
+                            kind,
+                            message: message.clone(),
+                        },
+                    ) =>
+                {
+                    Err(message)
+                }
+                Ok(Answer::Error { message, .. }) => {
+                    tracing::warn!(%message, "plugins call failed");
+                    Err("Plugins are unavailable right now.".to_string())
+                }
+                Err(error) => {
+                    tracing::warn!(%error, "plugins call failed");
+                    Err("Plugins are unavailable right now.".to_string())
+                }
+            }
+        }
+    }
+
+    pub fn service(
+        base_url: &str,
+        configs: Arc<dyn SessionCapabilityConfig>,
+        calls: Calls,
+    ) -> HostedService {
+        HostedService::new(
+            Arc::new(PluginsCapability),
+            base_url,
+            configs,
+            Arc::new(move |context, _, org, session| {
+                context.with_extension(Arc::new(PluginsInvokerExt(Arc::new(Invoker {
+                    calls: calls.clone(),
+                    org,
+                    session,
+                }))))
+            }),
+        )
+    }
+}
+
 /// Slack's tools, acting as the bot of the endpoint the session came
 /// through (its token stays here). Slack's model view stays on the data
 /// plane (`SlackModelViewCapability`), added beside it by [`super::attach`].
@@ -672,7 +736,8 @@ pub mod memory {
             mut params: Value,
         ) -> Result<Value> {
             let org = HostedService::org(session)?;
-            params["session_id"] = Value::String(session.session_id.to_string());
+            params["session_id"] =
+                Value::String(SessionId::from_uuid(session.session_id).to_string());
             params["op"] = Value::String(op.to_string());
             match self.calls.answer(org, MEMORY_FILE, params).await? {
                 Answer::Value(answer) => match answer.get("error").and_then(Value::as_str) {

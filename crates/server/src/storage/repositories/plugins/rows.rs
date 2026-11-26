@@ -80,3 +80,11 @@ pub struct UpdatePluginInstall {
     pub definition: Option<serde_json::Value>,
     pub warnings: Option<serde_json::Value>,
 }
+
+/// One person's choice about one approved plugin (`plugin_choices`).
+#[derive(Debug, Clone, FromRow, everruns_server_macros::Columns)]
+pub struct PluginChoiceRow {
+    pub plugin_install_id: Uuid,
+    pub enabled: bool,
+    pub updated_at: DateTime<Utc>,
+}

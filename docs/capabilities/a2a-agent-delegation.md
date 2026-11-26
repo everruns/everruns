@@ -16,10 +16,9 @@ appliesTo: [framework, platform]
 A2A Agent Delegation lets an agent hand work to agents that run outside
 Everruns and speak the [A2A protocol](/features/a2a/). The agents it may call
 are listed in the capability's configuration, so the model can only reach URLs
-you configured. The capability adds the `external_a2a` target type to the
-shared `spawn_agent` tool, the same dispatcher that
-[Sub Agents](/capabilities/sub-agents/) and
-[Agent Handoff](/capabilities/agent-handoff/) extend.
+you configured. The capability adds its agents to the shared `spawn_agent` tool, the same
+tool [Spawn agents](/capabilities/spawn-agents/) gives: the model passes the
+external agent's name as `agent`.
 
 **Experimental.** On the platform, adding the capability to an agent is the
 opt-in; there is no separate feature flag.
@@ -47,7 +46,7 @@ In the [Framework](/framework/), turn on the `a2a` Cargo feature of
 
 | Field | Required | Description |
 |---|---|---|
-| `id` | Yes | Stable key the model passes as `target.id` |
+| `id` | Yes | Stable key the model passes as `agent` |
 | `name` | Yes | Human-readable name, shown in the system prompt |
 | `description` | No | What the agent does, shown in the system prompt |
 | `base_url` | One of `base_url` or `agent_card` | Where the Agent Card is fetched from (`/.well-known/agent-card.json`) |
@@ -69,23 +68,23 @@ resolved.
 | Parameter | Required | Description |
 |---|---|---|
 | `instructions` | Yes | Instructions sent to the external agent |
-| `target` | Yes | `{ "type": "external_a2a", "id": "<agent id>" }`. `target.external_agent_id` is a deprecated spelling of `id` |
-| `mode` | No | `foreground` (default) or `background` |
+| `agent` | Yes | The external agent's name, from the list in the system prompt |
+| `wait` | No | `true` waits for the remote task and returns its reply. Default: the run is a background task |
 | `wait_timeout_secs` | No | How long to wait for the remote task, 1 to 86400. Default 300 |
 | `wake_on_completion` | No | Wake the session when a background run finishes. Default `true` |
 | `result_schema` | No | JSON Schema for a required structured result from the external agent |
 
 `message_schema` is not supported: a remote agent cannot call
-`report_task_progress`, so passing one fails. Text results are truncated to
+`report_progress`, so passing one fails. Text results are truncated to
 8192 characters.
 
-`foreground` waits for the remote task and returns its reply. `background`
-returns a `task_id` at once. When task tracking is available, each run is a session task of kind
+With `wait` the call returns the remote reply. Without it, the call returns a
+`task_id` at once. When task tracking is available, each run is a session task of kind
 `external_agent`, so `wait_task` collects the result, `message_task` answers a
 remote task that asks for input, and `cancel_task` stops it.
 
 ## See also
 
 - [A2A](/features/a2a/), serving agents over A2A and the delegation overview
-- [Agent Handoff](/capabilities/agent-handoff/), delegation to first-party agents
-- [Sub Agents](/capabilities/sub-agents/), the session task tools
+- [Spawn agents](/capabilities/spawn-agents/), delegation to first-party agents
+- [Spawn agents](/capabilities/spawn-agents/), the session task tools

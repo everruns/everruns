@@ -7,25 +7,6 @@ pub(super) async fn authorize_ag_ui_request(
     peer_addr: Option<std::net::SocketAddr>,
 ) -> Result<AuthorizedAgUiRequest, Response> {
     let (context, channel) = match target {
-        AgUiTarget::LegacyApp(app_id) => match crate::api::channel_ingress::resolve_legacy_channel(
-            &state.db,
-            state.encryption.as_ref(),
-            &app_id,
-            ChannelType::AgUi,
-        )
-        .await
-        .map_err(internal_error)?
-        {
-            crate::api::channel_ingress::LegacyChannelMatch::One(endpoint) => *endpoint,
-            crate::api::channel_ingress::LegacyChannelMatch::NotFound => {
-                return Err(not_found());
-            }
-            crate::api::channel_ingress::LegacyChannelMatch::Ambiguous => {
-                return Err(conflict(
-                    "Multiple enabled AG-UI channels; use an endpoint-scoped /v1/channels/{channel_id}/ag-ui URL",
-                ));
-            }
-        },
         AgUiTarget::Channel(channel_id) => crate::api::channel_ingress::resolve_channel(
             &state.db,
             state.encryption.as_ref(),
@@ -37,12 +18,12 @@ pub(super) async fn authorize_ag_ui_request(
     };
 
     // THREAT[TM-AUTHZ-005]: Anonymous AG-UI requests must not reach draft or
-    // private app configurations.
-    // Mitigation: Require a published app, an enabled AG-UI channel, and
+    // private ingress configurations.
+    // Mitigation: Require a published ingress, an enabled AG-UI channel, and
     // `anonymous=true` before accepting unauthenticated traffic.
     //
     // THREAT[TM-TENANT-002]: An unauthenticated caller must not be able to tell
-    // "app does not exist" apart from "app exists but is not published / has no
+    // "ingress does not exist" apart from "ingress exists but is not published / has no
     // AG-UI channel / is misconfigured". Every such case collapses to a single
     // generic 404 (matching the FCP channel in `channels/fcp.rs`); the real reason is
     // logged server-side only.
@@ -51,7 +32,7 @@ pub(super) async fn authorize_ag_ui_request(
     }
     if let Err(reason) = crate::api::channel_ingress::channel_liveness(&context, &channel) {
         tracing::debug!(
-            app_id = %context.public_id,
+            ingress_id = %context.public_id,
             channel_id = %channel.public_id,
             reason = reason.as_str(),
             "AG-UI request rejected: endpoint not live"
@@ -60,7 +41,7 @@ pub(super) async fn authorize_ag_ui_request(
     }
 
     let Some(channel_config) = channel.ag_ui_config() else {
-        tracing::error!(app_id = %context.public_id, "AG-UI channel config did not deserialize");
+        tracing::error!(ingress_id = %context.public_id, "AG-UI channel config did not deserialize");
         return Err(not_found());
     };
     // THREAT[TM-AUTHZ-005]: `auth.mode = anonymous` is not a credential
@@ -104,8 +85,8 @@ pub(super) async fn authorize_ag_ui_request(
         if !channel_config.anonymous {
             // No auth provider configured and anonymous access disabled: the
             // channel is not reachable. Collapse to a generic 404 rather than a
-            // 403 so callers cannot confirm the app exists (TM-TENANT-002).
-            tracing::debug!(app_id = %context.public_id, "AG-UI request rejected: anonymous access disabled with no auth provider");
+            // 403 so callers cannot confirm the ingress exists (TM-TENANT-002).
+            tracing::debug!(ingress_id = %context.public_id, "AG-UI request rejected: anonymous access disabled with no auth provider");
             return Err(not_found());
         }
         if let Some(expected_token) = channel_config.token.as_deref()
@@ -120,7 +101,7 @@ pub(super) async fn authorize_ag_ui_request(
     };
 
     // THREAT[TM-DOS-010]: Anonymous AG-UI traffic must respect a configurable
-    // per-app, per-IP cap in addition to the global API limit. App owners
+    // per-ingress, per-IP cap in addition to the global API limit. Channel owners
     // tune `rate_limit_per_minute` based on expected client traffic.
     if let Some(limit) = channel_config.rate_limit_per_minute
         && limit > 0
@@ -136,7 +117,9 @@ pub(super) async fn authorize_ag_ui_request(
             .await
             .is_err()
         {
-            return Err(too_many_requests("AG-UI rate limit exceeded for this app"));
+            return Err(too_many_requests(
+                "AG-UI rate limit exceeded for this ingress",
+            ));
         }
     }
 

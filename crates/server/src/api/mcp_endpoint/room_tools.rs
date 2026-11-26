@@ -7,8 +7,8 @@
 //   `as_member`. Each tool runs exactly one room command through the command
 //   dispatcher, so policy, validation and the change feed are the API's own.
 // - The tools are the ones a board participant needs every turn, named the
-//   way a Styk user expects: catch up, read, post, who read, mark read, and the
-//   shared files. Rarer changes (creating a room, members, moving, deleting or
+//   way a Styk user expects: catch up, read, post, who read, mark read, the
+//   shared files, and the room's memory (recall, facts, remember). Rarer changes (creating a room, members, moving, deleting or
 //   restoring a file) stay on `execute`, where the whole command catalog is.
 // - Argument names are the command's own, so a tool call and an API call read
 //   the same; only `thread_id` on `room_read` picks the replies command.
@@ -315,6 +315,84 @@ pub(super) fn room_tools(
             ],
             vec!["room_id", "path"],
         ),
+        def(
+            "room_recall",
+            "Recall from a Room",
+            format!(
+                "Search what a room knows about something: its messages and its memory (facts \
+                 and notes) together, best match first. Ask before redoing work or asking \
+                 again. Current facts lead; a replaced fact says what replaced it.{BOARD_NOTE}"
+            ),
+            vec![
+                room_id(),
+                (
+                    "q",
+                    string("What to look for, in plain words; any of them may match."),
+                ),
+                (
+                    "as_of",
+                    string("Recall as of this time (RFC 3339): what the room knew then."),
+                ),
+                ("limit", integer("Most results, 10 by default.")),
+            ],
+            vec!["room_id", "q"],
+        ),
+        def(
+            "room_facts",
+            "Room Facts",
+            format!(
+                "List what a room has settled: its current decisions, rules, claims, deadlines, \
+                 open questions and observations, newest first.{BOARD_NOTE}"
+            ),
+            vec![
+                room_id(),
+                (
+                    "kind",
+                    json!({ "type": "string", "enum": ["decision", "rule", "claim", "deadline", "question", "observation"], "description": "Only facts of this kind." }),
+                ),
+                ("subject", string("Only facts on this subject.")),
+                (
+                    "include_replaced",
+                    json!({ "type": "boolean", "description": "Also list facts that were replaced." }),
+                ),
+                ("limit", integer("Most facts to return.")),
+            ],
+            vec!["room_id"],
+        ),
+        def(
+            "room_remember",
+            "Remember in a Room",
+            "Record a fact in the room's memory: a decision, rule, claim, deadline, question or \
+             observation, on a subject. A newer fact on the same subject replaces the older one, \
+             and both stay. Point at the message it rests on and quote it when there is one."
+                .into(),
+            vec![
+                room_id(),
+                (
+                    "kind",
+                    json!({ "type": "string", "enum": ["decision", "rule", "claim", "deadline", "question", "observation"], "description": "What sort of fact." }),
+                ),
+                (
+                    "subject",
+                    string("What it is about, in a few words, such as 'deploy window'."),
+                ),
+                (
+                    "statement",
+                    string("The fact in one sentence that makes sense on its own."),
+                ),
+                ("message_id", string("The message it rests on (rmsg_...).")),
+                (
+                    "quote",
+                    string("The exact words of that message it rests on."),
+                ),
+                (
+                    "status",
+                    json!({ "type": "string", "enum": ["stated", "proposed", "hypothetical", "retracted"], "description": "stated (default); proposed for an option nobody adopted; retracted takes an earlier fact back." }),
+                ),
+                as_member(),
+            ],
+            vec!["room_id", "kind", "subject", "statement"],
+        ),
     ]
 }
 
@@ -345,6 +423,9 @@ pub(super) fn command_for(name: &str, arguments: &Value) -> Result<(&'static str
         "room_write_file" => "write_room_file",
         "room_edit_file" => "edit_room_file",
         "room_file_history" => "list_room_file_history",
+        "room_recall" => "recall_room",
+        "room_facts" => "list_room_facts",
+        "room_remember" => "remember_room_fact",
         _ => return Err(format!("Unknown tool: {name}")),
     };
     Ok((command, Value::Object(params)))

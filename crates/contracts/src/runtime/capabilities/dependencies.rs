@@ -213,6 +213,11 @@ pub fn resolve_capability_configs(
     selected_configs: &[AgentCapabilityConfig],
     registry: &CapabilityRegistry,
 ) -> Result<Vec<AgentCapabilityConfig>, DependencyError> {
+    // Retired delegation ids (`subagents`, `agent_handoff`, `coordination`,
+    // `run_conversation`) fold into the current ones before anything else.
+    let canonical =
+        crate::capability::delegation::canonicalize_delegation_capabilities(selected_configs);
+    let selected_configs = canonical.as_slice();
     let mut selected_ids: Vec<String> = Vec::new();
     for config in selected_configs {
         // `declarative:`, `plugin:` and `injected:` carry a

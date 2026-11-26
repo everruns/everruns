@@ -43,3 +43,10 @@ both directions.
 
 See [MCP](/features/mcp/) and [Agent triggers](/features/agent-triggers/). PRs
 [#3931](https://github.com/everruns/everruns/pull/3931), [#3970](https://github.com/everruns/everruns/pull/3970).
+
+## Update 2026-11-25
+
+The final Events extension uses extension discovery and requires the event's
+`Mcp-Name` routing header on named requests under protocol `2026-07-28`.
+`410 Gone` abandons one delivery while the subscription stays active. See the
+[final contract update](/changelog/2026-11-25-mcp-events-final-contract/).

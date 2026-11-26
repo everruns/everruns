@@ -22,31 +22,21 @@ own MCP servers (a tracker announcing new issues, say) and wakes on each one,
 as an `mcp_event` [agent trigger](../runtime-resources/agent-triggers.md). See
 [Inbound: MCP event triggers](#inbound-mcp-event-triggers).
 
-## Spec revision (pinned 2026-09-30)
+## Protocol contract
 
-Implemented against the MCP Events draft on protocol `2026-07-28`, as used by
-OpenAI's MCP Events guide for ChatGPT. The draft is not final; events are built in and subscriptions remain explicit.
-Points we rely on:
+The webhook implementation follows final [SEP-3415](https://modelcontextprotocol.io/seps/3415-events-extension)
+on protocol `2026-07-28`. Discovery advertises the Events extension alongside
+other extensions. Named requests require the encoded event routing header;
+listing carries no event name. Error responses use the final general-purpose
+codes, including distinct missing-event, forbidden and callback-verification errors.
+Modern Events results carry the core complete-result marker; legacy responses
+keep their original metadata shape.
+See the [endpoint](../../crates/server/src/api/mcp_endpoint/events.rs) and
+[service](../../crates/server/src/domains/mcp_servers/events.rs) for wire shapes.
 
-- `capabilities.events: {}` in `server/discover` advertises support.
-- `events/list` returns each event's `name`, `description`, `delivery`
-  (`["webhook"]` here), `inputSchema` (subscription arguments) and
-  `payloadSchema`.
-- `events/subscribe` takes `name`, `arguments`, `delivery: {mode: "webhook",
-  url, secret}`, optional `cursor` and `ttlMs`, and returns `id`,
-  `refreshBefore`, `cursor` and `truncated`. It is idempotent on
-  (principal, url, name, canonical arguments). The secret is `whsec_` plus
-  base64 of 24 to 64 bytes.
-- Before activation the server POSTs `{"type": "verification", "challenge"}`
-  to the callback; the receiver echoes the challenge. Failure is JSON-RPC
-  error `-32015` with `data.reason`.
-- Deliveries are `{eventId, name, timestamp, data, cursor}`, at most 256 KiB,
-  signed per Standard Webhooks (`webhook-id`, `webhook-timestamp`,
-  `webhook-signature: v1,<base64 HMAC-SHA256>`), plus
-  `X-MCP-Subscription-Id`. `410` ends the subscription; `413` is not retried.
-- `events/unsubscribe` takes `name`, `arguments` and `delivery.url`.
-
-When the draft changes, update this section and the code together.
+Legacy core MCP handshakes remain supported. Their header requirements do not
+change; legacy Events peers must advertise the extension in their handshake.
+The obsolete draft capability alone is insufficient to enable Events.
 
 ## Events
 
@@ -63,8 +53,8 @@ the client can also open the session in place.
 ## Decisions
 
 - **Webhook delivery only.** `/mcp` is stateless; there is no stream to carry
-  in-band events. No replay either: a subscribe carrying a `cursor` gets
-  `truncated: true` so the client knows it may have missed events.
+  in-band events. No replay either: the cursor is always null and `truncated` is false, as
+  the final contract recommends for cursorless event types.
 - **No transcript text in payloads.** Identifiers and state only. The client
   reads content with `session_get_status` under its own token. A webhook
   therefore cannot become a channel for model output into another system's
@@ -78,8 +68,14 @@ the client can also open the session in place.
 - **Callbacks are verified and egress-safe.** HTTPS only, resolved and pinned
   against private ranges, no redirects, through the host egress service. The
   signing secret is stored encrypted.
+- **Callback consent is scoped to principal and URL.** A bounded, TTL-scoped
+  cache coalesces concurrent verification and covers refreshes and changed
+  arguments. Failed verification is not cached. Cache hits still validate
+  the callback URL; deliveries always revalidate and pin their destination.
 - **Retries.** Three retries with backoff, same `webhook-id`, fresh timestamp
-  and signature each attempt. Delivery runs off the event path.
+  and signature each attempt. The message ID is random for each event on
+  each subscription and independent of the upstream `eventId`. Delivery runs
+  off the event path.
 - **Subscriptions expire.** Default 24 hours, `ttlMs` clamps to one minute to
   seven days; the client refreshes by subscribing again before
   `refreshBefore`.
@@ -107,19 +103,20 @@ event pipeline: filter, dedupe, session routing, delivery log.
   is the pipeline's event id, so a replay is a recorded duplicate. The event
   `name` must be the subscribed one; `data` is the template's `payload`, and
   `{{mcp.server}}`, `{{mcp.event}}`, `{{mcp.event_id}}` describe the delivery.
-- **410 ends it.** A delivery for a trigger that is unknown, disabled, deleted,
-  or for a superseded subscription id answers `410 Gone`. That is
-  also the backstop when `events/unsubscribe` cannot reach the server.
+- **410 abandons one delivery.** Unknown, disabled, deleted or superseded
+  subscriptions answer `410 Gone`. Unsubscribe and TTL expiry reclaim remote
+  subscriptions; `410` alone no longer deletes them under the final contract.
 - **A create either subscribes or leaves nothing.** A subscribe the server
   rejects deletes the new trigger and returns the server's error; a failed
   re-subscribe on update restores the previous config, disabled.
-- **Refresh is a periodic sweep.** A background task on each API replica
-  re-subscribes, with the same secret and the last delivered `cursor`, any
-  subscription within 15 minutes of `refreshBefore`, every 60 seconds
-  (`MCP_EVENT_TRIGGER_REFRESH_INTERVAL_SECONDS`). State lives in the database
-  and `events/subscribe` is idempotent, so replicas racing on a row do no harm.
-  A failed refresh is retried after five minutes. A durable workflow was not
-  needed: a missed tick only delays the refresh to the next one.
+- **Refresh follows the server grant.** The background sweep uses the same
+  secret and last cursor; new subscriptions wake an idle sweep, and short
+  grants shorten its pause before expiry. Expired backlogs drain promptly.
+  An explicit null or omitted cursor clears an earlier position, including
+  refresh responses and signed gaps. Signed gap envelopes advance the position without
+  starting a run. Signed permission termination stops renewal; missing or
+  changed descriptors schedule rediscovery. Shared database state and
+  idempotent subscribe keep replica races harmless.
 - **Built in.** Creating and re-subscribing use normal organization permissions;
   retired feature overrides do not control delivery or refresh.
 
@@ -142,3 +139,22 @@ subscribe, refresh, unsubscribe, receive), `crates/server/src/api/mcp_event_webh
 by both halves), `crates/server/migrations/legacy/157_agent_trigger_mcp_subscriptions.sql`.
 Tests in `crates/server/tests/domain/mcp_event_triggers_test.rs`, against an
 in-process fake MCP server.
+
+## Conformance evidence
+
+The [dedicated workflow](../../.github/workflows/mcp-conformance.yml) keeps the
+base protocol on released conformance `0.1.16`. Events uses an immutable,
+reviewed upstream revision while the Events PRs remain unreleased, with no
+application secrets or write permissions. Its fixtures use `/mcp` for server
+discovery, actual signed webhook delivery, and the production trigger client
+for refresh and the no-extension fallback. Only the outbound test egress hop
+maps a synthetic public IP to the official loopback receiver. Raw results retain every skipped or untestable row.
+
+The upstream discovery scenario also probes core `subscriptions/listen`, which
+Everruns does not implement, and uses poll-only unknown-name probes. Its delivery
+scenario cannot control DNS rebinding. These exact upstream untestable diagnostics
+remain unverified; neither server scenario is reported as fully passed. All
+protocol failures still fail the job. Poll, push, replay and unexercised upstream
+controls are outside this webhook-only evidence. Local
+signed-delivery, SSRF, tenant/access, deduplication and termination coverage
+lives in the linked domain tests.

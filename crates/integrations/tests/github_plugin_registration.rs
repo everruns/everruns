@@ -12,7 +12,7 @@ fn registry_includes_github_capability_and_blueprint() {
         .get("github_scout")
         .expect("github_scout capability should be registered");
     assert!(cap.tools().is_empty());
-    assert_eq!(cap.dependencies(), vec!["subagents"]);
+    assert_eq!(cap.dependencies(), vec!["spawn_agents"]);
 
     let blueprint = registry
         .blueprint("github_scout")

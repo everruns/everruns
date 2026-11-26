@@ -242,19 +242,19 @@ impl AgentBuilder {
         self
     }
 
-    /// Another `#[agent]` of this app this agent can hand work to. The lead
-    /// gets the Agents capability (`spawn_agent`) with one target per member,
-    /// keyed by name; the member runs as its own session in the lead's run,
-    /// and its approvals and questions wait on the lead's session. The member
-    /// stays an agent of the app in its own right.
+    /// Another `#[agent]` of this app this agent can call for one-off work.
+    /// The lead gets Spawn agents (the `spawn_agent` tool) with the member
+    /// listed by name; a call runs the member as its own session in the
+    /// lead's run, and its approvals and questions wait on the lead's
+    /// session. The member stays an agent of the app in its own right.
     ///
     /// ```text
     /// #[agent(default)]
     /// fn analyst() -> Agent {
-    ///     Agent::builder().model("openai/gpt-6.2-sol").member("reviewer").build()
+    ///     Agent::builder().model("openai/gpt-6.2-sol").spawns("reviewer").build()
     /// }
     /// ```
-    pub fn member(mut self, name: impl Into<String>) -> Self {
+    pub fn spawns(mut self, name: impl Into<String>) -> Self {
         self.agent.members.push(name.into());
         self
     }

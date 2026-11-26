@@ -78,7 +78,7 @@ fn note(path: &str, content: &str) -> CreateFileInput {
 }
 
 #[tokio::test]
-async fn agents_in_one_run_share_the_team_folder() {
+async fn agents_in_one_run_share_the_shared_folder() {
     let db = Arc::new(StorageBackend::test_database());
     let service = SessionService::new(db.clone());
     let caller = Caller::internal(DEFAULT_ORG_ID);
@@ -89,7 +89,7 @@ async fn agents_in_one_run_share_the_team_folder() {
     let lead = create_agent(
         &ctx,
         "lead",
-        vec![AgentCapabilityConfig::new("agent_handoff")],
+        vec![AgentCapabilityConfig::new("spawn_agents")],
     )
     .await;
     let reviewer = create_agent(&ctx, "reviewer", vec![]).await;
@@ -101,19 +101,19 @@ async fn agents_in_one_run_share_the_team_folder() {
     files
         .create_file(
             review.id.uuid(),
-            note("/team/reviewer/findings.md", "ship it"),
+            note("/shared/reviewer/findings.md", "ship it"),
         )
         .await
         .unwrap();
 
     let read = files
-        .read_file(first.id.uuid(), "/team/reviewer/findings.md")
+        .read_file(first.id.uuid(), "/shared/reviewer/findings.md")
         .await
         .unwrap()
         .expect("the first session reads what the reviewer wrote");
     assert_eq!(read.content.as_deref(), Some("ship it"));
     assert!(
-        db.get_session_file(review.id.uuid(), "/team/reviewer/findings.md")
+        db.get_session_file(review.id.uuid(), "/shared/reviewer/findings.md")
             .await
             .unwrap()
             .is_none(),
@@ -124,7 +124,7 @@ async fn agents_in_one_run_share_the_team_folder() {
     let next = start(&service, &caller, harness_id, &lead, None).await;
     assert!(
         files
-            .read_file(next.id.uuid(), "/team/reviewer/findings.md")
+            .read_file(next.id.uuid(), "/shared/reviewer/findings.md")
             .await
             .unwrap()
             .is_none()
@@ -154,18 +154,18 @@ async fn a_session_outside_any_team_has_no_team_folder() {
     let files = WorkspaceFileService::new(db.clone());
     assert!(
         files
-            .stat(session.id.uuid(), "/team")
+            .stat(session.id.uuid(), "/shared")
             .await
             .unwrap()
             .is_none()
     );
     // Writing there lands in the session's own files, not in a shared folder.
     files
-        .create_file(session.id.uuid(), note("/team/notes.md", "mine"))
+        .create_file(session.id.uuid(), note("/shared/notes.md", "mine"))
         .await
         .unwrap();
     assert!(
-        db.get_session_file(session.id.uuid(), "/team/notes.md")
+        db.get_session_file(session.id.uuid(), "/shared/notes.md")
             .await
             .unwrap()
             .is_some()

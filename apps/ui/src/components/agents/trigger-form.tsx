@@ -11,7 +11,7 @@ export const scheduleTriggerDraftSchema = z.strictObject({
   enabled: z.boolean(),
 });
 import type { InvocationSessionMode } from "@/lib/api/types";
-import { CronInput, isSupportedCronExpression } from "@/components/apps/cron-label";
+import { CronInput, isSupportedCronExpression } from "@/components/schedules/cron-label";
 import { Label } from "@/components/ui/label";
 import {
   Select,

@@ -48,6 +48,7 @@ pub enum EntityKind {
     Knowledge,
     KnowledgeIndexer,
     Memory,
+    Application,
     Provider,
     Model,
     McpServer,
@@ -88,6 +89,7 @@ impl EntityKind {
         Self::Knowledge,
         Self::KnowledgeIndexer,
         Self::Memory,
+        Self::Application,
         Self::Provider,
         Self::Model,
         Self::McpServer,
@@ -128,6 +130,7 @@ impl EntityKind {
             Self::Knowledge => "knowledge",
             Self::KnowledgeIndexer => "knowledge_indexer",
             Self::Memory => "memory",
+            Self::Application => "application",
             Self::Provider => "provider",
             Self::Model => "model",
             Self::McpServer => "mcp_server",
@@ -176,6 +179,7 @@ impl EntityKind {
             Self::Knowledge => "kn",
             Self::KnowledgeIndexer => return None,
             Self::Memory => "mem",
+            Self::Application => "application",
             Self::Provider => "provider",
             Self::Model => "model",
             Self::McpServer => "mcp",
@@ -233,6 +237,7 @@ impl EntityKind {
             Self::KnowledgeIndex => &knowledge_indexes::KNOWLEDGE_INDEX_VIEW,
             Self::Knowledge | Self::KnowledgeIndexer => &knowledge::VIEW,
             Self::Memory => &memory::MEMORY_VIEW,
+            Self::Application => &applications::APPLICATION_VIEW,
             Self::Provider => &providers::LLM_PROVIDER_VIEW,
             Self::Model => &models::LLM_MODEL_VIEW,
             Self::McpServer => &mcp_servers::MCP_SERVER_VIEW,
@@ -280,6 +285,7 @@ impl EntityKind {
             Self::KnowledgeIndex => &knowledge_indexes::KNOWLEDGE_INDEX_MANAGE,
             Self::Knowledge | Self::KnowledgeIndexer => &knowledge::MANAGE,
             Self::Memory => &memory::MEMORY_MANAGE,
+            Self::Application => &applications::APPLICATION_MANAGE,
             Self::Provider => &providers::LLM_PROVIDER_MANAGE,
             Self::Model => &models::LLM_MODEL_MANAGE,
             Self::McpServer => &mcp_servers::MCP_SERVER_MANAGE,
@@ -332,6 +338,7 @@ impl EntityKind {
             Self::KnowledgeIndex => ("get_knowledge_index", "index_id"),
             Self::Knowledge => ("get_knowledge", "collection_id"),
             Self::Memory => ("get_memory", "memory_id"),
+            Self::Application => ("get_application", "application_id"),
             Self::Provider => ("get_provider", "id"),
             Self::Model => ("get_model", "id"),
             Self::McpServer => ("get_mcp_server", "id"),
@@ -594,6 +601,10 @@ pub fn declared(name: &str) -> Change {
             )
         }
 
+        "create_application" => on(K::Application, Created, ID),
+        "update_application" | "set_application_status" | "create_application_resource" => {
+            on(K::Application, Updated, Param("application_id"))
+        }
         "create_memory" => on(K::Memory, Created, ID),
         "update_memory" => on(K::Memory, Updated, ID),
         "delete_memory" => on(K::Memory, Deleted, Param("memory_id")),
@@ -790,6 +801,9 @@ pub fn declared(name: &str) -> Change {
         "worker_invalidate_mcp_connection" => {
             Change::Exempt("drops a grant the remote server rejected; credential state")
         }
+        "worker_code_execution" => Change::Exempt(
+            "private interpreter snapshots and effect records must not enter public history",
+        ),
         "worker_dreaming_state" => Change::Exempt(
             "private runtime maintenance and reservations; payload-free activity is recorded separately",
         ),
@@ -804,6 +818,12 @@ pub fn declared(name: &str) -> Change {
         "worker_poppy_call" => {
             Change::Exempt("the agent's own conversation with a company, not configuration")
         }
+        "set_my_plugin_choice" => Change::Exempt(
+            "a person's own plugin preference, like a profile setting, not shared configuration",
+        ),
+        "worker_plugins_call" => Change::Exempt(
+            "a plugin loaded into one chat is the session's working state, not configuration",
+        ),
         "create_session_database"
         | "delete_session_database"
         | "manage_session_sandbox"
@@ -839,6 +859,14 @@ pub fn declared(name: &str) -> Change {
         "write_room_file" | "edit_room_file" | "move_room_file" | "delete_room_file"
         | "restore_room_file" => {
             Change::Exempt("room files keep their own version history with authors")
+        }
+        // Room memory keeps every entry (nothing is purged) and records each
+        // write in the room's event feed.
+        "remember_room_fact"
+        | "forget_room_memory_entry"
+        | "ingest_room_note"
+        | "publish_session_to_room" => {
+            Change::Exempt("room memory keeps every entry and records writes in the room's feed")
         }
         "mark_room_read" | "read_room_unread" => {
             Change::Exempt("read state of the caller's own room position")
