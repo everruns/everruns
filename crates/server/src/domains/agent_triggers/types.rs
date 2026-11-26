@@ -19,6 +19,7 @@ pub use crate::storage::{AgentTriggerRow, CreateAgentTriggerRow, UpdateAgentTrig
 pub struct AgentTriggerRun {
     /// Non-secret trigger kind, cron, timezone and session mode at dispatch.
     pub configuration: Option<Value>,
+    /// Stable input message admitted by this execution, when recorded.
     pub input_message_id: Option<everruns_contracts::typed_id::MessageId>,
     /// What fired it: manual, schedule, or unknown for old records.
     pub source: Option<String>,
@@ -26,6 +27,8 @@ pub struct AgentTriggerRun {
     pub requested_by: Option<uuid::Uuid>,
     /// Number of task attempts observed; absent when unavailable.
     pub attempts: Option<u32>,
+    /// Resulting session's prefixed public identifier, when available.
+    #[schema(example = "session_550e8400e29b41d4a716446655440000")]
     pub session_id: Option<String>,
     /// Trigger configuration revision observed at dispatch.
     pub trigger_revision: Option<DateTime<Utc>>,

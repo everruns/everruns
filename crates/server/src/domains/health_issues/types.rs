@@ -191,7 +191,13 @@ pub struct HealthIssueList {
 /// Evidence frozen when a health issue episode first opened.
 #[derive(Debug, Serialize, ToSchema, sqlx::FromRow)]
 pub struct HealthIssueObservation {
+    /// Episode whose first accepted opening evidence was captured.
+    #[schema(example = "550e8400-e29b-41d4-a716-446655440000")]
     pub episode_id: Uuid,
+    /// Observation time of that episode's opening evidence.
+    #[schema(example = "2026-11-25T12:00:00Z")]
     pub observed_at: DateTime<Utc>,
+    /// Original detector evidence; excludes session content.
+    #[schema(example = json!({"last_day_usd": 6.61, "baseline_daily_usd": 1.0}))]
     pub evidence: Option<serde_json::Value>,
 }

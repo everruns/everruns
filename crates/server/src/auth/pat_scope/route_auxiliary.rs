@@ -35,12 +35,6 @@ pub const UNDOCUMENTED_ROUTES: &[(&str, &str, RouteAccess)] = &[
         "/v1/platform/sessions/{session_id}/mcp-apps/view",
         Read,
     ),
-    ("GET", "/v1/platform/sessions/{session_id}/schedules", Read),
-    (
-        "GET",
-        "/v1/platform/sessions/{session_id}/schedules/{schedule_id}",
-        Read,
-    ),
     ("GET", "/v1/platform/slack/workspaces", Read),
     ("GET", "/v1/platform/user/connections", Read),
     ("GET", "/v1/platform/user/connections/providers", Read),

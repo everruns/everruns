@@ -33907,6 +33907,103 @@
         }
       }
     },
+    "/v1/platform/sessions/{session_id}/schedules": {
+      "get": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "List all schedules for a session",
+        "operationId": "list_session_schedules",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session's prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of schedules",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/WithUrls_SessionSchedule"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Caller may not view this session"
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "sessions-workspaces",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/platform/sessions/{session_id}/schedules/{schedule_id}": {
+      "get": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "Get a specific schedule",
+        "operationId": "get_session_schedule",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session's prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "schedule_id",
+            "in": "path",
+            "description": "Schedule's prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Schedule details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WithUrls_SessionSchedule"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Caller may not view this session"
+          },
+          "404": {
+            "description": "Schedule not found"
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "sessions-workspaces",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/platform/sessions/{session_id}/sse": {
       "get": {
         "tags": [
@@ -42549,7 +42646,8 @@
           "input_message_id": {
             "oneOf": [
               {
-                "$ref": "#/components/schemas/messageId"
+                "$ref": "#/components/schemas/messageId",
+                "description": "Stable input message admitted by this execution, when recorded."
               },
               {
                 "type": "null"
@@ -42573,7 +42671,9 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Resulting session's prefixed public identifier, when available.",
+            "example": "session_550e8400e29b41d4a716446655440000"
           },
           "source": {
             "type": [
@@ -47315,7 +47415,9 @@
             "description": "Joint breakdown requested by group_by; at most 200 groups."
           },
           "breakdown_truncated": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether additional joint groups were omitted after the first 200.",
+            "example": false
           },
           "by_agent": {
             "type": "array",
@@ -47404,16 +47506,24 @@
         "properties": {
           "cost_usd": {
             "type": "number",
-            "format": "double"
+            "format": "double",
+            "description": "Priced usage cost in USD within this group and the selected filters.",
+            "example": 6.61
           },
-          "dimensions": {},
+          "dimensions": {
+            "description": "Requested dimension keys mapped to their recorded attribution values."
+          },
           "records": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Usage journal records in this group, after the selected filters.",
+            "example": 20
           },
           "unpriced_records": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Usage journal records in this group whose cost is unpriced.",
+            "example": 1
           }
         }
       },
@@ -56982,12 +57092,18 @@
         "properties": {
           "episode_id": {
             "type": "string",
-            "format": "uuid"
+            "format": "uuid",
+            "description": "Episode whose first accepted opening evidence was captured.",
+            "example": "550e8400-e29b-41d4-a716-446655440000"
           },
-          "evidence": {},
+          "evidence": {
+            "description": "Original detector evidence; excludes session content."
+          },
           "observed_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Observation time of that episode's opening evidence.",
+            "example": "2026-11-25T12:00:00Z"
           }
         }
       },
@@ -76745,6 +76861,34 @@
         },
         "additionalProperties": false
       },
+      "ScheduleBudget": {
+        "type": "object",
+        "description": "A schedule's spend cap, read from its `session_schedule` budget.",
+        "required": [
+          "limit_usd",
+          "spent_usd",
+          "status"
+        ],
+        "properties": {
+          "limit_usd": {
+            "type": "number",
+            "format": "double",
+            "description": "Cap in USD.",
+            "example": 2
+          },
+          "spent_usd": {
+            "type": "number",
+            "format": "double",
+            "description": "Spent so far in USD.",
+            "example": 0.25
+          },
+          "status": {
+            "type": "string",
+            "description": "`active`, `paused`, `exhausted` or `disabled`.",
+            "example": "active"
+          }
+        }
+      },
       "ScheduleExecutionResponse": {
         "type": "object",
         "description": "Schedule execution response",
@@ -77154,6 +77298,14 @@
             "description": "The agent's channel the conversation belongs to."
           }
         }
+      },
+      "ScheduleType": {
+        "type": "string",
+        "description": "Type of schedule: one-shot or recurring.",
+        "enum": [
+          "oneshot",
+          "recurring"
+        ]
       },
       "SchedulesListResponse": {
         "type": "object",
@@ -79006,7 +79158,8 @@
               "null"
             ],
             "format": "date-time",
-            "description": "Selected inclusive start and exclusive end; null means lifetime/unbounded."
+            "description": "Inclusive selected start; null means no lower time bound.",
+            "example": "2026-11-24T12:00:00Z"
           },
           "hours": {
             "type": "array",
@@ -79052,7 +79205,9 @@
               "string",
               "null"
             ],
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Exclusive selected end; null means no upper time bound.",
+            "example": "2026-11-25T12:00:00Z"
           },
           "tools": {
             "$ref": "#/components/schemas/CostTools",
@@ -79838,6 +79993,192 @@
           "paused",
           "lost"
         ]
+      },
+      "SessionSchedule": {
+        "type": "object",
+        "description": "A session-scoped schedule.",
+        "required": [
+          "id",
+          "session_id",
+          "owner_principal_id",
+          "description",
+          "timezone",
+          "enabled",
+          "schedule_type",
+          "trigger_count",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "budget": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ScheduleBudget",
+                "description": "This schedule's spend cap and what its turns spent so far."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Time the schedule was created.",
+            "example": "2026-11-25T12:00:00Z"
+          },
+          "cron_expression": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Cron expression for recurring schedules (None for one-shot).",
+            "example": "*/30 * * * *"
+          },
+          "deleted_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the schedule was deleted. The row stays so a session recording can\nshow it; a deleted schedule does not fire and is hidden from the agent."
+          },
+          "description": {
+            "type": "string",
+            "description": "What the agent should do when the schedule fires.",
+            "example": "Check whether the pull request is merged"
+          },
+          "effective_owner": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PrincipalSummary",
+                "description": "Effective human owner summary."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "Whether the schedule is active.",
+            "example": true
+          },
+          "ends_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "The schedule stops firing after this time.",
+            "example": "2026-11-27T12:00:00Z"
+          },
+          "id": {
+            "type": "string",
+            "description": "Unique identifier (format: sched_{32-hex}).",
+            "example": "sched_01933b5a00007000800000000000001"
+          },
+          "last_triggered_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Last time this schedule fired."
+          },
+          "max_runs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "The schedule stops after this many fires.",
+            "example": 96,
+            "minimum": 0
+          },
+          "next_trigger_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Next computed trigger time."
+          },
+          "owner": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PrincipalSummary",
+                "description": "Owning principal summary."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "owner_principal_id": {
+            "type": "string",
+            "description": "Owning principal for this schedule.",
+            "example": "principal_01933b5a000070008000000000000001"
+          },
+          "resolved_owner_user_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "Denormalized effective human owner of the owning principal lineage."
+          },
+          "schedule_type": {
+            "$ref": "#/components/schemas/ScheduleType",
+            "description": "Computed type based on cron_expression vs scheduled_at."
+          },
+          "scheduled_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "One-shot trigger time (None for recurring)."
+          },
+          "session_id": {
+            "type": "string",
+            "description": "Session this schedule belongs to.",
+            "example": "session_01933b5a00007000800000000000001"
+          },
+          "stop_reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why the schedule stopped on its own (`ended`, `budget_exhausted`)."
+          },
+          "stop_when": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "When the work is done, in the agent's words.",
+            "example": "The pull request is merged or closed"
+          },
+          "timezone": {
+            "type": "string",
+            "description": "IANA timezone for cron interpretation.",
+            "example": "UTC"
+          },
+          "trigger_count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Total number of times this schedule has fired.",
+            "example": 4,
+            "minimum": 0
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Time the schedule's stored state was last changed.",
+            "example": "2026-11-25T14:00:00Z"
+          }
+        }
       },
       "SessionScope": {
         "type": "string",
@@ -91298,6 +91639,226 @@
           "kind": "resource",
           "model": "#/components/schemas/Session"
         }
+      },
+      "WithUrls_SessionSchedule": {
+        "allOf": [
+          {
+            "type": "object",
+            "description": "A session-scoped schedule.",
+            "required": [
+              "id",
+              "session_id",
+              "owner_principal_id",
+              "description",
+              "timezone",
+              "enabled",
+              "schedule_type",
+              "trigger_count",
+              "created_at",
+              "updated_at"
+            ],
+            "properties": {
+              "budget": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/ScheduleBudget",
+                    "description": "This schedule's spend cap and what its turns spent so far."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "created_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "Time the schedule was created.",
+                "example": "2026-11-25T12:00:00Z"
+              },
+              "cron_expression": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Cron expression for recurring schedules (None for one-shot).",
+                "example": "*/30 * * * *"
+              },
+              "deleted_at": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time",
+                "description": "When the schedule was deleted. The row stays so a session recording can\nshow it; a deleted schedule does not fire and is hidden from the agent."
+              },
+              "description": {
+                "type": "string",
+                "description": "What the agent should do when the schedule fires.",
+                "example": "Check whether the pull request is merged"
+              },
+              "effective_owner": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/PrincipalSummary",
+                    "description": "Effective human owner summary."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "enabled": {
+                "type": "boolean",
+                "description": "Whether the schedule is active.",
+                "example": true
+              },
+              "ends_at": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time",
+                "description": "The schedule stops firing after this time.",
+                "example": "2026-11-27T12:00:00Z"
+              },
+              "id": {
+                "type": "string",
+                "description": "Unique identifier (format: sched_{32-hex}).",
+                "example": "sched_01933b5a00007000800000000000001"
+              },
+              "last_triggered_at": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time",
+                "description": "Last time this schedule fired."
+              },
+              "max_runs": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int32",
+                "description": "The schedule stops after this many fires.",
+                "example": 96,
+                "minimum": 0
+              },
+              "next_trigger_at": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time",
+                "description": "Next computed trigger time."
+              },
+              "owner": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/PrincipalSummary",
+                    "description": "Owning principal summary."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "owner_principal_id": {
+                "type": "string",
+                "description": "Owning principal for this schedule.",
+                "example": "principal_01933b5a000070008000000000000001"
+              },
+              "resolved_owner_user_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "description": "Denormalized effective human owner of the owning principal lineage."
+              },
+              "schedule_type": {
+                "$ref": "#/components/schemas/ScheduleType",
+                "description": "Computed type based on cron_expression vs scheduled_at."
+              },
+              "scheduled_at": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time",
+                "description": "One-shot trigger time (None for recurring)."
+              },
+              "session_id": {
+                "type": "string",
+                "description": "Session this schedule belongs to.",
+                "example": "session_01933b5a00007000800000000000001"
+              },
+              "stop_reason": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Why the schedule stopped on its own (`ended`, `budget_exhausted`)."
+              },
+              "stop_when": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "When the work is done, in the agent's words.",
+                "example": "The pull request is merged or closed"
+              },
+              "timezone": {
+                "type": "string",
+                "description": "IANA timezone for cron interpretation.",
+                "example": "UTC"
+              },
+              "trigger_count": {
+                "type": "integer",
+                "format": "int32",
+                "description": "Total number of times this schedule has fired.",
+                "example": 4,
+                "minimum": 0
+              },
+              "updated_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "Time the schedule's stored state was last changed.",
+                "example": "2026-11-25T14:00:00Z"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "self_url",
+              "view_url",
+              "ui_link"
+            ],
+            "properties": {
+              "allowed_actions": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/AllowedAction"
+                },
+                "description": "State-aware hypermedia actions the caller can take on this resource\nnext (e.g. `cancel`, `events`, `update`). Omitted from the wire\nshape when empty so resources that haven't opted into the\nconvention don't grow their payloads."
+              },
+              "self_url": {
+                "type": "string",
+                "description": "Full API endpoint URL for this resource."
+              },
+              "ui_link": {
+                "type": "string",
+                "description": "Alias for `view_url`, used by command and MCP outputs."
+              },
+              "view_url": {
+                "type": "string",
+                "description": "Full UI URL for viewing this resource."
+              }
+            }
+          }
+        ],
+        "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer). The\n`allowed_actions` array carries state-aware hypermedia links — empty\n(and omitted from the wire shape) until the underlying resource opts\ninto the convention by overriding `ResourceUrlable::allowed_actions`."
       },
       "WithUrls_Skill": {
         "allOf": [

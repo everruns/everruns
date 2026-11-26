@@ -1113,6 +1113,12 @@ pub const ROUTES: &[(&str, &str, RouteAccess)] = &[
     ),
     ("GET", "/v1/platform/sessions/{session_id}/sandbox", Read),
     ("POST", "/v1/platform/sessions/{session_id}/sandbox", Write),
+    ("GET", "/v1/platform/sessions/{session_id}/schedules", Read),
+    (
+        "GET",
+        "/v1/platform/sessions/{session_id}/schedules/{schedule_id}",
+        Read,
+    ),
     ("GET", "/v1/platform/sessions/{session_id}/sse", Read),
     (
         "GET",

@@ -9033,6 +9033,40 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/platform/sessions/{session_id}/schedules": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List all schedules for a session */
+    get: operations["list_session_schedules"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/sessions/{session_id}/schedules/{schedule_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get a specific schedule */
+    get: operations["get_session_schedule"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/platform/sessions/{session_id}/sse": {
     parameters: {
       query?: never;
@@ -12043,6 +12077,10 @@ export interface components {
        * @description Time the execution was scheduled.
        */
       scheduled_at: string;
+      /**
+       * @description Resulting session's prefixed public identifier, when available.
+       * @example session_550e8400e29b41d4a716446655440000
+       */
       session_id?: string | null;
       /** @description What fired it: manual, schedule, or unknown for old records. */
       source?: string | null;
@@ -14608,6 +14646,10 @@ export interface components {
     CostSummary: {
       /** @description Joint breakdown requested by group_by; at most 200 groups. */
       breakdown: components["schemas"]["CostSummaryBreakdown"][];
+      /**
+       * @description Whether additional joint groups were omitted after the first 200.
+       * @example false
+       */
       breakdown_truncated: boolean;
       /** @description Totals by agent. */
       by_agent: components["schemas"]["CostSummaryLine"][];
@@ -14655,12 +14697,25 @@ export interface components {
     };
     /** @description One joint cost group. Null dimensions mean attribution was not recorded. */
     CostSummaryBreakdown: {
-      /** Format: double */
+      /**
+       * Format: double
+       * @description Priced usage cost in USD within this group and the selected filters.
+       * @example 6.61
+       */
       cost_usd: number;
+      /** @description Requested dimension keys mapped to their recorded attribution values. */
       dimensions: unknown;
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Usage journal records in this group, after the selected filters.
+       * @example 20
+       */
       records: number;
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Usage journal records in this group whose cost is unpriced.
+       * @example 1
+       */
       unpriced_records: number;
     };
     /** @description One line of the costs summary. */
@@ -19946,10 +20001,19 @@ export interface components {
     };
     /** @description Evidence frozen when a health issue episode first opened. */
     HealthIssueObservation: {
-      /** Format: uuid */
+      /**
+       * Format: uuid
+       * @description Episode whose first accepted opening evidence was captured.
+       * @example 550e8400-e29b-41d4-a716-446655440000
+       */
       episode_id: string;
+      /** @description Original detector evidence; excludes session content. */
       evidence?: unknown;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description Observation time of that episode's opening evidence.
+       * @example 2026-11-25T12:00:00Z
+       */
       observed_at: string;
     };
     /** @description System health response */
@@ -30928,6 +30992,26 @@ export interface components {
        */
       revision: number;
     };
+    /** @description A schedule's spend cap, read from its `session_schedule` budget. */
+    ScheduleBudget: {
+      /**
+       * Format: double
+       * @description Cap in USD.
+       * @example 2
+       */
+      limit_usd: number;
+      /**
+       * Format: double
+       * @description Spent so far in USD.
+       * @example 0.25
+       */
+      spent_usd: number;
+      /**
+       * @description `active`, `paused`, `exhausted` or `disabled`.
+       * @example active
+       */
+      status: string;
+    };
     /** @description Schedule execution response */
     ScheduleExecutionResponse: {
       /**
@@ -31203,6 +31287,11 @@ export interface components {
       /** @description The agent's channel the conversation belongs to. */
       channel_id: string;
     };
+    /**
+     * @description Type of schedule: one-shot or recurring.
+     * @enum {string}
+     */
+    ScheduleType: "oneshot" | "recurring";
     /** @description Schedules list response */
     SchedulesListResponse: {
       /** @description Page of items returned by this query. */
@@ -32124,7 +32213,8 @@ export interface components {
       categories: components["schemas"]["CostCategory"][];
       /**
        * Format: date-time
-       * @description Selected inclusive start and exclusive end; null means lifetime/unbounded.
+       * @description Inclusive selected start; null means no lower time bound.
+       * @example 2026-11-24T12:00:00Z
        */
       from?: string | null;
       /** @description Spend per UTC hour that had model calls, oldest first. */
@@ -32146,7 +32236,11 @@ export interface components {
       session_id: string;
       /** @description Turns and spend by what started them, largest spend first. */
       sources: components["schemas"]["CostSource"][];
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description Exclusive selected end; null means no upper time bound.
+       * @example 2026-11-25T12:00:00Z
+       */
       to?: string | null;
       /** @description Tool calls across the session. */
       tools: components["schemas"]["CostTools"];
@@ -32560,6 +32654,112 @@ export interface components {
      * @enum {string}
      */
     SessionSandboxStatusValue: "running" | "paused" | "lost";
+    /** @description A session-scoped schedule. */
+    SessionSchedule: {
+      budget?: components["schemas"]["ScheduleBudget"] | null;
+      /**
+       * Format: date-time
+       * @description Time the schedule was created.
+       * @example 2026-11-25T12:00:00Z
+       */
+      created_at: string;
+      /**
+       * @description Cron expression for recurring schedules (None for one-shot).
+       * @example *\/30 * * * *
+       */
+      cron_expression?: string | null;
+      /**
+       * Format: date-time
+       * @description When the schedule was deleted. The row stays so a session recording can
+       *     show it; a deleted schedule does not fire and is hidden from the agent.
+       */
+      deleted_at?: string | null;
+      /**
+       * @description What the agent should do when the schedule fires.
+       * @example Check whether the pull request is merged
+       */
+      description: string;
+      effective_owner?: components["schemas"]["PrincipalSummary"] | null;
+      /**
+       * @description Whether the schedule is active.
+       * @example true
+       */
+      enabled: boolean;
+      /**
+       * Format: date-time
+       * @description The schedule stops firing after this time.
+       * @example 2026-11-27T12:00:00Z
+       */
+      ends_at?: string | null;
+      /**
+       * @description Unique identifier (format: sched_{32-hex}).
+       * @example sched_01933b5a00007000800000000000001
+       */
+      id: string;
+      /**
+       * Format: date-time
+       * @description Last time this schedule fired.
+       */
+      last_triggered_at?: string | null;
+      /**
+       * Format: int32
+       * @description The schedule stops after this many fires.
+       * @example 96
+       */
+      max_runs?: number | null;
+      /**
+       * Format: date-time
+       * @description Next computed trigger time.
+       */
+      next_trigger_at?: string | null;
+      owner?: components["schemas"]["PrincipalSummary"] | null;
+      /**
+       * @description Owning principal for this schedule.
+       * @example principal_01933b5a000070008000000000000001
+       */
+      owner_principal_id: string;
+      /**
+       * Format: uuid
+       * @description Denormalized effective human owner of the owning principal lineage.
+       */
+      resolved_owner_user_id?: string | null;
+      /** @description Computed type based on cron_expression vs scheduled_at. */
+      schedule_type: components["schemas"]["ScheduleType"];
+      /**
+       * Format: date-time
+       * @description One-shot trigger time (None for recurring).
+       */
+      scheduled_at?: string | null;
+      /**
+       * @description Session this schedule belongs to.
+       * @example session_01933b5a00007000800000000000001
+       */
+      session_id: string;
+      /** @description Why the schedule stopped on its own (`ended`, `budget_exhausted`). */
+      stop_reason?: string | null;
+      /**
+       * @description When the work is done, in the agent's words.
+       * @example The pull request is merged or closed
+       */
+      stop_when?: string | null;
+      /**
+       * @description IANA timezone for cron interpretation.
+       * @example UTC
+       */
+      timezone: string;
+      /**
+       * Format: int32
+       * @description Total number of times this schedule has fired.
+       * @example 4
+       */
+      trigger_count: number;
+      /**
+       * Format: date-time
+       * @description Time the schedule's stored state was last changed.
+       * @example 2026-11-25T14:00:00Z
+       */
+      updated_at: string;
+    };
     /**
      * @description Which conversation an agent member keeps in a room.
      * @enum {string}
@@ -38904,6 +39104,134 @@ export interface components {
        * @example wsp_01933b5a00007000800000000000001
        */
       workspace_id: string;
+    } & {
+      /**
+       * @description State-aware hypermedia actions the caller can take on this resource
+       *     next (e.g. `cancel`, `events`, `update`). Omitted from the wire
+       *     shape when empty so resources that haven't opted into the
+       *     convention don't grow their payloads.
+       */
+      allowed_actions?: components["schemas"]["AllowedAction"][];
+      /** @description Full API endpoint URL for this resource. */
+      self_url: string;
+      /** @description Alias for `view_url`, used by command and MCP outputs. */
+      ui_link: string;
+      /** @description Full UI URL for viewing this resource. */
+      view_url: string;
+    };
+    /**
+     * @description Wrapper that adds API and UI links to a serialized resource.
+     *
+     *     Uses `self_url` (not `url`) for the API link to avoid collision with
+     *     resources that already have a `url` field (e.g. McpServer). The
+     *     `allowed_actions` array carries state-aware hypermedia links — empty
+     *     (and omitted from the wire shape) until the underlying resource opts
+     *     into the convention by overriding `ResourceUrlable::allowed_actions`.
+     */
+    WithUrls_SessionSchedule: {
+      budget?: components["schemas"]["ScheduleBudget"] | null;
+      /**
+       * Format: date-time
+       * @description Time the schedule was created.
+       * @example 2026-11-25T12:00:00Z
+       */
+      created_at: string;
+      /**
+       * @description Cron expression for recurring schedules (None for one-shot).
+       * @example *\/30 * * * *
+       */
+      cron_expression?: string | null;
+      /**
+       * Format: date-time
+       * @description When the schedule was deleted. The row stays so a session recording can
+       *     show it; a deleted schedule does not fire and is hidden from the agent.
+       */
+      deleted_at?: string | null;
+      /**
+       * @description What the agent should do when the schedule fires.
+       * @example Check whether the pull request is merged
+       */
+      description: string;
+      effective_owner?: components["schemas"]["PrincipalSummary"] | null;
+      /**
+       * @description Whether the schedule is active.
+       * @example true
+       */
+      enabled: boolean;
+      /**
+       * Format: date-time
+       * @description The schedule stops firing after this time.
+       * @example 2026-11-27T12:00:00Z
+       */
+      ends_at?: string | null;
+      /**
+       * @description Unique identifier (format: sched_{32-hex}).
+       * @example sched_01933b5a00007000800000000000001
+       */
+      id: string;
+      /**
+       * Format: date-time
+       * @description Last time this schedule fired.
+       */
+      last_triggered_at?: string | null;
+      /**
+       * Format: int32
+       * @description The schedule stops after this many fires.
+       * @example 96
+       */
+      max_runs?: number | null;
+      /**
+       * Format: date-time
+       * @description Next computed trigger time.
+       */
+      next_trigger_at?: string | null;
+      owner?: components["schemas"]["PrincipalSummary"] | null;
+      /**
+       * @description Owning principal for this schedule.
+       * @example principal_01933b5a000070008000000000000001
+       */
+      owner_principal_id: string;
+      /**
+       * Format: uuid
+       * @description Denormalized effective human owner of the owning principal lineage.
+       */
+      resolved_owner_user_id?: string | null;
+      /** @description Computed type based on cron_expression vs scheduled_at. */
+      schedule_type: components["schemas"]["ScheduleType"];
+      /**
+       * Format: date-time
+       * @description One-shot trigger time (None for recurring).
+       */
+      scheduled_at?: string | null;
+      /**
+       * @description Session this schedule belongs to.
+       * @example session_01933b5a00007000800000000000001
+       */
+      session_id: string;
+      /** @description Why the schedule stopped on its own (`ended`, `budget_exhausted`). */
+      stop_reason?: string | null;
+      /**
+       * @description When the work is done, in the agent's words.
+       * @example The pull request is merged or closed
+       */
+      stop_when?: string | null;
+      /**
+       * @description IANA timezone for cron interpretation.
+       * @example UTC
+       */
+      timezone: string;
+      /**
+       * Format: int32
+       * @description Total number of times this schedule has fired.
+       * @example 4
+       */
+      trigger_count: number;
+      /**
+       * Format: date-time
+       * @description Time the schedule's stored state was last changed.
+       * @example 2026-11-25T14:00:00Z
+       */
+      updated_at: string;
     } & {
       /**
        * @description State-aware hypermedia actions the caller can take on this resource
@@ -61483,6 +61811,75 @@ export interface operations {
         content?: never;
       };
       /** @description Session not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  list_session_schedules: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Session's prefixed public identifier */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description List of schedules */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["WithUrls_SessionSchedule"][];
+        };
+      };
+      /** @description Caller may not view this session */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  get_session_schedule: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Session's prefixed public identifier */
+        session_id: string;
+        /** @description Schedule's prefixed public identifier */
+        schedule_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Schedule details */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["WithUrls_SessionSchedule"];
+        };
+      };
+      /** @description Caller may not view this session */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Schedule not found */
       404: {
         headers: {
           [name: string]: unknown;

@@ -310,6 +310,8 @@ impl From<CostSummaryRow> for CostSummaryLine {
 pub struct CostSummary {
     /// Joint breakdown requested by group_by; at most 200 groups.
     pub breakdown: Vec<CostSummaryBreakdown>,
+    /// Whether additional joint groups were omitted after the first 200.
+    #[schema(example = false)]
     pub breakdown_truncated: bool,
     /// Window start (inclusive).
     pub from: DateTime<Utc>,
@@ -343,9 +345,17 @@ pub struct CostSummary {
 /// One joint cost group. Null dimensions mean attribution was not recorded.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct CostSummaryBreakdown {
+    /// Requested dimension keys mapped to their recorded attribution values.
+    #[schema(example = json!({"started_by": "unattended", "basis": "host"}))]
     pub dimensions: serde_json::Value,
+    /// Priced usage cost in USD within this group and the selected filters.
+    #[schema(example = 6.61)]
     pub cost_usd: f64,
+    /// Usage journal records in this group whose cost is unpriced.
+    #[schema(example = 1)]
     pub unpriced_records: i64,
+    /// Usage journal records in this group, after the selected filters.
+    #[schema(example = 20)]
     pub records: i64,
 }
 
