@@ -58,6 +58,55 @@ fn durable(mut event: DeliveryEvent, sequence: i64) -> DeliveryEvent {
     event
 }
 
+#[tokio::test]
+async fn aggregate_email_explicit_reply_survives_restart_before_turn_completion() {
+    let recorder = Arc::new(Recorder {
+        aggregate: true,
+        ..Default::default()
+    });
+    let (mut first, store) = checkpointed(&recorder).await;
+    first
+        .observe(&durable(sent("Prepared reply.", None), 1))
+        .await;
+    assert!(recorder.calls().is_empty());
+    let mut next = restart(&first, &recorder, &store).await;
+    next.observe(&durable(sent("Prepared reply.", None), 1))
+        .await;
+    next.observe(&durable(event(TURN_COMPLETED, json!({})), 2))
+        .await;
+    assert_eq!(recorder.calls(), [Call::Post("Prepared reply.".into())]);
+}
+
+#[tokio::test]
+async fn aggregate_email_no_reply_survives_restart() {
+    let recorder = Arc::new(Recorder {
+        aggregate: true,
+        ..Default::default()
+    });
+    let (mut first, store) = checkpointed(&recorder).await;
+    first
+        .observe(&durable(completed("draft", "Do not send this draft"), 1))
+        .await;
+    first
+        .observe(&durable(
+            event(
+                TOOL_COMPLETED,
+                json!({"tool_name":"no_reply","success":true}),
+            ),
+            2,
+        ))
+        .await;
+    let mut next = restart(&first, &recorder, &store).await;
+    next.observe(&durable(
+        completed("after-silence", "A final internal note"),
+        3,
+    ))
+    .await;
+    next.observe(&durable(event(TURN_COMPLETED, json!({})), 4))
+        .await;
+    assert!(recorder.calls().is_empty());
+}
+
 struct LegacyOpenError(Arc<Recorder>);
 
 #[async_trait::async_trait]

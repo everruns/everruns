@@ -593,7 +593,7 @@ everruns agents channels create [OPTIONS] --agent-id <agent_id> --channel-type <
 |---|---|
 | `--agent-id <AGENT_ID>` | Required. Agent's prefixed public identifier, or its name. |
 | `--channel-config <CHANNEL_CONFIG>` | Transport-specific channel configuration. |
-| `--channel-type <CHANNEL_TYPE>` | Required. Supported channel types for app distribution. One of `slack`, `ag_ui`, `schedule`, `webhook`, `a2a`, `fcp`, `public_chat`, `voice`, `api`, `poppy`, `work_chat`. |
+| `--channel-type <CHANNEL_TYPE>` | Required. Supported channel types for app distribution. One of `email`, `slack`, `ag_ui`, `schedule`, `webhook`, `a2a`, `fcp`, `public_chat`, `voice`, `api`, `poppy`, `work_chat`. |
 | `--enabled` | Whether the channel can accept ingress traffic. |
 
 Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.

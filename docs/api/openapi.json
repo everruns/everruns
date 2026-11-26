@@ -5246,6 +5246,54 @@
         "x-superseded-by": "exchange"
       }
     },
+    "/v1/email/inboxes/{inbox}/webhook": {
+      "post": {
+        "tags": [
+          "email"
+        ],
+        "summary": "Email webhook",
+        "operationId": "email_webhook",
+        "parameters": [
+          {
+            "name": "inbox",
+            "in": "path",
+            "description": "Scoped resource identifier",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "string"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Receipt durably persisted or already known"
+          },
+          "401": {
+            "description": "Invalid webhook signature"
+          },
+          "503": {
+            "description": "Intake capacity unavailable; retry delivery"
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Self-hosted Platform; automatic processing requires data plane v2 and a configured decision service",
+          "group": "models-integrations",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/platform/agent-examples": {
       "get": {
         "tags": [
@@ -15199,6 +15247,625 @@
         }
       }
     },
+    "/v1/platform/email/inboxes": {
+      "get": {
+        "tags": [
+          "email"
+        ],
+        "summary": "Email list inboxes",
+        "operationId": "email_list_inboxes",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Organization administrator required"
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Self-hosted Platform; automatic processing requires data plane v2 and a configured decision service",
+          "group": "models-integrations",
+          "support": "preview"
+        }
+      },
+      "post": {
+        "tags": [
+          "email"
+        ],
+        "summary": "Email create inbox",
+        "operationId": "email_create_inbox",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Organization administrator required"
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Self-hosted Platform; automatic processing requires data plane v2 and a configured decision service",
+          "group": "models-integrations",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/platform/email/inboxes/{inbox}": {
+      "patch": {
+        "tags": [
+          "email"
+        ],
+        "summary": "Email update inbox",
+        "operationId": "email_update_inbox",
+        "parameters": [
+          {
+            "name": "inbox",
+            "in": "path",
+            "description": "Scoped resource identifier",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Organization administrator required"
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Self-hosted Platform; automatic processing requires data plane v2 and a configured decision service",
+          "group": "models-integrations",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/platform/email/inboxes/{inbox}/batches/claim": {
+      "post": {
+        "tags": [
+          "email"
+        ],
+        "summary": "Email claim",
+        "operationId": "email_claim",
+        "parameters": [
+          {
+            "name": "inbox",
+            "in": "path",
+            "description": "Scoped resource identifier",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Organization administrator required"
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Self-hosted Platform; automatic processing requires data plane v2 and a configured decision service",
+          "group": "models-integrations",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/platform/email/inboxes/{inbox}/batches/{lease}/dispositions": {
+      "post": {
+        "tags": [
+          "email"
+        ],
+        "summary": "Email dispose",
+        "operationId": "email_dispose",
+        "parameters": [
+          {
+            "name": "inbox",
+            "in": "path",
+            "description": "Scoped resource identifier",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "lease",
+            "in": "path",
+            "description": "Scoped resource identifier",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Organization administrator required"
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Self-hosted Platform; automatic processing requires data plane v2 and a configured decision service",
+          "group": "models-integrations",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/platform/email/inboxes/{inbox}/messages": {
+      "get": {
+        "tags": [
+          "email"
+        ],
+        "summary": "Email list messages",
+        "operationId": "email_list_messages",
+        "parameters": [
+          {
+            "name": "inbox",
+            "in": "path",
+            "description": "Scoped resource identifier",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "description": "Exclusive message cursor",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Organization administrator required"
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Self-hosted Platform; automatic processing requires data plane v2 and a configured decision service",
+          "group": "models-integrations",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/platform/email/inboxes/{inbox}/messages/{message}": {
+      "get": {
+        "tags": [
+          "email"
+        ],
+        "summary": "Email read message",
+        "operationId": "email_read_message",
+        "parameters": [
+          {
+            "name": "inbox",
+            "in": "path",
+            "description": "Scoped resource identifier",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "message",
+            "in": "path",
+            "description": "Scoped resource identifier",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "view",
+            "in": "query",
+            "description": "preview, clean or full",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "UTF-8 byte offset",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Organization administrator required"
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Self-hosted Platform; automatic processing requires data plane v2 and a configured decision service",
+          "group": "models-integrations",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/platform/email/inboxes/{inbox}/messages/{message}/approve": {
+      "post": {
+        "tags": [
+          "email"
+        ],
+        "summary": "Email approve execution",
+        "operationId": "email_approve_execution",
+        "parameters": [
+          {
+            "name": "inbox",
+            "in": "path",
+            "description": "Scoped resource identifier",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "message",
+            "in": "path",
+            "description": "Scoped resource identifier",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Agent execution approved; sending requires separate approval"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Organization administrator required"
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Self-hosted Platform; automatic processing requires data plane v2 and a configured decision service",
+          "group": "models-integrations",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/platform/email/inboxes/{inbox}/messages/{message}/dismiss": {
+      "post": {
+        "tags": [
+          "email"
+        ],
+        "summary": "Email dismiss message",
+        "operationId": "email_dismiss_message",
+        "parameters": [
+          {
+            "name": "inbox",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "message",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Message dismissed"
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Self-hosted Platform; automatic processing requires data plane v2 and a configured decision service",
+          "group": "models-integrations",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/platform/email/inboxes/{inbox}/outbox": {
+      "get": {
+        "tags": [
+          "email"
+        ],
+        "summary": "Email list outbox",
+        "operationId": "email_list_outbox",
+        "parameters": [
+          {
+            "name": "inbox",
+            "in": "path",
+            "description": "Scoped resource identifier",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Organization administrator required"
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Self-hosted Platform; automatic processing requires data plane v2 and a configured decision service",
+          "group": "models-integrations",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/platform/email/inboxes/{inbox}/outbox/{id}/approve": {
+      "post": {
+        "tags": [
+          "email"
+        ],
+        "summary": "Email approve reply",
+        "operationId": "email_approve_reply",
+        "parameters": [
+          {
+            "name": "inbox",
+            "in": "path",
+            "description": "Scoped resource identifier",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Scoped resource identifier",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Organization administrator required"
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Self-hosted Platform; automatic processing requires data plane v2 and a configured decision service",
+          "group": "models-integrations",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/platform/email/inboxes/{inbox}/outbox/{id}/reject": {
+      "post": {
+        "tags": [
+          "email"
+        ],
+        "summary": "Email reject reply",
+        "operationId": "email_reject_reply",
+        "parameters": [
+          {
+            "name": "inbox",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Reply rejected"
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Self-hosted Platform; automatic processing requires data plane v2 and a configured decision service",
+          "group": "models-integrations",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/platform/email/templates": {
+      "get": {
+        "tags": [
+          "email"
+        ],
+        "summary": "Email list templates",
+        "operationId": "email_list_templates",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Organization administrator required"
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Self-hosted Platform; automatic processing requires data plane v2 and a configured decision service",
+          "group": "models-integrations",
+          "support": "preview"
+        }
+      },
+      "post": {
+        "tags": [
+          "email"
+        ],
+        "summary": "Email create template",
+        "operationId": "email_create_template",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Organization administrator required"
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Self-hosted Platform; automatic processing requires data plane v2 and a configured decision service",
+          "group": "models-integrations",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/platform/email/templates/preview": {
+      "post": {
+        "tags": [
+          "email"
+        ],
+        "summary": "Email preview template",
+        "operationId": "email_preview_template",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Organization administrator required"
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Self-hosted Platform; automatic processing requires data plane v2 and a configured decision service",
+          "group": "models-integrations",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/platform/eval-proposals/{proposal_id}/accept": {
       "post": {
         "tags": [
@@ -24627,7 +25294,7 @@
           "sandbox-templates"
         ],
         "summary": "List connections",
-        "description": "List non-secret metadata for organization-owned provider accounts: sandbox provider accounts and web search accounts.",
+        "description": "List non-secret metadata for organization-owned provider accounts: sandbox provider accounts, web search accounts and email inbox accounts.",
         "operationId": "list_connections",
         "responses": {
           "200": {
@@ -24657,7 +25324,7 @@
           "sandbox-templates"
         ],
         "summary": "Create connection",
-        "description": "Create and validate an encrypted organization-owned account for a connector that declares sandbox_provisioning or web_search.",
+        "description": "Create and validate an encrypted organization-owned account for a connector that declares sandbox_provisioning, web_search or email_inbox.",
         "operationId": "create_connection",
         "parameters": [
           {
@@ -43965,6 +44632,7 @@
         "type": "string",
         "description": "Supported channel types for app distribution.",
         "enum": [
+          "email",
           "slack",
           "ag_ui",
           "schedule",
@@ -78874,6 +79542,7 @@
           "playground",
           "api",
           "slack",
+          "email",
           "ag_ui",
           "fcp",
           "schedule",
@@ -91546,6 +92215,11 @@
       "x-displayName": "Web search"
     },
     {
+      "name": "email",
+      "description": "Organization email inboxes, progressive message reads, templates and reviewed replies",
+      "x-displayName": "Email"
+    },
+    {
       "name": "plugins",
       "x-displayName": "Plugins"
     },
@@ -91703,6 +92377,7 @@
         "mcp-servers",
         "mcp_servers",
         "web-search",
+        "email",
         "plugins"
       ],
       "x-description": "Connect model providers, discover models and configure MCP servers, search providers and plugins.",

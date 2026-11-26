@@ -84,6 +84,14 @@ impl ServerChannelResolver {
         let mut delivery = DeliveryOptions::default();
         let mut slack = None;
         let kind = match scope.channel.channel_type {
+            ChannelType::Email => {
+                delivery.stream = false;
+                delivery.agent_surface = false;
+                // Email From is display/routing data, not a verified runtime
+                // identity. Sender isolation is in the conversation key; do
+                // not enroll a mailbox through Slack's participant join path.
+                Kind::Email
+            }
             ChannelType::Webhook => {
                 let webhook = scope.channel.webhook_config()?;
                 binding = webhook.session_mode;
@@ -129,6 +137,17 @@ impl ServerChannelResolver {
             scope: ChannelScope::new(scope.clone()),
         };
         Some(match kind {
+            Kind::Email => {
+                let email = serde_json::from_value(scope.channel.channel_config.clone()).ok()?;
+                ResolvedChannel::messaging(
+                    config,
+                    Arc::new(crate::channels::email::driver::EmailDriver {
+                        db: self.db.clone(),
+                        scope,
+                        config: email,
+                    }),
+                )
+            }
             Kind::Webhook(message) => {
                 ResolvedChannel::messaging(config, Arc::new(WebhookDriver::new(scope, message)))
             }
@@ -147,6 +166,7 @@ impl ServerChannelResolver {
 }
 
 enum Kind {
+    Email,
     Webhook(String),
     Streaming(&'static str),
     Slack,

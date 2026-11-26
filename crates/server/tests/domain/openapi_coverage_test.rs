@@ -323,6 +323,8 @@ fn platform_namespace_preserves_agent_execution_addresses() {
     for path in spec.paths.paths.keys() {
         assert!(
             path.starts_with("/v1/platform/")
+                // Provider callbacks target durable inbox intake before agent binding.
+                || path == "/v1/email/inboxes/{inbox}/webhook"
                 || [
                     "/v1/channels/",
                     "/v1/e/",
@@ -362,6 +364,7 @@ fn platform_namespace_preserves_agent_execution_addresses() {
         "/v1/channels/{channel_id}/sessions",
         "/v1/channels/{channel_id}/sessions/{session_id}/sse",
         "/v1/channels/{channel_id}/a2a",
+        "/v1/email/inboxes/{inbox}/webhook",
         "/v1/avatars/{avatar_id}/{variant}",
     ] {
         assert!(

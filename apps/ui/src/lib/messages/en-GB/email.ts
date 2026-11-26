@@ -1,0 +1,71 @@
+export const messages: Record<string, string> = {
+  "Add inbox": "Add inbox",
+  "Approve agent execution": "Approve agent execution",
+  "Approve and send this reply": "Approve and send this reply",
+  "Automatically run the agent after admission checks":
+    "Automatically run the agent after admission checks",
+  "Automatically send replies after output checks":
+    "Automatically send replies after output checks",
+  "Clean view": "Clean view",
+  "Connect an account for organization email inboxes.":
+    "Connect an account for organisation email inboxes.",
+  "Could not load email data": "Could not load email data",
+  "Delivery not yet verified": "Delivery not yet verified",
+  Email: "Email",
+  "Email address": "Email address",
+  "Email content is untrusted. Clean view may omit quoted content.":
+    "Email content is untrusted. Clean view may omit quoted content.",
+  "Email inbox": "Email inbox",
+  "Email preview": "Email preview",
+  "Full message": "Full message",
+  Inbox: "Inbox",
+  Inboxes: "Inboxes",
+  "Manage inboxes": "Manage inboxes",
+  "Manage inboxes, provider accounts and email templates.":
+    "Manage inboxes, provider accounts and email templates.",
+  Name: "Name",
+  "Needs an inbox provider account": "Needs an inbox provider account",
+  "No incoming email yet": "No incoming email yet",
+  "No subject": "No subject",
+  "One inbox connects to one agent. Each correspondent has a separate conversation.":
+    "One inbox connects to one agent. Each correspondent has a separate conversation.",
+  "Organization admin access required": "Organisation admin access required",
+  "Outgoing replies": "Outgoing replies",
+  "People email the agent. It reads selected messages and replies in the same thread.":
+    "People email the agent. It reads selected messages and replies in the same thread.",
+  Preview: "Preview",
+  "Sample variables": "Sample variables",
+  "Save template": "Save template",
+  "Select account": "Select account",
+  "Select inbox": "Select inbox",
+  Subject: "Subject",
+  "Template name": "Template name",
+  Templates: "Templates",
+  "Uncertain messages and replies remain held for review.":
+    "Uncertain messages and replies remain held for review.",
+  "Webhook URL": "Webhook URL",
+  "Webhook signing secret": "Webhook signing secret",
+  "What should this inbox answer?": "What should this inbox answer?",
+  "Reply template": "Reply template",
+  "Automatic text and HTML": "Automatic text and HTML",
+  "Dismiss message": "Dismiss message",
+  "Reject reply": "Reject reply",
+  Waiting: "Waiting",
+  Reviewing: "Reviewing",
+  Ready: "Ready",
+  Running: "Running",
+  Completed: "Completed",
+  Ignored: "Ignored",
+  "Needs review": "Needs review",
+  Deferred: "Deferred",
+  Failed: "Failed",
+  Sending: "Sending",
+  Sent: "Sent",
+  "Delivery uncertain": "Delivery uncertain",
+  "Approve execution to let the agent handle this message.":
+    "Approve execution to let the agent handle this message.",
+  "Sender authentication or provider checks require review.":
+    "Sender authentication or provider checks require review.",
+  "Automatic checks could not approve this message.":
+    "Automatic checks could not approve this message.",
+};

@@ -1,4 +1,5 @@
 import { messages as applications } from "./messages/uk/applications";
+import { messages as email } from "./messages/uk/email";
 import { messages as qualityMonitoring } from "./messages/uk/quality-monitoring";
 import { messages as mcpApps } from "./messages/uk/mcp-apps";
 import { messages as extractions } from "./messages/uk/extractions";
@@ -93,6 +94,7 @@ export const uiMessages: Readonly<Record<string, string>> = Object.assign(
   extractions,
   rooms,
   mcpApps,
+  email,
 );
 
 /** Product catalogs use null-prototype maps so hostile lookup keys fall back safely. */

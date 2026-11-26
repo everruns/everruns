@@ -1279,7 +1279,7 @@ pub(crate) async fn execute_act_activity_with_steering<A: RuntimeHostAdapter>(
         });
     }
 
-    let execution_capabilities = load_execution_capabilities(
+    let mut execution_capabilities = load_execution_capabilities(
         adapter,
         org_id,
         input.context.session_id,
@@ -1289,6 +1289,29 @@ pub(crate) async fn execute_act_activity_with_steering<A: RuntimeHostAdapter>(
         input.blueprint_id.as_deref(),
     )
     .await?;
+    // This is runtime authority, independent of discovery and injected hook
+    // availability. Check the persisted session even for blueprint execution.
+    let session = adapter
+        .session_store(org_id)
+        .get_session(input.context.session_id)
+        .await?
+        .ok_or_else(|| {
+            everruns_contracts::error::AgentLoopError::session_not_found(input.context.session_id)
+        })?;
+    if session
+        .tags
+        .iter()
+        .any(|tag| tag == "app_channel_type:email")
+        || session
+            .capabilities
+            .iter()
+            .chain(execution_capabilities.resolved_capabilities.iter())
+            .any(|c| c.capability_id() == "injected:email")
+    {
+        execution_capabilities
+            .pre_tool_hooks
+            .push(Arc::new(email_policy::EmailReplyPolicy));
+    }
     let mut tool_registry = execution_capabilities.tool_registry;
 
     if let Some(augmentor) = adapter.tool_augmentor() {
@@ -1366,6 +1389,8 @@ pub(crate) async fn execute_act_activity_with_steering<A: RuntimeHostAdapter>(
     atom.execute(input).await
 }
 
+#[path = "host/email_policy.rs"]
+mod email_policy;
 #[path = "host/execution_capabilities.rs"]
 mod execution_capabilities;
 use execution_capabilities::load_execution_capabilities;

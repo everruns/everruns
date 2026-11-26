@@ -96,7 +96,11 @@ pub(super) fn outcome(id: MessageId, reply: &Value) -> SendOutcome {
 }
 
 impl DpSession {
-    pub(super) async fn send(&self, message: &InputMessage) -> Result<SendOutcome, ChannelError> {
+    pub(super) async fn send(
+        &self,
+        message: &InputMessage,
+        stable_id: Option<uuid::Uuid>,
+    ) -> Result<SendOutcome, ChannelError> {
         crate::domains::data_plane::attachments::stage(
             &self.db,
             self.plane.as_ref(),
@@ -107,7 +111,7 @@ impl DpSession {
         )
         .await
         .map_err(|error| other(error.context("the attachments were not copied to the session")))?;
-        let id = MessageId::new();
+        let id = stable_id.map(MessageId::from_uuid).unwrap_or_default();
         let reply = self
             .plane
             .session_command(

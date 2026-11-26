@@ -337,3 +337,10 @@ ledger and replaying the turn is not reconciliation. Rollback must use a build t
 understands and enforces the ledger, or drain/fence deliveries before switching implementations;
 an older binary must not resume these pending rows. This output contract does not
 close the existing inbound ACK-before-background-acceptance crash window.
+
+## Email
+
+[Email inbox channels](email.md) reuse the channel host with aggregate terminal
+output, durable intake replay and an idempotent immutable outbox handoff. Email
+identity and conversation history remain separate from the same agent’s Slack
+channel.

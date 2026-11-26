@@ -1,0 +1,71 @@
+export const messages: Record<string, string> = {
+  "Add inbox": "Añadir buzón",
+  "Approve agent execution": "Autorizar la ejecución del agente",
+  "Approve and send this reply": "Aprobar y enviar esta respuesta",
+  "Automatically run the agent after admission checks":
+    "Ejecutar el agente automáticamente tras las comprobaciones de admisión",
+  "Automatically send replies after output checks":
+    "Enviar respuestas automáticamente tras las comprobaciones de salida",
+  "Clean view": "Vista limpia",
+  "Connect an account for organization email inboxes.":
+    "Conecta una cuenta para los buzones de la organización.",
+  "Could not load email data": "No se pudieron cargar los datos del correo",
+  "Delivery not yet verified": "Entrega aún no verificada",
+  Email: "Correo electrónico",
+  "Email address": "Dirección de correo",
+  "Email content is untrusted. Clean view may omit quoted content.":
+    "El contenido del correo no es de confianza. La vista limpia puede omitir citas.",
+  "Email inbox": "Buzón de correo",
+  "Email preview": "Vista previa del correo",
+  "Full message": "Mensaje completo",
+  Inbox: "Buzón",
+  Inboxes: "Buzones",
+  "Manage inboxes": "Gestionar buzones",
+  "Manage inboxes, provider accounts and email templates.":
+    "Gestiona buzones, cuentas de proveedores y plantillas de correo.",
+  Name: "Nombre",
+  "Needs an inbox provider account": "Requiere una cuenta de proveedor de correo",
+  "No incoming email yet": "Todavía no hay correo entrante",
+  "No subject": "Sin asunto",
+  "One inbox connects to one agent. Each correspondent has a separate conversation.":
+    "Un buzón se conecta a un agente. Cada remitente tiene una conversación separada.",
+  "Organization admin access required": "Se requiere acceso de administrador de la organización",
+  "Outgoing replies": "Respuestas salientes",
+  "People email the agent. It reads selected messages and replies in the same thread.":
+    "Las personas escriben al agente por correo. Lee los mensajes seleccionados y responde en el mismo hilo.",
+  Preview: "Vista previa",
+  "Sample variables": "Variables de ejemplo",
+  "Save template": "Guardar plantilla",
+  "Select account": "Seleccionar cuenta",
+  "Select inbox": "Seleccionar buzón",
+  Subject: "Asunto",
+  "Template name": "Nombre de plantilla",
+  Templates: "Plantillas",
+  "Uncertain messages and replies remain held for review.":
+    "Los mensajes y respuestas dudosos quedan retenidos para revisión.",
+  "Webhook URL": "URL del webhook",
+  "Webhook signing secret": "Secreto de firma del webhook",
+  "What should this inbox answer?": "¿Qué debe responder este buzón?",
+  "Reply template": "Plantilla de respuesta",
+  "Automatic text and HTML": "Texto y HTML automáticos",
+  "Dismiss message": "Descartar mensaje",
+  "Reject reply": "Rechazar respuesta",
+  Waiting: "En espera",
+  Reviewing: "En revisión",
+  Ready: "Listo",
+  Running: "En curso",
+  Completed: "Completado",
+  Ignored: "Ignorado",
+  "Needs review": "Requiere revisión",
+  Deferred: "Aplazado",
+  Failed: "Fallido",
+  Sending: "Enviando",
+  Sent: "Enviado",
+  "Delivery uncertain": "Entrega incierta",
+  "Approve execution to let the agent handle this message.":
+    "Aprueba la ejecución para que el agente atienda este mensaje.",
+  "Sender authentication or provider checks require review.":
+    "La autenticación del remitente o los controles del proveedor requieren revisión.",
+  "Automatic checks could not approve this message.":
+    "Los controles automáticos no pudieron aprobar este mensaje.",
+};

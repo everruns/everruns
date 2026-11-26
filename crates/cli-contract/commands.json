@@ -211,6 +211,7 @@
         "required": true,
         "help": "Supported channel types for app distribution.",
         "choices": [
+          "email",
           "slack",
           "ag_ui",
           "schedule",

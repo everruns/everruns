@@ -1,4 +1,5 @@
 import {
+  Mail,
   AppWindow,
   CalendarClock,
   Code,
@@ -14,6 +15,7 @@ import { SlackIcon } from "@/components/icons/slack-icon";
 import type { ChannelType } from "@/lib/api/types";
 
 const icons = {
+  email: Mail,
   slack: SlackIcon,
   schedule: CalendarClock,
   webhook: Webhook,

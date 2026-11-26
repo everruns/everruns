@@ -114,7 +114,7 @@ fn redact_channel_config(channel_type: &ChannelType, config: &mut Value) {
                 }
             }
         }
-        ChannelType::Schedule | ChannelType::Voice | ChannelType::Poppy => {}
+        ChannelType::Email | ChannelType::Schedule | ChannelType::Voice | ChannelType::Poppy => {}
     }
 }
 

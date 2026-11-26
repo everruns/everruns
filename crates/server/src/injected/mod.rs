@@ -84,7 +84,12 @@ impl InjectedCapabilities {
     /// The public URL of one capability's MCP endpoint, which is also the
     /// audience its session tokens carry.
     pub fn url_for(base_url: &str, name: &str) -> String {
-        format!("{}/injected/{name}/mcp", base_url.trim_end_matches('/'))
+        // Deployment/auth configuration names the API root (`.../api`),
+        // while Channels mounts these endpoints under `/v1`. Accept an
+        // explicitly versioned root too, without doubling the version.
+        let base_url = base_url.trim_end_matches('/');
+        let version = if base_url.ends_with("/v1") { "" } else { "/v1" };
+        format!("{base_url}{version}/injected/{name}/mcp")
     }
 
     pub fn base_url(&self) -> &str {
@@ -205,6 +210,10 @@ pub fn from_env(db: Arc<crate::storage::StorageBackend>, base_url: &str) -> Inje
     let calls = capabilities.calls();
     capabilities
         .register(Arc::new(knowledge))
+        .register(Arc::new(crate::channels::email::tools::EmailTools::new(
+            db.clone(),
+            base_url,
+        )))
         .register(Arc::new(hosted::poppy::service(
             base_url,
             configs.clone(),
