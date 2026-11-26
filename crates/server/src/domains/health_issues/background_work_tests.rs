@@ -1,7 +1,7 @@
 use super::background_work::*;
 use crate::domains::session_schedules::{ScheduleChange, SessionScheduleService};
 use crate::storage::{CreateSessionScheduleRow, SessionScheduleRow, StorageBackend};
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use everruns_contracts::typed_id::{PrincipalId, SessionId};
 use everruns_core::DEFAULT_ORG_ID;
 use everruns_core::session_schedule::stop_reason;
@@ -342,6 +342,12 @@ async fn spend_alert_explains_same_window_and_dismissal_waits_for_a_new_spike() 
     let evidence = row.evidence.as_ref().unwrap();
     assert_eq!(evidence["last_day_usd"], 14.0);
     assert_eq!(evidence["baseline_daily_usd"], 1.0);
+    assert_eq!(evidence["evaluation"]["to"], evidence["window_end"]);
+    let window_end: DateTime<Utc> = serde_json::from_value(evidence["window_end"].clone()).unwrap();
+    assert_eq!(
+        evidence["evaluation"]["from"],
+        serde_json::json!(window_end - chrono::Duration::days(1))
+    );
     let sessions = evidence["top_sessions"].as_array().unwrap();
     assert_eq!(sessions.len(), 5);
     assert_eq!(
