@@ -2266,7 +2266,7 @@ jobs:
       valkey:
         image: mirror.gcr.io/valkey/valkey:8-alpine
         ports:
-        - 43379:6379
+        - 29379:6379
     env:
       SESSIONS: '60'
       CHAOS_FLAG: ''
@@ -2326,7 +2326,9 @@ jobs:
         psql --version
     - name: Run chaos harness
       run: |
+        # Keep listeners below Ubuntu's outbound ephemeral port range.
         python3 scripts/chaos/run.py \
+          --port-prefix 293 \
           --server-bin ./bin/everruns-server \
           --worker-bin ./bin/everruns-worker \
           --database-url "$DATABASE_URL" \
