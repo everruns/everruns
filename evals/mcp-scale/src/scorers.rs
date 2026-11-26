@@ -17,7 +17,13 @@ pub fn state_verified() -> Box<dyn Scorer> {
                 .get("task")
                 .and_then(Value::as_str)
                 .unwrap_or_default();
-            let completed = completed_calls(&transcript.events);
+            let completed = completed_calls(
+                &transcript.events,
+                transcript
+                    .metadata
+                    .get("fixture_state_snapshots")
+                    .unwrap_or(&Value::Null),
+            );
             let ok = match task {
                 "ticket_read" | "readonly_ticket" => completed.iter().any(|(name, _, result)| {
                     name.ends_with("__get_ticket")
@@ -149,7 +155,13 @@ pub fn tool_evidence() -> Box<dyn Scorer> {
     scorer(
         "tool_evidence",
         |_sample: &Sample, transcript: &Transcript| {
-            let calls = completed_calls(&transcript.events);
+            let calls = completed_calls(
+                &transcript.events,
+                transcript
+                    .metadata
+                    .get("fixture_state_snapshots")
+                    .unwrap_or(&Value::Null),
+            );
             let mcp = calls
                 .iter()
                 .filter(|(name, _, _)| name.starts_with("mcp_"))
@@ -192,7 +204,7 @@ fn ranking_answered(response: &str, top: &[(String, usize)]) -> bool {
     true
 }
 
-fn completed_calls(events: &[Value]) -> Vec<(String, String, String)> {
+fn completed_calls(events: &[Value], snapshots: &Value) -> Vec<(String, String, String)> {
     let args_by_id: std::collections::HashMap<String, String> = events
         .iter()
         .filter(|event| event["type"] == "tool.started")
@@ -200,22 +212,6 @@ fn completed_calls(events: &[Value]) -> Vec<(String, String, String)> {
             Some((
                 event.pointer("/data/tool_call/id")?.as_str()?.to_string(),
                 event.pointer("/data/tool_call/arguments")?.to_string(),
-            ))
-        })
-        .collect();
-    let shell_results: std::collections::HashMap<String, String> = events
-        .iter()
-        .filter(|event| {
-            event["type"] == "tool.completed"
-                && event.pointer("/data/tool_name").and_then(Value::as_str) == Some("bash")
-        })
-        .filter_map(|event| {
-            Some((
-                event.pointer("/data/tool_call_id")?.as_str()?.to_string(),
-                event
-                    .pointer("/data/result")
-                    .map(result_text)
-                    .unwrap_or_default(),
             ))
         })
         .collect();
@@ -227,7 +223,7 @@ fn completed_calls(events: &[Value]) -> Vec<(String, String, String)> {
                 let Some(name) = data["tool_name"].as_str() else {
                     continue;
                 };
-                if name == "bash" {
+                if matches!(name, "bash" | "python") {
                     continue;
                 }
                 let args = data["tool_call_id"]
@@ -250,17 +246,28 @@ fn completed_calls(events: &[Value]) -> Vec<(String, String, String)> {
                     .as_str()
                     .unwrap_or_default()
                     .to_string();
-                let result = data["parent_tool_call_id"]
-                    .as_str()
-                    .and_then(|id| shell_results.get(id))
-                    .cloned()
-                    .unwrap_or_default();
+                // A program may discard, print, transform or fabricate its final
+                // value. Join the nested event to the fixture's own call journal;
+                // wrapper stdout is not evidence of the operation's result.
+                let result = fixture_result(snapshots, name, &args).unwrap_or_default();
                 calls.push((name.to_owned(), args, result));
             }
             _ => {}
         }
     }
     calls
+}
+
+fn fixture_result(snapshots: &Value, name: &str, arguments: &str) -> Option<String> {
+    let arguments: Value = serde_json::from_str(arguments).ok()?;
+    snapshots.as_array()?.iter().find_map(|snapshot| {
+        let server = snapshot["server_id"].as_str()?;
+        snapshot["calls"].as_array()?.iter().find_map(|call| {
+            let operation = call["tool"].as_str()?;
+            (name == format!("mcp_{server}__{operation}") && call["arguments"] == arguments)
+                .then(|| result_text(&call["result"]))
+        })
+    })
 }
 
 fn result_text(value: &Value) -> String {
@@ -399,6 +406,33 @@ mod tests {
             "1. Storage: 8\n2. Search: 6\n3. Checkout: 3",
             &top
         ));
+    }
+
+    #[tokio::test]
+    async fn nested_read_uses_fixture_result_not_program_output() {
+        let mut sample = Sample::new("readonly-ticket", "read only");
+        sample
+            .metadata
+            .insert("task".into(), json!("readonly_ticket"));
+        let mut t = Transcript::default();
+        t.events.push(json!({"type":"tool.nested_call","data":{"status":"completed","tool_name":"mcp_telemetry__get_ticket","input_preview":"{\"ticket_id\":\"OPS-8421\"}","parent_tool_call_id":"p"}}));
+        t.events.push(json!({"type":"tool.completed","data":{"tool_name":"python","tool_call_id":"p","result":"OPS-8421 Ava Li in_progress"}}));
+        assert!(
+            !state_verified().score(&sample, &t).await.pass,
+            "program claims are insufficient"
+        );
+        t.metadata.insert("fixture_state_snapshots".into(), json!([{"server_id":"telemetry","calls":[{"tool":"get_ticket","arguments":{"ticket_id":"OPS-8421"},"result":{"ticket_id":"OPS-8421","owner":"Ava Li","status":"in_progress"}}]}]));
+        t.events[1]["data"]["result"] = json!(null);
+        assert!(
+            state_verified().score(&sample, &t).await.pass,
+            "discarded program output does not discard actual fixture evidence"
+        );
+        t.metadata.get_mut("fixture_state_snapshots").unwrap()[0]["calls"][0]["arguments"]["ticket_id"] =
+            json!("wrong-ticket");
+        assert!(
+            !state_verified().score(&sample, &t).await.pass,
+            "unrelated fixture calls cannot prove this read"
+        );
     }
 
     #[tokio::test]

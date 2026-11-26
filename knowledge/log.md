@@ -5,6 +5,9 @@
 - [MCP Events](integrations/mcp-events.md): final SEP-3415 discovery, routing, errors, delivery-local 410, independent message IDs, cached callback consent, omitted-cursor parity, and isolated conformance evidence.
 - Added the Applications publication, audience, resource ownership, browser and Kubernetes contracts.
 - Removed the retired App aggregate and its compatibility routes. Agent exposure and channel invocation now document structural attribution, stable channel identities, and the coordinated schema cutover.
+- [Python Code Mode](execution/python-code-mode.md): shared native/Bashkit/Monty eval arms, real approval-pause scoring, replay and fallback checks, and separately scoped hosted boundary evidence.
+
+- [Python Code Mode](execution/python-code-mode.md): optional Monty execution on Framework, Server and agentd; private snapshots and nested-effect records, kernel restrictions, public selection guidance and runtime qualification.
 
 - [Markdown Messages Rendering](ui/markdown-messages.md): Pele renders Mermaid diagrams across the shared UI renderer and Markdown file previews.
 

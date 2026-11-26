@@ -6,6 +6,10 @@ on:
     paths:
       - 'evals/shell-code-mode/**'
       - 'evals/common/**'
+      - 'crates/everruns/**'
+      - 'crates/core/**'
+      - 'crates/integrations/**'
+      - 'crates/contracts/**'
       - 'evals/platform-capability/src/friction.rs'
       - '.github/workflows/shell-code-mode-evals.yml'
   push:
@@ -13,6 +17,10 @@ on:
     paths:
       - 'evals/shell-code-mode/**'
       - 'evals/common/**'
+      - 'crates/everruns/**'
+      - 'crates/core/**'
+      - 'crates/integrations/**'
+      - 'crates/contracts/**'
       - 'evals/platform-capability/src/friction.rs'
       - '.github/workflows/shell-code-mode-evals.yml'
 
@@ -55,3 +63,6 @@ jobs:
       # No provider credentials: simulation proves runtime plumbing, not model quality.
       - name: Run deterministic tests and offline tool smoke
         run: cargo test --locked
+
+      - name: Check hosted evidence grading
+        run: python3 -m unittest test_hosted_smoke.py

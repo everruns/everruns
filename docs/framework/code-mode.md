@@ -141,3 +141,10 @@ binary, started again with `--mcp-server`, so nothing outside the repository is
 needed. After the turn the example checks that no MCP tool reached the model's
 tool list, that the model called none directly, that the calls ran inside
 scripts, and that the answer is right. A failed check exits nonzero.
+
+## Other execution interfaces
+
+This page describes shell code mode. [Python Code Mode](/framework/python-code-mode/)
+uses Monty for direct Python orchestration and saved approval continuations.
+Bashkit already includes Python; compare the execution contracts in
+[choosing an execution option](/framework/execution-options/).

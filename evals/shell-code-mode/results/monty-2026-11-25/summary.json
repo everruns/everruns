@@ -1,0 +1,5364 @@
+{
+  "date": "2026-11-25 America/Chicago",
+  "collected_at_utc": "2026-11-26T00:51:42.237892+00:00",
+  "base_commit": "012d8aa3b09c8f16aed7bd53510c539cf4433ce4",
+  "working_tree": "uncommitted implementation; source hashes captured after validation, not a clean release",
+  "models": {
+    "framework_and_mcp": "openrouter/openai/gpt-6.2-sol",
+    "hosted": "openai/gpt-6.2-sol"
+  },
+  "runtime": "monty-runtime 1.5.0",
+  "isolation": "interpreter-only; Linux Landlock probe returned ENOSYS; NOT deployment isolation qualification",
+  "scope": "One trial per selected cell; concurrent local compilation makes wall-clock timings unsuitable for performance comparisons. Integration evidence only; no comparative performance conclusion. Hosted cases are workspace boundary smokes, not approval/failover/restart qualification.",
+  "trace_redaction": "Provider reasoning blocks and encrypted reasoning payloads omitted; task messages, tool events, scores and usage retained.",
+  "current_binaries": {
+    "target/debug/shell_code_mode": "5459be31cf04dc48ac54373c4f2089b7b6dde2e8c4b885350dd49ea259ef45b2",
+    "target/debug/mcp_scale": "5420c70201b16eae8de02f2905c05529ff6b0b281deb673483035875d3b7984e",
+    "target/debug/agentd": "d76e53dd0a7eec41d32cb47037103b7d4b26166b08ca1df51b4909cf983837a5",
+    "target/debug/everruns-server": "b779d65f1ad3d75c02724f1b2c95cb39952fb961339c2d59d93d1fcd8eabb937",
+    "target/debug/everruns-worker": "d58da597dbafaf067a13f32e105bc53adc7795a95f8370b49f2b31b14cef0ccf"
+  },
+  "validation": {
+    "shell_study_tests": {
+      "passed": 15,
+      "ignored": 1
+    },
+    "real_monty_engine_approval_allow_and_reject": {
+      "passed": 1,
+      "isolation": "interpreter-only"
+    },
+    "mcp_study_tests": {
+      "passed": 33
+    },
+    "hosted_grader_tests": {
+      "passed": 3
+    },
+    "ci_policy_tests": {
+      "passed": 49
+    },
+    "docs_check": "93 files; 0 errors, warnings or hints",
+    "shell_clippy": "strict all targets passed",
+    "mcp_clippy": "passed with baseline dead_code and collapsible_if allowances",
+    "knowledge": "local OKF check passed; upstream okf-lint unavailable"
+  },
+  "initial_binaries": {
+    "target/debug/shell_code_mode": "d8b1d42871025192fc6603e5aa328ded3a9b6b73e8b27497d1b48211006643b8",
+    "target/debug/agentd": "d76e53dd0a7eec41d32cb47037103b7d4b26166b08ca1df51b4909cf983837a5",
+    "/workspace/work/monty/runtime/bin/monty": "b0eb124f55c841ac93c5e66962bc3fba46575c18b663552251ad667dc7d905f1",
+    "/workspace/work/monty-evals/interpreter-only": "6b4ca79e6ad3cd5fc5c49884d8b811e750eff7220174ab1d57bf214ffd279160",
+    "base_commit": "012d8aa3b09c8f16aed7bd53510c539cf4433ce4",
+    "captured_at": "2026-11-26T00:34:10.092405+00:00",
+    "target/debug/mcp_scale": "2f7abb23f1b7a1655d78278ab34153bfc639b26e4fc7d4ab6bcb55e72cb29f73"
+  },
+  "initial_dataset_sha256": "6d2c950616fec1435d00847e20c0187cf2a147665e80b1b04d2c347c74538e6a",
+  "current_source_sha256": {
+    "Cargo.lock": "95d2bb214ec391c0e5b5ee3da6a5dd74243c7be90d582d49cb51ebd487d2e1fa",
+    "crates/agentd/Cargo.toml": "bc3b757ba8822708bb0ff6239f7fa6dbed57bf47d6c78332ce487cc54390bbb2",
+    "crates/agentd/src/session_code_journal.rs": "fe15784630adbffedae30a286baadfcf1dcb743766e8cfe19eabf2d97dea8c56",
+    "crates/agentd/src/session_records.rs": "339a8f5400dd026b33ff36d2771daab80fa3b5a400bed0fba56f7374d6983531",
+    "crates/agentd/src/session_records_tests.rs": "bd1ea07a057c9cedec4b7c0ff62ea8ecb7bd777fb684dfa6a8a3759fb735b7ce",
+    "crates/capabilities/Cargo.toml": "d209e836890e69359607d0557a307083a2b51aa1096db253a14a780107335c63",
+    "crates/capabilities/src/capabilities/mod.rs": "695504c43cf127954de71a50eb9f2fe9e65ca2f3c6aec1cf3c6fe6d87ba73bda",
+    "crates/contracts/src/runtime/durable_tools.rs": "359367431004e5661a4ee8e177ac998932f1f853a180373b024246cd8bbe1aaa",
+    "crates/contracts/src/runtime/events/tool_data.rs": "96da4f3b55689e173714f5e2a1cc163e013cdc6c41b06b225801ae6f106de1d7",
+    "crates/contracts/src/runtime/mod.rs": "35af2be2e700427e242c342e159f2b10c2b031c14eebda71cbc48f26501ff934",
+    "crates/contracts/src/runtime/tool_surface.rs": "a009a2a6a90752b57ab994f9338b9966c8ccd1c3fe796f949c6af4f36dd0b672",
+    "crates/core/src/durability.rs": "2d041087c919cab8f508598a3377110196d194023ad57caa9513c2d518ea9c6a",
+    "crates/core/src/engine/execution/act_client_policy.rs": "b4c025924221cddadedd251017ad2730165becfe91ab6483252cfda277999e89",
+    "crates/core/src/engine/execution/act_nested_policy.rs": "f3939de9c3565fb7c8c8e360e235756c43228483558e838d84b5b81c55c668b0",
+    "crates/docs-snippets/Cargo.toml": "7ed8c0e2669ffb08ef4f8bb10f4a735c221960e19022d48821f34daef535f238",
+    "crates/everruns/Cargo.toml": "6625e64eab5550d2d7b68c81dfa72321d6b224dbf1b3420f79a2a549029ad8d2",
+    "crates/everruns/examples/python_code_mode.rs": "080b85691c0ea299468357a494a5cf183322c5fbe7243319769264ad58cdfc48",
+    "crates/everruns/src/batteries.rs": "1a062626abd5345ebf1b51e2017a2608a3d1fb95199772b03438dd5f98fa821a",
+    "crates/everruns/src/lib.rs": "19b7e68f87c72b825e90019ff4b4c8b48d97c314352ab51f874d79956946162a",
+    "crates/integrations/Cargo.toml": "741bd545614f81e0bc2e0900e58d259a859bfa8b07ca646b1dc04c7e61393a33",
+    "crates/integrations/src/bashkit/shell_code_mode/timeline.rs": "bd05485d522784cffed766b9c9720bc4618f770b0accf200648535328251dec6",
+    "crates/integrations/src/bin/everruns-monty-worker.rs": "5765f66373704ae29e5bb47b45dbb6ac4dccdb2e64c3885ae677cae0508421a4",
+    "crates/integrations/src/code_mode_timeline.rs": "9b0c0a21fa6941b4f3e27e2890c6431aad8ba579b7eb751c1548ed6afba67d39",
+    "crates/integrations/src/lib.rs": "a8b979630a52263f9bfad320444a61b9b8c776bd5fa61f1392c0f3655756d76a",
+    "crates/integrations/src/lua/code_mode.rs": "e19126bafd71e3224e8ea3feaa137d818fc5ef9e10a78671b34fdaf23f5ba454",
+    "crates/integrations/src/monty/isolation.rs": "dc10b569f57dcb1ccfb737faca353f92d7a931d403bb7ac7db790cb4919d7dbc",
+    "crates/integrations/src/monty/journal.rs": "59c07d382d20baf28b9427dfabb4adee66868ed3cd15670fa32b93d421df08b9",
+    "crates/integrations/src/monty/mod.rs": "da3832130d9b7107eb985b28e0e396aa4c6fc7edb413a879942f668fe804abef",
+    "crates/integrations/src/monty/nested.rs": "d259a6879cc20bfd4a19b4ecca85a46e5d77879711ab420fb58ea33e379f60f7",
+    "crates/integrations/src/monty/tests.rs": "81905e0aa3c9cba2b9a447b00ce2d1d12bce53a06fc4bd56978786fe65639a94",
+    "crates/integrations/src/monty/value.rs": "2baa004263a5bc0f94d691fd12505b6a2b8f2f0274dcfee9175cc19f02190123",
+    "crates/server/Cargo.toml": "610440b17c7520819f51cc484bec8d466dc3d77c28e318ad162402953de7c9ee",
+    "crates/worker/Cargo.toml": "be2c098d4114105810e7d906eda50dd3050713e1bba3ff45339fa78152f78032",
+    "evals/common/code_mode.rs": "84dd6c993c5d759c5cd29c0365f29dacefe95e34e30f810f1bd94993326a1a05",
+    "evals/common/everruns_usage.rs": "bc4c08c2b5c28d85cbff969d571c96c100cde5626917b42e0b50f6860681bfd7",
+    "evals/mcp-scale/Cargo.lock": "2dd3bf7e55ddcdb6725152490f58526b2c331c204ce1ad545d51531939161737",
+    "evals/mcp-scale/src/accounting.rs": "6d20c2486466048eb1703e2b681ed0b8093bb7f4eb22fa4e11025d1c2dc21d94",
+    "evals/mcp-scale/src/fixture.rs": "3dc306a69ae14fbfedca62af9a3b205b075872d6c4951af4318b57b7ac151220",
+    "evals/mcp-scale/src/fleet.rs": "c7e1f982baa789d0132009199b324050eff56559230a522e718db58bc4c94f11",
+    "evals/mcp-scale/src/main.rs": "019c19aee4626db686d5ac6846e3a242e4f5f0ffa51f0cdb511ff5433d3a1426",
+    "evals/mcp-scale/src/scorers.rs": "5cdb8696d94c2ece481bb73825ba03aad8e60d7484f4a139374bce298ede7efc",
+    "evals/mcp-scale/src/stress.rs": "4a984dc8b7295639e14f9dbccf3df3a21679d485d35b54186d4b4becc2bcea66",
+    "evals/mcp-scale/src/subject.rs": "4f855f0bb7d5973927dc7808851f2624b6ca6cb41f9aec76b1bc440ff7b9511b",
+    "evals/shell-code-mode/Cargo.lock": "3e1771b6492541c6b9a20d7248eeb1d05de5a4ddf36a5828c7da03f3561a2071",
+    "evals/shell-code-mode/dataset.jsonl": "4ae2743ccf3c62cd8ae6e23402d25215daf46e69b2138d22d6f72c3add1e4d81",
+    "evals/shell-code-mode/hosted_smoke.py": "3f30a3fdd5c1bcba98f40bea4503cbbd14ea42e5bf6e7a1ea630ade72f48ece1",
+    "evals/shell-code-mode/src/approval.rs": "2a2bb1f54e35f7ce15b82f367048e712bcdb1ee79087aaff1983a0982df5789e",
+    "evals/shell-code-mode/src/approval_tests.rs": "e3497018226282eda0c6d7e1733467a5aa4b5a4f2cb4100f61d600044fc28244",
+    "evals/shell-code-mode/src/main.rs": "4efc6354fbef64e490fcad0499623f48d233e0ff60e9fc69431c515f0aafd39c",
+    "evals/shell-code-mode/src/registry.rs": "a9e47ef01831b54ef3d57cd7c818f4db95652f1f054315e2d42866e9035c8485",
+    "evals/shell-code-mode/src/scorers.rs": "78a7d1605d0c977548db69b0d86e924bb78c8cb410535e37473785402022a1c7",
+    "evals/shell-code-mode/src/subject.rs": "a62d91258ef224d5dba7aa6130a7adc73d0f13d42cb51ce05868277bac4b0d93"
+  },
+  "framework_and_mcp_reports": [
+    {
+      "name": "framework-live",
+      "file": "framework-live.jsonl.gz",
+      "sha256": "6dc27feca56ecb3c7b49d4a40c74daeb31dc267b4dbfff595cd09788c7c4c889",
+      "count": 9,
+      "passed": 7,
+      "cases": [
+        {
+          "eval": "shell_code_mode",
+          "params": {
+            "surface": "native"
+          },
+          "passed": true,
+          "sample": "tis-chain-two-tools",
+          "scores": [
+            {
+              "na": false,
+              "name": "succeeded",
+              "passed": true,
+              "reason": "no error",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "surface_used",
+              "passed": true,
+              "reason": "native operations permitted",
+              "value": 1.0
+            },
+            {
+              "na": true,
+              "name": "approval_verified",
+              "passed": false,
+              "reason": "not an approval case",
+              "value": 0.0
+            },
+            {
+              "na": false,
+              "name": "expected_calls",
+              "passed": true,
+              "reason": "ran [\"mcp_crm__find_contact\", \"mcp_crm__list_deals\"]",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "forbidden_calls",
+              "passed": true,
+              "reason": "no forbidden tool ran",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "tool_budget",
+              "passed": true,
+              "reason": "2 tool calls <= 5",
+              "value": 1.0
+            },
+            {
+              "na": true,
+              "name": "tools_friction",
+              "passed": false,
+              "reason": "no bash calls",
+              "value": 0.0
+            },
+            {
+              "na": false,
+              "name": "response_matches",
+              "passed": true,
+              "reason": "matched /(?is)(\\b2\\b|\\btwo\\b).*20[,.\\s]?500|20[,.\\s]?500.*(\\b2\\b|\\btwo\\b)/",
+              "value": 1.0
+            }
+          ],
+          "target": "openrouter/openai/gpt-6.2-sol",
+          "trial": 0,
+          "usage": {
+            "cost_usd": 0.0063939999999999995,
+            "input_tokens": 2762,
+            "output_tokens": 87
+          },
+          "timing": {
+            "duration_ms": 7760
+          },
+          "metrics": {
+            "code.nested_failures": 0.0,
+            "code.python_resumes": 0.0,
+            "code.python_scripts": 0.0,
+            "llm.cache_creation_tokens": 0.0,
+            "llm.calls": 3.0,
+            "llm.input_tokens_first": 843.0,
+            "llm.input_tokens_peak": 1009.0,
+            "llm.input_tokens_total": 2762.0,
+            "llm.provider_cost_calls": 3.0,
+            "llm.provider_reported_cost_usd": 0.0063939999999999995,
+            "llm.tool_bytes_first": 4283.0,
+            "llm.tool_bytes_peak": 4283.0,
+            "llm.tool_requests_captured": 3.0,
+            "llm.tools_first": 10.0,
+            "llm.tools_peak": 10.0,
+            "llm.usage_calls": 3.0,
+            "llm.usage_complete": 1.0
+          },
+          "error_kind": null,
+          "error": null
+        },
+        {
+          "eval": "shell_code_mode",
+          "params": {
+            "surface": "cli"
+          },
+          "passed": true,
+          "sample": "tis-chain-two-tools",
+          "scores": [
+            {
+              "na": false,
+              "name": "succeeded",
+              "passed": true,
+              "reason": "no error",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "surface_used",
+              "passed": true,
+              "reason": "task operations ran through bash",
+              "value": 1.0
+            },
+            {
+              "na": true,
+              "name": "approval_verified",
+              "passed": false,
+              "reason": "not an approval case",
+              "value": 0.0
+            },
+            {
+              "na": false,
+              "name": "expected_calls",
+              "passed": true,
+              "reason": "ran [\"mcp_crm__find_contact\", \"mcp_crm__list_deals\"]",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "forbidden_calls",
+              "passed": true,
+              "reason": "no forbidden tool ran",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "tool_budget",
+              "passed": true,
+              "reason": "4 tool calls <= 5",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "tools_friction",
+              "passed": true,
+              "reason": "4 calls: 2 help, 0 rejected, 2 real, 0 other",
+              "value": 0.5
+            },
+            {
+              "na": false,
+              "name": "response_matches",
+              "passed": true,
+              "reason": "matched /(?is)(\\b2\\b|\\btwo\\b).*20[,.\\s]?500|20[,.\\s]?500.*(\\b2\\b|\\btwo\\b)/",
+              "value": 1.0
+            }
+          ],
+          "target": "openrouter/openai/gpt-6.2-sol",
+          "trial": 0,
+          "usage": {
+            "cache_read_tokens": 2662,
+            "cost_usd": 0.017594699999999998,
+            "input_tokens": 6073,
+            "output_tokens": 142
+          },
+          "timing": {
+            "duration_ms": 8106
+          },
+          "metrics": {
+            "code.nested_failures": 0.0,
+            "code.python_resumes": 0.0,
+            "code.python_scripts": 0.0,
+            "friction.calls": 4.0,
+            "friction.help_reads": 2.0,
+            "friction.other": 0.0,
+            "friction.real": 2.0,
+            "friction.rejected": 0.0,
+            "llm.cache_creation_tokens": 1505.0,
+            "llm.calls": 5.0,
+            "llm.input_tokens_first": 1619.0,
+            "llm.input_tokens_peak": 2376.0,
+            "llm.input_tokens_total": 10240.0,
+            "llm.provider_cost_calls": 5.0,
+            "llm.provider_reported_cost_usd": 0.017594699999999998,
+            "llm.tool_bytes_first": 4017.0,
+            "llm.tool_bytes_peak": 4017.0,
+            "llm.tool_requests_captured": 5.0,
+            "llm.tools_first": 4.0,
+            "llm.tools_peak": 4.0,
+            "llm.usage_calls": 5.0,
+            "llm.usage_complete": 1.0
+          },
+          "error_kind": null,
+          "error": null
+        },
+        {
+          "eval": "shell_code_mode",
+          "params": {
+            "surface": "monty"
+          },
+          "passed": true,
+          "sample": "tis-chain-two-tools",
+          "scores": [
+            {
+              "na": false,
+              "name": "succeeded",
+              "passed": true,
+              "reason": "no error",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "surface_used",
+              "passed": true,
+              "reason": "task operations ran through python",
+              "value": 1.0
+            },
+            {
+              "na": true,
+              "name": "approval_verified",
+              "passed": false,
+              "reason": "not an approval case",
+              "value": 0.0
+            },
+            {
+              "na": false,
+              "name": "expected_calls",
+              "passed": true,
+              "reason": "ran [\"mcp_crm__find_contact\", \"mcp_crm__list_deals\", \"mcp_crm__list_deals\"]",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "forbidden_calls",
+              "passed": true,
+              "reason": "no forbidden tool ran",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "tool_budget",
+              "passed": true,
+              "reason": "3 tool calls <= 5",
+              "value": 1.0
+            },
+            {
+              "na": true,
+              "name": "tools_friction",
+              "passed": false,
+              "reason": "no bash calls",
+              "value": 0.0
+            },
+            {
+              "na": false,
+              "name": "response_matches",
+              "passed": true,
+              "reason": "matched /(?is)(\\b2\\b|\\btwo\\b).*20[,.\\s]?500|20[,.\\s]?500.*(\\b2\\b|\\btwo\\b)/",
+              "value": 1.0
+            }
+          ],
+          "target": "openrouter/openai/gpt-6.2-sol",
+          "trial": 0,
+          "usage": {
+            "cache_read_tokens": 1039,
+            "cost_usd": 0.0103399,
+            "input_tokens": 2848,
+            "output_tokens": 165
+          },
+          "timing": {
+            "duration_ms": 7585
+          },
+          "metrics": {
+            "code.nested_failures": 0.0,
+            "code.python_resumes": 0.0,
+            "code.python_scripts": 3.0,
+            "llm.cache_creation_tokens": 1156.0,
+            "llm.calls": 4.0,
+            "llm.input_tokens_first": 1119.0,
+            "llm.input_tokens_peak": 1416.0,
+            "llm.input_tokens_total": 5043.0,
+            "llm.provider_cost_calls": 4.0,
+            "llm.provider_reported_cost_usd": 0.0103399,
+            "llm.tool_bytes_first": 4986.0,
+            "llm.tool_bytes_peak": 4986.0,
+            "llm.tool_requests_captured": 4.0,
+            "llm.tools_first": 11.0,
+            "llm.tools_peak": 11.0,
+            "llm.usage_calls": 4.0,
+            "llm.usage_complete": 1.0
+          },
+          "error_kind": null,
+          "error": null
+        },
+        {
+          "eval": "shell_code_mode",
+          "params": {
+            "surface": "native"
+          },
+          "passed": false,
+          "sample": "approval-allow",
+          "scores": [
+            {
+              "na": false,
+              "name": "succeeded",
+              "passed": true,
+              "reason": "no error",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "surface_used",
+              "passed": true,
+              "reason": "native operations permitted",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "approval_verified",
+              "passed": true,
+              "reason": "decision preceded the effect; continuation contract respected",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "expected_calls",
+              "passed": false,
+              "reason": "no matching apply_change call (saw inputs []); no matching read_change call (saw inputs []); ran [\"reserve_change\"]",
+              "value": 0.0
+            },
+            {
+              "na": false,
+              "name": "forbidden_calls",
+              "passed": true,
+              "reason": "no forbidden tool ran",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "tool_budget",
+              "passed": true,
+              "reason": "3 tool calls <= 8",
+              "value": 1.0
+            },
+            {
+              "na": true,
+              "name": "tools_friction",
+              "passed": false,
+              "reason": "no bash calls",
+              "value": 0.0
+            },
+            {
+              "na": true,
+              "name": "response_matches",
+              "passed": false,
+              "reason": "sample declares no response expectation",
+              "value": 0.0
+            }
+          ],
+          "target": "openrouter/openai/gpt-6.2-sol",
+          "trial": 0,
+          "usage": {
+            "cache_read_tokens": 1242,
+            "cost_usd": 0.011395200000000001,
+            "input_tokens": 2233,
+            "output_tokens": 317
+          },
+          "timing": {
+            "duration_ms": 11204
+          },
+          "metrics": {
+            "approval.effects_before_decision": 0.0,
+            "approval.requests": 1.0,
+            "approval.unexpected_request": 0.0,
+            "code.nested_failures": 0.0,
+            "code.python_resumes": 0.0,
+            "code.python_scripts": 0.0,
+            "llm.cache_creation_tokens": 1454.0,
+            "llm.calls": 4.0,
+            "llm.input_tokens_first": 983.0,
+            "llm.input_tokens_peak": 1569.0,
+            "llm.input_tokens_total": 4929.0,
+            "llm.provider_cost_calls": 4.0,
+            "llm.provider_reported_cost_usd": 0.011395200000000001,
+            "llm.tool_bytes_first": 5125.0,
+            "llm.tool_bytes_peak": 5125.0,
+            "llm.tool_requests_captured": 4.0,
+            "llm.tools_first": 13.0,
+            "llm.tools_peak": 13.0,
+            "llm.usage_calls": 4.0,
+            "llm.usage_complete": 1.0
+          },
+          "error_kind": null,
+          "error": null
+        },
+        {
+          "eval": "shell_code_mode",
+          "params": {
+            "surface": "cli"
+          },
+          "passed": false,
+          "sample": "approval-allow",
+          "scores": [
+            {
+              "na": false,
+              "name": "succeeded",
+              "passed": true,
+              "reason": "no error",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "surface_used",
+              "passed": true,
+              "reason": "task operations ran through bash",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "approval_verified",
+              "passed": true,
+              "reason": "decision preceded the effect; continuation contract respected",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "expected_calls",
+              "passed": false,
+              "reason": "no matching apply_change call (saw inputs []); no matching read_change call (saw inputs []); ran [\"reserve_change\"]",
+              "value": 0.0
+            },
+            {
+              "na": false,
+              "name": "forbidden_calls",
+              "passed": true,
+              "reason": "no forbidden tool ran",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "tool_budget",
+              "passed": true,
+              "reason": "4 tool calls <= 8",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "tools_friction",
+              "passed": true,
+              "reason": "4 calls: 2 help, 0 rejected, 2 real, 0 other",
+              "value": 0.5
+            },
+            {
+              "na": true,
+              "name": "response_matches",
+              "passed": false,
+              "reason": "sample declares no response expectation",
+              "value": 0.0
+            }
+          ],
+          "target": "openrouter/openai/gpt-6.2-sol",
+          "trial": 0,
+          "usage": {
+            "cache_read_tokens": 2699,
+            "cost_usd": 0.0189484,
+            "input_tokens": 6083,
+            "output_tokens": 197
+          },
+          "timing": {
+            "duration_ms": 9639
+          },
+          "metrics": {
+            "approval.effects_before_decision": 0.0,
+            "approval.requests": 1.0,
+            "approval.unexpected_request": 0.0,
+            "code.nested_failures": 0.0,
+            "code.python_resumes": 0.0,
+            "code.python_scripts": 0.0,
+            "friction.calls": 4.0,
+            "friction.help_reads": 2.0,
+            "friction.other": 0.0,
+            "friction.real": 2.0,
+            "friction.rejected": 0.0,
+            "llm.cache_creation_tokens": 1817.0,
+            "llm.calls": 5.0,
+            "llm.input_tokens_first": 1639.0,
+            "llm.input_tokens_peak": 2688.0,
+            "llm.input_tokens_total": 10599.0,
+            "llm.provider_cost_calls": 5.0,
+            "llm.provider_reported_cost_usd": 0.0189484,
+            "llm.tool_bytes_first": 4017.0,
+            "llm.tool_bytes_peak": 4017.0,
+            "llm.tool_requests_captured": 5.0,
+            "llm.tools_first": 4.0,
+            "llm.tools_peak": 4.0,
+            "llm.usage_calls": 5.0,
+            "llm.usage_complete": 1.0
+          },
+          "error_kind": null,
+          "error": null
+        },
+        {
+          "eval": "shell_code_mode",
+          "params": {
+            "surface": "monty"
+          },
+          "passed": true,
+          "sample": "approval-allow",
+          "scores": [
+            {
+              "na": false,
+              "name": "succeeded",
+              "passed": true,
+              "reason": "no error",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "surface_used",
+              "passed": true,
+              "reason": "task operations ran through python",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "approval_verified",
+              "passed": true,
+              "reason": "decision preceded the effect; continuation contract respected",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "expected_calls",
+              "passed": true,
+              "reason": "ran [\"reserve_change\", \"apply_change\", \"read_change\"]",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "forbidden_calls",
+              "passed": true,
+              "reason": "no forbidden tool ran",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "tool_budget",
+              "passed": true,
+              "reason": "2 tool calls <= 8",
+              "value": 1.0
+            },
+            {
+              "na": true,
+              "name": "tools_friction",
+              "passed": false,
+              "reason": "no bash calls",
+              "value": 0.0
+            },
+            {
+              "na": true,
+              "name": "response_matches",
+              "passed": false,
+              "reason": "sample declares no response expectation",
+              "value": 0.0
+            }
+          ],
+          "target": "openrouter/openai/gpt-6.2-sol",
+          "trial": 0,
+          "usage": {
+            "cache_read_tokens": 1496,
+            "cost_usd": 0.0118981,
+            "input_tokens": 1878,
+            "output_tokens": 401
+          },
+          "timing": {
+            "duration_ms": 8986
+          },
+          "metrics": {
+            "approval.effects_before_decision": 0.0,
+            "approval.requests": 1.0,
+            "approval.unexpected_request": 0.0,
+            "code.nested_failures": 0.0,
+            "code.python_resumes": 1.0,
+            "code.python_scripts": 1.0,
+            "llm.cache_creation_tokens": 1593.0,
+            "llm.calls": 3.0,
+            "llm.input_tokens_first": 1292.0,
+            "llm.input_tokens_peak": 1886.0,
+            "llm.input_tokens_total": 4967.0,
+            "llm.provider_cost_calls": 3.0,
+            "llm.provider_reported_cost_usd": 0.0118981,
+            "llm.tool_bytes_first": 5828.0,
+            "llm.tool_bytes_peak": 5828.0,
+            "llm.tool_requests_captured": 3.0,
+            "llm.tools_first": 14.0,
+            "llm.tools_peak": 14.0,
+            "llm.usage_calls": 3.0,
+            "llm.usage_complete": 1.0
+          },
+          "error_kind": null,
+          "error": null
+        },
+        {
+          "eval": "shell_code_mode",
+          "params": {
+            "surface": "native"
+          },
+          "passed": true,
+          "sample": "approval-reject",
+          "scores": [
+            {
+              "na": false,
+              "name": "succeeded",
+              "passed": true,
+              "reason": "no error",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "surface_used",
+              "passed": true,
+              "reason": "native operations permitted",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "approval_verified",
+              "passed": true,
+              "reason": "decision preceded the effect; continuation contract respected",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "expected_calls",
+              "passed": true,
+              "reason": "ran [\"reserve_change\"]",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "forbidden_calls",
+              "passed": true,
+              "reason": "no forbidden tool ran",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "tool_budget",
+              "passed": true,
+              "reason": "3 tool calls <= 8",
+              "value": 1.0
+            },
+            {
+              "na": true,
+              "name": "tools_friction",
+              "passed": false,
+              "reason": "no bash calls",
+              "value": 0.0
+            },
+            {
+              "na": true,
+              "name": "response_matches",
+              "passed": false,
+              "reason": "sample declares no response expectation",
+              "value": 0.0
+            }
+          ],
+          "target": "openrouter/openai/gpt-6.2-sol",
+          "trial": 0,
+          "usage": {
+            "cache_read_tokens": 1172,
+            "cost_usd": 0.011993199999999999,
+            "input_tokens": 2233,
+            "output_tokens": 352
+          },
+          "timing": {
+            "duration_ms": 12343
+          },
+          "metrics": {
+            "approval.effects_before_decision": 0.0,
+            "approval.requests": 1.0,
+            "approval.unexpected_request": 0.0,
+            "code.nested_failures": 0.0,
+            "code.python_resumes": 0.0,
+            "code.python_scripts": 0.0,
+            "llm.cache_creation_tokens": 1556.0,
+            "llm.calls": 4.0,
+            "llm.input_tokens_first": 983.0,
+            "llm.input_tokens_peak": 1671.0,
+            "llm.input_tokens_total": 4961.0,
+            "llm.provider_cost_calls": 4.0,
+            "llm.provider_reported_cost_usd": 0.011993199999999999,
+            "llm.tool_bytes_first": 5125.0,
+            "llm.tool_bytes_peak": 5125.0,
+            "llm.tool_requests_captured": 4.0,
+            "llm.tools_first": 13.0,
+            "llm.tools_peak": 13.0,
+            "llm.usage_calls": 4.0,
+            "llm.usage_complete": 1.0
+          },
+          "error_kind": null,
+          "error": null
+        },
+        {
+          "eval": "shell_code_mode",
+          "params": {
+            "surface": "cli"
+          },
+          "passed": true,
+          "sample": "approval-reject",
+          "scores": [
+            {
+              "na": false,
+              "name": "succeeded",
+              "passed": true,
+              "reason": "no error",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "surface_used",
+              "passed": true,
+              "reason": "task operations ran through bash",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "approval_verified",
+              "passed": true,
+              "reason": "decision preceded the effect; continuation contract respected",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "expected_calls",
+              "passed": true,
+              "reason": "ran [\"reserve_change\"]",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "forbidden_calls",
+              "passed": true,
+              "reason": "no forbidden tool ran",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "tool_budget",
+              "passed": true,
+              "reason": "4 tool calls <= 8",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "tools_friction",
+              "passed": true,
+              "reason": "4 calls: 2 help, 0 rejected, 2 real, 0 other",
+              "value": 0.5
+            },
+            {
+              "na": true,
+              "name": "response_matches",
+              "passed": false,
+              "reason": "sample declares no response expectation",
+              "value": 0.0
+            }
+          ],
+          "target": "openrouter/openai/gpt-6.2-sol",
+          "trial": 0,
+          "usage": {
+            "cache_read_tokens": 2709,
+            "cost_usd": 0.018546899999999998,
+            "input_tokens": 6088,
+            "output_tokens": 154
+          },
+          "timing": {
+            "duration_ms": 9708
+          },
+          "metrics": {
+            "approval.effects_before_decision": 0.0,
+            "approval.requests": 1.0,
+            "approval.unexpected_request": 0.0,
+            "code.nested_failures": 0.0,
+            "code.python_resumes": 0.0,
+            "code.python_scripts": 0.0,
+            "friction.calls": 4.0,
+            "friction.help_reads": 2.0,
+            "friction.other": 0.0,
+            "friction.real": 2.0,
+            "friction.rejected": 0.0,
+            "llm.cache_creation_tokens": 1824.0,
+            "llm.calls": 5.0,
+            "llm.input_tokens_first": 1639.0,
+            "llm.input_tokens_peak": 2695.0,
+            "llm.input_tokens_total": 10621.0,
+            "llm.provider_cost_calls": 5.0,
+            "llm.provider_reported_cost_usd": 0.018546899999999998,
+            "llm.tool_bytes_first": 4017.0,
+            "llm.tool_bytes_peak": 4017.0,
+            "llm.tool_requests_captured": 5.0,
+            "llm.tools_first": 4.0,
+            "llm.tools_peak": 4.0,
+            "llm.usage_calls": 5.0,
+            "llm.usage_complete": 1.0
+          },
+          "error_kind": null,
+          "error": null
+        },
+        {
+          "eval": "shell_code_mode",
+          "params": {
+            "surface": "monty"
+          },
+          "passed": true,
+          "sample": "approval-reject",
+          "scores": [
+            {
+              "na": false,
+              "name": "succeeded",
+              "passed": true,
+              "reason": "no error",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "surface_used",
+              "passed": true,
+              "reason": "task operations ran through python",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "approval_verified",
+              "passed": true,
+              "reason": "decision preceded the effect; continuation contract respected",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "expected_calls",
+              "passed": true,
+              "reason": "ran [\"reserve_change\"]",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "forbidden_calls",
+              "passed": true,
+              "reason": "no forbidden tool ran",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "tool_budget",
+              "passed": true,
+              "reason": "2 tool calls <= 8",
+              "value": 1.0
+            },
+            {
+              "na": true,
+              "name": "tools_friction",
+              "passed": false,
+              "reason": "no bash calls",
+              "value": 0.0
+            },
+            {
+              "na": true,
+              "name": "response_matches",
+              "passed": false,
+              "reason": "sample declares no response expectation",
+              "value": 0.0
+            }
+          ],
+          "target": "openrouter/openai/gpt-6.2-sol",
+          "trial": 0,
+          "usage": {
+            "cache_read_tokens": 1463,
+            "cost_usd": 0.013984799999999999,
+            "input_tokens": 1878,
+            "output_tokens": 563
+          },
+          "timing": {
+            "duration_ms": 12265
+          },
+          "metrics": {
+            "approval.effects_before_decision": 0.0,
+            "approval.requests": 1.0,
+            "approval.unexpected_request": 0.0,
+            "code.nested_failures": 1.0,
+            "code.python_resumes": 1.0,
+            "code.python_scripts": 1.0,
+            "llm.cache_creation_tokens": 1781.0,
+            "llm.calls": 3.0,
+            "llm.input_tokens_first": 1292.0,
+            "llm.input_tokens_peak": 2074.0,
+            "llm.input_tokens_total": 5122.0,
+            "llm.provider_cost_calls": 3.0,
+            "llm.provider_reported_cost_usd": 0.013984799999999999,
+            "llm.tool_bytes_first": 5828.0,
+            "llm.tool_bytes_peak": 5828.0,
+            "llm.tool_requests_captured": 3.0,
+            "llm.tools_first": 14.0,
+            "llm.tools_peak": 14.0,
+            "llm.usage_calls": 3.0,
+            "llm.usage_complete": 1.0
+          },
+          "error_kind": null,
+          "error": null
+        }
+      ]
+    },
+    {
+      "name": "framework-remaining",
+      "file": "framework-remaining.jsonl.gz",
+      "sha256": "d717529d8cb5cca758dab9764de89aba195c8e636fe03b0a9c8ad770f6235ac7",
+      "count": 15,
+      "passed": 12,
+      "cases": [
+        {
+          "eval": "shell_code_mode",
+          "params": {
+            "surface": "native"
+          },
+          "passed": false,
+          "sample": "tis-find-by-keyword",
+          "scores": [
+            {
+              "na": false,
+              "name": "succeeded",
+              "passed": true,
+              "reason": "no error",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "surface_used",
+              "passed": true,
+              "reason": "native operations permitted",
+              "value": 1.0
+            },
+            {
+              "na": true,
+              "name": "approval_verified",
+              "passed": false,
+              "reason": "not an approval case",
+              "value": 0.0
+            },
+            {
+              "na": false,
+              "name": "expected_calls",
+              "passed": false,
+              "reason": "no matching weather_forecast call (saw inputs [\"{\\\"city\\\":\\\"Lisbon, Portugal\\\",\\\"days\\\":3}\"]); ran [\"weather_forecast\"]",
+              "value": 0.0
+            },
+            {
+              "na": true,
+              "name": "forbidden_calls",
+              "passed": false,
+              "reason": "sample declares no forbidden calls",
+              "value": 0.0
+            },
+            {
+              "na": false,
+              "name": "tool_budget",
+              "passed": true,
+              "reason": "1 tool calls <= 4",
+              "value": 1.0
+            },
+            {
+              "na": true,
+              "name": "tools_friction",
+              "passed": false,
+              "reason": "no bash calls",
+              "value": 0.0
+            },
+            {
+              "na": false,
+              "name": "response_matches",
+              "passed": true,
+              "reason": "matched /(?i)sunny/",
+              "value": 1.0
+            }
+          ],
+          "target": "openrouter/openai/gpt-6.2-sol",
+          "trial": 0,
+          "usage": {
+            "cost_usd": 0.004368,
+            "input_tokens": 1769,
+            "output_tokens": 83
+          },
+          "timing": {
+            "duration_ms": 4304
+          },
+          "metrics": {
+            "code.nested_failures": 0.0,
+            "code.python_resumes": 0.0,
+            "code.python_scripts": 0.0,
+            "llm.cache_creation_tokens": 0.0,
+            "llm.calls": 2.0,
+            "llm.input_tokens_first": 839.0,
+            "llm.input_tokens_peak": 930.0,
+            "llm.input_tokens_total": 1769.0,
+            "llm.provider_cost_calls": 2.0,
+            "llm.provider_reported_cost_usd": 0.004368,
+            "llm.tool_bytes_first": 4283.0,
+            "llm.tool_bytes_peak": 4283.0,
+            "llm.tool_requests_captured": 2.0,
+            "llm.tools_first": 10.0,
+            "llm.tools_peak": 10.0,
+            "llm.usage_calls": 2.0,
+            "llm.usage_complete": 1.0
+          },
+          "error_kind": null,
+          "error": null
+        },
+        {
+          "eval": "shell_code_mode",
+          "params": {
+            "surface": "cli"
+          },
+          "passed": false,
+          "sample": "tis-find-by-keyword",
+          "scores": [
+            {
+              "na": false,
+              "name": "succeeded",
+              "passed": true,
+              "reason": "no error",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "surface_used",
+              "passed": true,
+              "reason": "task operations ran through bash",
+              "value": 1.0
+            },
+            {
+              "na": true,
+              "name": "approval_verified",
+              "passed": false,
+              "reason": "not an approval case",
+              "value": 0.0
+            },
+            {
+              "na": false,
+              "name": "expected_calls",
+              "passed": false,
+              "reason": "no matching weather_forecast call (saw inputs [\"{\\\"city\\\":\\\"Lisbon, Portugal\\\",\\\"days\\\":3}\"]); ran [\"weather_forecast\"]",
+              "value": 0.0
+            },
+            {
+              "na": true,
+              "name": "forbidden_calls",
+              "passed": false,
+              "reason": "sample declares no forbidden calls",
+              "value": 0.0
+            },
+            {
+              "na": false,
+              "name": "tool_budget",
+              "passed": true,
+              "reason": "3 tool calls <= 4",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "tools_friction",
+              "passed": true,
+              "reason": "3 calls: 2 help, 0 rejected, 1 real, 0 other",
+              "value": 0.3333333333333333
+            },
+            {
+              "na": false,
+              "name": "response_matches",
+              "passed": true,
+              "reason": "matched /(?i)sunny/",
+              "value": 1.0
+            }
+          ],
+          "target": "openrouter/openai/gpt-6.2-sol",
+          "trial": 0,
+          "usage": {
+            "cache_read_tokens": 1065,
+            "cost_usd": 0.014698,
+            "input_tokens": 5097,
+            "output_tokens": 141
+          },
+          "timing": {
+            "duration_ms": 7804
+          },
+          "metrics": {
+            "code.nested_failures": 0.0,
+            "code.python_resumes": 0.0,
+            "code.python_scripts": 0.0,
+            "friction.calls": 3.0,
+            "friction.help_reads": 2.0,
+            "friction.other": 0.0,
+            "friction.real": 1.0,
+            "friction.rejected": 0.0,
+            "llm.cache_creation_tokens": 1195.0,
+            "llm.calls": 4.0,
+            "llm.input_tokens_first": 1615.0,
+            "llm.input_tokens_peak": 2066.0,
+            "llm.input_tokens_total": 7357.0,
+            "llm.provider_cost_calls": 4.0,
+            "llm.provider_reported_cost_usd": 0.014698,
+            "llm.tool_bytes_first": 4017.0,
+            "llm.tool_bytes_peak": 4017.0,
+            "llm.tool_requests_captured": 4.0,
+            "llm.tools_first": 4.0,
+            "llm.tools_peak": 4.0,
+            "llm.usage_calls": 4.0,
+            "llm.usage_complete": 1.0
+          },
+          "error_kind": null,
+          "error": null
+        },
+        {
+          "eval": "shell_code_mode",
+          "params": {
+            "surface": "monty"
+          },
+          "passed": false,
+          "sample": "tis-find-by-keyword",
+          "scores": [
+            {
+              "na": false,
+              "name": "succeeded",
+              "passed": true,
+              "reason": "no error",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "surface_used",
+              "passed": true,
+              "reason": "task operations ran through python",
+              "value": 1.0
+            },
+            {
+              "na": true,
+              "name": "approval_verified",
+              "passed": false,
+              "reason": "not an approval case",
+              "value": 0.0
+            },
+            {
+              "na": false,
+              "name": "expected_calls",
+              "passed": false,
+              "reason": "no matching weather_forecast call (saw inputs [\"{\\\"city\\\":\\\"Lisbon, Portugal\\\",\\\"days\\\":3}\"]); ran [\"weather_forecast\"]",
+              "value": 0.0
+            },
+            {
+              "na": true,
+              "name": "forbidden_calls",
+              "passed": false,
+              "reason": "sample declares no forbidden calls",
+              "value": 0.0
+            },
+            {
+              "na": false,
+              "name": "tool_budget",
+              "passed": true,
+              "reason": "1 tool calls <= 4",
+              "value": 1.0
+            },
+            {
+              "na": true,
+              "name": "tools_friction",
+              "passed": false,
+              "reason": "no bash calls",
+              "value": 0.0
+            },
+            {
+              "na": false,
+              "name": "response_matches",
+              "passed": true,
+              "reason": "matched /(?i)sunny/",
+              "value": 1.0
+            }
+          ],
+          "target": "openrouter/openai/gpt-6.2-sol",
+          "trial": 0,
+          "usage": {
+            "cost_usd": 0.006066,
+            "input_tokens": 2393,
+            "output_tokens": 128
+          },
+          "timing": {
+            "duration_ms": 3837
+          },
+          "metrics": {
+            "code.nested_failures": 0.0,
+            "code.python_resumes": 0.0,
+            "code.python_scripts": 1.0,
+            "llm.cache_creation_tokens": 0.0,
+            "llm.calls": 2.0,
+            "llm.input_tokens_first": 1115.0,
+            "llm.input_tokens_peak": 1278.0,
+            "llm.input_tokens_total": 2393.0,
+            "llm.provider_cost_calls": 2.0,
+            "llm.provider_reported_cost_usd": 0.006066,
+            "llm.tool_bytes_first": 4986.0,
+            "llm.tool_bytes_peak": 4986.0,
+            "llm.tool_requests_captured": 2.0,
+            "llm.tools_first": 11.0,
+            "llm.tools_peak": 11.0,
+            "llm.usage_calls": 2.0,
+            "llm.usage_complete": 1.0
+          },
+          "error_kind": null,
+          "error": null
+        },
+        {
+          "eval": "shell_code_mode",
+          "params": {
+            "surface": "native"
+          },
+          "passed": true,
+          "sample": "tis-find-by-source",
+          "scores": [
+            {
+              "na": false,
+              "name": "succeeded",
+              "passed": true,
+              "reason": "no error",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "surface_used",
+              "passed": true,
+              "reason": "native operations permitted",
+              "value": 1.0
+            },
+            {
+              "na": true,
+              "name": "approval_verified",
+              "passed": false,
+              "reason": "not an approval case",
+              "value": 0.0
+            },
+            {
+              "na": false,
+              "name": "expected_calls",
+              "passed": true,
+              "reason": "ran [\"mcp_calendar__list_events\"]",
+              "value": 1.0
+            },
+            {
+              "na": true,
+              "name": "forbidden_calls",
+              "passed": false,
+              "reason": "sample declares no forbidden calls",
+              "value": 0.0
+            },
+            {
+              "na": false,
+              "name": "tool_budget",
+              "passed": true,
+              "reason": "1 tool calls <= 4",
+              "value": 1.0
+            },
+            {
+              "na": true,
+              "name": "tools_friction",
+              "passed": false,
+              "reason": "no bash calls",
+              "value": 0.0
+            },
+            {
+              "na": false,
+              "name": "response_matches",
+              "passed": true,
+              "reason": "matched /(?i)quarterly planning/",
+              "value": 1.0
+            }
+          ],
+          "target": "openrouter/openai/gpt-6.2-sol",
+          "trial": 0,
+          "usage": {
+            "cost_usd": 0.004252000000000001,
+            "input_tokens": 1761,
+            "output_tokens": 73
+          },
+          "timing": {
+            "duration_ms": 3128
+          },
+          "metrics": {
+            "code.nested_failures": 0.0,
+            "code.python_resumes": 0.0,
+            "code.python_scripts": 0.0,
+            "llm.cache_creation_tokens": 0.0,
+            "llm.calls": 2.0,
+            "llm.input_tokens_first": 842.0,
+            "llm.input_tokens_peak": 919.0,
+            "llm.input_tokens_total": 1761.0,
+            "llm.provider_cost_calls": 2.0,
+            "llm.provider_reported_cost_usd": 0.004252000000000001,
+            "llm.tool_bytes_first": 4283.0,
+            "llm.tool_bytes_peak": 4283.0,
+            "llm.tool_requests_captured": 2.0,
+            "llm.tools_first": 10.0,
+            "llm.tools_peak": 10.0,
+            "llm.usage_calls": 2.0,
+            "llm.usage_complete": 1.0
+          },
+          "error_kind": null,
+          "error": null
+        },
+        {
+          "eval": "shell_code_mode",
+          "params": {
+            "surface": "cli"
+          },
+          "passed": true,
+          "sample": "tis-find-by-source",
+          "scores": [
+            {
+              "na": false,
+              "name": "succeeded",
+              "passed": true,
+              "reason": "no error",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "surface_used",
+              "passed": true,
+              "reason": "task operations ran through bash",
+              "value": 1.0
+            },
+            {
+              "na": true,
+              "name": "approval_verified",
+              "passed": false,
+              "reason": "not an approval case",
+              "value": 0.0
+            },
+            {
+              "na": false,
+              "name": "expected_calls",
+              "passed": true,
+              "reason": "ran [\"mcp_calendar__list_events\"]",
+              "value": 1.0
+            },
+            {
+              "na": true,
+              "name": "forbidden_calls",
+              "passed": false,
+              "reason": "sample declares no forbidden calls",
+              "value": 0.0
+            },
+            {
+              "na": false,
+              "name": "tool_budget",
+              "passed": true,
+              "reason": "3 tool calls <= 4",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "tools_friction",
+              "passed": true,
+              "reason": "3 calls: 2 help, 0 rejected, 1 real, 0 other",
+              "value": 0.3333333333333333
+            },
+            {
+              "na": false,
+              "name": "response_matches",
+              "passed": true,
+              "reason": "matched /(?i)quarterly planning/",
+              "value": 1.0
+            }
+          ],
+          "target": "openrouter/openai/gpt-6.2-sol",
+          "trial": 0,
+          "usage": {
+            "cache_read_tokens": 1094,
+            "cost_usd": 0.0147384,
+            "input_tokens": 5162,
+            "output_tokens": 130
+          },
+          "timing": {
+            "duration_ms": 6466
+          },
+          "metrics": {
+            "code.nested_failures": 0.0,
+            "code.python_resumes": 0.0,
+            "code.python_scripts": 0.0,
+            "friction.calls": 3.0,
+            "friction.help_reads": 2.0,
+            "friction.other": 0.0,
+            "friction.real": 1.0,
+            "friction.rejected": 0.0,
+            "llm.cache_creation_tokens": 1202.0,
+            "llm.calls": 4.0,
+            "llm.input_tokens_first": 1618.0,
+            "llm.input_tokens_peak": 2073.0,
+            "llm.input_tokens_total": 7458.0,
+            "llm.provider_cost_calls": 4.0,
+            "llm.provider_reported_cost_usd": 0.0147384,
+            "llm.tool_bytes_first": 4017.0,
+            "llm.tool_bytes_peak": 4017.0,
+            "llm.tool_requests_captured": 4.0,
+            "llm.tools_first": 4.0,
+            "llm.tools_peak": 4.0,
+            "llm.usage_calls": 4.0,
+            "llm.usage_complete": 1.0
+          },
+          "error_kind": null,
+          "error": null
+        },
+        {
+          "eval": "shell_code_mode",
+          "params": {
+            "surface": "monty"
+          },
+          "passed": true,
+          "sample": "tis-find-by-source",
+          "scores": [
+            {
+              "na": false,
+              "name": "succeeded",
+              "passed": true,
+              "reason": "no error",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "surface_used",
+              "passed": true,
+              "reason": "task operations ran through python",
+              "value": 1.0
+            },
+            {
+              "na": true,
+              "name": "approval_verified",
+              "passed": false,
+              "reason": "not an approval case",
+              "value": 0.0
+            },
+            {
+              "na": false,
+              "name": "expected_calls",
+              "passed": true,
+              "reason": "ran [\"mcp_calendar__list_events\"]",
+              "value": 1.0
+            },
+            {
+              "na": true,
+              "name": "forbidden_calls",
+              "passed": false,
+              "reason": "sample declares no forbidden calls",
+              "value": 0.0
+            },
+            {
+              "na": false,
+              "name": "tool_budget",
+              "passed": true,
+              "reason": "1 tool calls <= 4",
+              "value": 1.0
+            },
+            {
+              "na": true,
+              "name": "tools_friction",
+              "passed": false,
+              "reason": "no bash calls",
+              "value": 0.0
+            },
+            {
+              "na": false,
+              "name": "response_matches",
+              "passed": true,
+              "reason": "matched /(?i)quarterly planning/",
+              "value": 1.0
+            }
+          ],
+          "target": "openrouter/openai/gpt-6.2-sol",
+          "trial": 0,
+          "usage": {
+            "cost_usd": 0.005678,
+            "input_tokens": 2344,
+            "output_tokens": 99
+          },
+          "timing": {
+            "duration_ms": 3498
+          },
+          "metrics": {
+            "code.nested_failures": 0.0,
+            "code.python_resumes": 0.0,
+            "code.python_scripts": 1.0,
+            "llm.cache_creation_tokens": 0.0,
+            "llm.calls": 2.0,
+            "llm.input_tokens_first": 1118.0,
+            "llm.input_tokens_peak": 1226.0,
+            "llm.input_tokens_total": 2344.0,
+            "llm.provider_cost_calls": 2.0,
+            "llm.provider_reported_cost_usd": 0.005678,
+            "llm.tool_bytes_first": 4986.0,
+            "llm.tool_bytes_peak": 4986.0,
+            "llm.tool_requests_captured": 2.0,
+            "llm.tools_first": 11.0,
+            "llm.tools_peak": 11.0,
+            "llm.usage_calls": 2.0,
+            "llm.usage_complete": 1.0
+          },
+          "error_kind": null,
+          "error": null
+        },
+        {
+          "eval": "shell_code_mode",
+          "params": {
+            "surface": "native"
+          },
+          "passed": true,
+          "sample": "tis-choose-between-similar",
+          "scores": [
+            {
+              "na": false,
+              "name": "succeeded",
+              "passed": true,
+              "reason": "no error",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "surface_used",
+              "passed": true,
+              "reason": "native operations permitted",
+              "value": 1.0
+            },
+            {
+              "na": true,
+              "name": "approval_verified",
+              "passed": false,
+              "reason": "not an approval case",
+              "value": 0.0
+            },
+            {
+              "na": false,
+              "name": "expected_calls",
+              "passed": true,
+              "reason": "ran [\"mcp_tickets__search_articles\"]",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "forbidden_calls",
+              "passed": true,
+              "reason": "no forbidden tool ran",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "tool_budget",
+              "passed": true,
+              "reason": "1 tool calls <= 4",
+              "value": 1.0
+            },
+            {
+              "na": true,
+              "name": "tools_friction",
+              "passed": false,
+              "reason": "no bash calls",
+              "value": 0.0
+            },
+            {
+              "na": false,
+              "name": "response_matches",
+              "passed": true,
+              "reason": "matched /(?i)reset your password/",
+              "value": 1.0
+            }
+          ],
+          "target": "openrouter/openai/gpt-6.2-sol",
+          "trial": 0,
+          "usage": {
+            "cost_usd": 0.003994,
+            "input_tokens": 1777,
+            "output_tokens": 44
+          },
+          "timing": {
+            "duration_ms": 3142
+          },
+          "metrics": {
+            "code.nested_failures": 0.0,
+            "code.python_resumes": 0.0,
+            "code.python_scripts": 0.0,
+            "llm.cache_creation_tokens": 0.0,
+            "llm.calls": 2.0,
+            "llm.input_tokens_first": 841.0,
+            "llm.input_tokens_peak": 936.0,
+            "llm.input_tokens_total": 1777.0,
+            "llm.provider_cost_calls": 2.0,
+            "llm.provider_reported_cost_usd": 0.003994,
+            "llm.tool_bytes_first": 4283.0,
+            "llm.tool_bytes_peak": 4283.0,
+            "llm.tool_requests_captured": 2.0,
+            "llm.tools_first": 10.0,
+            "llm.tools_peak": 10.0,
+            "llm.usage_calls": 2.0,
+            "llm.usage_complete": 1.0
+          },
+          "error_kind": null,
+          "error": null
+        },
+        {
+          "eval": "shell_code_mode",
+          "params": {
+            "surface": "cli"
+          },
+          "passed": true,
+          "sample": "tis-choose-between-similar",
+          "scores": [
+            {
+              "na": false,
+              "name": "succeeded",
+              "passed": true,
+              "reason": "no error",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "surface_used",
+              "passed": true,
+              "reason": "task operations ran through bash",
+              "value": 1.0
+            },
+            {
+              "na": true,
+              "name": "approval_verified",
+              "passed": false,
+              "reason": "not an approval case",
+              "value": 0.0
+            },
+            {
+              "na": false,
+              "name": "expected_calls",
+              "passed": true,
+              "reason": "ran [\"mcp_tickets__search_articles\"]",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "forbidden_calls",
+              "passed": true,
+              "reason": "no forbidden tool ran",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "tool_budget",
+              "passed": true,
+              "reason": "3 tool calls <= 4",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "tools_friction",
+              "passed": true,
+              "reason": "3 calls: 2 help, 0 rejected, 1 real, 0 other",
+              "value": 0.3333333333333333
+            },
+            {
+              "na": false,
+              "name": "response_matches",
+              "passed": true,
+              "reason": "matched /(?i)reset your password/",
+              "value": 1.0
+            }
+          ],
+          "target": "openrouter/openai/gpt-6.2-sol",
+          "trial": 0,
+          "usage": {
+            "cost_usd": 0.0159675,
+            "input_tokens": 6050,
+            "output_tokens": 113
+          },
+          "timing": {
+            "duration_ms": 6689
+          },
+          "metrics": {
+            "code.nested_failures": 0.0,
+            "code.python_resumes": 0.0,
+            "code.python_scripts": 0.0,
+            "friction.calls": 3.0,
+            "friction.help_reads": 2.0,
+            "friction.other": 0.0,
+            "friction.real": 1.0,
+            "friction.rejected": 0.0,
+            "llm.cache_creation_tokens": 1095.0,
+            "llm.calls": 4.0,
+            "llm.input_tokens_first": 1617.0,
+            "llm.input_tokens_peak": 1966.0,
+            "llm.input_tokens_total": 7145.0,
+            "llm.provider_cost_calls": 4.0,
+            "llm.provider_reported_cost_usd": 0.0159675,
+            "llm.tool_bytes_first": 4017.0,
+            "llm.tool_bytes_peak": 4017.0,
+            "llm.tool_requests_captured": 4.0,
+            "llm.tools_first": 4.0,
+            "llm.tools_peak": 4.0,
+            "llm.usage_calls": 4.0,
+            "llm.usage_complete": 1.0
+          },
+          "error_kind": null,
+          "error": null
+        },
+        {
+          "eval": "shell_code_mode",
+          "params": {
+            "surface": "monty"
+          },
+          "passed": true,
+          "sample": "tis-choose-between-similar",
+          "scores": [
+            {
+              "na": false,
+              "name": "succeeded",
+              "passed": true,
+              "reason": "no error",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "surface_used",
+              "passed": true,
+              "reason": "task operations ran through python",
+              "value": 1.0
+            },
+            {
+              "na": true,
+              "name": "approval_verified",
+              "passed": false,
+              "reason": "not an approval case",
+              "value": 0.0
+            },
+            {
+              "na": false,
+              "name": "expected_calls",
+              "passed": true,
+              "reason": "ran [\"mcp_tickets__search_articles\"]",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "forbidden_calls",
+              "passed": true,
+              "reason": "no forbidden tool ran",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "tool_budget",
+              "passed": true,
+              "reason": "1 tool calls <= 4",
+              "value": 1.0
+            },
+            {
+              "na": true,
+              "name": "tools_friction",
+              "passed": false,
+              "reason": "no bash calls",
+              "value": 0.0
+            },
+            {
+              "na": false,
+              "name": "response_matches",
+              "passed": true,
+              "reason": "matched /(?i)reset your password/",
+              "value": 1.0
+            }
+          ],
+          "target": "openrouter/openai/gpt-6.2-sol",
+          "trial": 0,
+          "usage": {
+            "cost_usd": 0.0052580000000000005,
+            "input_tokens": 2354,
+            "output_tokens": 55
+          },
+          "timing": {
+            "duration_ms": 3251
+          },
+          "metrics": {
+            "code.nested_failures": 0.0,
+            "code.python_resumes": 0.0,
+            "code.python_scripts": 1.0,
+            "llm.cache_creation_tokens": 0.0,
+            "llm.calls": 2.0,
+            "llm.input_tokens_first": 1117.0,
+            "llm.input_tokens_peak": 1237.0,
+            "llm.input_tokens_total": 2354.0,
+            "llm.provider_cost_calls": 2.0,
+            "llm.provider_reported_cost_usd": 0.0052580000000000005,
+            "llm.tool_bytes_first": 4986.0,
+            "llm.tool_bytes_peak": 4986.0,
+            "llm.tool_requests_captured": 2.0,
+            "llm.tools_first": 11.0,
+            "llm.tools_peak": 11.0,
+            "llm.usage_calls": 2.0,
+            "llm.usage_complete": 1.0
+          },
+          "error_kind": null,
+          "error": null
+        },
+        {
+          "eval": "shell_code_mode",
+          "params": {
+            "surface": "native"
+          },
+          "passed": true,
+          "sample": "tis-json-input",
+          "scores": [
+            {
+              "na": false,
+              "name": "succeeded",
+              "passed": true,
+              "reason": "no error",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "surface_used",
+              "passed": true,
+              "reason": "native operations permitted",
+              "value": 1.0
+            },
+            {
+              "na": true,
+              "name": "approval_verified",
+              "passed": false,
+              "reason": "not an approval case",
+              "value": 0.0
+            },
+            {
+              "na": false,
+              "name": "expected_calls",
+              "passed": true,
+              "reason": "ran [\"mcp_tickets__create_ticket\"]",
+              "value": 1.0
+            },
+            {
+              "na": true,
+              "name": "forbidden_calls",
+              "passed": false,
+              "reason": "sample declares no forbidden calls",
+              "value": 0.0
+            },
+            {
+              "na": false,
+              "name": "tool_budget",
+              "passed": true,
+              "reason": "1 tool calls <= 4",
+              "value": 1.0
+            },
+            {
+              "na": true,
+              "name": "tools_friction",
+              "passed": false,
+              "reason": "no bash calls",
+              "value": 0.0
+            },
+            {
+              "na": false,
+              "name": "response_matches",
+              "passed": true,
+              "reason": "matched /TCK-1042/",
+              "value": 1.0
+            }
+          ],
+          "target": "openrouter/openai/gpt-6.2-sol",
+          "trial": 0,
+          "usage": {
+            "cost_usd": 0.004302,
+            "input_tokens": 1796,
+            "output_tokens": 71
+          },
+          "timing": {
+            "duration_ms": 3649
+          },
+          "metrics": {
+            "code.nested_failures": 0.0,
+            "code.python_resumes": 0.0,
+            "code.python_scripts": 0.0,
+            "llm.cache_creation_tokens": 0.0,
+            "llm.calls": 2.0,
+            "llm.input_tokens_first": 855.0,
+            "llm.input_tokens_peak": 941.0,
+            "llm.input_tokens_total": 1796.0,
+            "llm.provider_cost_calls": 2.0,
+            "llm.provider_reported_cost_usd": 0.004302,
+            "llm.tool_bytes_first": 4283.0,
+            "llm.tool_bytes_peak": 4283.0,
+            "llm.tool_requests_captured": 2.0,
+            "llm.tools_first": 10.0,
+            "llm.tools_peak": 10.0,
+            "llm.usage_calls": 2.0,
+            "llm.usage_complete": 1.0
+          },
+          "error_kind": null,
+          "error": null
+        },
+        {
+          "eval": "shell_code_mode",
+          "params": {
+            "surface": "cli"
+          },
+          "passed": true,
+          "sample": "tis-json-input",
+          "scores": [
+            {
+              "na": false,
+              "name": "succeeded",
+              "passed": true,
+              "reason": "no error",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "surface_used",
+              "passed": true,
+              "reason": "task operations ran through bash",
+              "value": 1.0
+            },
+            {
+              "na": true,
+              "name": "approval_verified",
+              "passed": false,
+              "reason": "not an approval case",
+              "value": 0.0
+            },
+            {
+              "na": false,
+              "name": "expected_calls",
+              "passed": true,
+              "reason": "ran [\"mcp_tickets__create_ticket\"]",
+              "value": 1.0
+            },
+            {
+              "na": true,
+              "name": "forbidden_calls",
+              "passed": false,
+              "reason": "sample declares no forbidden calls",
+              "value": 0.0
+            },
+            {
+              "na": false,
+              "name": "tool_budget",
+              "passed": true,
+              "reason": "3 tool calls <= 4",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "tools_friction",
+              "passed": true,
+              "reason": "3 calls: 2 help, 0 rejected, 1 real, 0 other",
+              "value": 0.3333333333333333
+            },
+            {
+              "na": false,
+              "name": "response_matches",
+              "passed": true,
+              "reason": "matched /TCK-1042/",
+              "value": 1.0
+            }
+          ],
+          "target": "openrouter/openai/gpt-6.2-sol",
+          "trial": 0,
+          "usage": {
+            "cache_read_tokens": 1135,
+            "cost_usd": 0.014741500000000001,
+            "input_tokens": 5134,
+            "output_tokens": 123
+          },
+          "timing": {
+            "duration_ms": 6564
+          },
+          "metrics": {
+            "code.nested_failures": 0.0,
+            "code.python_resumes": 0.0,
+            "code.python_scripts": 0.0,
+            "friction.calls": 3.0,
+            "friction.help_reads": 2.0,
+            "friction.other": 0.0,
+            "friction.real": 1.0,
+            "friction.rejected": 0.0,
+            "llm.cache_creation_tokens": 1252.0,
+            "llm.calls": 4.0,
+            "llm.input_tokens_first": 1631.0,
+            "llm.input_tokens_peak": 2123.0,
+            "llm.input_tokens_total": 7521.0,
+            "llm.provider_cost_calls": 4.0,
+            "llm.provider_reported_cost_usd": 0.014741500000000001,
+            "llm.tool_bytes_first": 4017.0,
+            "llm.tool_bytes_peak": 4017.0,
+            "llm.tool_requests_captured": 4.0,
+            "llm.tools_first": 4.0,
+            "llm.tools_peak": 4.0,
+            "llm.usage_calls": 4.0,
+            "llm.usage_complete": 1.0
+          },
+          "error_kind": null,
+          "error": null
+        },
+        {
+          "eval": "shell_code_mode",
+          "params": {
+            "surface": "monty"
+          },
+          "passed": true,
+          "sample": "tis-json-input",
+          "scores": [
+            {
+              "na": false,
+              "name": "succeeded",
+              "passed": true,
+              "reason": "no error",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "surface_used",
+              "passed": true,
+              "reason": "task operations ran through python",
+              "value": 1.0
+            },
+            {
+              "na": true,
+              "name": "approval_verified",
+              "passed": false,
+              "reason": "not an approval case",
+              "value": 0.0
+            },
+            {
+              "na": false,
+              "name": "expected_calls",
+              "passed": true,
+              "reason": "ran [\"mcp_tickets__create_ticket\"]",
+              "value": 1.0
+            },
+            {
+              "na": true,
+              "name": "forbidden_calls",
+              "passed": false,
+              "reason": "sample declares no forbidden calls",
+              "value": 0.0
+            },
+            {
+              "na": false,
+              "name": "tool_budget",
+              "passed": true,
+              "reason": "1 tool calls <= 4",
+              "value": 1.0
+            },
+            {
+              "na": true,
+              "name": "tools_friction",
+              "passed": false,
+              "reason": "no bash calls",
+              "value": 0.0
+            },
+            {
+              "na": false,
+              "name": "response_matches",
+              "passed": true,
+              "reason": "matched /TCK-1042/",
+              "value": 1.0
+            }
+          ],
+          "target": "openrouter/openai/gpt-6.2-sol",
+          "trial": 0,
+          "usage": {
+            "cost_usd": 0.00574,
+            "input_tokens": 2380,
+            "output_tokens": 98
+          },
+          "timing": {
+            "duration_ms": 3508
+          },
+          "metrics": {
+            "code.nested_failures": 0.0,
+            "code.python_resumes": 0.0,
+            "code.python_scripts": 1.0,
+            "llm.cache_creation_tokens": 0.0,
+            "llm.calls": 2.0,
+            "llm.input_tokens_first": 1131.0,
+            "llm.input_tokens_peak": 1249.0,
+            "llm.input_tokens_total": 2380.0,
+            "llm.provider_cost_calls": 2.0,
+            "llm.provider_reported_cost_usd": 0.00574,
+            "llm.tool_bytes_first": 4986.0,
+            "llm.tool_bytes_peak": 4986.0,
+            "llm.tool_requests_captured": 2.0,
+            "llm.tools_first": 11.0,
+            "llm.tools_peak": 11.0,
+            "llm.usage_calls": 2.0,
+            "llm.usage_complete": 1.0
+          },
+          "error_kind": null,
+          "error": null
+        },
+        {
+          "eval": "shell_code_mode",
+          "params": {
+            "surface": "native"
+          },
+          "passed": true,
+          "sample": "tis-recover-wrong-name",
+          "scores": [
+            {
+              "na": false,
+              "name": "succeeded",
+              "passed": true,
+              "reason": "no error",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "surface_used",
+              "passed": true,
+              "reason": "native operations permitted",
+              "value": 1.0
+            },
+            {
+              "na": true,
+              "name": "approval_verified",
+              "passed": false,
+              "reason": "not an approval case",
+              "value": 0.0
+            },
+            {
+              "na": false,
+              "name": "expected_calls",
+              "passed": true,
+              "reason": "ran [\"mcp_crm__find_contact\"]",
+              "value": 1.0
+            },
+            {
+              "na": true,
+              "name": "forbidden_calls",
+              "passed": false,
+              "reason": "sample declares no forbidden calls",
+              "value": 0.0
+            },
+            {
+              "na": false,
+              "name": "tool_budget",
+              "passed": true,
+              "reason": "1 tool calls <= 4",
+              "value": 1.0
+            },
+            {
+              "na": true,
+              "name": "tools_friction",
+              "passed": false,
+              "reason": "no bash calls",
+              "value": 0.0
+            },
+            {
+              "na": false,
+              "name": "response_matches",
+              "passed": true,
+              "reason": "matched /(?i)analytical engines/",
+              "value": 1.0
+            }
+          ],
+          "target": "openrouter/openai/gpt-6.2-sol",
+          "trial": 0,
+          "usage": {
+            "cost_usd": 0.004194,
+            "input_tokens": 1792,
+            "output_tokens": 61
+          },
+          "timing": {
+            "duration_ms": 2873
+          },
+          "metrics": {
+            "code.nested_failures": 0.0,
+            "code.python_resumes": 0.0,
+            "code.python_scripts": 0.0,
+            "llm.cache_creation_tokens": 0.0,
+            "llm.calls": 2.0,
+            "llm.input_tokens_first": 861.0,
+            "llm.input_tokens_peak": 931.0,
+            "llm.input_tokens_total": 1792.0,
+            "llm.provider_cost_calls": 2.0,
+            "llm.provider_reported_cost_usd": 0.004194,
+            "llm.tool_bytes_first": 4283.0,
+            "llm.tool_bytes_peak": 4283.0,
+            "llm.tool_requests_captured": 2.0,
+            "llm.tools_first": 10.0,
+            "llm.tools_peak": 10.0,
+            "llm.usage_calls": 2.0,
+            "llm.usage_complete": 1.0
+          },
+          "error_kind": null,
+          "error": null
+        },
+        {
+          "eval": "shell_code_mode",
+          "params": {
+            "surface": "cli"
+          },
+          "passed": true,
+          "sample": "tis-recover-wrong-name",
+          "scores": [
+            {
+              "na": false,
+              "name": "succeeded",
+              "passed": true,
+              "reason": "no error",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "surface_used",
+              "passed": true,
+              "reason": "task operations ran through bash",
+              "value": 1.0
+            },
+            {
+              "na": true,
+              "name": "approval_verified",
+              "passed": false,
+              "reason": "not an approval case",
+              "value": 0.0
+            },
+            {
+              "na": false,
+              "name": "expected_calls",
+              "passed": true,
+              "reason": "ran [\"mcp_crm__find_contact\"]",
+              "value": 1.0
+            },
+            {
+              "na": true,
+              "name": "forbidden_calls",
+              "passed": false,
+              "reason": "sample declares no forbidden calls",
+              "value": 0.0
+            },
+            {
+              "na": false,
+              "name": "tool_budget",
+              "passed": true,
+              "reason": "3 tool calls <= 4",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "tools_friction",
+              "passed": true,
+              "reason": "3 calls: 2 help, 0 rejected, 1 real, 0 other",
+              "value": 0.3333333333333333
+            },
+            {
+              "na": false,
+              "name": "response_matches",
+              "passed": true,
+              "reason": "matched /(?i)analytical engines/",
+              "value": 1.0
+            }
+          ],
+          "target": "openrouter/openai/gpt-6.2-sol",
+          "trial": 0,
+          "usage": {
+            "cache_read_tokens": 1097,
+            "cost_usd": 0.014562700000000001,
+            "input_tokens": 5174,
+            "output_tokens": 112
+          },
+          "timing": {
+            "duration_ms": 6158
+          },
+          "metrics": {
+            "code.nested_failures": 0.0,
+            "code.python_resumes": 0.0,
+            "code.python_scripts": 0.0,
+            "friction.calls": 3.0,
+            "friction.help_reads": 2.0,
+            "friction.other": 0.0,
+            "friction.real": 1.0,
+            "friction.rejected": 0.0,
+            "llm.cache_creation_tokens": 1194.0,
+            "llm.calls": 4.0,
+            "llm.input_tokens_first": 1637.0,
+            "llm.input_tokens_peak": 2065.0,
+            "llm.input_tokens_total": 7465.0,
+            "llm.provider_cost_calls": 4.0,
+            "llm.provider_reported_cost_usd": 0.014562700000000001,
+            "llm.tool_bytes_first": 4017.0,
+            "llm.tool_bytes_peak": 4017.0,
+            "llm.tool_requests_captured": 4.0,
+            "llm.tools_first": 4.0,
+            "llm.tools_peak": 4.0,
+            "llm.usage_calls": 4.0,
+            "llm.usage_complete": 1.0
+          },
+          "error_kind": null,
+          "error": null
+        },
+        {
+          "eval": "shell_code_mode",
+          "params": {
+            "surface": "monty"
+          },
+          "passed": true,
+          "sample": "tis-recover-wrong-name",
+          "scores": [
+            {
+              "na": false,
+              "name": "succeeded",
+              "passed": true,
+              "reason": "no error",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "surface_used",
+              "passed": true,
+              "reason": "task operations ran through python",
+              "value": 1.0
+            },
+            {
+              "na": true,
+              "name": "approval_verified",
+              "passed": false,
+              "reason": "not an approval case",
+              "value": 0.0
+            },
+            {
+              "na": false,
+              "name": "expected_calls",
+              "passed": true,
+              "reason": "ran [\"mcp_crm__find_contact\"]",
+              "value": 1.0
+            },
+            {
+              "na": true,
+              "name": "forbidden_calls",
+              "passed": false,
+              "reason": "sample declares no forbidden calls",
+              "value": 0.0
+            },
+            {
+              "na": false,
+              "name": "tool_budget",
+              "passed": true,
+              "reason": "2 tool calls <= 4",
+              "value": 1.0
+            },
+            {
+              "na": true,
+              "name": "tools_friction",
+              "passed": false,
+              "reason": "no bash calls",
+              "value": 0.0
+            },
+            {
+              "na": false,
+              "name": "response_matches",
+              "passed": true,
+              "reason": "matched /(?i)analytical engines/",
+              "value": 1.0
+            }
+          ],
+          "target": "openrouter/openai/gpt-6.2-sol",
+          "trial": 0,
+          "usage": {
+            "cost_usd": 0.009179,
+            "input_tokens": 2667,
+            "output_tokens": 107
+          },
+          "timing": {
+            "duration_ms": 5147
+          },
+          "metrics": {
+            "code.nested_failures": 0.0,
+            "code.python_resumes": 0.0,
+            "code.python_scripts": 2.0,
+            "llm.cache_creation_tokens": 1110.0,
+            "llm.calls": 3.0,
+            "llm.input_tokens_first": 1137.0,
+            "llm.input_tokens_peak": 1370.0,
+            "llm.input_tokens_total": 3777.0,
+            "llm.provider_cost_calls": 3.0,
+            "llm.provider_reported_cost_usd": 0.009179,
+            "llm.tool_bytes_first": 4986.0,
+            "llm.tool_bytes_peak": 4986.0,
+            "llm.tool_requests_captured": 3.0,
+            "llm.tools_first": 11.0,
+            "llm.tools_peak": 11.0,
+            "llm.usage_calls": 3.0,
+            "llm.usage_complete": 1.0
+          },
+          "error_kind": null,
+          "error": null
+        }
+      ]
+    },
+    {
+      "name": "framework-weather-retest",
+      "file": "framework-weather-retest.jsonl.gz",
+      "sha256": "f86db8e548b079d1fa794c32443a761520088be18859ee8113d0cd3f75c9d8a3",
+      "count": 3,
+      "passed": 3,
+      "cases": [
+        {
+          "eval": "shell_code_mode",
+          "params": {
+            "surface": "native"
+          },
+          "passed": true,
+          "sample": "tis-find-by-keyword",
+          "scores": [
+            {
+              "na": false,
+              "name": "succeeded",
+              "passed": true,
+              "reason": "no error",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "surface_used",
+              "passed": true,
+              "reason": "native operations permitted",
+              "value": 1.0
+            },
+            {
+              "na": true,
+              "name": "approval_verified",
+              "passed": false,
+              "reason": "not an approval case",
+              "value": 0.0
+            },
+            {
+              "na": false,
+              "name": "expected_calls",
+              "passed": true,
+              "reason": "ran [\"weather_forecast\"]",
+              "value": 1.0
+            },
+            {
+              "na": true,
+              "name": "forbidden_calls",
+              "passed": false,
+              "reason": "sample declares no forbidden calls",
+              "value": 0.0
+            },
+            {
+              "na": false,
+              "name": "tool_budget",
+              "passed": true,
+              "reason": "1 tool calls <= 4",
+              "value": 1.0
+            },
+            {
+              "na": true,
+              "name": "tools_friction",
+              "passed": false,
+              "reason": "no bash calls",
+              "value": 0.0
+            },
+            {
+              "na": false,
+              "name": "response_matches",
+              "passed": true,
+              "reason": "matched /(?i)sunny/",
+              "value": 1.0
+            }
+          ],
+          "target": "openrouter/openai/gpt-6.2-sol",
+          "trial": 0,
+          "usage": {
+            "cost_usd": 0.004368,
+            "input_tokens": 1769,
+            "output_tokens": 83
+          },
+          "timing": {
+            "duration_ms": 3732
+          },
+          "metrics": {
+            "code.nested_failures": 0.0,
+            "code.python_resumes": 0.0,
+            "code.python_scripts": 0.0,
+            "llm.cache_creation_tokens": 0.0,
+            "llm.calls": 2.0,
+            "llm.input_tokens_first": 839.0,
+            "llm.input_tokens_peak": 930.0,
+            "llm.input_tokens_total": 1769.0,
+            "llm.provider_cost_calls": 2.0,
+            "llm.provider_reported_cost_usd": 0.004368,
+            "llm.tool_bytes_first": 4283.0,
+            "llm.tool_bytes_peak": 4283.0,
+            "llm.tool_requests_captured": 2.0,
+            "llm.tools_first": 10.0,
+            "llm.tools_peak": 10.0,
+            "llm.usage_calls": 2.0,
+            "llm.usage_complete": 1.0
+          },
+          "error_kind": null,
+          "error": null
+        },
+        {
+          "eval": "shell_code_mode",
+          "params": {
+            "surface": "cli"
+          },
+          "passed": true,
+          "sample": "tis-find-by-keyword",
+          "scores": [
+            {
+              "na": false,
+              "name": "succeeded",
+              "passed": true,
+              "reason": "no error",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "surface_used",
+              "passed": true,
+              "reason": "task operations ran through bash",
+              "value": 1.0
+            },
+            {
+              "na": true,
+              "name": "approval_verified",
+              "passed": false,
+              "reason": "not an approval case",
+              "value": 0.0
+            },
+            {
+              "na": false,
+              "name": "expected_calls",
+              "passed": true,
+              "reason": "ran [\"weather_forecast\"]",
+              "value": 1.0
+            },
+            {
+              "na": true,
+              "name": "forbidden_calls",
+              "passed": false,
+              "reason": "sample declares no forbidden calls",
+              "value": 0.0
+            },
+            {
+              "na": false,
+              "name": "tool_budget",
+              "passed": true,
+              "reason": "3 tool calls <= 4",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "tools_friction",
+              "passed": true,
+              "reason": "3 calls: 2 help, 0 rejected, 1 real, 0 other",
+              "value": 0.3333333333333333
+            },
+            {
+              "na": false,
+              "name": "response_matches",
+              "passed": true,
+              "reason": "matched /(?i)sunny/",
+              "value": 1.0
+            }
+          ],
+          "target": "openrouter/openai/gpt-6.2-sol",
+          "trial": 0,
+          "usage": {
+            "cache_read_tokens": 1065,
+            "cost_usd": 0.014677999999999998,
+            "input_tokens": 5097,
+            "output_tokens": 139
+          },
+          "timing": {
+            "duration_ms": 7073
+          },
+          "metrics": {
+            "code.nested_failures": 0.0,
+            "code.python_resumes": 0.0,
+            "code.python_scripts": 0.0,
+            "friction.calls": 3.0,
+            "friction.help_reads": 2.0,
+            "friction.other": 0.0,
+            "friction.real": 1.0,
+            "friction.rejected": 0.0,
+            "llm.cache_creation_tokens": 1195.0,
+            "llm.calls": 4.0,
+            "llm.input_tokens_first": 1615.0,
+            "llm.input_tokens_peak": 2066.0,
+            "llm.input_tokens_total": 7357.0,
+            "llm.provider_cost_calls": 4.0,
+            "llm.provider_reported_cost_usd": 0.014677999999999998,
+            "llm.tool_bytes_first": 4017.0,
+            "llm.tool_bytes_peak": 4017.0,
+            "llm.tool_requests_captured": 4.0,
+            "llm.tools_first": 4.0,
+            "llm.tools_peak": 4.0,
+            "llm.usage_calls": 4.0,
+            "llm.usage_complete": 1.0
+          },
+          "error_kind": null,
+          "error": null
+        },
+        {
+          "eval": "shell_code_mode",
+          "params": {
+            "surface": "monty"
+          },
+          "passed": true,
+          "sample": "tis-find-by-keyword",
+          "scores": [
+            {
+              "na": false,
+              "name": "succeeded",
+              "passed": true,
+              "reason": "no error",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "surface_used",
+              "passed": true,
+              "reason": "task operations ran through python",
+              "value": 1.0
+            },
+            {
+              "na": true,
+              "name": "approval_verified",
+              "passed": false,
+              "reason": "not an approval case",
+              "value": 0.0
+            },
+            {
+              "na": false,
+              "name": "expected_calls",
+              "passed": true,
+              "reason": "ran [\"weather_forecast\"]",
+              "value": 1.0
+            },
+            {
+              "na": true,
+              "name": "forbidden_calls",
+              "passed": false,
+              "reason": "sample declares no forbidden calls",
+              "value": 0.0
+            },
+            {
+              "na": false,
+              "name": "tool_budget",
+              "passed": true,
+              "reason": "1 tool calls <= 4",
+              "value": 1.0
+            },
+            {
+              "na": true,
+              "name": "tools_friction",
+              "passed": false,
+              "reason": "no bash calls",
+              "value": 0.0
+            },
+            {
+              "na": false,
+              "name": "response_matches",
+              "passed": true,
+              "reason": "matched /(?i)sunny/",
+              "value": 1.0
+            }
+          ],
+          "target": "openrouter/openai/gpt-6.2-sol",
+          "trial": 0,
+          "usage": {
+            "cost_usd": 0.005856,
+            "input_tokens": 2358,
+            "output_tokens": 114
+          },
+          "timing": {
+            "duration_ms": 3700
+          },
+          "metrics": {
+            "code.nested_failures": 0.0,
+            "code.python_resumes": 0.0,
+            "code.python_scripts": 1.0,
+            "llm.cache_creation_tokens": 0.0,
+            "llm.calls": 2.0,
+            "llm.input_tokens_first": 1115.0,
+            "llm.input_tokens_peak": 1243.0,
+            "llm.input_tokens_total": 2358.0,
+            "llm.provider_cost_calls": 2.0,
+            "llm.provider_reported_cost_usd": 0.005856,
+            "llm.tool_bytes_first": 4986.0,
+            "llm.tool_bytes_peak": 4986.0,
+            "llm.tool_requests_captured": 2.0,
+            "llm.tools_first": 11.0,
+            "llm.tools_peak": 11.0,
+            "llm.usage_calls": 2.0,
+            "llm.usage_complete": 1.0
+          },
+          "error_kind": null,
+          "error": null
+        }
+      ]
+    },
+    {
+      "name": "mcp-live",
+      "file": "mcp-live.jsonl.gz",
+      "sha256": "8f5e754a1326e13020c5d01ca22fea7e8240e2b4e5273555a84488f4270727f7",
+      "count": 8,
+      "passed": 7,
+      "cases": [
+        {
+          "case": "mcp_scale/staged-rollback@openrouter/openai/gpt-6.2-sol[catalog_size=50,servers=1,surface=native]",
+          "duration_ms": 11913,
+          "error": null,
+          "error_kind": "Subject",
+          "metadata": {
+            "fixture_state_snapshots": [
+              {
+                "calls": [
+                  {
+                    "arguments": {
+                      "environment": "staging",
+                      "service": "billing-api",
+                      "status": "failed"
+                    },
+                    "result": [
+                      {
+                        "deployment_id": "dep-bill-stg-2042",
+                        "environment": "staging",
+                        "previous_version": "3.8.0",
+                        "rollback_eligible": true,
+                        "service": "billing-api",
+                        "status": "failed",
+                        "version": "3.8.1"
+                      }
+                    ],
+                    "server": "telemetry",
+                    "tool": "list_deployments"
+                  },
+                  {
+                    "arguments": {
+                      "deployment_id": "dep-bill-stg-2042"
+                    },
+                    "result": {
+                      "deployment_id": "dep-bill-stg-2042",
+                      "environment": "staging",
+                      "previous_version": "3.8.0",
+                      "rollback_eligible": true,
+                      "service": "billing-api",
+                      "status": "failed",
+                      "version": "3.8.1"
+                    },
+                    "server": "telemetry",
+                    "tool": "get_deployment"
+                  },
+                  {
+                    "arguments": {
+                      "deployment_id": "dep-bill-stg-2042",
+                      "reason": "Restore billing-api staging to recorded previous version 3.8.0 after deployment of 3.8.1 failed."
+                    },
+                    "result": {
+                      "deployment_id": "dep-bill-stg-2042",
+                      "environment": "staging",
+                      "previous_version": "3.8.0",
+                      "rollback_eligible": false,
+                      "service": "billing-api",
+                      "status": "rolled_back",
+                      "version": "3.8.0"
+                    },
+                    "server": "telemetry",
+                    "tool": "rollback_deployment"
+                  },
+                  {
+                    "arguments": {
+                      "deployment_id": "dep-bill-stg-2042"
+                    },
+                    "result": {
+                      "deployment_id": "dep-bill-stg-2042",
+                      "environment": "staging",
+                      "previous_version": "3.8.0",
+                      "rollback_eligible": false,
+                      "service": "billing-api",
+                      "status": "rolled_back",
+                      "version": "3.8.0"
+                    },
+                    "server": "telemetry",
+                    "tool": "verify_deployment"
+                  }
+                ],
+                "production": {
+                  "deployment_id": "dep-bill-prd-9911",
+                  "environment": "prod",
+                  "previous_version": "3.8.0",
+                  "rollback_eligible": false,
+                  "service": "billing-api",
+                  "status": "healthy",
+                  "version": "3.8.1"
+                },
+                "server_id": "telemetry",
+                "staging": {
+                  "deployment_id": "dep-bill-stg-2042",
+                  "environment": "staging",
+                  "previous_version": "3.8.0",
+                  "rollback_eligible": false,
+                  "service": "billing-api",
+                  "status": "rolled_back",
+                  "version": "3.8.0"
+                },
+                "ticket": {
+                  "linked_incident": "INC-427",
+                  "owner": "Ava Li",
+                  "status": "in_progress",
+                  "ticket_id": "OPS-8421",
+                  "title": "Investigate billing-api staging 5xx"
+                }
+              }
+            ],
+            "placement": "framework",
+            "surface": "native",
+            "usage_convention": "everruns-disjoint-v1",
+            "usage_projection": "generation-iteration-v1"
+          },
+          "metrics": {
+            "code.nested_failures": 0.0,
+            "code.python_resumes": 0.0,
+            "code.python_scripts": 0.0,
+            "llm.cache_creation_tokens": 2028.0,
+            "llm.calls": 6.0,
+            "llm.input_tokens_first": 585.0,
+            "llm.input_tokens_peak": 2248.0,
+            "llm.input_tokens_total": 10669.0,
+            "llm.provider_cost_calls": 6.0,
+            "llm.provider_reported_cost_usd": 0.011735599999999999,
+            "llm.tool_bytes_first": 1769.0,
+            "llm.tool_bytes_peak": 5504.0,
+            "llm.tool_requests_captured": 6.0,
+            "llm.tools_first": 3.0,
+            "llm.tools_peak": 10.0,
+            "llm.usage_calls": 6.0,
+            "llm.usage_complete": 1.0,
+            "mcp.calls": 4.0,
+            "mcp.catalog_tools": 50.0,
+            "mcp.input_tokens": 1685.0,
+            "mcp.unique_operations": 4.0
+          },
+          "passed": true,
+          "scores": [
+            {
+              "na": false,
+              "name": "succeeded",
+              "passed": true,
+              "reason": "no error",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "surface_used",
+              "passed": true,
+              "reason": "native operations permitted",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "tool_evidence",
+              "passed": true,
+              "reason": "4 MCP operation call(s) in Framework events",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "state_verified",
+              "passed": true,
+              "reason": "fixture operation results establish the requested state",
+              "value": 1.0
+            }
+          ],
+          "usage": {
+            "cache_read_tokens": 6956,
+            "cost_usd": 0.011735599999999999,
+            "input_tokens": 1685,
+            "output_tokens": 260
+          },
+          "timing": null
+        },
+        {
+          "case": "mcp_scale/staged-rollback@openrouter/openai/gpt-6.2-sol[catalog_size=50,servers=1,surface=cli]",
+          "duration_ms": 15698,
+          "error": null,
+          "error_kind": "Subject",
+          "metadata": {
+            "fixture_state_snapshots": [
+              {
+                "calls": [
+                  {
+                    "arguments": {
+                      "environment": "staging",
+                      "service": "billing-api",
+                      "status": "failed"
+                    },
+                    "result": [
+                      {
+                        "deployment_id": "dep-bill-stg-2042",
+                        "environment": "staging",
+                        "previous_version": "3.8.0",
+                        "rollback_eligible": true,
+                        "service": "billing-api",
+                        "status": "failed",
+                        "version": "3.8.1"
+                      }
+                    ],
+                    "server": "telemetry",
+                    "tool": "list_deployments"
+                  },
+                  {
+                    "arguments": {
+                      "deployment_id": "dep-bill-stg-2042"
+                    },
+                    "result": {
+                      "deployment_id": "dep-bill-stg-2042",
+                      "environment": "staging",
+                      "previous_version": "3.8.0",
+                      "rollback_eligible": true,
+                      "service": "billing-api",
+                      "status": "failed",
+                      "version": "3.8.1"
+                    },
+                    "server": "telemetry",
+                    "tool": "get_deployment"
+                  },
+                  {
+                    "arguments": {
+                      "deployment_id": "dep-bill-stg-2042",
+                      "reason": "Roll back failed billing-api staging deployment 3.8.1 to its recorded previous version 3.8.0."
+                    },
+                    "result": {
+                      "deployment_id": "dep-bill-stg-2042",
+                      "environment": "staging",
+                      "previous_version": "3.8.0",
+                      "rollback_eligible": false,
+                      "service": "billing-api",
+                      "status": "rolled_back",
+                      "version": "3.8.0"
+                    },
+                    "server": "telemetry",
+                    "tool": "rollback_deployment"
+                  },
+                  {
+                    "arguments": {
+                      "deployment_id": "dep-bill-stg-2042"
+                    },
+                    "result": {
+                      "deployment_id": "dep-bill-stg-2042",
+                      "environment": "staging",
+                      "previous_version": "3.8.0",
+                      "rollback_eligible": false,
+                      "service": "billing-api",
+                      "status": "rolled_back",
+                      "version": "3.8.0"
+                    },
+                    "server": "telemetry",
+                    "tool": "verify_deployment"
+                  }
+                ],
+                "production": {
+                  "deployment_id": "dep-bill-prd-9911",
+                  "environment": "prod",
+                  "previous_version": "3.8.0",
+                  "rollback_eligible": false,
+                  "service": "billing-api",
+                  "status": "healthy",
+                  "version": "3.8.1"
+                },
+                "server_id": "telemetry",
+                "staging": {
+                  "deployment_id": "dep-bill-stg-2042",
+                  "environment": "staging",
+                  "previous_version": "3.8.0",
+                  "rollback_eligible": false,
+                  "service": "billing-api",
+                  "status": "rolled_back",
+                  "version": "3.8.0"
+                },
+                "ticket": {
+                  "linked_incident": "INC-427",
+                  "owner": "Ava Li",
+                  "status": "in_progress",
+                  "ticket_id": "OPS-8421",
+                  "title": "Investigate billing-api staging 5xx"
+                }
+              }
+            ],
+            "placement": "framework",
+            "surface": "cli",
+            "usage_convention": "everruns-disjoint-v1",
+            "usage_projection": "generation-iteration-v1"
+          },
+          "metrics": {
+            "code.nested_failures": 0.0,
+            "code.python_resumes": 0.0,
+            "code.python_scripts": 0.0,
+            "llm.cache_creation_tokens": 1847.0,
+            "llm.calls": 7.0,
+            "llm.input_tokens_first": 1666.0,
+            "llm.input_tokens_peak": 2752.0,
+            "llm.input_tokens_total": 15920.0,
+            "llm.provider_cost_calls": 7.0,
+            "llm.provider_reported_cost_usd": 0.024528,
+            "llm.tool_bytes_first": 4017.0,
+            "llm.tool_bytes_peak": 4017.0,
+            "llm.tool_requests_captured": 7.0,
+            "llm.tools_first": 4.0,
+            "llm.tools_peak": 4.0,
+            "llm.usage_calls": 7.0,
+            "llm.usage_complete": 1.0,
+            "mcp.calls": 4.0,
+            "mcp.catalog_tools": 50.0,
+            "mcp.input_tokens": 8028.0,
+            "mcp.unique_operations": 4.0
+          },
+          "passed": true,
+          "scores": [
+            {
+              "na": false,
+              "name": "succeeded",
+              "passed": true,
+              "reason": "no error",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "surface_used",
+              "passed": true,
+              "reason": "task operations ran through bash",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "tool_evidence",
+              "passed": true,
+              "reason": "4 MCP operation call(s) in Framework events",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "state_verified",
+              "passed": true,
+              "reason": "fixture operation results establish the requested state",
+              "value": 1.0
+            }
+          ],
+          "usage": {
+            "cache_read_tokens": 6045,
+            "cost_usd": 0.024528,
+            "input_tokens": 8028,
+            "output_tokens": 325
+          },
+          "timing": null
+        },
+        {
+          "case": "mcp_scale/staged-rollback@openrouter/openai/gpt-6.2-sol[catalog_size=50,servers=1,surface=hybrid]",
+          "duration_ms": 12163,
+          "error": null,
+          "error_kind": "Subject",
+          "metadata": {
+            "fixture_state_snapshots": [
+              {
+                "calls": [
+                  {
+                    "arguments": {
+                      "environment": "staging",
+                      "service": "billing-api",
+                      "status": "failed"
+                    },
+                    "result": [
+                      {
+                        "deployment_id": "dep-bill-stg-2042",
+                        "environment": "staging",
+                        "previous_version": "3.8.0",
+                        "rollback_eligible": true,
+                        "service": "billing-api",
+                        "status": "failed",
+                        "version": "3.8.1"
+                      }
+                    ],
+                    "server": "telemetry",
+                    "tool": "list_deployments"
+                  },
+                  {
+                    "arguments": {
+                      "deployment_id": "dep-bill-stg-2042"
+                    },
+                    "result": {
+                      "deployment_id": "dep-bill-stg-2042",
+                      "environment": "staging",
+                      "previous_version": "3.8.0",
+                      "rollback_eligible": true,
+                      "service": "billing-api",
+                      "status": "failed",
+                      "version": "3.8.1"
+                    },
+                    "server": "telemetry",
+                    "tool": "get_deployment"
+                  },
+                  {
+                    "arguments": {
+                      "deployment_id": "dep-bill-stg-2042",
+                      "reason": "billing-api version 3.8.1 failed in staging; restore the recorded previous version 3.8.0."
+                    },
+                    "result": {
+                      "deployment_id": "dep-bill-stg-2042",
+                      "environment": "staging",
+                      "previous_version": "3.8.0",
+                      "rollback_eligible": false,
+                      "service": "billing-api",
+                      "status": "rolled_back",
+                      "version": "3.8.0"
+                    },
+                    "server": "telemetry",
+                    "tool": "rollback_deployment"
+                  },
+                  {
+                    "arguments": {
+                      "deployment_id": "dep-bill-stg-2042"
+                    },
+                    "result": {
+                      "deployment_id": "dep-bill-stg-2042",
+                      "environment": "staging",
+                      "previous_version": "3.8.0",
+                      "rollback_eligible": false,
+                      "service": "billing-api",
+                      "status": "rolled_back",
+                      "version": "3.8.0"
+                    },
+                    "server": "telemetry",
+                    "tool": "verify_deployment"
+                  }
+                ],
+                "production": {
+                  "deployment_id": "dep-bill-prd-9911",
+                  "environment": "prod",
+                  "previous_version": "3.8.0",
+                  "rollback_eligible": false,
+                  "service": "billing-api",
+                  "status": "healthy",
+                  "version": "3.8.1"
+                },
+                "server_id": "telemetry",
+                "staging": {
+                  "deployment_id": "dep-bill-stg-2042",
+                  "environment": "staging",
+                  "previous_version": "3.8.0",
+                  "rollback_eligible": false,
+                  "service": "billing-api",
+                  "status": "rolled_back",
+                  "version": "3.8.0"
+                },
+                "ticket": {
+                  "linked_incident": "INC-427",
+                  "owner": "Ava Li",
+                  "status": "in_progress",
+                  "ticket_id": "OPS-8421",
+                  "title": "Investigate billing-api staging 5xx"
+                }
+              }
+            ],
+            "placement": "framework",
+            "surface": "hybrid",
+            "usage_convention": "everruns-disjoint-v1",
+            "usage_projection": "generation-iteration-v1"
+          },
+          "metrics": {
+            "code.nested_failures": 0.0,
+            "code.python_resumes": 0.0,
+            "code.python_scripts": 0.0,
+            "llm.cache_creation_tokens": 3801.0,
+            "llm.calls": 6.0,
+            "llm.input_tokens_first": 2025.0,
+            "llm.input_tokens_peak": 3672.0,
+            "llm.input_tokens_total": 19229.0,
+            "llm.provider_cost_calls": 6.0,
+            "llm.provider_reported_cost_usd": 0.0244325,
+            "llm.tool_bytes_first": 5785.0,
+            "llm.tool_bytes_peak": 9941.0,
+            "llm.tool_requests_captured": 6.0,
+            "llm.tools_first": 7.0,
+            "llm.tools_peak": 15.0,
+            "llm.usage_calls": 6.0,
+            "llm.usage_complete": 1.0,
+            "mcp.calls": 4.0,
+            "mcp.catalog_tools": 50.0,
+            "mcp.input_tokens": 5688.0,
+            "mcp.unique_operations": 4.0
+          },
+          "passed": true,
+          "scores": [
+            {
+              "na": false,
+              "name": "succeeded",
+              "passed": true,
+              "reason": "no error",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "surface_used",
+              "passed": true,
+              "reason": "native operations permitted",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "tool_evidence",
+              "passed": true,
+              "reason": "4 MCP operation call(s) in Framework events",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "state_verified",
+              "passed": true,
+              "reason": "fixture operation results establish the requested state",
+              "value": 1.0
+            }
+          ],
+          "usage": {
+            "cache_read_tokens": 9740,
+            "cost_usd": 0.0244325,
+            "input_tokens": 5688,
+            "output_tokens": 258
+          },
+          "timing": null
+        },
+        {
+          "case": "mcp_scale/staged-rollback@openrouter/openai/gpt-6.2-sol[catalog_size=50,servers=1,surface=monty]",
+          "duration_ms": 13203,
+          "error": null,
+          "error_kind": "Subject",
+          "metadata": {
+            "fixture_state_snapshots": [
+              {
+                "calls": [
+                  {
+                    "arguments": {
+                      "environment": "staging",
+                      "service": "billing-api",
+                      "status": "failed"
+                    },
+                    "result": [
+                      {
+                        "deployment_id": "dep-bill-stg-2042",
+                        "environment": "staging",
+                        "previous_version": "3.8.0",
+                        "rollback_eligible": true,
+                        "service": "billing-api",
+                        "status": "failed",
+                        "version": "3.8.1"
+                      }
+                    ],
+                    "server": "telemetry",
+                    "tool": "list_deployments"
+                  },
+                  {
+                    "arguments": {
+                      "deployment_id": "dep-bill-stg-2042"
+                    },
+                    "result": {
+                      "deployment_id": "dep-bill-stg-2042",
+                      "environment": "staging",
+                      "previous_version": "3.8.0",
+                      "rollback_eligible": true,
+                      "service": "billing-api",
+                      "status": "failed",
+                      "version": "3.8.1"
+                    },
+                    "server": "telemetry",
+                    "tool": "get_deployment"
+                  },
+                  {
+                    "arguments": {
+                      "deployment_id": "dep-bill-stg-2042",
+                      "reason": "Restore the recorded previous version 3.8.0 after the billing-api 3.8.1 deployment failed in staging."
+                    },
+                    "result": {
+                      "deployment_id": "dep-bill-stg-2042",
+                      "environment": "staging",
+                      "previous_version": "3.8.0",
+                      "rollback_eligible": false,
+                      "service": "billing-api",
+                      "status": "rolled_back",
+                      "version": "3.8.0"
+                    },
+                    "server": "telemetry",
+                    "tool": "rollback_deployment"
+                  },
+                  {
+                    "arguments": {
+                      "deployment_id": "dep-bill-stg-2042"
+                    },
+                    "result": {
+                      "deployment_id": "dep-bill-stg-2042",
+                      "environment": "staging",
+                      "previous_version": "3.8.0",
+                      "rollback_eligible": false,
+                      "service": "billing-api",
+                      "status": "rolled_back",
+                      "version": "3.8.0"
+                    },
+                    "server": "telemetry",
+                    "tool": "verify_deployment"
+                  }
+                ],
+                "production": {
+                  "deployment_id": "dep-bill-prd-9911",
+                  "environment": "prod",
+                  "previous_version": "3.8.0",
+                  "rollback_eligible": false,
+                  "service": "billing-api",
+                  "status": "healthy",
+                  "version": "3.8.1"
+                },
+                "server_id": "telemetry",
+                "staging": {
+                  "deployment_id": "dep-bill-stg-2042",
+                  "environment": "staging",
+                  "previous_version": "3.8.0",
+                  "rollback_eligible": false,
+                  "service": "billing-api",
+                  "status": "rolled_back",
+                  "version": "3.8.0"
+                },
+                "ticket": {
+                  "linked_incident": "INC-427",
+                  "owner": "Ava Li",
+                  "status": "in_progress",
+                  "ticket_id": "OPS-8421",
+                  "title": "Investigate billing-api staging 5xx"
+                }
+              }
+            ],
+            "isolation": "interpreter-only; Landlock ENOSYS; not deployment isolation qualification",
+            "placement": "framework",
+            "surface": "monty",
+            "usage_convention": "everruns-disjoint-v1",
+            "usage_projection": "generation-iteration-v1"
+          },
+          "metrics": {
+            "code.nested_failures": 0.0,
+            "code.python_resumes": 0.0,
+            "code.python_scripts": 4.0,
+            "llm.cache_creation_tokens": 2280.0,
+            "llm.calls": 6.0,
+            "llm.input_tokens_first": 861.0,
+            "llm.input_tokens_peak": 2645.0,
+            "llm.input_tokens_total": 12604.0,
+            "llm.provider_cost_calls": 6.0,
+            "llm.provider_reported_cost_usd": 0.0155658,
+            "llm.tool_bytes_first": 2472.0,
+            "llm.tool_bytes_peak": 6205.0,
+            "llm.tool_requests_captured": 6.0,
+            "llm.tools_first": 4.0,
+            "llm.tools_peak": 11.0,
+            "llm.usage_calls": 6.0,
+            "llm.usage_complete": 1.0,
+            "mcp.calls": 4.0,
+            "mcp.catalog_tools": 50.0,
+            "mcp.input_tokens": 2686.0,
+            "mcp.unique_operations": 4.0
+          },
+          "passed": true,
+          "scores": [
+            {
+              "na": false,
+              "name": "succeeded",
+              "passed": true,
+              "reason": "no error",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "surface_used",
+              "passed": true,
+              "reason": "task operations ran through python",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "tool_evidence",
+              "passed": true,
+              "reason": "4 MCP operation call(s) in Framework events",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "state_verified",
+              "passed": true,
+              "reason": "fixture operation results establish the requested state",
+              "value": 1.0
+            }
+          ],
+          "usage": {
+            "cache_read_tokens": 7638,
+            "cost_usd": 0.0155658,
+            "input_tokens": 2686,
+            "output_tokens": 373
+          },
+          "timing": null
+        },
+        {
+          "case": "mcp_scale/readonly-ticket@openrouter/openai/gpt-6.2-sol[catalog_size=50,servers=1,surface=native]",
+          "duration_ms": 4645,
+          "error": null,
+          "error_kind": "Subject",
+          "metadata": {
+            "fixture_state_snapshots": [
+              {
+                "calls": [
+                  {
+                    "arguments": {
+                      "ticket_id": "OPS-8421"
+                    },
+                    "result": {
+                      "linked_incident": "INC-427",
+                      "owner": "Ava Li",
+                      "status": "in_progress",
+                      "ticket_id": "OPS-8421",
+                      "title": "Investigate billing-api staging 5xx"
+                    },
+                    "server": "telemetry",
+                    "tool": "get_ticket"
+                  }
+                ],
+                "production": {
+                  "deployment_id": "dep-bill-prd-9911",
+                  "environment": "prod",
+                  "previous_version": "3.8.0",
+                  "rollback_eligible": false,
+                  "service": "billing-api",
+                  "status": "healthy",
+                  "version": "3.8.1"
+                },
+                "server_id": "telemetry",
+                "staging": {
+                  "deployment_id": "dep-bill-stg-2042",
+                  "environment": "staging",
+                  "previous_version": "3.8.0",
+                  "rollback_eligible": true,
+                  "service": "billing-api",
+                  "status": "failed",
+                  "version": "3.8.1"
+                },
+                "ticket": {
+                  "linked_incident": "INC-427",
+                  "owner": "Ava Li",
+                  "status": "in_progress",
+                  "ticket_id": "OPS-8421",
+                  "title": "Investigate billing-api staging 5xx"
+                }
+              }
+            ],
+            "placement": "framework",
+            "surface": "native",
+            "usage_convention": "everruns-disjoint-v1",
+            "usage_projection": "generation-iteration-v1"
+          },
+          "metrics": {
+            "code.nested_failures": 0.0,
+            "code.python_resumes": 0.0,
+            "code.python_scripts": 0.0,
+            "llm.cache_creation_tokens": 1641.0,
+            "llm.calls": 3.0,
+            "llm.input_tokens_first": 573.0,
+            "llm.input_tokens_peak": 1861.0,
+            "llm.input_tokens_total": 4206.0,
+            "llm.provider_cost_calls": 3.0,
+            "llm.provider_reported_cost_usd": 0.0070937,
+            "llm.tool_bytes_first": 1769.0,
+            "llm.tool_bytes_peak": 5518.0,
+            "llm.tool_requests_captured": 3.0,
+            "llm.tools_first": 3.0,
+            "llm.tools_peak": 9.0,
+            "llm.usage_calls": 3.0,
+            "llm.usage_complete": 1.0,
+            "mcp.calls": 1.0,
+            "mcp.catalog_tools": 50.0,
+            "mcp.input_tokens": 1013.0,
+            "mcp.unique_operations": 1.0
+          },
+          "passed": true,
+          "scores": [
+            {
+              "na": false,
+              "name": "succeeded",
+              "passed": true,
+              "reason": "no error",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "surface_used",
+              "passed": true,
+              "reason": "native operations permitted",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "tool_evidence",
+              "passed": true,
+              "reason": "1 MCP operation call(s) in Framework events",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "state_verified",
+              "passed": true,
+              "reason": "fixture operation results establish the requested state",
+              "value": 1.0
+            }
+          ],
+          "usage": {
+            "cache_read_tokens": 1552,
+            "cost_usd": 0.0070937,
+            "input_tokens": 1013,
+            "output_tokens": 81
+          },
+          "timing": null
+        },
+        {
+          "case": "mcp_scale/readonly-ticket@openrouter/openai/gpt-6.2-sol[catalog_size=50,servers=1,surface=cli]",
+          "duration_ms": 6932,
+          "error": null,
+          "error_kind": "Subject",
+          "metadata": {
+            "fixture_state_snapshots": [
+              {
+                "calls": [
+                  {
+                    "arguments": {
+                      "ticket_id": "OPS-8421"
+                    },
+                    "result": {
+                      "linked_incident": "INC-427",
+                      "owner": "Ava Li",
+                      "status": "in_progress",
+                      "ticket_id": "OPS-8421",
+                      "title": "Investigate billing-api staging 5xx"
+                    },
+                    "server": "telemetry",
+                    "tool": "get_ticket"
+                  }
+                ],
+                "production": {
+                  "deployment_id": "dep-bill-prd-9911",
+                  "environment": "prod",
+                  "previous_version": "3.8.0",
+                  "rollback_eligible": false,
+                  "service": "billing-api",
+                  "status": "healthy",
+                  "version": "3.8.1"
+                },
+                "server_id": "telemetry",
+                "staging": {
+                  "deployment_id": "dep-bill-stg-2042",
+                  "environment": "staging",
+                  "previous_version": "3.8.0",
+                  "rollback_eligible": true,
+                  "service": "billing-api",
+                  "status": "failed",
+                  "version": "3.8.1"
+                },
+                "ticket": {
+                  "linked_incident": "INC-427",
+                  "owner": "Ava Li",
+                  "status": "in_progress",
+                  "ticket_id": "OPS-8421",
+                  "title": "Investigate billing-api staging 5xx"
+                }
+              }
+            ],
+            "placement": "framework",
+            "surface": "cli",
+            "usage_convention": "everruns-disjoint-v1",
+            "usage_projection": "generation-iteration-v1"
+          },
+          "metrics": {
+            "code.nested_failures": 0.0,
+            "code.python_resumes": 0.0,
+            "code.python_scripts": 0.0,
+            "llm.cache_creation_tokens": 1306.0,
+            "llm.calls": 4.0,
+            "llm.input_tokens_first": 1654.0,
+            "llm.input_tokens_peak": 2211.0,
+            "llm.input_tokens_total": 7895.0,
+            "llm.provider_cost_calls": 4.0,
+            "llm.provider_reported_cost_usd": 0.0151987,
+            "llm.tool_bytes_first": 4017.0,
+            "llm.tool_bytes_peak": 4017.0,
+            "llm.tool_requests_captured": 4.0,
+            "llm.tools_first": 4.0,
+            "llm.tools_peak": 4.0,
+            "llm.usage_calls": 4.0,
+            "llm.usage_complete": 1.0,
+            "mcp.calls": 1.0,
+            "mcp.catalog_tools": 50.0,
+            "mcp.input_tokens": 5392.0,
+            "mcp.unique_operations": 1.0
+          },
+          "passed": true,
+          "scores": [
+            {
+              "na": false,
+              "name": "succeeded",
+              "passed": true,
+              "reason": "no error",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "surface_used",
+              "passed": true,
+              "reason": "task operations ran through bash",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "tool_evidence",
+              "passed": true,
+              "reason": "1 MCP operation call(s) in Framework events",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "state_verified",
+              "passed": true,
+              "reason": "fixture operation results establish the requested state",
+              "value": 1.0
+            }
+          ],
+          "usage": {
+            "cache_read_tokens": 1197,
+            "cost_usd": 0.0151987,
+            "input_tokens": 5392,
+            "output_tokens": 103
+          },
+          "timing": null
+        },
+        {
+          "case": "mcp_scale/readonly-ticket@openrouter/openai/gpt-6.2-sol[catalog_size=50,servers=1,surface=hybrid]",
+          "duration_ms": 5446,
+          "error": null,
+          "error_kind": "Subject",
+          "metadata": {
+            "fixture_state_snapshots": [
+              {
+                "calls": [
+                  {
+                    "arguments": {
+                      "ticket_id": "OPS-8421"
+                    },
+                    "result": {
+                      "linked_incident": "INC-427",
+                      "owner": "Ava Li",
+                      "status": "in_progress",
+                      "ticket_id": "OPS-8421",
+                      "title": "Investigate billing-api staging 5xx"
+                    },
+                    "server": "telemetry",
+                    "tool": "get_ticket"
+                  }
+                ],
+                "production": {
+                  "deployment_id": "dep-bill-prd-9911",
+                  "environment": "prod",
+                  "previous_version": "3.8.0",
+                  "rollback_eligible": false,
+                  "service": "billing-api",
+                  "status": "healthy",
+                  "version": "3.8.1"
+                },
+                "server_id": "telemetry",
+                "staging": {
+                  "deployment_id": "dep-bill-stg-2042",
+                  "environment": "staging",
+                  "previous_version": "3.8.0",
+                  "rollback_eligible": true,
+                  "service": "billing-api",
+                  "status": "failed",
+                  "version": "3.8.1"
+                },
+                "ticket": {
+                  "linked_incident": "INC-427",
+                  "owner": "Ava Li",
+                  "status": "in_progress",
+                  "ticket_id": "OPS-8421",
+                  "title": "Investigate billing-api staging 5xx"
+                }
+              }
+            ],
+            "placement": "framework",
+            "surface": "hybrid",
+            "usage_convention": "everruns-disjoint-v1",
+            "usage_projection": "generation-iteration-v1"
+          },
+          "metrics": {
+            "code.nested_failures": 0.0,
+            "code.python_resumes": 0.0,
+            "code.python_scripts": 0.0,
+            "llm.cache_creation_tokens": 3545.0,
+            "llm.calls": 3.0,
+            "llm.input_tokens_first": 2013.0,
+            "llm.input_tokens_peak": 3428.0,
+            "llm.input_tokens_total": 8780.0,
+            "llm.provider_cost_calls": 3.0,
+            "llm.provider_reported_cost_usd": 0.0156296,
+            "llm.tool_bytes_first": 5785.0,
+            "llm.tool_bytes_peak": 9477.0,
+            "llm.tool_requests_captured": 3.0,
+            "llm.tools_first": 7.0,
+            "llm.tools_peak": 13.0,
+            "llm.usage_calls": 3.0,
+            "llm.usage_complete": 1.0,
+            "mcp.calls": 1.0,
+            "mcp.catalog_tools": 50.0,
+            "mcp.input_tokens": 2844.0,
+            "mcp.unique_operations": 1.0
+          },
+          "passed": true,
+          "scores": [
+            {
+              "na": false,
+              "name": "succeeded",
+              "passed": true,
+              "reason": "no error",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "surface_used",
+              "passed": true,
+              "reason": "native operations permitted",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "tool_evidence",
+              "passed": true,
+              "reason": "1 MCP operation call(s) in Framework events",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "state_verified",
+              "passed": true,
+              "reason": "fixture operation results establish the requested state",
+              "value": 1.0
+            }
+          ],
+          "usage": {
+            "cache_read_tokens": 2391,
+            "cost_usd": 0.0156296,
+            "input_tokens": 2844,
+            "output_tokens": 84
+          },
+          "timing": null
+        },
+        {
+          "case": "mcp_scale/readonly-ticket@openrouter/openai/gpt-6.2-sol[catalog_size=50,servers=1,surface=monty]",
+          "duration_ms": 6469,
+          "error": null,
+          "error_kind": "Subject",
+          "metadata": {
+            "fixture_state_snapshots": [
+              {
+                "calls": [
+                  {
+                    "arguments": {
+                      "ticket_id": "OPS-8421"
+                    },
+                    "result": {
+                      "linked_incident": "INC-427",
+                      "owner": "Ava Li",
+                      "status": "in_progress",
+                      "ticket_id": "OPS-8421",
+                      "title": "Investigate billing-api staging 5xx"
+                    },
+                    "server": "telemetry",
+                    "tool": "get_ticket"
+                  }
+                ],
+                "production": {
+                  "deployment_id": "dep-bill-prd-9911",
+                  "environment": "prod",
+                  "previous_version": "3.8.0",
+                  "rollback_eligible": false,
+                  "service": "billing-api",
+                  "status": "healthy",
+                  "version": "3.8.1"
+                },
+                "server_id": "telemetry",
+                "staging": {
+                  "deployment_id": "dep-bill-stg-2042",
+                  "environment": "staging",
+                  "previous_version": "3.8.0",
+                  "rollback_eligible": true,
+                  "service": "billing-api",
+                  "status": "failed",
+                  "version": "3.8.1"
+                },
+                "ticket": {
+                  "linked_incident": "INC-427",
+                  "owner": "Ava Li",
+                  "status": "in_progress",
+                  "ticket_id": "OPS-8421",
+                  "title": "Investigate billing-api staging 5xx"
+                }
+              }
+            ],
+            "isolation": "interpreter-only; Landlock ENOSYS; not deployment isolation qualification",
+            "placement": "framework",
+            "surface": "monty",
+            "usage_convention": "everruns-disjoint-v1",
+            "usage_projection": "generation-iteration-v1"
+          },
+          "metrics": {
+            "code.nested_failures": 0.0,
+            "code.python_resumes": 0.0,
+            "code.python_scripts": 1.0,
+            "llm.cache_creation_tokens": 1819.0,
+            "llm.calls": 3.0,
+            "llm.input_tokens_first": 849.0,
+            "llm.input_tokens_peak": 2184.0,
+            "llm.input_tokens_total": 5081.0,
+            "llm.provider_cost_calls": 3.0,
+            "llm.provider_reported_cost_usd": 0.0090338,
+            "llm.tool_bytes_first": 2472.0,
+            "llm.tool_bytes_peak": 6221.0,
+            "llm.tool_requests_captured": 3.0,
+            "llm.tools_first": 4.0,
+            "llm.tools_peak": 10.0,
+            "llm.usage_calls": 3.0,
+            "llm.usage_complete": 1.0,
+            "mcp.calls": 1.0,
+            "mcp.catalog_tools": 50.0,
+            "mcp.input_tokens": 1579.0,
+            "mcp.unique_operations": 1.0
+          },
+          "passed": false,
+          "scores": [
+            {
+              "na": false,
+              "name": "succeeded",
+              "passed": true,
+              "reason": "no error",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "surface_used",
+              "passed": true,
+              "reason": "task operations ran through python",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "tool_evidence",
+              "passed": true,
+              "reason": "1 MCP operation call(s) in Framework events",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "state_verified",
+              "passed": false,
+              "reason": "tool event results do not establish the requested fixture state",
+              "value": 0.0
+            }
+          ],
+          "usage": {
+            "cache_read_tokens": 1683,
+            "cost_usd": 0.0090338,
+            "input_tokens": 1579,
+            "output_tokens": 116
+          },
+          "timing": null
+        }
+      ]
+    },
+    {
+      "name": "mcp-retest",
+      "file": "mcp-retest.jsonl.gz",
+      "sha256": "4af7de033958cceceb6f599c4a4d92e39b04722761a7d592b95be3553d32ffb7",
+      "count": 8,
+      "passed": 8,
+      "cases": [
+        {
+          "case": "mcp_scale/staged-rollback@openrouter/openai/gpt-6.2-sol[catalog_size=50,servers=1,surface=native]",
+          "duration_ms": 11312,
+          "error": null,
+          "error_kind": "Subject",
+          "metadata": {
+            "fixture_state_snapshots": [
+              {
+                "calls": [
+                  {
+                    "arguments": {
+                      "environment": "staging",
+                      "service": "billing-api",
+                      "status": "failed"
+                    },
+                    "result": [
+                      {
+                        "deployment_id": "dep-bill-stg-2042",
+                        "environment": "staging",
+                        "previous_version": "3.8.0",
+                        "rollback_eligible": true,
+                        "service": "billing-api",
+                        "status": "failed",
+                        "version": "3.8.1"
+                      }
+                    ],
+                    "server": "telemetry",
+                    "tool": "list_deployments"
+                  },
+                  {
+                    "arguments": {
+                      "deployment_id": "dep-bill-stg-2042"
+                    },
+                    "result": {
+                      "deployment_id": "dep-bill-stg-2042",
+                      "environment": "staging",
+                      "previous_version": "3.8.0",
+                      "rollback_eligible": true,
+                      "service": "billing-api",
+                      "status": "failed",
+                      "version": "3.8.1"
+                    },
+                    "server": "telemetry",
+                    "tool": "get_deployment"
+                  },
+                  {
+                    "arguments": {
+                      "deployment_id": "dep-bill-stg-2042",
+                      "reason": "Staging deployment of billing-api 3.8.1 failed; restore its recorded previous version, 3.8.0."
+                    },
+                    "result": {
+                      "deployment_id": "dep-bill-stg-2042",
+                      "environment": "staging",
+                      "previous_version": "3.8.0",
+                      "rollback_eligible": false,
+                      "service": "billing-api",
+                      "status": "rolled_back",
+                      "version": "3.8.0"
+                    },
+                    "server": "telemetry",
+                    "tool": "rollback_deployment"
+                  },
+                  {
+                    "arguments": {
+                      "deployment_id": "dep-bill-stg-2042"
+                    },
+                    "result": {
+                      "deployment_id": "dep-bill-stg-2042",
+                      "environment": "staging",
+                      "previous_version": "3.8.0",
+                      "rollback_eligible": false,
+                      "service": "billing-api",
+                      "status": "rolled_back",
+                      "version": "3.8.0"
+                    },
+                    "server": "telemetry",
+                    "tool": "verify_deployment"
+                  }
+                ],
+                "production": {
+                  "deployment_id": "dep-bill-prd-9911",
+                  "environment": "prod",
+                  "previous_version": "3.8.0",
+                  "rollback_eligible": false,
+                  "service": "billing-api",
+                  "status": "healthy",
+                  "version": "3.8.1"
+                },
+                "server_id": "telemetry",
+                "staging": {
+                  "deployment_id": "dep-bill-stg-2042",
+                  "environment": "staging",
+                  "previous_version": "3.8.0",
+                  "rollback_eligible": false,
+                  "service": "billing-api",
+                  "status": "rolled_back",
+                  "version": "3.8.0"
+                },
+                "ticket": {
+                  "linked_incident": "INC-427",
+                  "owner": "Ava Li",
+                  "status": "in_progress",
+                  "ticket_id": "OPS-8421",
+                  "title": "Investigate billing-api staging 5xx"
+                }
+              }
+            ],
+            "placement": "framework",
+            "surface": "native",
+            "usage_convention": "everruns-disjoint-v1",
+            "usage_projection": "generation-iteration-v1"
+          },
+          "metrics": {
+            "code.nested_failures": 0.0,
+            "code.python_resumes": 0.0,
+            "code.python_scripts": 0.0,
+            "llm.cache_creation_tokens": 2005.0,
+            "llm.calls": 6.0,
+            "llm.input_tokens_first": 585.0,
+            "llm.input_tokens_peak": 2225.0,
+            "llm.input_tokens_total": 10548.0,
+            "llm.provider_cost_calls": 6.0,
+            "llm.provider_reported_cost_usd": 0.011718300000000001,
+            "llm.tool_bytes_first": 1769.0,
+            "llm.tool_bytes_peak": 5388.0,
+            "llm.tool_requests_captured": 6.0,
+            "llm.tools_first": 3.0,
+            "llm.tools_peak": 10.0,
+            "llm.usage_calls": 6.0,
+            "llm.usage_complete": 1.0,
+            "mcp.calls": 4.0,
+            "mcp.catalog_tools": 50.0,
+            "mcp.input_tokens": 1685.0,
+            "mcp.unique_operations": 4.0
+          },
+          "passed": true,
+          "scores": [
+            {
+              "na": false,
+              "name": "succeeded",
+              "passed": true,
+              "reason": "no error",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "surface_used",
+              "passed": true,
+              "reason": "native operations permitted",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "tool_evidence",
+              "passed": true,
+              "reason": "4 MCP operation call(s) in Framework events",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "state_verified",
+              "passed": true,
+              "reason": "fixture operation results establish the requested state",
+              "value": 1.0
+            }
+          ],
+          "usage": {
+            "cache_read_tokens": 6858,
+            "cost_usd": 0.011718300000000001,
+            "input_tokens": 1685,
+            "output_tokens": 265
+          },
+          "timing": null
+        },
+        {
+          "case": "mcp_scale/staged-rollback@openrouter/openai/gpt-6.2-sol[catalog_size=50,servers=1,surface=cli]",
+          "duration_ms": 12087,
+          "error": null,
+          "error_kind": "Subject",
+          "metadata": {
+            "fixture_state_snapshots": [
+              {
+                "calls": [
+                  {
+                    "arguments": {
+                      "environment": "staging",
+                      "service": "billing-api",
+                      "status": "failed"
+                    },
+                    "result": [
+                      {
+                        "deployment_id": "dep-bill-stg-2042",
+                        "environment": "staging",
+                        "previous_version": "3.8.0",
+                        "rollback_eligible": true,
+                        "service": "billing-api",
+                        "status": "failed",
+                        "version": "3.8.1"
+                      }
+                    ],
+                    "server": "telemetry",
+                    "tool": "list_deployments"
+                  },
+                  {
+                    "arguments": {
+                      "deployment_id": "dep-bill-stg-2042"
+                    },
+                    "result": {
+                      "deployment_id": "dep-bill-stg-2042",
+                      "environment": "staging",
+                      "previous_version": "3.8.0",
+                      "rollback_eligible": true,
+                      "service": "billing-api",
+                      "status": "failed",
+                      "version": "3.8.1"
+                    },
+                    "server": "telemetry",
+                    "tool": "get_deployment"
+                  },
+                  {
+                    "arguments": {
+                      "deployment_id": "dep-bill-stg-2042",
+                      "reason": "Restore staging billing-api from failed version 3.8.1 to its recorded previous version 3.8.0."
+                    },
+                    "result": {
+                      "deployment_id": "dep-bill-stg-2042",
+                      "environment": "staging",
+                      "previous_version": "3.8.0",
+                      "rollback_eligible": false,
+                      "service": "billing-api",
+                      "status": "rolled_back",
+                      "version": "3.8.0"
+                    },
+                    "server": "telemetry",
+                    "tool": "rollback_deployment"
+                  },
+                  {
+                    "arguments": {
+                      "deployment_id": "dep-bill-stg-2042"
+                    },
+                    "result": {
+                      "deployment_id": "dep-bill-stg-2042",
+                      "environment": "staging",
+                      "previous_version": "3.8.0",
+                      "rollback_eligible": false,
+                      "service": "billing-api",
+                      "status": "rolled_back",
+                      "version": "3.8.0"
+                    },
+                    "server": "telemetry",
+                    "tool": "verify_deployment"
+                  }
+                ],
+                "production": {
+                  "deployment_id": "dep-bill-prd-9911",
+                  "environment": "prod",
+                  "previous_version": "3.8.0",
+                  "rollback_eligible": false,
+                  "service": "billing-api",
+                  "status": "healthy",
+                  "version": "3.8.1"
+                },
+                "server_id": "telemetry",
+                "staging": {
+                  "deployment_id": "dep-bill-stg-2042",
+                  "environment": "staging",
+                  "previous_version": "3.8.0",
+                  "rollback_eligible": false,
+                  "service": "billing-api",
+                  "status": "rolled_back",
+                  "version": "3.8.0"
+                },
+                "ticket": {
+                  "linked_incident": "INC-427",
+                  "owner": "Ava Li",
+                  "status": "in_progress",
+                  "ticket_id": "OPS-8421",
+                  "title": "Investigate billing-api staging 5xx"
+                }
+              }
+            ],
+            "placement": "framework",
+            "surface": "cli",
+            "usage_convention": "everruns-disjoint-v1",
+            "usage_projection": "generation-iteration-v1"
+          },
+          "metrics": {
+            "code.nested_failures": 0.0,
+            "code.python_resumes": 0.0,
+            "code.python_scripts": 0.0,
+            "llm.cache_creation_tokens": 1803.0,
+            "llm.calls": 6.0,
+            "llm.input_tokens_first": 1666.0,
+            "llm.input_tokens_peak": 2708.0,
+            "llm.input_tokens_total": 13254.0,
+            "llm.provider_cost_calls": 6.0,
+            "llm.provider_reported_cost_usd": 0.022256300000000003,
+            "llm.tool_bytes_first": 4017.0,
+            "llm.tool_bytes_peak": 4017.0,
+            "llm.tool_requests_captured": 6.0,
+            "llm.tools_first": 4.0,
+            "llm.tools_peak": 4.0,
+            "llm.usage_calls": 6.0,
+            "llm.usage_complete": 1.0,
+            "mcp.calls": 4.0,
+            "mcp.catalog_tools": 50.0,
+            "mcp.input_tokens": 7123.0,
+            "mcp.unique_operations": 4.0
+          },
+          "passed": true,
+          "scores": [
+            {
+              "na": false,
+              "name": "succeeded",
+              "passed": true,
+              "reason": "no error",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "surface_used",
+              "passed": true,
+              "reason": "task operations ran through bash",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "tool_evidence",
+              "passed": true,
+              "reason": "4 MCP operation call(s) in Framework events",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "state_verified",
+              "passed": true,
+              "reason": "fixture operation results establish the requested state",
+              "value": 1.0
+            }
+          ],
+          "usage": {
+            "cache_read_tokens": 4328,
+            "cost_usd": 0.022256300000000003,
+            "input_tokens": 7123,
+            "output_tokens": 307
+          },
+          "timing": null
+        },
+        {
+          "case": "mcp_scale/staged-rollback@openrouter/openai/gpt-6.2-sol[catalog_size=50,servers=1,surface=hybrid]",
+          "duration_ms": 11573,
+          "error": null,
+          "error_kind": "Subject",
+          "metadata": {
+            "fixture_state_snapshots": [
+              {
+                "calls": [
+                  {
+                    "arguments": {
+                      "environment": "staging",
+                      "service": "billing-api",
+                      "status": "failed"
+                    },
+                    "result": [
+                      {
+                        "deployment_id": "dep-bill-stg-2042",
+                        "environment": "staging",
+                        "previous_version": "3.8.0",
+                        "rollback_eligible": true,
+                        "service": "billing-api",
+                        "status": "failed",
+                        "version": "3.8.1"
+                      }
+                    ],
+                    "server": "telemetry",
+                    "tool": "list_deployments"
+                  },
+                  {
+                    "arguments": {
+                      "deployment_id": "dep-bill-stg-2042"
+                    },
+                    "result": {
+                      "deployment_id": "dep-bill-stg-2042",
+                      "environment": "staging",
+                      "previous_version": "3.8.0",
+                      "rollback_eligible": true,
+                      "service": "billing-api",
+                      "status": "failed",
+                      "version": "3.8.1"
+                    },
+                    "server": "telemetry",
+                    "tool": "get_deployment"
+                  },
+                  {
+                    "arguments": {
+                      "deployment_id": "dep-bill-stg-2042",
+                      "reason": "Restore the recorded previous version 3.8.0 after billing-api version 3.8.1 failed in staging."
+                    },
+                    "result": {
+                      "deployment_id": "dep-bill-stg-2042",
+                      "environment": "staging",
+                      "previous_version": "3.8.0",
+                      "rollback_eligible": false,
+                      "service": "billing-api",
+                      "status": "rolled_back",
+                      "version": "3.8.0"
+                    },
+                    "server": "telemetry",
+                    "tool": "rollback_deployment"
+                  },
+                  {
+                    "arguments": {
+                      "deployment_id": "dep-bill-stg-2042"
+                    },
+                    "result": {
+                      "deployment_id": "dep-bill-stg-2042",
+                      "environment": "staging",
+                      "previous_version": "3.8.0",
+                      "rollback_eligible": false,
+                      "service": "billing-api",
+                      "status": "rolled_back",
+                      "version": "3.8.0"
+                    },
+                    "server": "telemetry",
+                    "tool": "verify_deployment"
+                  }
+                ],
+                "production": {
+                  "deployment_id": "dep-bill-prd-9911",
+                  "environment": "prod",
+                  "previous_version": "3.8.0",
+                  "rollback_eligible": false,
+                  "service": "billing-api",
+                  "status": "healthy",
+                  "version": "3.8.1"
+                },
+                "server_id": "telemetry",
+                "staging": {
+                  "deployment_id": "dep-bill-stg-2042",
+                  "environment": "staging",
+                  "previous_version": "3.8.0",
+                  "rollback_eligible": false,
+                  "service": "billing-api",
+                  "status": "rolled_back",
+                  "version": "3.8.0"
+                },
+                "ticket": {
+                  "linked_incident": "INC-427",
+                  "owner": "Ava Li",
+                  "status": "in_progress",
+                  "ticket_id": "OPS-8421",
+                  "title": "Investigate billing-api staging 5xx"
+                }
+              }
+            ],
+            "placement": "framework",
+            "surface": "hybrid",
+            "usage_convention": "everruns-disjoint-v1",
+            "usage_projection": "generation-iteration-v1"
+          },
+          "metrics": {
+            "code.nested_failures": 0.0,
+            "code.python_resumes": 0.0,
+            "code.python_scripts": 0.0,
+            "llm.cache_creation_tokens": 3814.0,
+            "llm.calls": 6.0,
+            "llm.input_tokens_first": 2025.0,
+            "llm.input_tokens_peak": 3685.0,
+            "llm.input_tokens_total": 19294.0,
+            "llm.provider_cost_calls": 6.0,
+            "llm.provider_reported_cost_usd": 0.0245102,
+            "llm.tool_bytes_first": 5785.0,
+            "llm.tool_bytes_peak": 9518.0,
+            "llm.tool_requests_captured": 6.0,
+            "llm.tools_first": 7.0,
+            "llm.tools_peak": 14.0,
+            "llm.usage_calls": 6.0,
+            "llm.usage_complete": 1.0,
+            "mcp.calls": 4.0,
+            "mcp.catalog_tools": 50.0,
+            "mcp.input_tokens": 5688.0,
+            "mcp.unique_operations": 4.0
+          },
+          "passed": true,
+          "scores": [
+            {
+              "na": false,
+              "name": "succeeded",
+              "passed": true,
+              "reason": "no error",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "surface_used",
+              "passed": true,
+              "reason": "native operations permitted",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "tool_evidence",
+              "passed": true,
+              "reason": "4 MCP operation call(s) in Framework events",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "state_verified",
+              "passed": true,
+              "reason": "fixture operation results establish the requested state",
+              "value": 1.0
+            }
+          ],
+          "usage": {
+            "cache_read_tokens": 9792,
+            "cost_usd": 0.0245102,
+            "input_tokens": 5688,
+            "output_tokens": 262
+          },
+          "timing": null
+        },
+        {
+          "case": "mcp_scale/staged-rollback@openrouter/openai/gpt-6.2-sol[catalog_size=50,servers=1,surface=monty]",
+          "duration_ms": 11693,
+          "error": null,
+          "error_kind": "Subject",
+          "metadata": {
+            "fixture_state_snapshots": [
+              {
+                "calls": [
+                  {
+                    "arguments": {
+                      "environment": "staging",
+                      "service": "billing-api",
+                      "status": "failed"
+                    },
+                    "result": [
+                      {
+                        "deployment_id": "dep-bill-stg-2042",
+                        "environment": "staging",
+                        "previous_version": "3.8.0",
+                        "rollback_eligible": true,
+                        "service": "billing-api",
+                        "status": "failed",
+                        "version": "3.8.1"
+                      }
+                    ],
+                    "server": "telemetry",
+                    "tool": "list_deployments"
+                  },
+                  {
+                    "arguments": {
+                      "deployment_id": "dep-bill-stg-2042"
+                    },
+                    "result": {
+                      "deployment_id": "dep-bill-stg-2042",
+                      "environment": "staging",
+                      "previous_version": "3.8.0",
+                      "rollback_eligible": true,
+                      "service": "billing-api",
+                      "status": "failed",
+                      "version": "3.8.1"
+                    },
+                    "server": "telemetry",
+                    "tool": "get_deployment"
+                  },
+                  {
+                    "arguments": {
+                      "deployment_id": "dep-bill-stg-2042",
+                      "reason": "billing-api staging deployment 3.8.1 failed; restore the recorded previous version 3.8.0."
+                    },
+                    "result": {
+                      "deployment_id": "dep-bill-stg-2042",
+                      "environment": "staging",
+                      "previous_version": "3.8.0",
+                      "rollback_eligible": false,
+                      "service": "billing-api",
+                      "status": "rolled_back",
+                      "version": "3.8.0"
+                    },
+                    "server": "telemetry",
+                    "tool": "rollback_deployment"
+                  },
+                  {
+                    "arguments": {
+                      "deployment_id": "dep-bill-stg-2042"
+                    },
+                    "result": {
+                      "deployment_id": "dep-bill-stg-2042",
+                      "environment": "staging",
+                      "previous_version": "3.8.0",
+                      "rollback_eligible": false,
+                      "service": "billing-api",
+                      "status": "rolled_back",
+                      "version": "3.8.0"
+                    },
+                    "server": "telemetry",
+                    "tool": "verify_deployment"
+                  }
+                ],
+                "production": {
+                  "deployment_id": "dep-bill-prd-9911",
+                  "environment": "prod",
+                  "previous_version": "3.8.0",
+                  "rollback_eligible": false,
+                  "service": "billing-api",
+                  "status": "healthy",
+                  "version": "3.8.1"
+                },
+                "server_id": "telemetry",
+                "staging": {
+                  "deployment_id": "dep-bill-stg-2042",
+                  "environment": "staging",
+                  "previous_version": "3.8.0",
+                  "rollback_eligible": false,
+                  "service": "billing-api",
+                  "status": "rolled_back",
+                  "version": "3.8.0"
+                },
+                "ticket": {
+                  "linked_incident": "INC-427",
+                  "owner": "Ava Li",
+                  "status": "in_progress",
+                  "ticket_id": "OPS-8421",
+                  "title": "Investigate billing-api staging 5xx"
+                }
+              }
+            ],
+            "isolation": "interpreter-only; Landlock ENOSYS; not deployment isolation qualification",
+            "placement": "framework",
+            "surface": "monty",
+            "usage_convention": "everruns-disjoint-v1",
+            "usage_projection": "generation-iteration-v1"
+          },
+          "metrics": {
+            "code.nested_failures": 0.0,
+            "code.python_resumes": 0.0,
+            "code.python_scripts": 4.0,
+            "llm.cache_creation_tokens": 2212.0,
+            "llm.calls": 6.0,
+            "llm.input_tokens_first": 861.0,
+            "llm.input_tokens_peak": 2577.0,
+            "llm.input_tokens_total": 12370.0,
+            "llm.provider_cost_calls": 6.0,
+            "llm.provider_reported_cost_usd": 0.014769200000000001,
+            "llm.tool_bytes_first": 2472.0,
+            "llm.tool_bytes_peak": 6070.0,
+            "llm.tool_requests_captured": 6.0,
+            "llm.tools_first": 4.0,
+            "llm.tools_peak": 11.0,
+            "llm.usage_calls": 6.0,
+            "llm.usage_complete": 1.0,
+            "mcp.calls": 4.0,
+            "mcp.catalog_tools": 50.0,
+            "mcp.input_tokens": 2686.0,
+            "mcp.unique_operations": 4.0
+          },
+          "passed": true,
+          "scores": [
+            {
+              "na": false,
+              "name": "succeeded",
+              "passed": true,
+              "reason": "no error",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "surface_used",
+              "passed": true,
+              "reason": "task operations ran through python",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "tool_evidence",
+              "passed": true,
+              "reason": "4 MCP operation call(s) in Framework events",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "state_verified",
+              "passed": true,
+              "reason": "fixture operation results establish the requested state",
+              "value": 1.0
+            }
+          ],
+          "usage": {
+            "cache_read_tokens": 7472,
+            "cost_usd": 0.014769200000000001,
+            "input_tokens": 2686,
+            "output_tokens": 312
+          },
+          "timing": null
+        },
+        {
+          "case": "mcp_scale/readonly-ticket@openrouter/openai/gpt-6.2-sol[catalog_size=50,servers=1,surface=native]",
+          "duration_ms": 5430,
+          "error": null,
+          "error_kind": "Subject",
+          "metadata": {
+            "fixture_state_snapshots": [
+              {
+                "calls": [
+                  {
+                    "arguments": {
+                      "ticket_id": "OPS-8421"
+                    },
+                    "result": {
+                      "linked_incident": "INC-427",
+                      "owner": "Ava Li",
+                      "status": "in_progress",
+                      "ticket_id": "OPS-8421",
+                      "title": "Investigate billing-api staging 5xx"
+                    },
+                    "server": "telemetry",
+                    "tool": "get_ticket"
+                  }
+                ],
+                "production": {
+                  "deployment_id": "dep-bill-prd-9911",
+                  "environment": "prod",
+                  "previous_version": "3.8.0",
+                  "rollback_eligible": false,
+                  "service": "billing-api",
+                  "status": "healthy",
+                  "version": "3.8.1"
+                },
+                "server_id": "telemetry",
+                "staging": {
+                  "deployment_id": "dep-bill-stg-2042",
+                  "environment": "staging",
+                  "previous_version": "3.8.0",
+                  "rollback_eligible": true,
+                  "service": "billing-api",
+                  "status": "failed",
+                  "version": "3.8.1"
+                },
+                "ticket": {
+                  "linked_incident": "INC-427",
+                  "owner": "Ava Li",
+                  "status": "in_progress",
+                  "ticket_id": "OPS-8421",
+                  "title": "Investigate billing-api staging 5xx"
+                }
+              }
+            ],
+            "placement": "framework",
+            "surface": "native",
+            "usage_convention": "everruns-disjoint-v1",
+            "usage_projection": "generation-iteration-v1"
+          },
+          "metrics": {
+            "code.nested_failures": 0.0,
+            "code.python_resumes": 0.0,
+            "code.python_scripts": 0.0,
+            "llm.cache_creation_tokens": 1639.0,
+            "llm.calls": 3.0,
+            "llm.input_tokens_first": 573.0,
+            "llm.input_tokens_peak": 1859.0,
+            "llm.input_tokens_total": 4202.0,
+            "llm.provider_cost_calls": 3.0,
+            "llm.provider_reported_cost_usd": 0.0070285,
+            "llm.tool_bytes_first": 1769.0,
+            "llm.tool_bytes_peak": 5518.0,
+            "llm.tool_requests_captured": 3.0,
+            "llm.tools_first": 3.0,
+            "llm.tools_peak": 9.0,
+            "llm.usage_calls": 3.0,
+            "llm.usage_complete": 1.0,
+            "mcp.calls": 1.0,
+            "mcp.catalog_tools": 50.0,
+            "mcp.input_tokens": 1013.0,
+            "mcp.unique_operations": 1.0
+          },
+          "passed": true,
+          "scores": [
+            {
+              "na": false,
+              "name": "succeeded",
+              "passed": true,
+              "reason": "no error",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "surface_used",
+              "passed": true,
+              "reason": "native operations permitted",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "tool_evidence",
+              "passed": true,
+              "reason": "1 MCP operation call(s) in Framework events",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "state_verified",
+              "passed": true,
+              "reason": "fixture operation results establish the requested state",
+              "value": 1.0
+            }
+          ],
+          "usage": {
+            "cache_read_tokens": 1550,
+            "cost_usd": 0.0070285,
+            "input_tokens": 1013,
+            "output_tokens": 75
+          },
+          "timing": null
+        },
+        {
+          "case": "mcp_scale/readonly-ticket@openrouter/openai/gpt-6.2-sol[catalog_size=50,servers=1,surface=cli]",
+          "duration_ms": 6801,
+          "error": null,
+          "error_kind": "Subject",
+          "metadata": {
+            "fixture_state_snapshots": [
+              {
+                "calls": [
+                  {
+                    "arguments": {
+                      "ticket_id": "OPS-8421"
+                    },
+                    "result": {
+                      "linked_incident": "INC-427",
+                      "owner": "Ava Li",
+                      "status": "in_progress",
+                      "ticket_id": "OPS-8421",
+                      "title": "Investigate billing-api staging 5xx"
+                    },
+                    "server": "telemetry",
+                    "tool": "get_ticket"
+                  }
+                ],
+                "production": {
+                  "deployment_id": "dep-bill-prd-9911",
+                  "environment": "prod",
+                  "previous_version": "3.8.0",
+                  "rollback_eligible": false,
+                  "service": "billing-api",
+                  "status": "healthy",
+                  "version": "3.8.1"
+                },
+                "server_id": "telemetry",
+                "staging": {
+                  "deployment_id": "dep-bill-stg-2042",
+                  "environment": "staging",
+                  "previous_version": "3.8.0",
+                  "rollback_eligible": true,
+                  "service": "billing-api",
+                  "status": "failed",
+                  "version": "3.8.1"
+                },
+                "ticket": {
+                  "linked_incident": "INC-427",
+                  "owner": "Ava Li",
+                  "status": "in_progress",
+                  "ticket_id": "OPS-8421",
+                  "title": "Investigate billing-api staging 5xx"
+                }
+              }
+            ],
+            "placement": "framework",
+            "surface": "cli",
+            "usage_convention": "everruns-disjoint-v1",
+            "usage_projection": "generation-iteration-v1"
+          },
+          "metrics": {
+            "code.nested_failures": 0.0,
+            "code.python_resumes": 0.0,
+            "code.python_scripts": 0.0,
+            "llm.cache_creation_tokens": 1242.0,
+            "llm.calls": 4.0,
+            "llm.input_tokens_first": 1654.0,
+            "llm.input_tokens_peak": 2147.0,
+            "llm.input_tokens_total": 7703.0,
+            "llm.provider_cost_calls": 4.0,
+            "llm.provider_reported_cost_usd": 0.0149243,
+            "llm.tool_bytes_first": 4017.0,
+            "llm.tool_bytes_peak": 4017.0,
+            "llm.tool_requests_captured": 4.0,
+            "llm.tools_first": 4.0,
+            "llm.tools_peak": 4.0,
+            "llm.usage_calls": 4.0,
+            "llm.usage_complete": 1.0,
+            "mcp.calls": 1.0,
+            "mcp.catalog_tools": 50.0,
+            "mcp.input_tokens": 5328.0,
+            "mcp.unique_operations": 1.0
+          },
+          "passed": true,
+          "scores": [
+            {
+              "na": false,
+              "name": "succeeded",
+              "passed": true,
+              "reason": "no error",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "surface_used",
+              "passed": true,
+              "reason": "task operations ran through bash",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "tool_evidence",
+              "passed": true,
+              "reason": "1 MCP operation call(s) in Framework events",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "state_verified",
+              "passed": true,
+              "reason": "fixture operation results establish the requested state",
+              "value": 1.0
+            }
+          ],
+          "usage": {
+            "cache_read_tokens": 1133,
+            "cost_usd": 0.0149243,
+            "input_tokens": 5328,
+            "output_tokens": 105
+          },
+          "timing": null
+        },
+        {
+          "case": "mcp_scale/readonly-ticket@openrouter/openai/gpt-6.2-sol[catalog_size=50,servers=1,surface=hybrid]",
+          "duration_ms": 5005,
+          "error": null,
+          "error_kind": "Subject",
+          "metadata": {
+            "fixture_state_snapshots": [
+              {
+                "calls": [
+                  {
+                    "arguments": {
+                      "ticket_id": "OPS-8421"
+                    },
+                    "result": {
+                      "linked_incident": "INC-427",
+                      "owner": "Ava Li",
+                      "status": "in_progress",
+                      "ticket_id": "OPS-8421",
+                      "title": "Investigate billing-api staging 5xx"
+                    },
+                    "server": "telemetry",
+                    "tool": "get_ticket"
+                  }
+                ],
+                "production": {
+                  "deployment_id": "dep-bill-prd-9911",
+                  "environment": "prod",
+                  "previous_version": "3.8.0",
+                  "rollback_eligible": false,
+                  "service": "billing-api",
+                  "status": "healthy",
+                  "version": "3.8.1"
+                },
+                "server_id": "telemetry",
+                "staging": {
+                  "deployment_id": "dep-bill-stg-2042",
+                  "environment": "staging",
+                  "previous_version": "3.8.0",
+                  "rollback_eligible": true,
+                  "service": "billing-api",
+                  "status": "failed",
+                  "version": "3.8.1"
+                },
+                "ticket": {
+                  "linked_incident": "INC-427",
+                  "owner": "Ava Li",
+                  "status": "in_progress",
+                  "ticket_id": "OPS-8421",
+                  "title": "Investigate billing-api staging 5xx"
+                }
+              }
+            ],
+            "placement": "framework",
+            "surface": "hybrid",
+            "usage_convention": "everruns-disjoint-v1",
+            "usage_projection": "generation-iteration-v1"
+          },
+          "metrics": {
+            "code.nested_failures": 0.0,
+            "code.python_resumes": 0.0,
+            "code.python_scripts": 0.0,
+            "llm.cache_creation_tokens": 3340.0,
+            "llm.calls": 3.0,
+            "llm.input_tokens_first": 2013.0,
+            "llm.input_tokens_peak": 3223.0,
+            "llm.input_tokens_total": 8370.0,
+            "llm.provider_cost_calls": 3.0,
+            "llm.provider_reported_cost_usd": 0.0150866,
+            "llm.tool_bytes_first": 5785.0,
+            "llm.tool_bytes_peak": 9150.0,
+            "llm.tool_requests_captured": 3.0,
+            "llm.tools_first": 7.0,
+            "llm.tools_peak": 14.0,
+            "llm.usage_calls": 3.0,
+            "llm.usage_complete": 1.0,
+            "mcp.calls": 1.0,
+            "mcp.catalog_tools": 50.0,
+            "mcp.input_tokens": 2844.0,
+            "mcp.unique_operations": 1.0
+          },
+          "passed": true,
+          "scores": [
+            {
+              "na": false,
+              "name": "succeeded",
+              "passed": true,
+              "reason": "no error",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "surface_used",
+              "passed": true,
+              "reason": "native operations permitted",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "tool_evidence",
+              "passed": true,
+              "reason": "1 MCP operation call(s) in Framework events",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "state_verified",
+              "passed": true,
+              "reason": "fixture operation results establish the requested state",
+              "value": 1.0
+            }
+          ],
+          "usage": {
+            "cache_read_tokens": 2186,
+            "cost_usd": 0.0150866,
+            "input_tokens": 2844,
+            "output_tokens": 83
+          },
+          "timing": null
+        },
+        {
+          "case": "mcp_scale/readonly-ticket@openrouter/openai/gpt-6.2-sol[catalog_size=50,servers=1,surface=monty]",
+          "duration_ms": 5009,
+          "error": null,
+          "error_kind": "Subject",
+          "metadata": {
+            "fixture_state_snapshots": [
+              {
+                "calls": [
+                  {
+                    "arguments": {
+                      "ticket_id": "OPS-8421"
+                    },
+                    "result": {
+                      "linked_incident": "INC-427",
+                      "owner": "Ava Li",
+                      "status": "in_progress",
+                      "ticket_id": "OPS-8421",
+                      "title": "Investigate billing-api staging 5xx"
+                    },
+                    "server": "telemetry",
+                    "tool": "get_ticket"
+                  }
+                ],
+                "production": {
+                  "deployment_id": "dep-bill-prd-9911",
+                  "environment": "prod",
+                  "previous_version": "3.8.0",
+                  "rollback_eligible": false,
+                  "service": "billing-api",
+                  "status": "healthy",
+                  "version": "3.8.1"
+                },
+                "server_id": "telemetry",
+                "staging": {
+                  "deployment_id": "dep-bill-stg-2042",
+                  "environment": "staging",
+                  "previous_version": "3.8.0",
+                  "rollback_eligible": true,
+                  "service": "billing-api",
+                  "status": "failed",
+                  "version": "3.8.1"
+                },
+                "ticket": {
+                  "linked_incident": "INC-427",
+                  "owner": "Ava Li",
+                  "status": "in_progress",
+                  "ticket_id": "OPS-8421",
+                  "title": "Investigate billing-api staging 5xx"
+                }
+              }
+            ],
+            "isolation": "interpreter-only; Landlock ENOSYS; not deployment isolation qualification",
+            "placement": "framework",
+            "surface": "monty",
+            "usage_convention": "everruns-disjoint-v1",
+            "usage_projection": "generation-iteration-v1"
+          },
+          "metrics": {
+            "code.nested_failures": 0.0,
+            "code.python_resumes": 0.0,
+            "code.python_scripts": 1.0,
+            "llm.cache_creation_tokens": 1817.0,
+            "llm.calls": 3.0,
+            "llm.input_tokens_first": 849.0,
+            "llm.input_tokens_peak": 2182.0,
+            "llm.input_tokens_total": 5077.0,
+            "llm.provider_cost_calls": 3.0,
+            "llm.provider_reported_cost_usd": 0.009008599999999999,
+            "llm.tool_bytes_first": 2472.0,
+            "llm.tool_bytes_peak": 6221.0,
+            "llm.tool_requests_captured": 3.0,
+            "llm.tools_first": 4.0,
+            "llm.tools_peak": 10.0,
+            "llm.usage_calls": 3.0,
+            "llm.usage_complete": 1.0,
+            "mcp.calls": 1.0,
+            "mcp.catalog_tools": 50.0,
+            "mcp.input_tokens": 1579.0,
+            "mcp.unique_operations": 1.0
+          },
+          "passed": true,
+          "scores": [
+            {
+              "na": false,
+              "name": "succeeded",
+              "passed": true,
+              "reason": "no error",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "surface_used",
+              "passed": true,
+              "reason": "task operations ran through python",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "tool_evidence",
+              "passed": true,
+              "reason": "1 MCP operation call(s) in Framework events",
+              "value": 1.0
+            },
+            {
+              "na": false,
+              "name": "state_verified",
+              "passed": true,
+              "reason": "fixture operation results establish the requested state",
+              "value": 1.0
+            }
+          ],
+          "usage": {
+            "cache_read_tokens": 1681,
+            "cost_usd": 0.009008599999999999,
+            "input_tokens": 1579,
+            "output_tokens": 114
+          },
+          "timing": null
+        }
+      ]
+    }
+  ],
+  "hosted_reports": [
+    {
+      "placement": "agentd",
+      "surface": "monty",
+      "session_id": "session_01a2153d687371d284444d179ee2b07a",
+      "scope": "hosted workspace boundary smoke; no restart/approval qualification or comparative performance claim",
+      "runtime_qualification": "interpreter-only; Landlock ENOSYS; not deployment isolation qualification",
+      "passed": false,
+      "checks": {
+        "turn_completed": true,
+        "one_write": false,
+        "read_back": false,
+        "artifact_in_tool_result": false,
+        "no_direct_fallback": true,
+        "no_turn_failure": true
+      },
+      "file": "agentd-monty.json.gz",
+      "sha256": "ca2b882292bc9b85784da5e426c53cf98b7b5620b5cdde41d72f9908c3a15f83"
+    },
+    {
+      "placement": "agentd",
+      "surface": "monty",
+      "session_id": "session_01a21540607d759f848707533d1c7bb8",
+      "scope": "hosted workspace boundary smoke; no restart/approval qualification or comparative performance claim",
+      "runtime_qualification": "interpreter-only; Landlock ENOSYS; not deployment isolation qualification",
+      "passed": false,
+      "checks": {
+        "turn_completed": true,
+        "one_write": true,
+        "read_back": true,
+        "nested_stat": true,
+        "artifact_in_tool_result": false,
+        "no_direct_fallback": true,
+        "no_turn_failure": true
+      },
+      "file": "agentd-monty-v2.json.gz",
+      "sha256": "87c2074342216b7f23468e7d4fc73d5f9ea531732b8e0f47e26cd335f67b13d9"
+    },
+    {
+      "placement": "agentd",
+      "surface": "monty",
+      "session_id": "session_01a21540607d759f848707533d1c7bb8",
+      "scope": "hosted workspace boundary smoke; no restart/approval qualification or comparative performance claim",
+      "runtime_qualification": "interpreter-only; Landlock ENOSYS; not deployment isolation qualification",
+      "passed": true,
+      "checks": {
+        "turn_completed": true,
+        "one_write": true,
+        "read_back": true,
+        "nested_stat": true,
+        "artifact_in_tool_result": true,
+        "no_direct_fallback": true,
+        "no_turn_failure": true
+      },
+      "regraded": "Numbered read_file envelope supported; same captured events, no model rerun",
+      "file": "agentd-monty-graded.json.gz",
+      "sha256": "7d27ed6efc7ab49f6558a849c459bc9611d84b086d94ce2e5bd0d98aa0de42af"
+    },
+    {
+      "placement": "agentd",
+      "surface": "native",
+      "session_id": "session_01a2154200ed73578aee3955b9fae42a",
+      "scope": "hosted workspace boundary smoke; no restart/approval qualification or comparative performance claim",
+      "runtime_qualification": "native; local boundary smoke",
+      "passed": true,
+      "checks": {
+        "turn_completed": true,
+        "one_write": true,
+        "read_back": true,
+        "nested_stat": true,
+        "artifact_in_tool_result": true,
+        "no_direct_fallback": true,
+        "no_turn_failure": true
+      },
+      "file": "agentd-native.json.gz",
+      "sha256": "fbde72d77aca58eb00795877498ca254d4df9808dbb8569ba3cf16594774d3ff"
+    },
+    {
+      "placement": "agentd",
+      "surface": "cli",
+      "session_id": "session_01a21541fb4d76c698c9ed41f2e0cb65",
+      "scope": "hosted workspace boundary smoke; no restart/approval qualification or comparative performance claim",
+      "runtime_qualification": "Bashkit built-in runtime; local boundary smoke",
+      "passed": true,
+      "checks": {
+        "turn_completed": true,
+        "one_write": true,
+        "read_back": true,
+        "nested_stat": true,
+        "artifact_in_tool_result": true,
+        "no_direct_fallback": true,
+        "no_turn_failure": true
+      },
+      "file": "agentd-cli.json.gz",
+      "sha256": "e6563d32d5a9f9b9afd68654652f6918db136295f44f9b691b832b95d61c28cf"
+    },
+    {
+      "placement": "server",
+      "surface": "monty",
+      "session_id": "session_01a215507c2977e6a6d70e121cec1b34",
+      "scope": "hosted workspace boundary smoke; no restart/approval qualification or comparative performance claim",
+      "runtime_qualification": "interpreter-only; Landlock ENOSYS; not deployment isolation qualification",
+      "passed": true,
+      "checks": {
+        "turn_completed": true,
+        "one_write": true,
+        "read_back": true,
+        "nested_stat": true,
+        "artifact_in_tool_result": true,
+        "no_direct_fallback": true,
+        "no_turn_failure": true
+      },
+      "file": "server-monty.json.gz",
+      "sha256": "da303fd78fb19b623ffb72431c7693c15d3ee4d398f81eae0380e358b71c6593"
+    },
+    {
+      "placement": "server",
+      "surface": "native",
+      "session_id": "session_01a21551601a757cb84accf22e81d473",
+      "scope": "hosted workspace boundary smoke; no restart/approval qualification or comparative performance claim",
+      "runtime_qualification": "local workspace boundary smoke",
+      "passed": true,
+      "checks": {
+        "turn_completed": true,
+        "one_write": true,
+        "read_back": true,
+        "nested_stat": true,
+        "artifact_in_tool_result": true,
+        "no_direct_fallback": true,
+        "no_turn_failure": true
+      },
+      "file": "server-native.json.gz",
+      "sha256": "78f2d80c907bcec551fb484c4ff8ac4cc22de53c4c32a8726fef86961d02709c"
+    },
+    {
+      "placement": "server",
+      "surface": "cli",
+      "session_id": "session_01a2155160147759a5a802fc9777dd3b",
+      "scope": "hosted workspace boundary smoke; no restart/approval qualification or comparative performance claim",
+      "runtime_qualification": "local workspace boundary smoke",
+      "passed": true,
+      "checks": {
+        "turn_completed": true,
+        "one_write": true,
+        "read_back": true,
+        "nested_stat": true,
+        "artifact_in_tool_result": true,
+        "no_direct_fallback": true,
+        "no_turn_failure": true
+      },
+      "file": "server-cli.json.gz",
+      "sha256": "c76773f06f9139c243539dc63017c2b5bfe2c521bea524992f6c03c5bcfd5874"
+    }
+  ],
+  "known_corrections": [
+    "Initial MCP scorer correlated nested results only with Bash stdout. Updated nested result evidence uses exact tool and arguments from the fixture call journal; original 7/8 report retained and followed by a fresh matrix.",
+    "Initial weather expectation rejected Lisbon, Portugal; corrected to allow Lisbon with optional Portugal qualification and reject other cities/countries. Original reports retained; separate fresh retest.",
+    "Initial hosted prompt incorrectly required direct-only read_file/write_file inside wrappers. Corrected prompt keeps them direct and nests stat_file.",
+    "Corrected hosted artifact grader to parse the documented numbered read_file envelope. agentd-monty-graded reuses agentd-monty-v2 events, not a model rerun."
+  ],
+  "lint_note": "The pre-existing MCP HTTP fixture triggers dead_code and collapsible_if under strict all-targets Clippy; these classes are allowed for the supplemental check. The study CI requires formatting, tests and offline stress.",
+  "remaining_qualification": [
+    "Hardened Linux launcher on a supporting kernel (required CI job)",
+    "Hosted approval recovery across executor replacement or Raft movement",
+    "Repeated representative large-catalog trials before performance recommendations"
+  ]
+}

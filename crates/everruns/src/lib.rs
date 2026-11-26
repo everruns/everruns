@@ -637,3 +637,7 @@ pub mod evaluation;
 
 #[cfg(feature = "channels")]
 mod channel_controls;
+
+/// Python as an optional, durable code execution interface (Monty subprocesses).
+#[cfg(feature = "monty")]
+pub use everruns_integrations::monty::PythonCodeMode;

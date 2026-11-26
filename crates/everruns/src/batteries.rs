@@ -40,6 +40,10 @@ pub fn runtime_capability_registry() -> CapabilityRegistry {
 /// registrations retain the registry's normal duplicate handling.
 pub fn compose_runtime_capability_registry(mut registry: CapabilityRegistry) -> CapabilityRegistry {
     register_session_service_capabilities(&mut registry);
+    #[cfg(feature = "monty")]
+    if !registry.has("python_code_mode") {
+        registry.register(everruns_integrations::monty::PythonCodeModeCapability::default());
+    }
     // `AgentBuilder::spawns` attaches Spawn agents; it is inert on an agent
     // that does not have it. Threads need a local profile, whose registry
     // carries every delegation capability (`local::runtime_builder`).

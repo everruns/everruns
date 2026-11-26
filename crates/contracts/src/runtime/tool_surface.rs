@@ -11,6 +11,7 @@ use std::collections::BTreeMap;
 pub const NATIVE_ONLY_TOOL_NAMES: &[&str] = &[
     "bash",
     "lua",
+    "python",
     "tools",
     "tool_search",
     "computer",

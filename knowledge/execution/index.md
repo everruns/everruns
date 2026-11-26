@@ -50,3 +50,5 @@
 * [Event log group commit](event-log-group-commit.md) - Fenced event appends from many workers share one PostgreSQL transaction and one WAL flush, answered only after it commits.
 * [Event listener delivery](event-listeners.md) - How stored session events reach the server's listeners (usage, budgets, traces, notifications, titles and others), in order per session and off the worker's critical path.
 * [Data plane v2](data-plane-v2/) - Shard-native execution for 75 000 agents: design, control plane protocol, file system, platform on the Engine and protocol models.
+
+* [Python Code Mode](python-code-mode.md) - Optional Monty execution with host-mediated tools, isolated workers and durable continuations on both platforms.

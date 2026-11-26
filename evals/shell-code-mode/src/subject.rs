@@ -1,12 +1,6 @@
-//! A Mira `Subject` that runs each case through an in-process Framework agent
-//! with the shell and Shell Code Mode, over the fake registry.
-//!
-//! Everything between the model and the fake tools is the shipped code: the
-//! capability's prompt addition, the hook that hides the registry from the
-//! model's tool list and names the sources on `bash`, the `tools` builtin's
-//! help, search, input parsing and errors, and the per-call policy the turn
-//! engine installs. Only the tools behind it are fake, so a run needs a model
-//! key and nothing else.
+//! Runs each task through the shipped Framework with the selected execution
+//! surface. The fixture handlers record real invocations independently of model
+//! claims, while the event stream proves routing, approval and usage.
 
 use std::time::Instant;
 
@@ -37,38 +31,69 @@ pub struct ShellCodeModeSubject;
 impl Subject for ShellCodeModeSubject {
     async fn run(&self, sample: &Sample, cx: &RunCx) -> Transcript {
         let started = Instant::now();
+        let surface = cx.param("surface").unwrap_or("cli");
+        if let Err(error) = crate::code_mode::preflight(surface).await {
+            return Transcript::infra_error(error);
+        }
         let provider = match provider(&cx.target) {
             Ok(provider) => provider,
             Err(error) => return Transcript::infra_error(error),
         };
         let log = CallLog::default();
-        let session = match build_session(sample, &cx.target, provider, &log) {
+        let session = match build_session_for_surface(sample, &cx.target, provider, &log, surface) {
             Ok(session) => session,
             Err(error) => {
                 return Transcript::infra_error(format!("Framework build failed: {error}"));
             }
         };
-        let mut transcript = run_turns(&session, sample).await;
+        let mut transcript = run_turns_with_log(&session, sample, &log).await;
         finish(&mut transcript, &log);
+        crate::code_mode::finish(&mut transcript, surface);
         transcript.timing.duration_ms = started.elapsed().as_millis() as u64;
         transcript
     }
 }
 
+#[cfg(test)]
 pub fn build_session(
     sample: &Sample,
     target: &Target,
     provider: Provider,
     log: &CallLog,
 ) -> Result<Session, String> {
+    build_session_for_surface(sample, target, provider, log, "cli")
+}
+
+pub fn build_session_for_surface(
+    sample: &Sample,
+    target: &Target,
+    provider: Provider,
+    log: &CallLog,
+    surface: &str,
+) -> Result<Session, String> {
+    let approval = sample.metadata.contains_key("approval_decision");
+    let instructions = format!(
+        "{INSTRUCTIONS} {} {}",
+        crate::code_mode::instruction(surface),
+        if approval && surface == "monty" {
+            "Put reserve_change, apply_change and read_change in one Python program. After either approval or rejection, resume the saved program at least once. Never repeat reserve_change."
+        } else {
+            ""
+        }
+    );
     let mut builder = Agent::builder()
         .name(format!("shell-code-mode-eval-{}", sample.id))
-        .instructions(INSTRUCTIONS)
+        .instructions(instructions)
         .provider(provider)
         .model(target.model.clone())
-        .max_iterations(MAX_ITERATIONS)
-        .capability("bashkit_shell")
-        .capability("shell_code_mode");
+        .max_iterations(MAX_ITERATIONS);
+    builder = crate::code_mode::configure(builder, surface)?;
+    if approval {
+        builder = builder.durable_approvals();
+        for tool in crate::approval::tools(log) {
+            builder = builder.tool(tool);
+        }
+    }
     for tool in registry::tools(log) {
         builder = builder.tool(tool);
     }
@@ -77,11 +102,16 @@ pub fn build_session(
 }
 
 /// Run the sample's turns and record the event stream.
+#[cfg(test)]
 pub async fn run_turns(session: &Session, sample: &Sample) -> Transcript {
+    run_turns_with_log(session, sample, &CallLog::default()).await
+}
+
+pub async fn run_turns_with_log(session: &Session, sample: &Sample, log: &CallLog) -> Transcript {
     let mut events = session.events();
     let mut transcript = Transcript::default();
     for turn in &sample.input {
-        match session.run(turn.clone()).await {
+        match crate::approval::run(session, turn, sample, log, &mut transcript).await {
             Ok(result) => {
                 transcript.final_response = result.response;
                 transcript.iterations += result.iterations;
@@ -171,6 +201,13 @@ fn classify(message: &str) -> ErrorKind {
         return ErrorKind::Infra;
     }
     let lower = message.to_ascii_lowercase();
+    if lower.contains("model")
+        && ["not available", "invalid", "unknown", "not found"]
+            .iter()
+            .any(|part| lower.contains(part))
+    {
+        return ErrorKind::Infra;
+    }
     const INFRA: &[&str] = &[
         "402",
         "500",

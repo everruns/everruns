@@ -428,6 +428,8 @@ pub fn is_code_mode_eligible(
     use super::tool_types::ToolPolicy;
     name != "lua"
         && name != "bash"
+        && name != "python"
+        && hints.stays_direct != Some(true)
         && *policy == ToolPolicy::Auto
         && hints.destructive != Some(true)
         && hints.cpu_bound != Some(true)

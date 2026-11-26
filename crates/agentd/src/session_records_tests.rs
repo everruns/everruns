@@ -445,3 +445,77 @@ fn a_failed_or_abandoned_claim_comes_due_again() {
         "released"
     );
 }
+
+#[test]
+fn code_journal_claims_are_fenced_private_and_survive_snapshot() {
+    use everruns_contracts::runtime::durable_tools::ToolCallClaimResult;
+    let (mut state, session) = session();
+    let token = uuid::Uuid::new_v4();
+    let claim = || RecordOp::CodeClaim {
+        key: "turn:effect:0".into(),
+        fingerprint: "abc".into(),
+        token,
+    };
+    let first = apply(&mut state, session, claim(), T0);
+    assert!(matches!(
+        serde_json::from_value::<ToolCallClaimResult>(first).unwrap(),
+        ToolCallClaimResult::Claimed { .. }
+    ));
+    let retry = apply(&mut state, session, claim(), T0);
+    assert!(matches!(
+        serde_json::from_value::<ToolCallClaimResult>(retry).unwrap(),
+        ToolCallClaimResult::AlreadyRunning { .. }
+    ));
+    assert_eq!(
+        apply(
+            &mut state,
+            session,
+            RecordOp::CodeSettle {
+                key: "turn:effect:0".into(),
+                token: uuid::Uuid::new_v4(),
+                value: json!("wrong")
+            },
+            T0
+        ),
+        json!(false)
+    );
+    assert_eq!(
+        apply(
+            &mut state,
+            session,
+            RecordOp::CodeSettle {
+                key: "turn:effect:0".into(),
+                token,
+                value: json!("private snapshot")
+            },
+            T0
+        ),
+        json!(true)
+    );
+    let bytes = serde_json::to_vec(&state.sessions[&session].platform.records).unwrap();
+    state.sessions.get_mut(&session).unwrap().platform.records =
+        serde_json::from_slice(&bytes).unwrap();
+    let settled = apply(&mut state, session, claim(), T0);
+    assert!(
+        matches!(serde_json::from_value::<ToolCallClaimResult>(settled).unwrap(), ToolCallClaimResult::AlreadySettled { result_json, .. } if result_json == json!("private snapshot"))
+    );
+    let changed = apply(
+        &mut state,
+        session,
+        RecordOp::CodeClaim {
+            key: "turn:effect:0".into(),
+            fingerprint: "different".into(),
+            token,
+        },
+        T0,
+    );
+    assert!(matches!(
+        serde_json::from_value::<ToolCallClaimResult>(changed).unwrap(),
+        ToolCallClaimResult::DeterminismViolation { .. }
+    ));
+    assert!(fed(&state).iter().all(|record| {
+        !serde_json::to_string(record)
+            .unwrap()
+            .contains("private snapshot")
+    }));
+}
