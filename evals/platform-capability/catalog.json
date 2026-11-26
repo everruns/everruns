@@ -1344,7 +1344,7 @@
           "description": "How a bound secret is put on an outbound request.\n\nOnly the declared header or named, structured form field may carry a value.",
           "oneOf": [
             {
-              "description": "`Authorization: ***",
+              "description": "`Authorization: Bearer <value>`.",
               "properties": {
                 "type": {
                   "enum": [
@@ -3622,7 +3622,7 @@
           "type": "string"
         },
         "auth": {
-          "description": "`bearer` (default) sends `Authorization: ***; `header`\nsends the value in `header_name` (HTTP API).",
+          "description": "`bearer` (default) sends `Authorization: Bearer <value>`; `header`\nsends the value in `header_name` (HTTP API).",
           "example": "bearer",
           "type": [
             "string",
@@ -9070,7 +9070,7 @@
           "description": "How a bound secret is put on an outbound request.\n\nOnly the declared header or named, structured form field may carry a value.",
           "oneOf": [
             {
-              "description": "`Authorization: ***",
+              "description": "`Authorization: Bearer <value>`.",
               "properties": {
                 "type": {
                   "enum": [

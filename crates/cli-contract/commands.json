@@ -1155,7 +1155,7 @@
         "long": "auth",
         "kind": "string",
         "required": false,
-        "help": "`bearer` (default) sends `Authorization: ***; `header` sends the value in `header..."
+        "help": "`bearer` (default) sends `Authorization: Bearer <value>`; `header` sends the value in `header..."
       },
       {
         "field": "description",
