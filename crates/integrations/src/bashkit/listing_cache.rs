@@ -97,6 +97,7 @@ impl ListingCache {
             mode: 0o755,
             modified: now,
             created: now,
+            ..Metadata::default()
         };
         for info in infos {
             let rest = info.path.trim_start_matches('/');
@@ -110,6 +111,7 @@ impl ListingCache {
                 mode: 0o755,
                 modified: now,
                 created: now,
+                ..Metadata::default()
             };
             // Every ancestor is a directory, whether or not the store has a row for it.
             let mut dir = root.to_string();
@@ -211,6 +213,7 @@ impl SessionFileSystemAdapter {
                     mode: 0o755,
                     modified: now,
                     created: now,
+                    ..Metadata::default()
                 },
             })
             .collect();

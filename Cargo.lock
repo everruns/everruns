@@ -1317,9 +1317,9 @@ checksum = "2af50177e190e07a26ab74f8b1efbfe2ef87da2116221318cb1c2e82baf7de06"
 
 [[package]]
 name = "bashkit"
-version = "0.21.1"
+version = "0.22.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "08e2baeab9e923cd734416fd36d41da5009188c515057f3aa3d8181e12ee50e8"
+checksum = "d344bf5cc4fbaa31a0ea467e345d110f448a6870ceab274394a93f8519a240a7"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1370,9 +1370,9 @@ dependencies = [
 
 [[package]]
 name = "bashkit-cpython-wasm"
-version = "0.21.1"
+version = "0.22.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d9186c8efb3dc3962ba50ab3796487f62d6bbe1272077b13e6fba548fc3ef184"
+checksum = "234520286fa5134c9cda9a781368dc7e27a1a2e2b170f1bc55945289fd2f309b"
 dependencies = [
  "lzma-rs",
  "wasmtime",
@@ -1380,9 +1380,9 @@ dependencies = [
 
 [[package]]
 name = "bashkit-scripted-tool"
-version = "0.21.1"
+version = "0.22.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c8ca953725f4161b6354a9acc4501b0b965bfcfeb95a62d1cb5d45764d359c2e"
+checksum = "8a9f9d1e705bd095873a185e2b8bea5b55772a5ec723981876d194f9f99835e2"
 dependencies = [
  "async-trait",
  "bashkit",
@@ -8563,7 +8563,7 @@ dependencies = [
  "quinn-udp",
  "rustc-hash",
  "rustls",
- "socket2 0.5.10",
+ "socket2 0.6.5",
  "thiserror 2.0.21",
  "tokio",
  "tracing",
@@ -8602,7 +8602,7 @@ dependencies = [
  "cfg_aliases",
  "libc",
  "once_cell",
- "socket2 0.5.10",
+ "socket2 0.6.5",
  "tracing",
  "windows-sys 0.61.2",
 ]
@@ -10497,7 +10497,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.3.4",
+ "getrandom 0.4.3",
  "once_cell",
  "rustix",
  "windows-sys 0.61.2",

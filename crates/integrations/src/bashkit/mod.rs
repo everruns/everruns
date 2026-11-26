@@ -1019,6 +1019,7 @@ impl FileSystem for SessionFileSystemAdapter {
                 mode: 0o755,
                 modified: now,
                 created: now,
+                ..Metadata::default()
             });
         }
 
@@ -1049,6 +1050,7 @@ impl FileSystem for SessionFileSystemAdapter {
                     mode: 0o755,
                     modified: now,
                     created: now,
+                    ..Metadata::default()
                 })
             }
             Ok(None) => {
@@ -1065,6 +1067,7 @@ impl FileSystem for SessionFileSystemAdapter {
                         mode: 0o755,
                         modified: now,
                         created: now,
+                        ..Metadata::default()
                     })
                 } else {
                     Err(bashkit::Error::Io(std::io::Error::new(
