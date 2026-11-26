@@ -1,11 +1,11 @@
 /**
- * Avatar for a thread's counterpart. Agents and harnesses carry no image, so
- * identity is the initials of the display name over the brand accent — stable
- * per counterpart, and legible at the sizes the thread header and thread list
- * use.
+ * Stored portrait for a thread's counterpart, with display initials for
+ * agents and harnesses that have no portrait.
  */
 "use client";
 
+import { AgentAvatar as StoredAgentAvatar } from "@/components/agents/agent-avatar";
+import type { AgentAvatar as AgentAvatarData } from "@/lib/api/agent-types";
 import { AgentIcon } from "@/components/icons/facet-icons";
 import { cn } from "@/lib/utils";
 
@@ -21,10 +21,12 @@ export function agentInitials(name: string): string {
 
 export function AgentAvatar({
   name,
+  avatar,
   size = "md",
   className,
 }: {
   name?: string | null;
+  avatar?: AgentAvatarData | null;
   size?: "sm" | "md";
   className?: string;
 }) {
@@ -40,7 +42,11 @@ export function AgentAvatar({
         className,
       )}
     >
-      {initials || <AgentIcon className={size === "md" ? "size-4" : "size-3"} />}
+      <StoredAgentAvatar
+        avatar={avatar}
+        size={size === "md" ? 32 : 24}
+        fallback={initials || <AgentIcon className={size === "md" ? "size-4" : "size-3"} />}
+      />
     </span>
   );
 }

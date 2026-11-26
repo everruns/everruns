@@ -40,6 +40,15 @@ tags:
     details and counts are no longer delivered. Cross-organization issue URLs must fail.
 12. Disable, archive or delete the affected resource. Verify it is absent from active issues.
 13. Repeat desktop and 390px mobile, light and dark; verify readable permission text and no overflow.
+14. Verify the selected issue is marked in the list beside its details; on mobile, use
+    **Back to issues** to select another. Two issues show no pagination controls.
+15. Open an unattended spend finding. Verify the 24-hour total, preceding six-day average,
+    observed window and contributing session Cost/Trace links. Dismiss with a reason;
+    a failed request retains the reason and error. Viewers and Slack repair issues offer no dismissal.
+16. Recheck the same spike; it stays dismissed. Restore normal spend, then cause a new
+    spike; verify a new episode appears and the original reason remains in history.
+17. With 25 pending issues, verify the first and second page ranges and that closing the
+    final issue on the last page returns to a valid page.
 
 ## Expected result
 

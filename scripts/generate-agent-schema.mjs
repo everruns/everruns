@@ -48,6 +48,16 @@ manifest.allOf = [{ not: { required: ["instructions_file", "instructions"], prop
 for (const name of ["Manifest", "FileSource", "InitialFile", "PackageModel", "PackageCapabilityReference", "Channel", "NetworkAccessList", "ScopedMcpServer"]) {
   if (defs[name]) defs[name].additionalProperties = false;
 }
+// Portable portraits use a literal false for explicit removal, not a toggle.
+for (const branch of defs.Avatar?.oneOf ?? defs.Avatar?.anyOf ?? []) {
+  if (branch.type === "boolean") branch.enum = [false];
+}
+if (defs.AvatarImage) {
+  defs.AvatarImage.additionalProperties = false;
+  defs.AvatarImage.properties.content_type.enum = ["image/png", "image/jpeg", "image/gif", "image/webp"];
+  defs.AvatarImage.properties.image_base64.minLength = 1;
+  defs.AvatarImage.properties.image_base64.maxLength = Math.ceil((5 * 1024 * 1024) / 3) * 4;
+}
 defs.InitialFile.properties.encoding = { ...defs.InitialFile.properties.encoding, enum: ["text", "base64"], default: "text" };
 defs.InitialFile.properties.is_readonly.default = false;
 defs.InitialFile.properties.path.description = "Relative destination in the session file tree; leading / and /workspace/ are accepted aliases.";

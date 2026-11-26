@@ -1,5 +1,6 @@
 "use client";
 
+import { ContinueInChat } from "@/components/chat/continue-in-chat";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -77,7 +78,7 @@ function Verdict({ report }: { report: DoctorReport }) {
 function AttentionCheck({ check }: { check: DoctorCheck }) {
   const ui = useUiTranslations();
   return (
-    <li className="space-y-1 py-3">
+    <li id={check.id} className="scroll-mt-6 space-y-1 py-3">
       <div className="flex flex-wrap items-center gap-2">
         <StatusIcon status={check.status} />
         <span className="font-medium">{check.title}</span>
@@ -88,6 +89,15 @@ function AttentionCheck({ check }: { check: DoctorCheck }) {
       </div>
       <p className="text-sm">{check.summary}</p>
       {check.why && <p className="text-sm text-muted-foreground">{check.why}</p>}
+      <ContinueInChat
+        issue={{
+          id: check.id,
+          title: check.title,
+          summary: [check.summary, check.why, check.fix].filter(Boolean).join("\n"),
+          status: check.status,
+          href: `/system/health#${encodeURIComponent(check.id)}`,
+        }}
+      />
       {check.fix && (
         <p className="text-sm">
           <span className="font-medium">{ui("Fix:")} </span>

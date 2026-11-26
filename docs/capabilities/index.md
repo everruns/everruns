@@ -34,6 +34,7 @@ Fundamental capabilities for file operations, command execution, web access, ses
 | [Session](/capabilities/session/) | `session` | 2 |
 | [Automatic session titles](/capabilities/automatic-session-titles/) | `automatic_session_titles` | 0 |
 | Reactions | `reactions` | 1 |
+| Published views | `published_views` | 1 (publish configured A2UI or HTML views) |
 | [Storage](/capabilities/session-storage/) | `session_storage` | 2 |
 | [Web Fetch](/capabilities/web-fetch/) | `web_fetch` | 1 |
 | [Web Search](/capabilities/web-search/) | `web_search` | 1 |

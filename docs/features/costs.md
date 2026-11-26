@@ -67,3 +67,16 @@ In the API, usage policies are the `/v1/platform/budgets` resource with a `polic
 object (`name`, `steps`, `source`); the price list is `/v1/platform/cost-rates`, the
 overview is `GET /v1/platform/costs/summary`, and `POST /v1/platform/sessions/{id}/resume`
 answers an ask step for one session.
+
+## Review unattended spend warnings
+
+An **Unattended spend jumped** warning compares an agent's last 24 hours of
+unattended charges with its daily average across the preceding six days,
+including days without charges. Increased usage can be expected work.
+
+Open **Settings → Health** to review the comparison window, increase and largest
+contributing sessions. Session links open cost details and traces; agent links
+open sessions and channels and triggers. **Dismiss alert** requires a reason,
+records the acknowledgement and leaves budgets and schedules unchanged. The same
+spike stays dismissed until a healthy check rearms the detector. A subsequent
+spike can create a new alert. Broken integrations still require repair.

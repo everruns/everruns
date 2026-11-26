@@ -264,6 +264,25 @@ async fn verify_upgrade(db: Arc<StorageBackend>, opted_in: bool) {
         .await
         .unwrap()
         .unwrap();
+    let avatar_id = managed
+        .avatar_id
+        .expect("Platform Chat gets its Caretaker avatar");
+    assert_eq!(
+        db.get_agent_avatar_source(org_id, managed.id.uuid())
+            .await
+            .unwrap()
+            .as_deref(),
+        Some("preset:platform-caretaker")
+    );
+    for variant in ["source.png", "square-32.png", "circle-512.png"] {
+        let image = db
+            .get_agent_avatar_variant(avatar_id, variant)
+            .await
+            .unwrap()
+            .expect("rendered avatar variant");
+        assert_eq!(image.content_type, "image/png");
+        assert!(image.data.starts_with(b"\x89PNG\r\n\x1a\n"));
+    }
     let bashkit_worker = db
         .get_harness_by_name(org_id, "bashkit-worker")
         .await
@@ -433,6 +452,14 @@ async fn verify_upgrade(db: Arc<StorageBackend>, opted_in: bool) {
         .unwrap();
     assert_eq!(again.created, 0);
     assert_eq!(again.updated, 0);
+    assert_eq!(
+        db.get_agent_by_name(org_id, "platform-chat")
+            .await
+            .unwrap()
+            .unwrap()
+            .avatar_id,
+        Some(avatar_id)
+    );
 }
 
 #[tokio::test]

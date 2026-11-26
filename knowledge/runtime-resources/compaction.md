@@ -103,6 +103,15 @@ can differ from provider tokenization and hosted-tool scaffolding. See the
 [request budget implementation](../../crates/core/src/engine/execution/reason/request_budget.rs)
 and [public behavior](../../docs/advanced/compaction.md).
 
+OpenRouter sends current declarations; its historical inline epochs are
+bookkeeping rather than wire input. Request budgeting excludes those epochs
+without changing provider-neutral replay metadata, declaration ordering or
+warm-cache removal holds. Counting that unused epoch caused repeated apparent
+tool rebases without removing messages or installing continuity. Other routes,
+including custom drivers, retain conservative baseline accounting.
+Tool-only refresh events remain inspectable under an explicit UI label; they do
+not imply saved history compaction or an extra summary call.
+
 ## Native epochs and replay scope
 
 Native output remains an ordered provider-owned replacement. A subsequent native

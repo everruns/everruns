@@ -11,7 +11,7 @@ use everruns_contracts::{
     CapabilityRef, model_spec::ModelSpec, runtime_provider::ProviderKey, typed_id::AgentId,
 };
 use everruns_core::agent_package::{
-    AgentPackage, Channel, File, Format, Manifest, PackageError, sensitive_key,
+    AgentPackage, Avatar, AvatarImage, Channel, File, Format, Manifest, PackageError, sensitive_key,
 };
 use everruns_core::{InitialFile, ScopedMcpServer, session_file::SessionFile};
 use serde::Deserialize;
@@ -379,6 +379,19 @@ async fn export_inner(
     }
     let mut manifest: Manifest =
         serde_json::from_value(value).map_err(|e| CommandError::bad_request(e.to_string()))?;
+    if let Some(avatar) = &agent.avatar {
+        let source = ctx
+            .db
+            .get_agent_avatar_variant(avatar.id.uuid(), "source.png")
+            .await?
+            .ok_or_else(|| CommandError::not_found("Agent avatar"))?;
+        manifest.avatar = Some(Avatar::Image(
+            AvatarImage::new("image/png", &source.data).map_err(package_error)?,
+        ));
+    }
+    if manifest.avatar.is_none() {
+        manifest.avatar = Some(Avatar::Clear(false));
+    }
     for server in manifest.mcp_servers.values_mut() {
         if let Some(provider) = server.oauth_provider_id.as_deref()
             && let Some(id) = provider.strip_prefix("mcp_oauth_")
@@ -618,6 +631,26 @@ pub async fn request(
 ) -> Result<CreateAgentRequest, CommandError> {
     package.files().map_err(package_error)?;
     let m = &package.manifest;
+    // Decode before any agent/team mutation; reuse the upload decoder's pixel
+    // bounds and MIME validation instead of trusting portable metadata.
+    match &m.avatar {
+        Some(Avatar::Image(image)) => {
+            let bytes = image.bytes().map_err(package_error)?;
+            let content_type = image.content_type.clone();
+            tokio::task::spawn_blocking(move || {
+                super::avatar::validate_avatar(&bytes, &content_type)
+            })
+            .await
+            .map_err(|e| CommandError::internal(e.into()))?
+            .map_err(|e| CommandError::bad_request(e.to_string()))?;
+        }
+        Some(Avatar::Source(_)) => {
+            return Err(CommandError::bad_request(
+                "avatar: materialize the image from the package first",
+            ));
+        }
+        _ => {}
+    }
     // Hosted credentials must use catalog bindings, never worker environment variables.
     package.bind_mcp(|_| None).map_err(package_error)?;
     let model_id = if let Some(spec) = &m.model {
@@ -999,6 +1032,23 @@ pub async fn apply(
     Ok((lead, created))
 }
 
+async fn render_package_avatar(
+    package: &AgentPackage,
+) -> Result<Option<Vec<super::avatar::RenderedAvatarVariant>>, CommandError> {
+    match &package.manifest.avatar {
+        Some(Avatar::Image(image)) => super::avatar_commands::render_upload(
+            image.bytes().map_err(package_error)?,
+            image.content_type.clone(),
+        )
+        .await
+        .map(Some),
+        Some(Avatar::Source(_)) => Err(CommandError::bad_request(
+            "avatar: materialize the image from the package first",
+        )),
+        _ => Ok(None),
+    }
+}
+
 async fn apply_agent(
     ctx: &Ctx,
     package: &AgentPackage,
@@ -1030,7 +1080,8 @@ async fn apply_agent(
             )));
         }
     }
-    let (agent, created) = if let Some(id) = destination {
+    let variants = render_package_avatar(package).await?;
+    let (mut agent, created) = if let Some(id) = destination {
         let result = UpsertAgent {
             replace_capabilities: true,
             id: id.to_string(),
@@ -1042,6 +1093,39 @@ async fn apply_agent(
     } else {
         (CreateAgent(req).run(ctx).await?, true)
     };
+    if let Some(variants) = variants {
+        let current = if let Some(avatar) = &agent.avatar {
+            ctx.db
+                .get_agent_avatar_variant(avatar.id.uuid(), "source.png")
+                .await?
+        } else {
+            None
+        };
+        let unchanged = current.is_some_and(|current| {
+            variants
+                .iter()
+                .any(|v| v.variant == "source.png" && v.data == current.data)
+        });
+        if !unchanged {
+            let row = ctx
+                .db
+                .get_agent(ctx.org_id(), AgentId::from_uuid(agent.internal_id))
+                .await?
+                .ok_or_else(|| CommandError::not_found("Agent"))?;
+            agent.avatar = Some(
+                super::avatar_commands::store_authored_avatar(ctx, &row, "upload".into(), variants)
+                    .await?,
+            );
+        }
+    } else if matches!(package.manifest.avatar, Some(Avatar::Clear(false))) {
+        let row = ctx
+            .db
+            .get_agent(ctx.org_id(), AgentId::from_uuid(agent.internal_id))
+            .await?
+            .ok_or_else(|| CommandError::not_found("Agent"))?;
+        super::avatar_commands::clear_authored_avatar(ctx, &row).await?;
+        agent.avatar = None;
+    }
     for (name, channel) in &package.manifest.channels {
         let mut config = channel.config.clone();
         config["package_name"] = json!(name);

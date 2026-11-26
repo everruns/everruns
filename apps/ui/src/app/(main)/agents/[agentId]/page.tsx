@@ -229,7 +229,6 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
 
   const observersEnabled = useFeatureFlag("observers");
   const evalsEnabled = useFeatureFlag("evals");
-  const agentViewsEnabled = useFeatureFlag("agent_views");
   const { data: agent, isLoading: agentLoading } = useAgent(agentId);
   const { data: parentAgent } = useAgent(
     agent?.owner_agent_id !== agentId ? (agent?.owner_agent_id ?? undefined) : undefined,
@@ -276,8 +275,7 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
   // rejects definition edits, archive and delete, so the page never offers
   // them. Bindings (service account, triggers, credentials) stay editable.
   const builtIn = !!agent?.is_built_in;
-  const showViews =
-    agentViewsEnabled && !!agent && !builtIn && !externalAgent.data?.endpoint && can("agent.view");
+  const showViews = !!agent && !builtIn && !externalAgent.data?.endpoint && can("agent.view");
   const viewSettings = useAgentViewSettings(agentId, showViews);
   const statusReadOnly = isReadOnlyStatus(agent?.status);
   const readOnly =

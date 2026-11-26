@@ -1,6 +1,5 @@
 "use client";
 import { useId } from "react";
-import { useOptionalFeatureFlags } from "@/providers/feature-flags-provider";
 import type { ChannelFormState } from "./channel-form";
 import { FormSection } from "./form-section";
 import {
@@ -226,7 +225,6 @@ export function WorkChatSection({
   onChange: (state: ChannelFormState) => void;
 }) {
   const ui = useUiTranslations();
-  const viewsEnabled = useOptionalFeatureFlags()?.flags.agent_views;
   const placementId = useId();
   return (
     <FormSection title="Chat site" hint="How conversations are organized.">
@@ -247,7 +245,7 @@ export function WorkChatSection({
         value={state.api}
         onChange={(api) => onChange({ ...state, api })}
       />
-      {viewsEnabled && (
+      {
         <div className="space-y-2">
           <Label htmlFor={placementId}>{ui("Published view")}</Label>
           <select
@@ -270,7 +268,7 @@ export function WorkChatSection({
             {ui("This shares the Agent’s view with people who can sign into this channel.")}
           </p>
         </div>
-      )}
+      }
       <WorkChatPluginOptions
         value={state.chatPlugins}
         onChange={(chatPlugins) => onChange({ ...state, chatPlugins })}

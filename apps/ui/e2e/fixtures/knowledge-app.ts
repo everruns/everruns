@@ -120,7 +120,11 @@ export async function mockKnowledgeApi(
     const pathname = url.pathname;
     let json: unknown = { data: [], has_more: false, total: 0 };
 
-    if (pathname.startsWith("/api/v1/platform/user/preferences/")) {
+    if (
+      ["/api/v1/platform/application-launchers", "/api/v1/platform/applications"].includes(pathname)
+    ) {
+      json = [];
+    } else if (pathname.startsWith("/api/v1/platform/user/preferences/")) {
       // These specs cover Chat beside the page, an explicit choice since Classic
       // became the default. A PUT is kept, as the server would.
       const key = decodeURIComponent(pathname.slice("/api/v1/platform/user/preferences/".length));

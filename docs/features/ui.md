@@ -397,3 +397,10 @@ End-user connections are private to their owner. Organization management permiss
 When upgrading an account that belonged to several organizations, old connections require an explicit destination. Select the destination from **Connections** and move each pending connection once. A destination that already has that provider is rejected rather than overwritten. Accounts with one organization migrate automatically.
 
 Operators upgrading an existing installation should follow the [virtual-user cutover runbook](/sre/runbooks/virtual-user-cutover/).
+
+## Investigate an issue in Chat
+
+Choose **Continue in chat** on a Health issue or System diagnostic. Main chat
+opens with an editable question containing the issue summary, affected agent
+and a link back. Existing unsent text is preserved. Review the question and
+press **Send** to start investigating; opening Chat does not run the agent.

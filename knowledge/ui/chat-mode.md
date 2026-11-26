@@ -487,3 +487,18 @@ manual edits through Undo, bounded values, and retry without duplicate execution
 Manual rollout
 verification must still exercise a real model save, settings sheets, manual-draft
 conflicts, light/dark modes, mobile fallback and reduced motion on a running stack.
+
+## Continue with an issue in Chat
+
+Health findings and System diagnostics share **Continue in chat**. The action
+opens the person's Main chat beside the issue when that layout supports it,
+otherwise full screen. It drafts a readable question with the visible issue
+summary, affected agent and return link. It preserves existing unsent text and
+requires the person to Send; it never starts a model turn by navigation.
+
+The handoff is bounded, tab-local and keyed by the same account, organization
+and session identity as draft recovery. A newly mounted or already open composer
+consumes it once. Logout retires queued context; an organization change while
+opening cannot move an issue into a different organization's chat. No issue
+body enters the URL. The reference is context, not authority: platform actions
+still require current server permissions and the assistant must check live state.

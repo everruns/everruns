@@ -18,7 +18,7 @@ pub(super) fn manifest_check(last: Option<SlackManifestHealth>) -> DoctorCheck {
     let check = DoctorCheck::new(
         CheckArea::Integrations,
         "integrations.slack_manifests",
-        "Slack app manifests",
+        "Add to Slack compatibility",
     );
     let Some(last) = last else {
         return check.info(
@@ -26,6 +26,8 @@ pub(super) fn manifest_check(last: Option<SlackManifestHealth>) -> DoctorCheck {
              starts and then daily, once Slack app creation is set up.",
         );
     };
+    let mut check = check;
+    check.observed_at = last.checked_at;
     let when = last.checked_at.format("%Y-%m-%d %H:%M UTC");
     match last.outcome {
         SlackManifestOutcome::Accepted { cases } => check.ok(format!(
@@ -51,12 +53,19 @@ pub(super) fn manifest_check(last: Option<SlackManifestHealth>) -> DoctorCheck {
                 .collect::<Vec<_>>()
                 .join(", ");
             check
-                .problem(format!(
-                    "Slack refused {} of the worst-case app manifests on {when}: {detail}. \
-                     Add to Slack fails with invalid_manifest for agents like these.",
+                .warning(format!(
+                    "New Add to Slack installations may fail for some agent names or descriptions. \
+                     Slack rejected {} synthetic compatibility test(s) on {when}.",
                     refusals.len()
                 ))
-                .fix("Tighten the manifest limits in channels/slack/events/manifest.rs to what Slack accepts.")
+                .why(format!(
+                    "This is a platform compatibility check, not a failed installation of one of your agents. \
+                     It does not change existing Slack connections. Test cases: {detail}."
+                ))
+                .fix("Everruns maintainers need to investigate the rejected fields and update manifest generation. \
+                      If Add to Slack fails for your agent, try a shorter Slack app name and description in its Branding settings, \
+                      then retry. No changes are needed to working connections. The compatibility test runs again daily; \
+                      refreshing this report shows the last result.")
         }
     }
 }
@@ -74,16 +83,38 @@ mod tests {
     }
 
     #[test]
-    fn a_refused_manifest_is_a_problem_that_names_the_case_and_field() {
+    fn a_synthetic_refusal_explains_impact_owner_and_workaround() {
         let check = manifest_check(at(SlackManifestOutcome::Refused {
             refusals: vec![(
                 "long-ascii".to_string(),
                 vec!["/display_information/description: too long".to_string()],
             )],
         }));
-        assert_eq!(check.status, CheckStatus::Problem);
-        assert!(check.summary.contains("long-ascii"), "{}", check.summary);
-        assert!(check.summary.contains("/display_information/description"));
+        assert_eq!(check.status, CheckStatus::Warning);
+        assert!(check.summary.contains("synthetic"));
+        assert!(!check.summary.contains("long-ascii"));
+        assert!(check.why.as_deref().unwrap().contains("long-ascii"));
+        assert!(
+            check
+                .why
+                .as_deref()
+                .unwrap()
+                .contains("/display_information/description")
+        );
+        let fix = check.fix.as_deref().unwrap();
+        assert!(fix.contains("Everruns maintainers"));
+        assert!(fix.contains("Branding"));
+        assert!(fix.contains("daily"));
+    }
+
+    #[test]
+    fn report_refresh_keeps_the_actual_slack_probe_time() {
+        let checked_at = chrono::Utc::now() - chrono::Duration::hours(12);
+        let check = manifest_check(Some(SlackManifestHealth {
+            checked_at,
+            outcome: SlackManifestOutcome::Accepted { cases: 6 },
+        }));
+        assert_eq!(check.observed_at, checked_at);
     }
 
     #[test]

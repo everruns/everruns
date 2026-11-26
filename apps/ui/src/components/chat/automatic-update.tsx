@@ -68,7 +68,7 @@ export function AutomaticUpdate({
   );
 
   return (
-    <div className="animate-chat-row-in" data-testid="automatic-update">
+    <div className="min-w-0 max-w-full animate-chat-row-in" data-testid="automatic-update">
       <div className="flex items-center gap-1">
         {canOpen ? (
           <button
@@ -90,7 +90,7 @@ export function AutomaticUpdate({
       {canOpen && open ? (
         <p
           id={bodyId}
-          className="ml-7 max-h-48 overflow-y-auto whitespace-pre-wrap pr-2 text-sm leading-[1.6] text-muted-foreground"
+          className="ml-7 min-w-0 max-h-48 overflow-y-auto whitespace-pre-wrap [overflow-wrap:anywhere] pr-2 text-sm leading-[1.6] text-muted-foreground"
         >
           {report}
         </p>

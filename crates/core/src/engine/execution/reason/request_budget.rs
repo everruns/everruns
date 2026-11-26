@@ -6,6 +6,7 @@ use crate::engine::compaction_policy::CompactionPolicy;
 use crate::engine::driver_registry::{LlmCallConfig, Message, MessageRole};
 use crate::engine::error::{AgentLoopError, Result};
 use crate::engine::tool_types::ToolDefinition;
+use everruns_contracts::DriverId;
 
 fn tool_tokens(tool: &ToolDefinition) -> usize {
     let projected = tool.parameters_for_model();
@@ -33,14 +34,24 @@ pub(super) fn tools_tokens(tools: &[ToolDefinition]) -> usize {
     tools.iter().map(tool_tokens).fold(0, usize::saturating_add)
 }
 
-pub(super) fn tool_tokens_for_request(config: &LlmCallConfig, messages: &[Message]) -> usize {
+pub(super) fn tool_tokens_for_request(
+    provider: &str,
+    config: &LlmCallConfig,
+    messages: &[Message],
+) -> usize {
     let current = tools_tokens(&config.tools);
+    // OpenRouter always sends current declarations, including when the model
+    // profile advertises inline changes. Keep neutral replay metadata intact
+    // for drivers; exclude only this known wire-unused epoch from its budget.
+    if provider == DriverId::OpenRouter.as_str() {
+        return current;
+    }
     let Some(baseline) = &config.tool_baseline else {
         return current;
     };
-    // Inline-capable drivers replay the baseline plus every addition/redefinition;
-    // other endpoints fall back to the current declarations. Reserve the larger
-    // representation without guessing endpoint-specific inline eligibility.
+    // Inline-capable drivers replay the baseline plus every addition/redefinition.
+    // Preserve conservative reservation for other routes, including custom
+    // drivers that interpret the provider-neutral declarations themselves.
     let replay = messages
         .iter()
         .filter_map(|m| m.tool_changes.as_ref())
@@ -109,18 +120,21 @@ mod tests {
     #[test]
     fn empty_and_deferred_catalogs_only_count_model_visible_schemas() {
         let mut config = LlmCallConfig::new("test");
-        assert_eq!(tool_tokens_for_request(&config, &[]), 0);
+        assert_eq!(
+            tool_tokens_for_request(DriverId::OpenAI.as_str(), &config, &[]),
+            0
+        );
         let mut deferred = tool("Lookup");
         if let ToolDefinition::ClientSide(t) = &mut deferred {
             t.full_parameters = Some(json!({"description": "secret".repeat(10_000)}));
         }
         config.tools.push(deferred);
-        let small = tool_tokens_for_request(&config, &[]);
+        let small = tool_tokens_for_request(DriverId::OpenAI.as_str(), &config, &[]);
         assert!(small > 0 && small < 100);
         if let ToolDefinition::ClientSide(t) = &mut config.tools[0] {
             t.parameters = t.full_parameters.take().expect("full schema");
         }
-        assert!(tool_tokens_for_request(&config, &[]) > small + 10_000);
+        assert!(tool_tokens_for_request(DriverId::OpenAI.as_str(), &config, &[]) > small + 10_000);
     }
 
     #[test]
@@ -168,16 +182,67 @@ mod tests {
     fn inline_replay_is_reserved_without_double_counting_current_tools() {
         let mut config = LlmCallConfig::new("test");
         config.tools = vec![tool("current")];
-        let current = tool_tokens_for_request(&config, &[]);
+        let current = tool_tokens_for_request(DriverId::OpenAI.as_str(), &config, &[]);
         config.tool_baseline = Some(config.tools.clone());
-        assert_eq!(tool_tokens_for_request(&config, &[]), current);
+        assert_eq!(
+            tool_tokens_for_request(DriverId::OpenAI.as_str(), &config, &[]),
+            current
+        );
         let mut message = Message::text(MessageRole::User, "reveal");
         message.tool_changes = Some(everruns_contracts::tool_changes::ToolChanges {
             redefined: vec![tool(&"large description ".repeat(100))],
             ..Default::default()
         });
-        assert!(tool_tokens_for_request(&config, &[message]) > current + 400);
+        assert!(
+            tool_tokens_for_request(DriverId::OpenAI.as_str(), &config, &[message]) > current + 400
+        );
     }
+    #[test]
+    fn gateway_history_does_not_create_false_request_pressure() {
+        use crate::engine::{execution::reason::tool_changes, message::RuntimeMessage};
+        let model = "openai/gpt-6.1-terra";
+        let provider = DriverId::OpenRouter;
+        let mut agent = crate::engine::TurnAgent::new("system", model);
+        agent.tools = vec![tool(&"historical schema ".repeat(1_000))];
+        let first = RuntimeMessage::user("first");
+        let initial =
+            tool_changes::prepare_for(std::slice::from_ref(&first), &provider, model, &agent);
+        let mut answer = RuntimeMessage::assistant("done");
+        answer.metadata = Some(std::collections::HashMap::from([
+            ("provider".into(), json!(provider.as_str())),
+            ("model".into(), json!(model)),
+        ]));
+        initial.stamp(answer.metadata.as_mut().unwrap());
+        let history = vec![first, answer, RuntimeMessage::user("next")];
+        agent.tools = vec![tool("current")];
+        let replay = tool_changes::prepare_for(&history, &provider, model, &agent);
+        let mut sent = vec![
+            Message::text(MessageRole::System, "system"),
+            Message::text(MessageRole::User, "first"),
+            Message::text(MessageRole::Assistant, "done"),
+            Message::text(MessageRole::User, "next"),
+        ];
+        sent[1].tool_changes = replay.transitions.get(&history[0].id).cloned();
+        sent[3].tool_changes = replay.transitions.get(&history[2].id).cloned();
+        assert!(!replay.transitions.is_empty());
+        let mut config = LlmCallConfig::new(model);
+        config.tools = agent.tools;
+        replay.apply_to(&mut config, &sent);
+        assert!(
+            config.tool_baseline.is_some(),
+            "driver replay metadata is preserved"
+        );
+        let actual = tool_tokens_for_request(DriverId::OpenRouter.as_str(), &config, &sent);
+        assert_eq!(actual, tools_tokens(&config.tools));
+        assert!(!policy().should_compact_with_fixed_input(&sent, 1_000, actual));
+        // Custom drivers retain conservative accounting of the same metadata.
+        assert!(policy().should_compact_with_fixed_input(
+            &sent,
+            1_000,
+            tool_tokens_for_request(DriverId::external("recording").as_str(), &config, &sent)
+        ));
+    }
+
     struct SmallWindowDriver;
     #[async_trait::async_trait]
     impl crate::engine::ChatDriver for SmallWindowDriver {

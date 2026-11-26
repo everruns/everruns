@@ -1,6 +1,6 @@
 use super::{
-    AgentPackage, Diagnostic, File, FileSource, Format, MAX_FILE_BYTES, MAX_FILES,
-    MAX_PACKAGE_BYTES, MEMBERS_DIR, PackageError, Result, error,
+    AgentPackage, Diagnostic, File, FileSource, Format, MAX_FILES, MAX_PACKAGE_BYTES, MEMBERS_DIR,
+    PackageError, Result, error,
 };
 use crate::{InitialFile, session_file::SessionFile};
 use globset::Glob;
@@ -199,6 +199,14 @@ impl AgentPackage {
                 .any(|path| path.starts_with(&format!("{source}/")))
         })?);
         let mut selected = std::collections::BTreeSet::new();
+        if let Some(source) = self
+            .manifest
+            .avatar
+            .as_ref()
+            .and_then(super::Avatar::source)
+        {
+            selected.insert(source.to_string());
+        }
         if self.discovers_members() {
             selected.extend(
                 paths
@@ -268,6 +276,16 @@ impl AgentPackage {
             .map_err(|e| error("instructions_file", e))?;
         }
         m.instructions_file = None;
+        if let Some(super::Avatar::Source(path)) = &m.avatar {
+            let bytes = entries
+                .get(path)
+                .ok_or_else(|| error("avatar", format!("missing {path}")))?;
+            m.avatar = Some(super::Avatar::Image(super::AvatarImage::new(
+                super::avatar::image_type(path)
+                    .ok_or_else(|| error("avatar", "unsupported image type"))?,
+                bytes,
+            )?));
+        }
         let mut declared = std::mem::take(&mut m.initial_files);
         if !files_declared
             && declared.is_empty()
@@ -432,7 +450,7 @@ impl AgentPackage {
             let limit = if path.starts_with("agent.") {
                 MAX_PACKAGE_BYTES
             } else {
-                MAX_FILE_BYTES
+                super::avatar::asset_limit(&path)
             };
             let mut content = Vec::new();
             (&mut file)
@@ -494,7 +512,7 @@ impl AgentPackage {
             let limit = if path == manifest || path.starts_with("agent.") {
                 MAX_PACKAGE_BYTES
             } else {
-                MAX_FILE_BYTES
+                super::avatar::asset_limit(path)
             };
             if bytes.len() > limit {
                 return Err(error(path, "file exceeds size limit"));
@@ -606,6 +624,18 @@ impl AgentPackage {
                 is_readonly: file.is_readonly,
             }));
         }
+        if let Some(super::Avatar::Image(image)) = &manifest.avatar {
+            let mut path = format!("avatar.{}", image.extension());
+            let mut suffix = 1;
+            while super::avatar::path_taken(&entries, &path) {
+                path = format!("avatar-{suffix}.{}", image.extension());
+                suffix += 1;
+            }
+            entries.insert(path.clone(), image.bytes()?);
+            manifest.avatar = Some(super::Avatar::Source(path));
+        } else if matches!(manifest.avatar, Some(super::Avatar::Source(_))) {
+            return Err(error("avatar", "materialize the portrait before export"));
+        }
         // Explicit files already contain the complete skill trees.
         manifest.skills.clear();
         for agent in std::mem::take(&mut manifest.agents) {
@@ -616,11 +646,21 @@ impl AgentPackage {
         }
         let text = toml::to_string_pretty(&manifest).map_err(|e| error("toml", e))?;
         entries.insert("agent.toml".into(), text.into_bytes());
+        if entries.len() > MAX_FILES + 20
+            || entries.values().map(Vec::len).sum::<usize>() > MAX_PACKAGE_BYTES
+        {
+            return Err(error("assets", "expanded package exceeds limits"));
+        }
         Ok(entries)
     }
 
     pub fn to_zip(&self) -> Result<Vec<u8>> {
         let entries = self.folder_entries()?;
+        if entries.len() > MAX_FILES + 20
+            || entries.values().map(Vec::len).sum::<usize>() > MAX_PACKAGE_BYTES
+        {
+            return Err(error("zip", "expanded package exceeds limits"));
+        }
         let mut writer = zip::ZipWriter::new(Cursor::new(Vec::new()));
         for (path, bytes) in entries {
             writer

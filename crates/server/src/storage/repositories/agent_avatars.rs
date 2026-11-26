@@ -9,16 +9,34 @@ impl Database {
     /// transaction. The previous avatar and its variants are deleted, so its
     /// URLs stop resolving. Returns `None` when the agent is not in the org.
     pub async fn set_agent_avatar(&self, input: SetAgentAvatar) -> Result<Option<Uuid>> {
+        self.store_agent_avatar(input, false).await
+    }
+
+    /// Provision a default once, including when two organization initializers
+    /// race. Existing branding and immutable avatar URLs stay intact.
+    pub async fn set_default_agent_avatar(&self, input: SetAgentAvatar) -> Result<Option<Uuid>> {
+        self.store_agent_avatar(input, true).await
+    }
+
+    async fn store_agent_avatar(
+        &self,
+        input: SetAgentAvatar,
+        only_if_missing: bool,
+    ) -> Result<Option<Uuid>> {
         let mut tx = self.pool.begin().await?;
-        let found: Option<(Uuid,)> = sqlx::query_as(
-            "SELECT id FROM agents WHERE org_id = $1 AND id = $2 AND status <> 'deleted' FOR UPDATE",
+        let found: Option<(Uuid, Option<Uuid>)> = sqlx::query_as(
+            "SELECT id, avatar_id FROM agents WHERE org_id = $1 AND id = $2 AND status <> 'deleted' FOR UPDATE",
         )
         .bind(input.org_id)
         .bind(input.agent_id)
         .fetch_optional(&mut *tx)
         .await?;
-        if found.is_none() {
+        let Some((_, existing)) = found else {
             return Ok(None);
+        };
+        if only_if_missing && let Some(existing) = existing {
+            tx.rollback().await?;
+            return Ok(Some(existing));
         }
         let avatar_id = Uuid::now_v7();
         sqlx::query(

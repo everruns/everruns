@@ -12,7 +12,6 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import dynamic from "next/dynamic";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, Maximize2, Minimize2, PanelRight, X } from "lucide-react";
-import { useOptionalFeatureFlags } from "@/providers/feature-flags-provider";
 import { useSessionAgentView } from "@/hooks/use-agent-view-settings";
 import { useAgent } from "@/hooks/use-agents";
 import { usePlatformChatThread } from "@/hooks/use-platform-chat-thread";
@@ -150,12 +149,10 @@ export function ChatWorkspace({
   const drafting = segment === "new" || (!chatRoute && !!newChat);
   const currentId = chatRoute ? (conversationId ?? thread?.id) : (activeChatId ?? thread?.id);
   const active = useSession(currentId);
-  const viewsEnabled = useOptionalFeatureFlags()?.flags.agent_views;
   const reference = chatRoute ? searchParams.get("view") : null;
   const referenceAgent =
-    viewsEnabled && reference && /^agent_[0-9a-f]{32}$/.test(reference) ? reference : undefined;
-  const viewSession =
-    viewsEnabled && !pageAware && visible && !drafting ? (openThreadId ?? currentId) : undefined;
+    reference && /^agent_[0-9a-f]{32}$/.test(reference) ? reference : undefined;
+  const viewSession = !pageAware && visible && !drafting ? (openThreadId ?? currentId) : undefined;
   const { view, save: saveView } = useSessionAgentView(
     viewSession,
     openThreadId ? undefined : referenceAgent,

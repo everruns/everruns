@@ -1,5 +1,43 @@
 // German product copy for Health fixers.
 export const messages: Readonly<Record<string, string>> = {
+  "Continue in chat": "Im Chat fortfahren",
+  "Opening chat…": "Chat wird geöffnet…",
+  "Could not open Platform Chat. Try again.":
+    "Platform Chat konnte nicht geöffnet werden. Versuchen Sie es erneut.",
+  "Help me investigate this issue. Check its current state, explain the cause and suggest what to do next.":
+    "Hilf mir, dieses Problem zu untersuchen. Prüfe den aktuellen Zustand, erkläre die Ursache und schlage die nächsten Schritte vor.",
+
+  "Open alerts · {value0}": "Offene Warnungen · {value0}",
+
+  "1 alert needs": "1 Warnung erfordert",
+  "{value0} alerts need": "{value0} Warnungen erfordern",
+
+  "Dismiss alert": "Warnung verwerfen",
+  "Explain why this needs no action, for example expected work or a false alarm. Dismissal does not stop the agent or change its budget.":
+    "Erklären Sie, warum keine Aktion nötig ist, etwa erwartete Arbeit oder ein Fehlalarm. Das Verwerfen stoppt den Agenten nicht und ändert sein Budget nicht.",
+  "Alert dismissed": "Warnung verworfen",
+  "Spend breakdown": "Ausgabenübersicht",
+  "Previous daily average": "Bisheriger Tagesdurchschnitt",
+  Increase: "Anstieg",
+  "Compares recorded unattended usage over 24 hours with the daily average over the six days before, including days with no usage. Alerts above $5 and 3× that average.":
+    "Vergleicht die erfasste unbeaufsichtigte Nutzung über 24 Stunden mit dem Tagesdurchschnitt der sechs Tage davor, einschließlich Tagen ohne Nutzung. Warnt über 5 $ und dem Dreifachen dieses Durchschnitts.",
+  "Usage window": "Nutzungszeitraum",
+  "An increase can be expected work; it does not mean the agent failed. Review the sessions and triggers before changing its budget.":
+    "Ein Anstieg kann erwartete Arbeit sein und bedeutet keinen Fehler des Agenten. Prüfen Sie Sitzungen und Auslöser, bevor Sie sein Budget ändern.",
+  "Top sessions by unattended spend": "Sitzungen mit den höchsten unbeaufsichtigten Ausgaben",
+  "Session {value0}": "Sitzung {value0}",
+  "Agent sessions": "Sitzungen des Agenten",
+  "Usage policies": "Nutzungsrichtlinien",
+  "Review alerts, understand their impact, and choose what to do next.":
+    "Prüfen Sie Warnungen, verstehen Sie ihre Auswirkungen und wählen Sie den nächsten Schritt.",
+  "Back to issues": "Zurück zu Problemen",
+  "Select an issue to see its details and actions.":
+    "Wählen Sie ein Problem, um Details und Aktionen zu sehen.",
+  "{from}–{to} of {total}": "{from}–{to} von {total}",
+  "{value0}× the daily average": "{value0}× der Tagesdurchschnitt",
+  "Session breakdown is unavailable. Check again to refresh this alert.":
+    "Die Sitzungsübersicht ist nicht verfügbar. Prüfen Sie erneut, um diese Warnung zu aktualisieren.",
+
   Fix: "Korrektur",
   "Fix available": "Korrektur verfügbar",
   "Fix not available yet": "Korrektur noch nicht verfügbar",

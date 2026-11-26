@@ -1,8 +1,8 @@
 //! Native disk effects; the portable package codec has no filesystem access.
 use super::assets::{allowed, asset_path, safe_source};
 use super::{
-    AgentPackage, File, Format, MAX_FILE_BYTES, MAX_FILES, MAX_MEMBERS, MAX_PACKAGE_BYTES,
-    MEMBERS_DIR, Result, error,
+    AgentPackage, File, Format, MAX_FILES, MAX_MEMBERS, MAX_PACKAGE_BYTES, MEMBERS_DIR, Result,
+    error,
 };
 use std::{
     collections::BTreeMap,
@@ -69,7 +69,7 @@ fn collect(
 }
 
 fn read(path: &Path) -> Result<Vec<u8>> {
-    read_bounded(path, MAX_FILE_BYTES)
+    read_bounded(path, super::avatar::asset_limit(&path.to_string_lossy()))
 }
 fn read_bounded(path: &Path, limit: usize) -> Result<Vec<u8>> {
     let metadata = fs::symlink_metadata(path).map_err(|e| error(path.display().to_string(), e))?;
@@ -147,7 +147,13 @@ impl AgentPackage {
                 && (root.join("files").is_dir()
                     || root.join("skills").is_dir()
                     || root.join(".agents/skills").is_dir()));
-        let needs_assets = folder_defaults
+        let needs_assets = package
+            .manifest
+            .avatar
+            .as_ref()
+            .and_then(super::Avatar::source)
+            .is_some()
+            || folder_defaults
             || package.manifest.instructions_file.is_some()
             || !package.manifest.skills.is_empty()
             || package
@@ -196,6 +202,14 @@ impl AgentPackage {
                 && root.join("files").exists()
             {
                 sources.push("files".into());
+            }
+            if let Some(source) = package
+                .manifest
+                .avatar
+                .as_ref()
+                .and_then(super::Avatar::source)
+            {
+                sources.push(source.to_string());
             }
             let skills = package.skill_sources(|source| root.join(source).exists())?;
             sources.extend(skills);

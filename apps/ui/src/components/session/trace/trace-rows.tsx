@@ -168,7 +168,7 @@ export function TurnHeader({
             {turn.prompt || <span className="italic text-muted-foreground">{ui("No prompt")}</span>}
           </div>
         </div>
-        <div className="flex shrink-0 flex-wrap items-center justify-end gap-x-3 gap-y-1 text-xs text-muted-foreground">
+        <div className="trace-turn-meta flex min-w-0 flex-wrap items-center justify-end gap-x-3 gap-y-1 text-xs text-muted-foreground [overflow-wrap:anywhere]">
           {turn.status === "running" ? (
             <span className="font-mono text-foreground">{ui("running")}</span>
           ) : (
@@ -209,7 +209,7 @@ export function TurnHeader({
         <ReactionChips reactions={reactions} className="border-b px-4 py-2 pl-11" />
       )}
       {!collapsed && showScale && (
-        <div className="relative hidden items-center justify-end pt-1 font-mono text-[10px] tracking-[0.08em] text-muted-foreground min-[1100px]:flex">
+        <div className="trace-waterfall relative items-center justify-end pt-1 font-mono text-[10px] tracking-[0.08em] text-muted-foreground">
           <span className="absolute inset-y-0 left-[67px] w-px bg-border" aria-hidden />
           <span className="mr-3 uppercase">{ui("Timeline")}</span>
           <div className="flex w-40 justify-between pr-4">
@@ -335,7 +335,7 @@ function Waterfall({
 }) {
   const { left, width } = waterfallBar(offsetMs, durationMs, spanMs);
   return (
-    <div className="hidden w-40 shrink-0 pt-4 pr-4 min-[1100px]:block" aria-hidden>
+    <div className="trace-waterfall w-40 shrink-0 pt-4 pr-4" aria-hidden>
       <div className="relative h-1.5 bg-muted">
         <span className="absolute inset-y-0 left-1/2 w-px bg-border" />
         <div

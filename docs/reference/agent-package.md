@@ -48,6 +48,26 @@ new file trees receive that snapshot once. Existing sessions and attachments to
 existing trees keep their current files. A provider may use a physical directory
 such as `/workspace`; that prefix is a runtime alias, not a package layout.
 
+## Agent portraits
+
+Set `avatar = "branding/avatar.png"` and include that image beside the manifest.
+PNG, JPEG, GIF and WebP are supported, up to 5 MiB per image within the 10 MiB
+package limit. Platform imports also validate image dimensions and decode bounds.
+Portraits are branding assets and are never seeded into session files.
+
+ZIP exports include the root portrait and each bundled team agent's portrait as
+image assets. Self-contained text exports embed an `avatar` object with
+`content_type` and `image_base64`; no deployment avatar IDs or URLs are copied.
+GitHub source sync reads the same package field and two-way sync writes changed
+portraits back as image assets, preserving existing authored paths when the image
+type matches. Removing a reference does not delete a possibly shared image file.
+
+An omitted field leaves the destination's existing avatar intact, so older
+packages remain safe to import. Use `avatar = false` to explicitly remove it.
+Pull sources own their portraits; edit the repository or disconnect sync.
+Two-way sources allow local Branding edits and publish them through the normal
+review and conflict safeguards.
+
 ## Minimal manifest
 
 ```toml
@@ -79,6 +99,7 @@ table, rather than to the agent.
 | `name` | String | Required stable address: 1–255 lowercase letters, digits or hyphens, starting and ending with a letter or digit. No resource ID. |
 | `display_name` | String | Optional human-readable title; host falls back to `name`. |
 | `description` | String | Optional purpose or scope description. |
+| `avatar` | Image path, inline image or `false` | Optional portrait; omission preserves destination branding. See below. |
 | `localizations` | Table keyed by locale | Optional display-name and description overrides. Up to 64 locales; missing fields fall back independently. |
 | `instructions` | String | Inline instructions; folders otherwise read `instructions_file` or `instructions.md`. |
 | `instructions_file` | String | Safe package-relative instructions path; mutually exclusive with nonempty `instructions`. |
@@ -372,7 +393,8 @@ transfer executable closures. Built-in tools are selected through capabilities.
 | --- | --- |
 | Package bytes | 10 MiB |
 | Runtime files | 100 |
-| Each asset / instructions | 1 MiB |
+| Each runtime asset / instructions | 1 MiB |
+| Each portrait image | 5 MiB, within the package total |
 | Total decoded runtime file content | 5 MiB |
 | Channel descriptions | 32 |
 | Native folder nesting / visited entries | 32 levels / 1,024 entries |

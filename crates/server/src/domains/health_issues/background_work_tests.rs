@@ -2,7 +2,7 @@ use super::background_work::*;
 use crate::domains::session_schedules::{ScheduleChange, SessionScheduleService};
 use crate::storage::{CreateSessionScheduleRow, SessionScheduleRow, StorageBackend};
 use chrono::Utc;
-use everruns_contracts::typed_id::PrincipalId;
+use everruns_contracts::typed_id::{PrincipalId, SessionId};
 use everruns_core::DEFAULT_ORG_ID;
 use everruns_core::session_schedule::stop_reason;
 use serde_json::json;
@@ -37,6 +37,7 @@ struct Fixture {
     schedule: SessionScheduleRow,
     owner: Uuid,
     author: Uuid,
+    agent: Uuid,
 }
 
 async fn fixture() -> Fixture {
@@ -97,6 +98,7 @@ async fn fixture() -> Fixture {
         schedule,
         owner,
         author,
+        agent,
     }
 }
 
@@ -260,6 +262,137 @@ fn issue_row(code: &str) -> crate::storage::HealthIssueRow {
         session_id: None,
         evidence: None,
     }
+}
+
+async fn spend_charge(f: &Fixture, amount: f64, days_ago: i32) -> Uuid {
+    spend_charge_at(
+        f,
+        amount,
+        Utc::now() - chrono::Duration::days(i64::from(days_ago)),
+    )
+    .await
+}
+
+async fn spend_charge_at(f: &Fixture, amount: f64, at: chrono::DateTime<Utc>) -> Uuid {
+    let session = f.db.create_test_session().await;
+    let agent = f.agent;
+    sqlx::query("UPDATE sessions SET agent_id = $1 WHERE id = $2")
+        .bind(agent)
+        .bind(session.uuid())
+        .execute(f.db.database().pool())
+        .await
+        .unwrap();
+    sqlx::query(
+        "INSERT INTO budgets (org_id, subject_type, subject_id, currency, \"limit\", balance)
+         VALUES ($1, 'org_unattended', $2, 'USD', 100, 100) ON CONFLICT DO NOTHING",
+    )
+    .bind(DEFAULT_ORG_ID)
+    .bind(DEFAULT_ORG_ID.to_string())
+    .execute(f.db.database().pool())
+    .await
+    .unwrap();
+    let budget: Uuid = sqlx::query_scalar(
+        "SELECT id FROM budgets WHERE org_id = $1 AND subject_type = 'org_unattended'",
+    )
+    .bind(DEFAULT_ORG_ID)
+    .fetch_one(f.db.database().pool())
+    .await
+    .unwrap();
+    let journal: Uuid = sqlx::query_scalar(
+        "INSERT INTO usage_journal (org_id, kind) VALUES ($1, 'usage') RETURNING id",
+    )
+    .bind(DEFAULT_ORG_ID)
+    .fetch_one(f.db.database().pool())
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO usage_ledger (org_id, journal_id, budget_id, session_id, agent_id,
+            currency, amount, meter_source, created_at)
+         VALUES ($1, $2, $3, $4, $5, 'USD', $6, 'llm', $7)",
+    )
+    .bind(DEFAULT_ORG_ID)
+    .bind(journal)
+    .bind(budget)
+    .bind(session.uuid())
+    .bind(agent)
+    .bind(amount)
+    .bind(at)
+    .execute(f.db.database().pool())
+    .await
+    .unwrap();
+    session.uuid()
+}
+
+#[tokio::test]
+async fn spend_alert_explains_same_window_and_dismissal_waits_for_a_new_spike() {
+    let f = fixture().await;
+    // Six dollars over the preceding six days means a $1/day baseline.
+    spend_charge(&f, 6.0, 2).await;
+    let top = spend_charge(&f, 8.0, 0).await;
+    for _ in 0..6 {
+        spend_charge(&f, 1.0, 0).await;
+    }
+    spend_charge(&f, 100.0, -1).await; // Future entries are not observed spend.
+    sweep_spend_spikes(&f.db).await.unwrap();
+    let row =
+        f.db.open_subject_health_issues(SPEND_SPIKE)
+            .await
+            .unwrap()
+            .remove(0);
+    let evidence = row.evidence.as_ref().unwrap();
+    assert_eq!(evidence["last_day_usd"], 14.0);
+    assert_eq!(evidence["baseline_daily_usd"], 1.0);
+    let sessions = evidence["top_sessions"].as_array().unwrap();
+    assert_eq!(sessions.len(), 5);
+    assert_eq!(
+        sessions[0]["session_id"],
+        SessionId::from_uuid(top).to_string()
+    );
+    assert_eq!(sessions[0]["amount_usd"], 8.0);
+    assert!(
+        f.db.unattended_spend_sessions(DEFAULT_ORG_ID + 1, f.agent, Utc::now())
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    f.db.dismiss_finding(
+        row.id,
+        row.episode_id,
+        DEFAULT_ORG_ID,
+        Some(f.author),
+        "Expected audit",
+    )
+    .await
+    .unwrap();
+    resolve(&f.db, &row).await.unwrap();
+    sweep_spend_spikes(&f.db).await.unwrap();
+    assert!(
+        f.db.open_subject_health_issues(SPEND_SPIKE)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    let kept =
+        f.db.finding_investigation(row.id, row.episode_id)
+            .await
+            .unwrap()
+            .unwrap();
+    assert_eq!(kept.dismiss_reason.as_deref(), Some("Expected audit"));
+    // A genuinely healthy observation rearms the detector, without deleting
+    // the acknowledgment or claiming the old episode was never dismissed.
+    let recovered_at = Utc::now() + chrono::Duration::days(8);
+    sweep_spend_spikes_at(&f.db, recovered_at).await.unwrap();
+    spend_charge_at(&f, 10.0, recovered_at).await;
+    sweep_spend_spikes_at(&f.db, recovered_at + chrono::Duration::seconds(1))
+        .await
+        .unwrap();
+    let next =
+        f.db.open_subject_health_issues(SPEND_SPIKE)
+            .await
+            .unwrap()
+            .remove(0);
+    assert_eq!(next.id, row.id);
+    assert_ne!(next.episode_id, row.episode_id);
 }
 
 #[tokio::test]

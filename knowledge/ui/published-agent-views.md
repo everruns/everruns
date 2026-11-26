@@ -7,8 +7,7 @@ tags: [ui, agents, channels, generative-ui]
 
 # Published Agent Views
 
-An organization opts in through the Adoption-grade `agent_views` flag. **Views**
-appears in the Agent editor's **More** group beside Sandbox. The author chooses
+Agent views are available in every organization. **Views** appears in the Agent editor's **More** group beside Sandbox. The author chooses
 A2UI 1.0 or static HTML, declares the data keys, and controls runtime layout
 replacement and personal layouts. The **Published views** capability supplies
 `publish_view`. The Agent's resolved instructions describe the publication contract.
@@ -36,7 +35,7 @@ offer separate sections and search when the list exceeds four entries.
 An allowed viewer can preview, save, and reset a personal layout. The server
 scopes it to their identity and audience. Both layout versions use the same
 authorized data. The current definition revision gates publications and
-preferences. Flag revocation blocks API reads and new publications.
+preferences. Current membership, Agent/channel authority and the configured definition continue to gate reads and publications.
 
 ## Sources
 

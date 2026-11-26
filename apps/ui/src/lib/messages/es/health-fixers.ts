@@ -1,5 +1,42 @@
 // Spanish product copy for Health fixers.
 export const messages: Readonly<Record<string, string>> = {
+  "Continue in chat": "Continuar en el chat",
+  "Opening chat…": "Abriendo el chat…",
+  "Could not open Platform Chat. Try again.": "No se pudo abrir Platform Chat. Inténtalo de nuevo.",
+  "Help me investigate this issue. Check its current state, explain the cause and suggest what to do next.":
+    "Ayúdame a investigar este problema. Comprueba su estado actual, explica la causa y sugiere qué hacer a continuación.",
+
+  "Open alerts · {value0}": "Alertas abiertas · {value0}",
+
+  "1 alert needs": "1 alerta requiere",
+  "{value0} alerts need": "{value0} alertas requieren",
+
+  "Dismiss alert": "Descartar alerta",
+  "Explain why this needs no action, for example expected work or a false alarm. Dismissal does not stop the agent or change its budget.":
+    "Explica por qué no hace falta actuar, por ejemplo trabajo previsto o una falsa alarma. Descartar la alerta no detiene al agente ni cambia su presupuesto.",
+  "Alert dismissed": "Alerta descartada",
+  "Spend breakdown": "Desglose de gastos",
+  "Previous daily average": "Promedio diario anterior",
+  Increase: "Aumento",
+  "Compares recorded unattended usage over 24 hours with the daily average over the six days before, including days with no usage. Alerts above $5 and 3× that average.":
+    "Compara el uso desatendido registrado en 24 horas con el promedio diario de los seis días anteriores, incluidos los días sin uso. Alerta por encima de 5 $ y de 3× ese promedio.",
+  "Usage window": "Periodo de uso",
+  "An increase can be expected work; it does not mean the agent failed. Review the sessions and triggers before changing its budget.":
+    "Un aumento puede ser trabajo previsto; no significa que el agente haya fallado. Revisa las sesiones y los activadores antes de cambiar su presupuesto.",
+  "Top sessions by unattended spend": "Sesiones con mayor gasto desatendido",
+  "Session {value0}": "Sesión {value0}",
+  "Agent sessions": "Sesiones del agente",
+  "Usage policies": "Políticas de uso",
+  "Review alerts, understand their impact, and choose what to do next.":
+    "Revisa las alertas, comprende su impacto y elige qué hacer a continuación.",
+  "Back to issues": "Volver a los problemas",
+  "Select an issue to see its details and actions.":
+    "Selecciona un problema para ver sus detalles y acciones.",
+  "{from}–{to} of {total}": "{from}–{to} de {total}",
+  "{value0}× the daily average": "{value0}× el promedio diario",
+  "Session breakdown is unavailable. Check again to refresh this alert.":
+    "El desglose por sesión no está disponible. Comprueba de nuevo para actualizar esta alerta.",
+
   Fix: "Corrección",
   "Fix available": "Corrección disponible",
   "Fix not available yet": "Corrección aún no disponible",

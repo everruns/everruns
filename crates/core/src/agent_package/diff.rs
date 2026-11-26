@@ -14,16 +14,32 @@ pub struct Change {
 impl AgentPackage {
     pub fn diff(&self, proposed: &Self) -> Result<Vec<Change>> {
         let mut changes = Vec::new();
-        compare(
-            "",
-            Some(&self.canonical()?),
-            Some(&proposed.canonical()?),
-            &mut changes,
-        );
+        let mut before = self.canonical()?;
+        let mut after = proposed.canonical()?;
+        omitted_portraits(&mut before, &mut after);
+        compare("", Some(&before), Some(&after), &mut changes);
         Ok(changes)
     }
     pub fn canonical(&self) -> Result<Value> {
         let mut value = serde_json::to_value(&self.manifest).map_err(|e| error("manifest", e))?;
+        if let Some(super::Avatar::Image(image)) = &self.manifest.avatar {
+            let bytes = image.bytes()?;
+            value["avatar"] = json!({
+                "content_type": image.content_type,
+                "sha256": Sha256::digest(&bytes).iter().map(|b| format!("{b:02x}")).collect::<String>(),
+                "bytes": bytes.len(),
+            });
+        }
+        // Team portraits use the same bounded, non-body diff representation.
+        if !self.manifest.agents.is_empty() {
+            value["agents"] = Value::Array(
+                self.manifest
+                    .agents
+                    .iter()
+                    .map(|agent| AgentPackage::new(agent.clone())?.canonical())
+                    .collect::<Result<Vec<_>>>()?,
+            );
+        }
         let mut files = serde_json::Map::new();
         for file in self.files()? {
             let bytes =
@@ -85,5 +101,33 @@ fn compare(path: &str, before: Option<&Value>, after: Option<&Value>, changes: &
             before: before.cloned(),
             after: after.cloned(),
         });
+    }
+}
+
+// Omission preserves destination branding; false explicitly clears it. Keep
+// the review aligned with what import actually applies, including team agents.
+fn omitted_portraits(before: &mut Value, after: &mut Value) {
+    if after.get("avatar").is_none() {
+        if let Some(object) = before.as_object_mut() {
+            object.remove("avatar");
+        }
+    } else if before.get("avatar").is_none()
+        && after.get("avatar") == Some(&Value::Bool(false))
+        && let Some(object) = after.as_object_mut()
+    {
+        object.remove("avatar");
+    }
+    if let (Some(before), Some(after)) = (
+        before.get_mut("agents").and_then(Value::as_array_mut),
+        after.get_mut("agents").and_then(Value::as_array_mut),
+    ) {
+        for next in after {
+            if let Some(current) = before
+                .iter_mut()
+                .find(|current| current["name"] == next["name"])
+            {
+                omitted_portraits(current, next);
+            }
+        }
     }
 }

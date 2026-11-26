@@ -48,7 +48,7 @@ export function TraceSearch({
   };
 
   return (
-    <div ref={boxRef} className="relative w-full sm:w-64">
+    <div ref={boxRef} className="relative w-full max-w-full sm:w-56">
       <SearchInput
         value={text}
         placeholder={ui("Search events")}
