@@ -21,7 +21,8 @@
 //!   (`memwatch::turn_credits`). At 95% of its limit it starts nothing and
 //!   hands its newest turns back, which resume on another executor from the
 //!   session's log; at 98% it drains and exits for a clean restart, before
-//!   the kernel would kill it.
+//!   the kernel would kill it. Past half its limit it drops its coldest idle
+//!   mirrors first (`memwatch::mirror_trim`): they are a cache.
 //! - Capability memory classes (memory design, "Capabilities"): only
 //!   capabilities with a hard memory cap run inside the executor process
 //!   (the virtual shell's `max_memory`, 10 MB, in `integrations::bashkit`;
@@ -370,6 +371,12 @@ impl Executor {
         loop {
             tick.tick().await;
             let (used, limit) = crate::memwatch::reading(self.cfg.memory_limit);
+            let idle = self.recent.lock().len();
+            let trim = crate::memwatch::mirror_trim(used, limit, idle);
+            if trim > 0 {
+                self.forget_coldest(trim);
+                self.stats.add(&[("mirror", "trimmed")], trim as u64);
+            }
             match crate::memwatch::exec_level(used, limit) {
                 ExecLevel::Ok => {}
                 ExecLevel::Stop => {
@@ -692,7 +699,31 @@ impl Executor {
             }
             out
         };
-        for session in evict {
+        self.forget_all(evict);
+    }
+
+    /// Drop the `n` least recently run idle mirrors (memory, see
+    /// `memwatch::mirror_trim`).
+    fn forget_coldest(&self, n: usize) {
+        let evict: Vec<SessionId> = {
+            let mut recent = self.recent.lock();
+            let running = self.running.lock();
+            let mut out = Vec::new();
+            while out.len() < n {
+                let Some(oldest) = recent.pop_front() else {
+                    break;
+                };
+                if !running.contains_key(&oldest) {
+                    out.push(oldest);
+                }
+            }
+            out
+        };
+        self.forget_all(evict);
+    }
+
+    fn forget_all(&self, sessions: Vec<SessionId>) {
+        for session in sessions {
             self.remote.evict(session);
             self.hosting.forget(session);
         }
