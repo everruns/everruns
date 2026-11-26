@@ -620,18 +620,18 @@ everruns agents channels get --agent-id agent_01h9 --channel-id appchan_01h9
 List an agent's ingress channels.
 
 ```bash
-everruns agents channels list [OPTIONS] --agent-id <agent_id>
+everruns agents channels list [OPTIONS] [AGENT_ID]
 ```
 
 | Flag | Description |
 |---|---|
-| `--agent-id <AGENT_ID>` | Required. Agent's prefixed public identifier, or its name. |
+| `--agent-id <AGENT_ID>` | Agent's prefixed public identifier, or its name. |
 
 Example:
 
 ```bash
 # See every way an agent can be reached before adding another
-everruns agents channels list --agent-id agent_01h9
+everruns agents channels list agent_01h9
 ```
 
 ## agents channels publish
@@ -893,7 +893,7 @@ everruns agents credentials create [OPTIONS] --label <label>
 | Flag | Description |
 |---|---|
 | `--agent-id <AGENT_ID>` | Agent ID, populated from the request path by the HTTP API. |
-| `--auth <AUTH>` | `bearer` (default) sends `Authorization: Bearer <value>`; `header` sends the value in `header... |
+| `--auth <AUTH>` | `bearer` (default) sends `Authorization: ***; `header` sends the value in `header... |
 | `--description <DESCRIPTION>` | Optional explanation of how the credential will be used. |
 | `--env-name <ENV_NAME>` | Env var name the agent's shell uses as a placeholder (HTTP API). |
 | `--header-name <HEADER_NAME>` | Header that carries the value when `auth` is `header` (HTTP API). |
@@ -1621,6 +1621,9 @@ Example:
 ```bash
 # Pause a trigger without deleting it
 everruns agents triggers update --agent-id agent_01h9 --trigger-id trg_01h9 --enabled false --reason 'Pause during the migration'
+
+# Post a schedule's runs into a Slack channel conversation (the result shows it as .config.target)
+everruns agents triggers update --agent-id agent_01h9 --trigger-id trg_01h9 --target-channel-id appchan_01h9 --target-binding-key slack:channel:C0123456789 --reason 'Report in #ops'
 ```
 
 ## agents triggers deliveries list

@@ -9,7 +9,7 @@ appliesTo: [platform, cloud]
 | **ID** | `agent_memory` (alias `memory`) |
 | **Category** | Storage |
 | **Tools** | `remember`, `recall`, `forget`, `resolve`, `accept` |
-| **Features** | `file_system` |
+| **Features** | `memory` |
 | **Risk** | Medium |
 
 The Memory capability gives an agent memory that outlives a session. Each

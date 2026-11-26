@@ -88,12 +88,10 @@ async fn test_capability_discovery_respects_active_and_retired_rollout_flags() {
         .await
         .assert_status(StatusCode::OK)
         .json();
-    for id in ["skills"] {
-        assert!(
-            capability_by_id(&discovery, id).is_none(),
-            "{id} should stay out of discovery while its flag is off"
-        );
-    }
+    assert!(
+        capability_by_id(&discovery, "skills").is_none(),
+        "skills should stay out of discovery while its flag is off"
+    );
 
     // Memory v2 retired the `memory` flag: `agent_memory` stays discoverable.
     for id in ["agent_memory", "knowledge", "dreaming"] {

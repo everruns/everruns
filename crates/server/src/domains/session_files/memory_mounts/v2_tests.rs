@@ -238,6 +238,18 @@ async fn an_agent_without_the_capability_keeps_only_legacy_mounts() {
     let db = Arc::new(StorageBackend::test_database());
     let plain = agent(&db, "Plain", None).await;
     let row = session(&db, plain, None).await;
+    // Legacy mounts reach an agent memory that already exists; nothing is
+    // created on the agent's behalf.
+    let router = MemoryMountRouter::new(db.clone());
+    assert!(
+        router
+            .route(row.id.uuid(), "/memory/agent/x.md")
+            .await
+            .is_none()
+    );
+    ensure_owned_memory(&db, DEFAULT_ORG_ID, "agent", Some(plain), None)
+        .await
+        .unwrap();
     let router = MemoryMountRouter::new(db.clone());
     assert!(
         router

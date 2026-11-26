@@ -653,7 +653,7 @@ mod tests {
         svc.create_file(
             &mem,
             NewFileInput {
-                path: "/notes/alpha.md".into(),
+                path: "/guides/alpha.md".into(),
                 content: Some("the quick brown fox".into()),
                 is_directory: false,
             },
@@ -663,7 +663,7 @@ mod tests {
         svc.create_file(
             &mem,
             NewFileInput {
-                path: "/notes/beta.md".into(),
+                path: "/guides/beta.md".into(),
                 content: Some("nothing here".into()),
                 is_directory: false,
             },
@@ -673,7 +673,7 @@ mod tests {
 
         let hits = svc.grep(mem.id, "quick", None).await.unwrap();
         assert_eq!(hits.len(), 1);
-        assert_eq!(hits[0].path, "/notes/alpha.md");
+        assert_eq!(hits[0].path, "/guides/alpha.md");
     }
 
     #[tokio::test]
@@ -682,7 +682,7 @@ mod tests {
         let mem = seed_memory(&db, false).await;
         let svc = MemoryFileService::new(db.clone());
 
-        for path in ["/notes/alpha.md", "/notes/nested/beta.md", "/notes.txt"] {
+        for path in ["/guides/alpha.md", "/guides/nested/beta.md", "/guides.txt"] {
             svc.create_file(
                 &mem,
                 NewFileInput {
@@ -696,12 +696,12 @@ mod tests {
         }
 
         let hits = svc
-            .grep(mem.id, "needle", Some("notes/*.md"))
+            .grep(mem.id, "needle", Some("guides/*.md"))
             .await
             .unwrap();
         let paths: Vec<_> = hits.into_iter().map(|hit| hit.path).collect();
 
-        assert_eq!(paths, vec!["/notes/alpha.md"]);
+        assert_eq!(paths, vec!["/guides/alpha.md"]);
     }
 
     #[tokio::test]

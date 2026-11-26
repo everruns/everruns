@@ -72,6 +72,29 @@
       "tools": []
     },
     {
+      "category": "Storage",
+      "dependencies": [],
+      "docs_slug": "memory",
+      "feature_flag": null,
+      "features": [
+        "memory"
+      ],
+      "grades": [
+        "prod",
+        "dev"
+      ],
+      "id": "agent_memory",
+      "name": "Memory",
+      "status": "available",
+      "tools": [
+        "accept",
+        "forget",
+        "recall",
+        "remember",
+        "resolve"
+      ]
+    },
+    {
       "category": "Integrations",
       "dependencies": [],
       "docs_slug": null,
@@ -904,25 +927,6 @@
         "lsp_rename",
         "lsp_symbols"
       ]
-    },
-    {
-      "category": "Memory",
-      "dependencies": [
-        "session_file_system"
-      ],
-      "docs_slug": "memory",
-      "feature_flag": "memory",
-      "features": [
-        "file_system"
-      ],
-      "grades": [
-        "prod",
-        "dev"
-      ],
-      "id": "memory",
-      "name": "Memory",
-      "status": "available",
-      "tools": []
     },
     {
       "category": "Core",
