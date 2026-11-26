@@ -1,4 +1,4 @@
-use super::{Never, Read, RouteAccess};
+use super::RouteAccess::{self, Never, Read};
 
 /// `(method, path, class)` for served routes the OpenAPI document omits.
 pub const UNDOCUMENTED_ROUTES: &[(&str, &str, RouteAccess)] = &[

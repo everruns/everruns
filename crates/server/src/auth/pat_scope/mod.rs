@@ -19,6 +19,7 @@
 
 mod enforce;
 mod layer;
+mod route_auxiliary;
 pub mod routes;
 
 pub use enforce::{

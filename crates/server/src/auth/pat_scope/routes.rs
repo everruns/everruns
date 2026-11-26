@@ -23,8 +23,7 @@
 
 use super::RouteAccess::{self, Never, PerCommand, Read, Write};
 
-mod auxiliary;
-pub use auxiliary::{NEVER_PREFIXES, REVIEWED_NON_GET_READ, UNDOCUMENTED_ROUTES};
+pub use super::route_auxiliary::{NEVER_PREFIXES, REVIEWED_NON_GET_READ, UNDOCUMENTED_ROUTES};
 
 /// `(method, path, class)` for hand-written routes in the OpenAPI document,
 /// sorted by path.
