@@ -54,7 +54,7 @@ async fn remember_replaces_same_subject_and_recall_finds_it() {
     let (fs, session) = session_with(&["agent", "team"]).await;
     let config = AgentMemoryConfig::default();
     let engine = MemoryEngine::new(&fs, session, &config).with_actor("agent:coordinator");
-    let team = MemoryStoreKey::scope(MemoryScope::Team);
+    let team = MemoryStoreKey::scope(MemoryStoreScope::Team);
 
     let first = engine
         .remember(
@@ -111,7 +111,7 @@ async fn read_only_and_missing_stores_refuse_writes() {
     let engine = MemoryEngine::new(&fs, session, &config);
     let org = engine
         .remember(
-            &MemoryStoreKey::scope(MemoryScope::Org),
+            &MemoryStoreKey::scope(MemoryStoreScope::Org),
             decision("x", "y"),
             false,
         )
@@ -120,7 +120,7 @@ async fn read_only_and_missing_stores_refuse_writes() {
     assert!(matches!(org, MemoryError::ReadOnly(_)), "{org}");
     let team = engine
         .remember(
-            &MemoryStoreKey::scope(MemoryScope::Team),
+            &MemoryStoreKey::scope(MemoryStoreScope::Team),
             decision("x", "y"),
             false,
         )
@@ -139,7 +139,7 @@ async fn blocked_items_resolve_and_leave_the_card() {
     let (fs, session) = session_with(&["team"]).await;
     let config = AgentMemoryConfig::default();
     let engine = MemoryEngine::new(&fs, session, &config);
-    let team = MemoryStoreKey::scope(MemoryScope::Team);
+    let team = MemoryStoreKey::scope(MemoryStoreScope::Team);
     let blocked = engine
         .remember(
             &team,
@@ -209,7 +209,7 @@ async fn proposals_wait_until_accepted() {
     let (fs, session) = session_with(&["org"]).await;
     let config = AgentMemoryConfig::from_value(&json!({"org": "read_write"})).unwrap();
     let engine = MemoryEngine::new(&fs, session, &config).with_actor("dreaming");
-    let org = MemoryStoreKey::scope(MemoryScope::Org);
+    let org = MemoryStoreKey::scope(MemoryStoreScope::Org);
     let proposal = engine
         .remember(&org, decision("merges", "squash only"), true)
         .await

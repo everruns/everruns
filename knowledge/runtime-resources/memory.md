@@ -41,7 +41,7 @@ documents for search, memory holds what agents learned and were told.
 
 ## Stores
 
-Defined by `MemoryScope` in `crates/contracts/src/runtime/memory.rs`.
+Defined by `MemoryStoreScope` in `crates/contracts/src/runtime/memory.rs`.
 
 | Store | Mount | Owner row | Default access |
 |---|---|---|---|

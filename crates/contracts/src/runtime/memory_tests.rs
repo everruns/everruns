@@ -20,7 +20,7 @@ fn entry(kind: MemoryEntryKind, subject: Option<&str>, statement: &str) -> Memor
     let mut draft = new(kind, subject);
     draft.statement = statement.into();
     MemoryEntry {
-        store: MemoryStoreKey::scope(MemoryScope::Agent),
+        store: MemoryStoreKey::scope(MemoryStoreScope::Agent),
         path: entry_path(&draft, at(), false),
         kind,
         subject: subject.map(str::to_string),
@@ -185,7 +185,7 @@ fn hand_written_entry_files_parse_with_defaults() {
 
 #[test]
 fn bad_entry_files_say_what_is_wrong() {
-    let store = MemoryStoreKey::scope(MemoryScope::Agent);
+    let store = MemoryStoreKey::scope(MemoryStoreScope::Agent);
     let cases = [
         ("/decisions/x.md", "no header\n", "starts with"),
         ("/decisions/x.md", "---\nsubject: x\nbody\n", "closing"),
@@ -271,7 +271,7 @@ fn card_lists_blocked_first_and_stays_in_budget() {
     let card = MemoryCard {
         stores: vec![
             MemoryStoreSummary {
-                store: MemoryStoreKey::scope(MemoryScope::Agent),
+                store: MemoryStoreKey::scope(MemoryStoreScope::Agent),
                 writable: true,
                 files_mounted: true,
                 description: None,
@@ -284,7 +284,7 @@ fn card_lists_blocked_first_and_stays_in_budget() {
                 more_files: 0,
             },
             MemoryStoreSummary {
-                store: MemoryStoreKey::scope(MemoryScope::Team),
+                store: MemoryStoreKey::scope(MemoryStoreScope::Team),
                 writable: true,
                 files_mounted: false,
                 description: None,
@@ -306,7 +306,7 @@ fn card_lists_blocked_first_and_stays_in_budget() {
 
     let many = MemoryCard {
         stores: vec![MemoryStoreSummary {
-            store: MemoryStoreKey::scope(MemoryScope::Org),
+            store: MemoryStoreKey::scope(MemoryStoreScope::Org),
             writable: false,
             files_mounted: false,
             description: None,
@@ -334,25 +334,25 @@ fn card_lists_blocked_first_and_stays_in_budget() {
 fn store_keys_parse_scopes_and_names() {
     assert_eq!(
         MemoryStoreKey::parse("team").unwrap(),
-        MemoryStoreKey::scope(MemoryScope::Team)
+        MemoryStoreKey::scope(MemoryStoreScope::Team)
     );
     assert_eq!(
-        MemoryStoreKey::scope(MemoryScope::Team).mount_path(),
+        MemoryStoreKey::scope(MemoryStoreScope::Team).mount_path(),
         "/memory/team"
     );
     assert_eq!(
         MemoryStoreKey::parse("parent").unwrap(),
-        MemoryStoreKey::scope(MemoryScope::Parent)
+        MemoryStoreKey::scope(MemoryStoreScope::Parent)
     );
     let named = MemoryStoreKey::parse("everruns-maintenance").unwrap();
-    assert_eq!(named.scope, MemoryScope::Named);
+    assert_eq!(named.scope, MemoryStoreScope::Named);
     assert_eq!(named.mount_path(), "/memory/everruns-maintenance");
     for bad in ["named", "shared", "Upper", "-x", "x-", "a b", "", "9lives"] {
         assert!(MemoryStoreKey::parse(bad).is_err(), "{bad}");
     }
-    assert!(!MemoryScope::Agent.shared());
-    assert!(MemoryScope::Team.shared());
-    assert!(MemoryScope::Named.shared());
+    assert!(!MemoryStoreScope::Agent.shared());
+    assert!(MemoryStoreScope::Team.shared());
+    assert!(MemoryStoreScope::Named.shared());
 }
 
 #[test]

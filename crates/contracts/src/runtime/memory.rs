@@ -26,7 +26,7 @@
 //!   an update keeps the cached prompt prefix.
 //! - This module holds the types, the file format and the pure rules; the
 //!   engine that reads and writes stores through a session's file system is
-//!   `everruns_core::memory`, so the control plane, agentd and the framework
+//!   the core crate's `memory` module, so the control plane, agentd and the framework
 //!   share it.
 
 use chrono::{DateTime, Utc};
@@ -62,7 +62,7 @@ pub const MAX_SLUG_CHARS: usize = 80;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
-pub enum MemoryScope {
+pub enum MemoryStoreScope {
     /// The agent the session runs as; shared by all its sessions.
     Agent,
     /// The person the session serves, only in that person's private sessions.
@@ -80,8 +80,8 @@ pub enum MemoryScope {
     Named,
 }
 
-impl MemoryScope {
-    pub const ALL: [MemoryScope; 6] = [
+impl MemoryStoreScope {
+    pub const ALL: [MemoryStoreScope; 6] = [
         Self::Agent,
         Self::User,
         Self::Org,
@@ -147,19 +147,19 @@ pub const MAX_STORE_NAME_CHARS: usize = 63;
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct MemoryStoreKey {
-    pub scope: MemoryScope,
+    pub scope: MemoryStoreScope,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
 }
 
 impl MemoryStoreKey {
-    pub fn scope(scope: MemoryScope) -> Self {
+    pub fn scope(scope: MemoryStoreScope) -> Self {
         Self { scope, name: None }
     }
 
     pub fn named(name: impl Into<String>) -> Self {
         Self {
-            scope: MemoryScope::Named,
+            scope: MemoryStoreScope::Named,
             name: Some(name.into()),
         }
     }
@@ -168,8 +168,8 @@ impl MemoryStoreKey {
     /// `team`, `parent`) or the name of a named memory.
     pub fn parse(raw: &str) -> MemoryResult<Self> {
         let raw = raw.trim();
-        if let Some(scope) = MemoryScope::parse(raw)
-            && scope != MemoryScope::Named
+        if let Some(scope) = MemoryStoreScope::parse(raw)
+            && scope != MemoryStoreScope::Named
         {
             return Ok(Self::scope(scope));
         }
@@ -180,7 +180,7 @@ impl MemoryStoreKey {
     /// How tools and the card name it: the scope, or the memory's name.
     pub fn label(&self) -> String {
         match (&self.scope, &self.name) {
-            (MemoryScope::Named, Some(name)) => name.clone(),
+            (MemoryStoreScope::Named, Some(name)) => name.clone(),
             (scope, _) => scope.as_str().to_string(),
         }
     }
@@ -314,12 +314,12 @@ impl AgentMemoryConfig {
     /// The access configured for `store`.
     pub fn access(&self, store: &MemoryStoreKey) -> MemoryAccess {
         match store.scope {
-            MemoryScope::Agent => self.agent,
-            MemoryScope::User => self.user,
-            MemoryScope::Org => self.org,
-            MemoryScope::Team => self.team,
-            MemoryScope::Parent => self.parent,
-            MemoryScope::Named => store
+            MemoryStoreScope::Agent => self.agent,
+            MemoryStoreScope::User => self.user,
+            MemoryStoreScope::Org => self.org,
+            MemoryStoreScope::Team => self.team,
+            MemoryStoreScope::Parent => self.parent,
+            MemoryStoreScope::Named => store
                 .name
                 .as_deref()
                 .and_then(|name| self.attach.iter().find(|a| a.memory == name))
@@ -331,11 +331,11 @@ impl AgentMemoryConfig {
     /// the session has an owner for.
     pub fn stores(&self) -> Vec<(MemoryStoreKey, MemoryAccess)> {
         let mut out: Vec<_> = [
-            MemoryScope::Agent,
-            MemoryScope::Team,
-            MemoryScope::Parent,
-            MemoryScope::User,
-            MemoryScope::Org,
+            MemoryStoreScope::Agent,
+            MemoryStoreScope::Team,
+            MemoryStoreScope::Parent,
+            MemoryStoreScope::User,
+            MemoryStoreScope::Org,
         ]
         .into_iter()
         .map(MemoryStoreKey::scope)

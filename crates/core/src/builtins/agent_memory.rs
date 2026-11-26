@@ -34,9 +34,9 @@ use chrono::Utc;
 use everruns_contracts::runtime::memory::{
     AgentMemoryConfig, CARD_ENTRIES_PER_STORE, CARD_FILES_PER_STORE, MemoryAccess, MemoryCard,
     MemoryEntry, MemoryEntryKind, MemoryError, MemoryFileHit, MemoryFileSummary, MemoryResult,
-    MemoryScope, MemorySource, MemoryStoreKey, MemoryStoreSummary, NewMemoryEntry, PROPOSALS_DIR,
-    RecallHit, RecallQuery, RememberOutcome, card_order, entry_location, entry_path, excerpt,
-    file_title, lexical_score, parse_entry_file, query_terms, render_entry_file,
+    MemorySource, MemoryStoreKey, MemoryStoreScope, MemoryStoreSummary, NewMemoryEntry,
+    PROPOSALS_DIR, RecallHit, RecallQuery, RememberOutcome, card_order, entry_location, entry_path,
+    excerpt, file_title, lexical_score, parse_entry_file, query_terms, render_entry_file,
     validate_new_entry,
 };
 use everruns_contracts::typed_id::SessionId;
@@ -1042,7 +1042,7 @@ impl Tool for AcceptTool {
 
 /// Whether `scope` is one a store of this kind can be written by dreaming
 /// directly; shared stores get proposals.
-pub fn dreaming_writes_proposals(scope: MemoryScope) -> bool {
+pub fn dreaming_writes_proposals(scope: MemoryStoreScope) -> bool {
     scope.shared()
 }
 

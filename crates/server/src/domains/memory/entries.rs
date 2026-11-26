@@ -20,7 +20,8 @@ use super::types::{MemoryResponse, MemoryRow, memory_response};
 use crate::domains::common::*;
 use chrono::{DateTime, Utc};
 use everruns_contracts::runtime::memory::{
-    MemoryEntry, MemoryScope, MemoryStoreKey, entry_location, parse_entry_file, validate_store_name,
+    MemoryEntry, MemoryStoreKey, MemoryStoreScope, entry_location, parse_entry_file,
+    validate_store_name,
 };
 use everruns_contracts::typed_id::MemoryId;
 use serde::{Deserialize, Serialize};
@@ -33,10 +34,10 @@ pub const ORG_MEMORY_NAME: &str = crate::domains::session_files::memory_mounts::
 /// The store a memory row is, when it is one.
 pub fn store_key(row: &MemoryRow) -> Option<MemoryStoreKey> {
     match row.scope.as_str() {
-        "agent" => Some(MemoryStoreKey::scope(MemoryScope::Agent)),
-        "user" => Some(MemoryStoreKey::scope(MemoryScope::User)),
-        "team" => Some(MemoryStoreKey::scope(MemoryScope::Team)),
-        "org" if row.name == ORG_MEMORY_NAME => Some(MemoryStoreKey::scope(MemoryScope::Org)),
+        "agent" => Some(MemoryStoreKey::scope(MemoryStoreScope::Agent)),
+        "user" => Some(MemoryStoreKey::scope(MemoryStoreScope::User)),
+        "team" => Some(MemoryStoreKey::scope(MemoryStoreScope::Team)),
+        "org" if row.name == ORG_MEMORY_NAME => Some(MemoryStoreKey::scope(MemoryStoreScope::Org)),
         "org" if validate_store_name(&row.name).is_ok() => {
             Some(MemoryStoreKey::named(row.name.clone()))
         }
@@ -155,14 +156,18 @@ impl Command for ListMemoryStores {
                 }
             }
             let about = match store.scope {
-                MemoryScope::Agent => "One agent's own memory, shared by all its sessions.",
-                MemoryScope::User => "Your private memory; only your own sessions read it.",
-                MemoryScope::Org => "The organization's memory; every agent with Memory reads it.",
-                MemoryScope::Team => {
+                MemoryStoreScope::Agent => "One agent's own memory, shared by all its sessions.",
+                MemoryStoreScope::User => "Your private memory; only your own sessions read it.",
+                MemoryStoreScope::Org => {
+                    "The organization's memory; every agent with Memory reads it."
+                }
+                MemoryStoreScope::Team => {
                     "A team's memory: its coordinator and every thread or agent it starts."
                 }
-                MemoryScope::Named => "A named memory, shared by the agents it is attached to.",
-                MemoryScope::Parent => "",
+                MemoryStoreScope::Named => {
+                    "A named memory, shared by the agents it is attached to."
+                }
+                MemoryStoreScope::Parent => "",
             }
             .to_string();
             out.push(MemoryStoreView {

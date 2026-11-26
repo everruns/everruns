@@ -893,7 +893,7 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
             everruns_contracts::runtime::memory::MemoryEntryKind,
             everruns_contracts::runtime::memory::MemorySource,
             everruns_contracts::runtime::memory::MemoryStoreKey,
-            everruns_contracts::runtime::memory::MemoryScope,
+            everruns_contracts::runtime::memory::MemoryStoreScope,
             api::workspaces::WorkspaceResponse,
             api::workspaces::UpdateWorkspaceRequest,
             api::workspaces::ListWorkspacesQuery,

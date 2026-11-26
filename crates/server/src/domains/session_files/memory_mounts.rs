@@ -39,7 +39,8 @@ use crate::storage::{
     CreateMemoryRow, MemoryFileInfoRow, MemoryRow, RoomFileAuthor, RoomFileChange, RoomFileStore,
 };
 use everruns_contracts::runtime::memory::{
-    AgentMemoryConfig, MemoryAccess, MemoryScope, MemoryStoreKey, entry_location, parse_entry_file,
+    AgentMemoryConfig, MemoryAccess, MemoryStoreKey, MemoryStoreScope, entry_location,
+    parse_entry_file,
 };
 use everruns_core::builtins::AGENT_MEMORY_CAPABILITY_ID;
 
@@ -353,29 +354,29 @@ impl MemoryMountRouter {
         };
         for (store, access) in config.stores() {
             let memory = match store.scope {
-                MemoryScope::Agent => match session.agent_id {
+                MemoryStoreScope::Agent => match session.agent_id {
                     Some(agent) => Some(
                         self.ensure_owned(org_id, "agent", Some(agent), None)
                             .await?,
                     ),
                     None => None,
                 },
-                MemoryScope::User => match session.resolved_owner_user_id {
+                MemoryStoreScope::User => match session.resolved_owner_user_id {
                     Some(user) if !self.db.is_playground_session(session.id).await? => {
                         Some(self.ensure_owned(org_id, "user", None, Some(user)).await?)
                     }
                     _ => None,
                 },
-                MemoryScope::Org => {
+                MemoryStoreScope::Org => {
                     Some(ensure_shared_memory(&self.db, org_id, ORG_MEMORY_NAME).await?)
                 }
-                MemoryScope::Team => match self.team_coordinator(session).await? {
+                MemoryStoreScope::Team => match self.team_coordinator(session).await? {
                     Some(agent) => {
                         Some(self.ensure_owned(org_id, "team", Some(agent), None).await?)
                     }
                     None => None,
                 },
-                MemoryScope::Parent => match self.parent_agent(session).await? {
+                MemoryStoreScope::Parent => match self.parent_agent(session).await? {
                     Some(agent) => self
                         .db
                         .get_memory_by_scope_owner(org_id, "agent", Some(agent), None)
@@ -383,7 +384,7 @@ impl MemoryMountRouter {
                         .filter(|memory| memory.status == "active"),
                     None => None,
                 },
-                MemoryScope::Named => match store.name.as_deref() {
+                MemoryStoreScope::Named => match store.name.as_deref() {
                     Some(name) => Some(ensure_shared_memory(&self.db, org_id, name).await?),
                     None => None,
                 },
