@@ -32,6 +32,8 @@ everruns sandboxes diagnose [OPTIONS] [ID]
 |---|---|
 | `--id <ID>` | Logical Sandbox id. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -50,6 +52,8 @@ everruns sandboxes get [OPTIONS] [ID]
 | Flag | Description |
 |---|---|
 | `--id <ID>` | Logical Sandbox id. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -78,6 +82,8 @@ everruns sandboxes list [OPTIONS]
 | `--search <SEARCH>` | Case-insensitive match on Session title, Agent, provider or provider resource id. |
 | `--state <STATE>` | Comma-separated states: `running`, `paused`, `recoverable`, `lost`, `starting`, `failed`, `no... |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -100,6 +106,8 @@ everruns sandboxes events list [OPTIONS] [ID]
 | `--limit <LIMIT>` | Most events, 1 to 500 (the newest when there are more). |
 | `--to <TO>` | Window end (RFC 3339). |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -118,6 +126,8 @@ everruns sandboxes provider get [OPTIONS] [ID]
 | Flag | Description |
 |---|---|
 | `--id <ID>` | Logical Sandbox id. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -143,6 +153,8 @@ everruns sandboxes stats get [OPTIONS]
 | `--sandbox-template-id <SANDBOX_TEMPLATE_ID>` | Only Sandboxes created from this Sandbox Template. |
 | `--search <SEARCH>` | Case-insensitive match on Session title, Agent, provider or provider resource id. |
 | `--state <STATE>` | Comma-separated states: `running`, `paused`, `recoverable`, `lost`, `starting`, `failed`, `no... |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -171,6 +183,8 @@ everruns sandboxes timeline get [OPTIONS]
 | `--search <SEARCH>` | Case-insensitive match on Session title, Agent, provider or provider resource id. |
 | `--state <STATE>` | Comma-separated states: `running`, `paused`, `recoverable`, `lost`, `starting`, `failed`, `no... |
 | `--to <TO>` | Window end (RFC 3339). |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 

@@ -128,6 +128,7 @@ pub(super) async fn run_delivery(
                             return false;
                         };
                         learn_reacted_key(&inner, &channel, &session_id, &mut delivery, &event).await;
+                        learn_input_key(&inner, &channel, &session_id, &mut delivery, &event).await;
                         let step = delivery.observe(&event).await;
                         if !save_links(&inner, &channel, &session_id, &mut delivery).await && checkpointed { return false; }
                         if let DeliveryStep::Finished(_) = step { return true; }
@@ -170,6 +171,35 @@ pub(super) async fn run_delivery(
     };
     if let Err(error) = completion {
         warn!(%session_id, %error, "channel: could not clear a pending delivery");
+    }
+}
+
+/// Before an acknowledgement reaction, look up the answered message's
+/// platform key. Looked up late, not when the delivery starts: the host links
+/// the inbound message only after the turn is accepted, so an early lookup can
+/// race it. Only on the events that may react, and only until it is known.
+async fn learn_input_key(
+    inner: &Inner,
+    channel: &ResolvedChannel,
+    session_id: &str,
+    delivery: &mut TurnDelivery,
+    event: &DeliveryEvent,
+) {
+    use everruns_contracts::runtime::events::TOOL_STARTED;
+    if !delivery.acknowledges()
+        || !(event.event_type == TOOL_STARTED || event.is_terminal())
+        || delivery.knows_message(delivery.input_message_id())
+    {
+        return;
+    }
+    let message = super::LinkedMessage {
+        session_id: session_id.to_string(),
+        message_id: delivery.input_message_id().to_string(),
+    };
+    match inner.store.message_key(channel.name(), &message).await {
+        Ok(Some(key)) => delivery.know_message_key(message.message_id, key),
+        Ok(None) => {}
+        Err(error) => warn!(%session_id, %error, "channel: could not look up the answered message"),
     }
 }
 

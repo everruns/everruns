@@ -27,6 +27,8 @@ everruns user connections list [OPTIONS]
 |---|---|
 | `--provider <PROVIDER>` | Optional provider ID filter. |
 
+Output: a JSON array. Read the items with jq '.[]'.
+
 Example:
 
 ```bash
@@ -45,6 +47,8 @@ everruns user connections providers list [OPTIONS]
 | Flag | Description |
 |---|---|
 | `--search <SEARCH>` | Optional case-insensitive provider name/ID filter. |
+
+Output: a JSON array. Read the items with jq '.[]'.
 
 Example:
 

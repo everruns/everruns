@@ -34,6 +34,8 @@ everruns health-issues check [OPTIONS] --issue-id <issue_id>
 |---|---|
 | `--issue-id <ISSUE_ID>` | Required. Stable identifier of the issue in the current organization. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -54,6 +56,8 @@ everruns health-issues dismiss [OPTIONS] --issue-id <issue_id> --note <note>
 | `--issue-id <ISSUE_ID>` | Required. Stable identifier of the issue in the current organization. |
 | `--note <NOTE>` | Required. A false alarm, expected work, or already handled. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -72,6 +76,8 @@ everruns health-issues get [OPTIONS] --issue-id <issue_id>
 | Flag | Description |
 |---|---|
 | `--issue-id <ISSUE_ID>` | Required. Stable identifier of the issue in the current organization. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -94,6 +100,8 @@ everruns health-issues list [OPTIONS]
 | `--limit <LIMIT>` | Page size, clamped to 1 through 100; defaults to 20. |
 | `--offset <OFFSET>` | Number of matching issues to skip; defaults to zero. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -114,6 +122,8 @@ everruns health-issues fix [OPTIONS] --issue-id <issue_id> --kind <kind>
 | `--issue-id <ISSUE_ID>` | Required. The issue. |
 | `--kind <KIND>` | Required. The fixer to run, as the issue's `fixers` list names it. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -133,6 +143,8 @@ everruns health-issues snooze [OPTIONS] --issue-id <issue_id>
 |---|---|
 | `--issue-id <ISSUE_ID>` | Required. Stable identifier of the issue in the current organization. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -151,6 +163,8 @@ everruns health-issues actions list [OPTIONS] --issue-id <issue_id>
 | Flag | Description |
 |---|---|
 | `--issue-id <ISSUE_ID>` | Required. The finding. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -172,6 +186,8 @@ everruns health-issues actions take [OPTIONS] --issue-id <issue_id> --kind <kind
 | `--issue-id <ISSUE_ID>` | Required. The finding. |
 | `--kind <KIND>` | Required. `pause_schedule`. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -191,6 +207,8 @@ everruns health-issues actions undo [OPTIONS] --action-id <action_id> --issue-id
 |---|---|
 | `--action-id <ACTION_ID>` | Required. Prefixed public identifier of the action (`fact_…`). |
 | `--issue-id <ISSUE_ID>` | Required. The finding. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 

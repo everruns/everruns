@@ -45,6 +45,11 @@ pub fn contracts() -> &'static [ContractCommand] {
                     (desc.cli)().as_ref(),
                     &(desc.param_schema)(),
                 )
+                .map(|mut contract| {
+                    contract.output = everruns_cli_contract::output_note((desc.output_shape)())
+                        .map(str::to_string);
+                    contract
+                })
             })
             .collect();
         built.sort_by_key(|contract| contract.spelling());

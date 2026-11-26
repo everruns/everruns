@@ -74,6 +74,11 @@ async fn seed_agent(db: &StorageBackend) -> String {
 }
 
 pub(super) async fn fixture() -> (Arc<StorageBackend>, Ctx, crate::storage::IngressChannelRow) {
+    fixture_with(json!({"bot_token":"xoxb-test","signing_secret":"test","team_id":"T1"})).await
+}
+async fn fixture_with(
+    channel_config: serde_json::Value,
+) -> (Arc<StorageBackend>, Ctx, crate::storage::IngressChannelRow) {
     let db = Arc::new(StorageBackend::test_database());
     let agent = seed_agent(&db).await;
     let internal = Ctx::minimal_for_test(Caller::internal(DEFAULT_ORG_ID), db.clone(), None);
@@ -81,7 +86,7 @@ pub(super) async fn fixture() -> (Arc<StorageBackend>, Ctx, crate::storage::Ingr
         agent_id: agent,
         req: CreateAgentChannelRequest {
             channel_type: ChannelType::Slack,
-            channel_config: json!({"bot_token":"xoxb-test","signing_secret":"test","team_id":"T1"}),
+            channel_config,
             enabled: true,
         },
     }
@@ -352,6 +357,67 @@ async fn granted_scopes_verify_without_mutating_slack() {
         .unwrap();
     assert_eq!(list(&ctx).await.total, 0);
     assert_eq!(mock.received_requests().await.unwrap().len(), 1);
+}
+#[tokio::test]
+async fn a_bot_outside_its_bound_channel_is_an_issue_until_invited() {
+    let (db, ctx, row) = fixture_with(json!({
+        "bot_token":"xoxb-test","signing_secret":"test","team_id":"T1","channel_id":"C0PRIVATE"
+    }))
+    .await;
+    let mock = MockServer::start().await;
+    let scopes = crate::domains::agent_channels::record::slack_channel::slack_bot_scopes(false);
+    Mock::given(method("POST"))
+        .and(path("/auth.test"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("x-oauth-scopes", scopes.join(","))
+                .set_body_json(json!({"ok":true,"team_id":"T1"})),
+        )
+        .mount(&mock)
+        .await;
+    // A private channel the bot was never invited to is invisible to it.
+    let history = Mock::given(method("POST"))
+        .and(path("/conversations.history"))
+        .and(wiremock::matchers::body_string_contains(
+            "channel=C0PRIVATE",
+        ))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(json!({"ok":false,"error":"channel_not_found"})),
+        )
+        .expect(1)
+        .mount_as_scoped(&mock)
+        .await;
+    let check = || async {
+        service::SlackHealthService::new(db.clone(), None)
+            .with_api_base(mock.uri())
+            .check(&row.channel_public_id)
+            .await
+            .unwrap()
+    };
+    check().await;
+    let issues = list(&ctx).await;
+    assert_eq!(issues.total, 1);
+    let stored = db
+        .get_health_issue(row.org_id, issues.data[0].id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(stored.error_code.as_deref(), Some(service::NOT_IN_CHANNEL));
+    assert!(stored.missing_scopes.is_empty());
+    let (title, body) = service::issue_copy(&stored);
+    assert_eq!(title, "Slack bot is not in its channel");
+    assert!(body.contains("/invite"), "{body}");
+    drop(history);
+
+    // Once invited, Slack reads the channel and the issue resolves.
+    Mock::given(method("POST"))
+        .and(path("/conversations.history"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"ok":true,"messages":[]})))
+        .mount(&mock)
+        .await;
+    check().await;
+    assert_eq!(list(&ctx).await.total, 0);
 }
 #[tokio::test]
 async fn absent_scope_header_and_wrong_workspace_never_report_healthy() {

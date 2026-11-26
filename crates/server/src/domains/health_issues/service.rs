@@ -6,6 +6,8 @@ use std::{sync::Arc, time::Duration};
 use uuid::Uuid;
 
 const API_BASE: &str = "https://slack.com/api";
+/// The bot is not a member of the Slack channel its Everruns channel is bound to.
+pub const NOT_IN_CHANNEL: &str = "not_in_channel";
 const AUTH_FAILURES: &[&str] = &[
     "invalid_auth",
     "not_authed",
@@ -157,8 +159,52 @@ impl SlackHealthService {
         .filter(|required| !scopes.iter().any(|scope| scope == required))
         .map(str::to_string)
         .collect::<Vec<_>>();
-        let error = (!missing.is_empty()).then(|| "missing_scope".into());
-        Ok((missing, error))
+        if !missing.is_empty() {
+            return Ok((missing, Some("missing_scope".into())));
+        }
+        if let Some(channel) = config.channel_id.as_deref().filter(|id| !id.is_empty())
+            && !self.bot_is_in_channel(config, channel).await?
+        {
+            return Ok((Vec::new(), Some(NOT_IN_CHANNEL.into())));
+        }
+        Ok((Vec::new(), None))
+    }
+
+    /// Whether the bot can read the Slack channel the Everruns channel is bound
+    /// to. A bot that is not a member hears nothing there and cannot post, and
+    /// Slack never tells the person who set it up: a private channel needs an
+    /// explicit `/invite`.
+    ///
+    /// Asks with `conversations.history`, which needs only the history scopes
+    /// the app already has (`conversations.info` would need `channels:read`
+    /// and `groups:read`, and a re-consent on every app). Slack answers
+    /// `not_in_channel` for a public channel the bot has not joined and
+    /// `channel_not_found` for a private one it cannot see.
+    async fn bot_is_in_channel(
+        &self,
+        config: &SlackChannelConfig,
+        channel: &str,
+    ) -> Result<bool, ()> {
+        let response = self
+            .client
+            .post(format!("{}/conversations.history", self.api_base))
+            .bearer_auth(&config.bot_token)
+            .form(&[("channel", channel), ("limit", "1")])
+            .send()
+            .await
+            .map_err(|_| ())?;
+        if !response.status().is_success() {
+            return Err(());
+        }
+        let body: serde_json::Value = response.json().await.map_err(|_| ())?;
+        if body["ok"] == true {
+            return Ok(true);
+        }
+        match body["error"].as_str() {
+            Some("not_in_channel" | "channel_not_found") => Ok(false),
+            // Rate limits, outages and anything else are not evidence either way.
+            _ => Err(()),
+        }
     }
 
     pub fn spawn(self) -> tokio::task::JoinHandle<()> {
@@ -244,6 +290,15 @@ pub fn issue_copy(row: &HealthIssueRow) -> (String, String) {
         .is_some_and(|code| AUTH_FAILURES.contains(&code))
     {
         return ("Slack credentials need to be renewed".into(),"Slack rejected this installation's credentials. Reconnect Slack or update its bot token.".into());
+    }
+    if row.error_code.as_deref() == Some(NOT_IN_CHANNEL) {
+        let agent = row.agent_name.as_deref().unwrap_or("agent");
+        return (
+            "Slack bot is not in its channel".into(),
+            format!(
+                "The {agent} bot is not a member of the Slack channel this agent is bound to, so it cannot read or post there. In Slack, open the channel, type /invite and pick the {agent} app. Private channels always need this step. Everruns checks again on its own."
+            ),
+        );
     }
     if row.missing_scopes == ["reactions:write"] {
         (

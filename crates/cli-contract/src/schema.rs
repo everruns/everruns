@@ -88,6 +88,7 @@ pub fn contract_with(
                 command: example.command.to_string(),
             })
             .collect(),
+        output: None,
     })
 }
 

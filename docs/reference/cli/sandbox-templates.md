@@ -31,6 +31,8 @@ everruns sandbox-templates builds apply [OPTIONS] --id <id>
 |---|---|
 | `--id <ID>` | Required. Prefixed identifier with 'sbxbuild' prefix. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -49,6 +51,8 @@ everruns sandbox-templates builds cancel [OPTIONS] --id <id>
 | Flag | Description |
 |---|---|
 | `--id <ID>` | Required. Prefixed identifier with 'sbxbuild' prefix. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -69,6 +73,8 @@ everruns sandbox-templates builds discard [OPTIONS] --id <id>
 |---|---|
 | `--id <ID>` | Required. Prefixed identifier with 'sbxbuild' prefix. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -87,6 +93,8 @@ everruns sandbox-templates builds get [OPTIONS] --id <id>
 | Flag | Description |
 |---|---|
 | `--id <ID>` | Required. Prefixed identifier with 'sbxbuild' prefix. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -107,6 +115,8 @@ everruns sandbox-templates builds list [OPTIONS] --id <id>
 |---|---|
 | `--id <ID>` | Required. Prefixed identifier with 'sbxtpl' prefix. |
 | `--offset <OFFSET>` |  |
+
+Output: a JSON array. Read the items with jq '.[]'.
 
 Example:
 
@@ -132,6 +142,8 @@ everruns sandbox-templates builds start [OPTIONS] --id <id> --install-script <in
 | `--source-revision-id <SOURCE_REVISION_ID>` | Required. Source revision to guard against concurrent template edits. |
 | `--timeout-seconds <TIMEOUT_SECONDS>` | Total build deadline, including installation and fresh verification, in seconds. |
 | `--verification-command <VERIFICATION_COMMAND>` | Optional check run after installation and again in fresh snapshot compute. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 

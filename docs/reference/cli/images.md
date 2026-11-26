@@ -27,6 +27,8 @@ everruns images get [OPTIONS] [ID]
 |---|---|
 | `--id <ID>` | Prefixed public identifier. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -46,6 +48,8 @@ everruns images list [OPTIONS]
 |---|---|
 | `--limit <LIMIT>` | Maximum number of items returned in this page. |
 | `--offset <OFFSET>` | Zero-based offset into the result set. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 

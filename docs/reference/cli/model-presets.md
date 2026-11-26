@@ -31,6 +31,8 @@ everruns model-presets apply [OPTIONS] [ID]
 |---|---|
 | `--id <ID>` | Preset id to copy into the organization defaults. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -57,6 +59,8 @@ everruns model-presets create [OPTIONS] --name <name>
 | `--name <NAME>` | Required. Display name, 1 to 100 characters. |
 | `--research-model-id <RESEARCH_MODEL_ID>` | Model for research-role agents and deep helpers. |
 | `--small-model-id <SMALL_MODEL_ID>` | Model for titles, summaries and fast helpers. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -96,6 +100,8 @@ everruns model-presets get [OPTIONS] [ID]
 |---|---|
 | `--id <ID>` | Preset id: `automatic`, `provider:<driver>` or a custom preset id. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -110,6 +116,8 @@ List model presets: built-in Automatic, one per connected provider, and custom p
 ```bash
 everruns model-presets list [OPTIONS]
 ```
+
+Output: a JSON array. Read the items with jq '.[]'.
 
 Example:
 
@@ -137,6 +145,8 @@ everruns model-presets update [OPTIONS] --id <id>
 | `--name <NAME>` | Display name. |
 | `--research-model-id <RESEARCH_MODEL_ID>` | Model for research-role agents and deep helpers. |
 | `--small-model-id <SMALL_MODEL_ID>` | Model for titles, summaries and fast helpers. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 

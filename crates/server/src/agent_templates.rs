@@ -18,6 +18,7 @@
 //   ceiling.
 
 use crate::setup::seed::{SEED_AGENTS, SeedAgent, SeedCapability};
+use everruns_contracts::runtime::conversation::Communication;
 use serde_json::{Value, json};
 use uuid::Uuid;
 
@@ -161,6 +162,7 @@ pub(crate) const AGENT_TEMPLATES: &[AgentTemplate] = &[
             tags: &["github", "code-review", "template"],
             capabilities: &[SeedCapability::new("github")],
             dev_only: false,
+            communication: Communication::Direct,
         },
         setup: TemplateSetup {
             connect_github: true,
@@ -188,6 +190,7 @@ pub(crate) const AGENT_TEMPLATES: &[AgentTemplate] = &[
                 SeedCapability::new("session_file_system"),
             ],
             dev_only: false,
+            communication: Communication::Direct,
         },
         setup: TemplateSetup {
             connect_github: true,

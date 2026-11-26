@@ -214,6 +214,8 @@ everruns agents analyze [OPTIONS]
 | `--system-prompt <SYSTEM_PROMPT>` |  |
 | `--tools <TOOLS>` |  |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -234,6 +236,8 @@ everruns agents check-name [OPTIONS] --name <name>
 | `--exclude-id <EXCLUDE_ID>` |  |
 | `--name <NAME>` | Required. Human-readable name. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -252,6 +256,8 @@ everruns agents copy [OPTIONS] [ID]
 | Flag | Description |
 |---|---|
 | `--id <ID>` | Prefixed public identifier. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -311,6 +317,8 @@ everruns agents draft [OPTIONS] --messages <messages>
 | `--draft <DRAFT>` |  |
 | `--messages <MESSAGES>` | Required. Conversation so far, oldest first. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -329,6 +337,8 @@ everruns agents get [OPTIONS] [ID]
 | Flag | Description |
 |---|---|
 | `--id <ID>` | Prefixed public identifier. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -352,6 +362,8 @@ everruns agents list [OPTIONS]
 | `--offset <OFFSET>` | Zero-based offset into the result set. |
 | `--search <SEARCH>` |  |
 
+Output: one page as {data, total, offset, limit}. Read the items with jq '.data[]'; page with --offset and --limit.
+
 Example:
 
 ```bash
@@ -370,6 +382,8 @@ everruns agents pause [OPTIONS] [AGENT]
 | Flag | Description |
 |---|---|
 | `--agent <AGENT_ID>` | Agent's prefixed public identifier. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -391,6 +405,8 @@ everruns agents cost-plan [OPTIONS] --agent <agent>
 | `--agent <AGENT>` | Required. Request to preview the final agent shape with capabilities applied. |
 | `--guidance <GUIDANCE>` | Optional description of the workload to plan. |
 | `--locale <LOCALE>` |  |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -417,6 +433,8 @@ everruns agents preview [OPTIONS]
 | `--system-prompt <SYSTEM_PROMPT>` |  |
 | `--tools <TOOLS>` |  |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -435,6 +453,8 @@ everruns agents resume [OPTIONS] [AGENT]
 | Flag | Description |
 |---|---|
 | `--agent <AGENT_ID>` | Agent's prefixed public identifier. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -482,6 +502,8 @@ everruns agents upsert [OPTIONS] --name <name> --system-prompt <system_prompt> [
 | `--tags <TAGS>` | Tags for organizing and filtering agents. Comma-separated or a JSON array of strings. Repeatable. |
 | `--tools <TOOLS>` | Client-side tools for this agent. These tools are sent to the LLM but executed by the client,... |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -503,6 +525,8 @@ everruns agents avatar generate [OPTIONS] [AGENT]
 | `--prompt <PROMPT>` | What the avatar shows, at most 2000 characters. |
 | `--quality <QUALITY>` | Image quality when the model offers levels (`low`, `medium`, `high`, ...). |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -520,6 +544,8 @@ List the curated agent avatars: stable id, name, family, suggested role, descrip
 ```bash
 everruns agents avatar presets [OPTIONS]
 ```
+
+Output: a JSON array. Read the items with jq '.[]'.
 
 Example:
 
@@ -542,6 +568,8 @@ everruns agents avatar set [OPTIONS] [AGENT]
 | `--content-type <CONTENT_TYPE>` | MIME type of `image_base64`. |
 | `--image-base64 <IMAGE_BASE64>` | Image bytes as base64 (a `data:image/...;base64,` URI also works): PNG, JPEG, GIF or WebP, at... |
 | `--preset <PRESET_ID>` | Curated preset ID from `list_avatar_presets`. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -567,6 +595,8 @@ everruns agents channels create [OPTIONS] --agent-id <agent_id> --channel-type <
 | `--channel-config <CHANNEL_CONFIG>` | Transport-specific channel configuration. |
 | `--channel-type <CHANNEL_TYPE>` | Required. Supported channel types for app distribution. One of `slack`, `ag_ui`, `schedule`, `webhook`, `a2a`, `fcp`, `public_chat`, `voice`, `api`, `poppy`, `work_chat`. |
 | `--enabled` | Whether the channel can accept ingress traffic. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -608,6 +638,8 @@ everruns agents channels get [OPTIONS] --agent-id <agent_id> --channel-id <chann
 | `--agent-id <AGENT_ID>` | Required. Agent's prefixed public identifier, or its name. |
 | `--channel-id <CHANNEL_ID>` | Required. Channel's prefixed public identifier. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -620,18 +652,20 @@ everruns agents channels get --agent-id agent_01h9 --channel-id appchan_01h9
 List an agent's ingress channels.
 
 ```bash
-everruns agents channels list [OPTIONS] --agent-id <agent_id>
+everruns agents channels list [OPTIONS] [AGENT_ID]
 ```
 
 | Flag | Description |
 |---|---|
-| `--agent-id <AGENT_ID>` | Required. Agent's prefixed public identifier, or its name. |
+| `--agent-id <AGENT_ID>` | Agent's prefixed public identifier, or its name. |
+
+Output: a JSON array. Read the items with jq '.[]'.
 
 Example:
 
 ```bash
 # See every way an agent can be reached before adding another
-everruns agents channels list --agent-id agent_01h9
+everruns agents channels list agent_01h9
 ```
 
 ## agents channels publish
@@ -646,6 +680,8 @@ everruns agents channels publish [OPTIONS] --agent-id <agent_id> --channel-id <c
 |---|---|
 | `--agent-id <AGENT_ID>` | Required. Agent's prefixed public identifier, or its name. |
 | `--channel-id <CHANNEL_ID>` | Required. Channel's prefixed public identifier. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -667,6 +703,8 @@ everruns agents channels trigger [OPTIONS] --agent-id <agent_id> --channel-id <c
 | `--agent-id <AGENT_ID>` | Required. Agent's prefixed public identifier, or its name. |
 | `--channel-id <CHANNEL_ID>` | Required. Prefixed public identifier of a schedule channel. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -686,6 +724,8 @@ everruns agents channels unpublish [OPTIONS] --agent-id <agent_id> --channel-id 
 |---|---|
 | `--agent-id <AGENT_ID>` | Required. Agent's prefixed public identifier, or its name. |
 | `--channel-id <CHANNEL_ID>` | Required. Channel's prefixed public identifier. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -708,6 +748,8 @@ everruns agents channels update [OPTIONS] --agent-id <agent_id> --channel-id <ch
 | `--channel-config <CHANNEL_CONFIG>` | Replacement transport-specific channel configuration. |
 | `--channel-id <CHANNEL_ID>` | Required. Channel's prefixed public identifier. |
 | `--enabled` | Whether the channel can accept ingress traffic. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -732,6 +774,8 @@ everruns agents channels keys create [OPTIONS] --agent-id <agent_id> --channel-i
 | `--name <NAME>` | Required. Display name, e.g. |
 | `--permissions <PERMISSIONS>` | What the key may do. Comma-separated or a JSON array of strings. Repeatable. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -751,6 +795,8 @@ everruns agents channels keys list [OPTIONS] --agent-id <agent_id> --channel-id 
 |---|---|
 | `--agent-id <AGENT_ID>` | Required. |
 | `--channel-id <CHANNEL_ID>` | Required. |
+
+Output: a JSON array. Read the items with jq '.[]'.
 
 Example:
 
@@ -772,6 +818,8 @@ everruns agents channels keys revoke [OPTIONS] --agent-id <agent_id> --channel-i
 | `--agent-id <AGENT_ID>` | Required. |
 | `--channel-id <CHANNEL_ID>` | Required. |
 | `--key-id <KEY_ID>` | Required. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -795,6 +843,8 @@ everruns agents channels keys rotate [OPTIONS] --agent-id <agent_id> --channel-i
 | `--key-id <KEY_ID>` | Required. |
 | `--overlap-hours <OVERLAP_HOURS>` | Hours the replaced secret keeps working (0 to 168, default 24). |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -813,6 +863,8 @@ everruns agents check-rules delete [OPTIONS] --rule-id <rule_id>
 | Flag | Description |
 |---|---|
 | `--rule-id <RULE_ID>` | Required. Rule id to delete: a built-in rule id (clears its override) or `custom.<slug>`. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -856,6 +908,8 @@ everruns agents check-rules upsert [OPTIONS] --enabled [<enabled>] --kind <kind>
 | `--rule-id <RULE_ID>` | Required. Built-in rule id (for `builtin_override`) or `custom.<slug>` (custom). |
 | `--severity <SEVERITY>` | Optional everywhere. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -874,6 +928,8 @@ everruns agents costs get [OPTIONS] [AGENT_ID]
 | Flag | Description |
 |---|---|
 | `--agent-id <AGENT_ID>` | Agent's prefixed public identifier. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -903,6 +959,8 @@ everruns agents credentials create [OPTIONS] --label <label>
 | `--tool-name <TOOL_NAME>` | MCP tool whose outbound call requires the credential (MCP tool parameter). |
 | `--url <URL>` | HTTPS URL prefix the value may be sent to (HTTP API). |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -925,6 +983,8 @@ everruns agents examples adopt [OPTIONS] [NAME]
 |---|---|
 | `--name <NAME>` | Example name from list_agent_examples, such as `pr-reviewer`. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -939,6 +999,8 @@ List adoptable agent examples (blueprints such as pr-reviewer): name, descriptio
 ```bash
 everruns agents examples list [OPTIONS]
 ```
+
+Output: a JSON array. Read the items with jq '.[]'.
 
 Example:
 
@@ -978,6 +1040,8 @@ everruns agents external-worker get [OPTIONS] --agent-id <agent_id>
 |---|---|
 | `--agent-id <AGENT_ID>` | Required. Agent public ID or name; the HTTP route supplies this value. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -1001,6 +1065,8 @@ everruns agents failures list [OPTIONS] [AGENT]
 | `--limit <LIMIT>` |  |
 | `--offset <OFFSET>` |  |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -1022,6 +1088,8 @@ everruns agents github connect [OPTIONS] --agent-id <agent_id>
 | `--owner-org <OWNER_ORG>` | GitHub organization that should own a new App. |
 | `--return-to <RETURN_TO>` | UI path to return to when the flow ends. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -1040,6 +1108,8 @@ everruns agents github disconnect [OPTIONS] --agent-id <agent_id>
 | Flag | Description |
 |---|---|
 | `--agent-id <AGENT_ID>` | Required. Agent's prefixed public identifier. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -1063,6 +1133,8 @@ everruns agents github get [OPTIONS] --agent-id <agent_id>
 |---|---|
 | `--agent-id <AGENT_ID>` | Required. Agent's prefixed public identifier. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -1082,6 +1154,8 @@ everruns agents github use-everruns-app [OPTIONS] --agent-id <agent_id> --connec
 |---|---|
 | `--agent-id <AGENT_ID>` | Required. Agent's prefixed public identifier. |
 | `--connection-id <CONNECTION_ID>` | Required. Connection id of one of the org's linked installations, from the agent's GitHub status (`ever... |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -1103,6 +1177,8 @@ everruns agents health-checks get [OPTIONS] --agent-id <agent_id> --run-id <run_
 | `--agent-id <AGENT_ID>` | Required. Agent's prefixed public identifier, or its name. |
 | `--run-id <RUN_ID>` | Required. Health check run's prefixed public identifier. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -1121,6 +1197,8 @@ everruns agents health-checks list [OPTIONS] --agent-id <agent_id>
 | Flag | Description |
 |---|---|
 | `--agent-id <AGENT_ID>` | Required. Agent's prefixed public identifier, or its name. |
+
+Output: a JSON array. Read the items with jq '.[]'.
 
 Example:
 
@@ -1141,6 +1219,8 @@ everruns agents health-checks trigger [OPTIONS] --agent-id <agent_id>
 |---|---|
 | `--agent-id <AGENT_ID>` | Required. Agent's prefixed public identifier, or its name. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -1159,6 +1239,8 @@ everruns agents health-checks latest get [OPTIONS] --agent-id <agent_id>
 | Flag | Description |
 |---|---|
 | `--agent-id <AGENT_ID>` | Required. Agent's prefixed public identifier, or its name. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -1179,6 +1261,8 @@ everruns agents mcp list [OPTIONS] [ID]
 |---|---|
 | `--id <ID>` | Agent ID (prefixed) or name. |
 
+Output: a JSON array. Read the items with jq '.[]'.
+
 Example:
 
 ```bash
@@ -1198,6 +1282,8 @@ everruns agents mcp revoke [OPTIONS] [ID] [NAME]
 |---|---|
 | `--id <ID>` | Agent ID (prefixed) or name. |
 | `--name <NAME>` | Effective MCP attachment name. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -1221,6 +1307,8 @@ everruns agents scripts create [OPTIONS] --agent-id <agent_id> --body <body> --d
 | `--description <DESCRIPTION>` | Required. One-line description, 1 to 300 characters. |
 | `--input-schema <INPUT_SCHEMA>` | JSON Schema of the input; must be an object schema (`"type": "object"`). |
 | `--name <NAME>` | Required. Script name: lowercase letters, digits, `_` and `-`, starting with a letter, at most 64 chara... |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -1262,6 +1350,8 @@ everruns agents scripts get [OPTIONS] --agent-id <agent_id> --script-id <script_
 | `--agent-id <AGENT_ID>` | Required. Owning agent's prefixed public identifier. |
 | `--script-id <SCRIPT_ID>` | Required. Saved script's prefixed public identifier. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -1281,6 +1371,8 @@ everruns agents scripts list [OPTIONS] [AGENT_ID]
 |---|---|
 | `--agent-id <AGENT_ID>` | Owning agent's prefixed public identifier. |
 | `--include-archived` | Also return archived scripts. |
+
+Output: a JSON array. Read the items with jq '.[]'.
 
 Example:
 
@@ -1304,6 +1396,8 @@ everruns agents scripts update [OPTIONS] --agent-id <agent_id> --script-id <scri
 | `--description <DESCRIPTION>` | Replacement description. |
 | `--input-schema <INPUT_SCHEMA>` | Replacement input schema (an object schema). |
 | `--script-id <SCRIPT_ID>` | Required. Saved script's prefixed public identifier. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -1331,6 +1425,8 @@ everruns agents source connect [OPTIONS] --agent-digest <agent_digest> --agent-i
 | `--mode <MODE>` | Source direction. One of `pull`, `two_way`. |
 | `--path <PATH>` | Repository-relative package folder or manifest; empty selects the repository root. |
 | `--repository <REPOSITORY>` | Required. GitHub repository in owner/name form. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -1412,6 +1508,8 @@ everruns agents source sync [OPTIONS] --agent-id <agent_id>
 |---|---|
 | `--agent-id <AGENT_ID>` | Required. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -1430,6 +1528,8 @@ everruns agents source accounts list [OPTIONS] --agent-id <agent_id>
 | Flag | Description |
 |---|---|
 | `--agent-id <AGENT_ID>` | Required. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -1493,6 +1593,8 @@ everruns agents triggers create [OPTIONS] --agent-id <agent_id> --message <messa
 | `--token <TOKEN>` | Shared secret for webhook triggers. |
 | `--trigger-type <TRIGGER_TYPE>` | The kind of event that fires an agent trigger. One of `schedule`, `webhook`, `github`, `mcp_event`. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -1533,6 +1635,8 @@ everruns agents triggers get [OPTIONS] --agent-id <agent_id> --trigger-id <trigg
 | `--agent-id <AGENT_ID>` | Required. Owning agent's prefixed public identifier. |
 | `--trigger-id <TRIGGER_ID>` | Required. Agent trigger's prefixed public identifier. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -1552,6 +1656,8 @@ everruns agents triggers list [OPTIONS] [AGENT_ID]
 |---|---|
 | `--agent-id <AGENT_ID>` | Owning agent's prefixed public identifier. |
 | `--include-archived` | Also return archived items. |
+
+Output: a JSON array. Read the items with jq '.[]'.
 
 Example:
 
@@ -1573,6 +1679,8 @@ everruns agents triggers trigger [OPTIONS] --agent-id <agent_id> --trigger-id <t
 | `--agent-id <AGENT_ID>` | Required. Owning agent's prefixed public identifier. |
 | `--event <EVENT>` |  |
 | `--trigger-id <TRIGGER_ID>` | Required. Agent trigger's prefixed public identifier. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -1616,11 +1724,16 @@ everruns agents triggers update [OPTIONS] --agent-id <agent_id> --trigger-id <tr
 | `--token <TOKEN>` | Replacement webhook token. |
 | `--trigger-id <TRIGGER_ID>` | Required. Agent trigger's prefixed public identifier. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
 # Pause a trigger without deleting it
 everruns agents triggers update --agent-id agent_01h9 --trigger-id trg_01h9 --enabled false --reason 'Pause during the migration'
+
+# Post a schedule's runs into a Slack channel conversation (the result shows it as .config.target)
+everruns agents triggers update --agent-id agent_01h9 --trigger-id trg_01h9 --target-channel-id appchan_01h9 --target-binding-key slack:channel:C0123456789 --reason 'Report in #ops'
 ```
 
 ## agents triggers deliveries list
@@ -1636,6 +1749,8 @@ everruns agents triggers deliveries list [OPTIONS] --agent-id <agent_id> --trigg
 | `--agent-id <AGENT_ID>` | Required. Owning agent's prefixed public identifier. |
 | `--limit <LIMIT>` | Maximum rows to return (1-200, default 50). |
 | `--trigger-id <TRIGGER_ID>` | Required. Agent trigger's prefixed public identifier. |
+
+Output: a JSON array. Read the items with jq '.[]'.
 
 Example:
 
@@ -1657,6 +1772,8 @@ everruns agents triggers runs list [OPTIONS] --agent-id <agent_id> --trigger-id 
 | `--agent-id <AGENT_ID>` | Required. Owning agent's prefixed public identifier. |
 | `--trigger-id <TRIGGER_ID>` | Required. Agent trigger's prefixed public identifier. |
 
+Output: a JSON array. Read the items with jq '.[]'.
+
 Example:
 
 ```bash
@@ -1675,6 +1792,8 @@ everruns agents view get [OPTIONS] --agent-id <agent_id>
 | Flag | Description |
 |---|---|
 | `--agent-id <AGENT_ID>` | Required. Prefixed identifier with 'agent' prefix. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -1696,6 +1815,8 @@ everruns agents view replace [OPTIONS] --agent-id <agent_id> --revision <revisio
 | `--agent-id <AGENT_ID>` | Required. Prefixed identifier with 'agent' prefix. |
 | `--revision <REVISION>` | Required. The revision returned by the most recent read of the Agent's settings. |
 | `--view <VIEW>` | Required. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 

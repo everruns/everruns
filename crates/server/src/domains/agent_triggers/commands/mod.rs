@@ -653,7 +653,7 @@ pub struct UpdateAgentTriggerCmd {
     method = "PATCH",
     path = "/v1/platform/agents/{agent_id}/triggers/{trigger_id}",
     policy = AGENT_MANAGE,
-    cli = CliRoute::new(&["agents", "triggers"], "update").with_examples(&[CliExample::new("Pause a trigger without deleting it", "everruns agents triggers update --agent-id agent_01h9 --trigger-id trg_01h9 --enabled false --reason 'Pause during the migration'")]),
+    cli = CliRoute::new(&["agents", "triggers"], "update").with_examples(&[CliExample::new("Pause a trigger without deleting it", "everruns agents triggers update --agent-id agent_01h9 --trigger-id trg_01h9 --enabled false --reason 'Pause during the migration'"), CliExample::new("Post a schedule's runs into a Slack channel conversation (the result shows it as .config.target)", "everruns agents triggers update --agent-id agent_01h9 --trigger-id trg_01h9 --target-channel-id appchan_01h9 --target-binding-key slack:channel:C0123456789 --reason 'Report in #ops'")]),
 )]
 impl Command for UpdateAgentTriggerCmd {
     type Output = AgentTrigger;

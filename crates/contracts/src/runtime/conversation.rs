@@ -29,7 +29,7 @@ mod tools;
 pub use tools::{
     ConversationSender, ConversationSenderExt, MAX_MESSAGE_CHARS, MAX_MESSAGE_FILE_BYTES,
     MAX_MESSAGE_FILES, NO_REPLY_TOOL_NAME, NoReplyTool, OutgoingFile, SEND_MESSAGE_TOOL_NAME,
-    SendMessageTool, apply_explicit_communication, sent_message,
+    SendMessageTool, apply_explicit_communication, send_message_text, sent_message,
 };
 
 /// How an agent talks to the people in its conversations. The agent owns this
@@ -301,7 +301,7 @@ pub fn said_per_message(messages: &[RuntimeMessage]) -> Vec<Vec<SaidMessage>> {
                     && (call.name == SEND_MESSAGE_TOOL_NAME
                         || call.name == LEGACY_SEND_MESSAGE_TOOL_NAME)
                     && delivered.contains(call.id.as_str())
-                    && let Some(text) = call.arguments.get("text").and_then(|t| t.as_str())
+                    && let Some(text) = send_message_text(&call.arguments)
                     && !text.trim().is_empty()
                 {
                     said.push(SaidMessage {

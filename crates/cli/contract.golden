@@ -12,7 +12,7 @@ agents channels keys create	--agent-id! --channel-id! --context-revision --expir
 agents channels keys list	--agent-id! --channel-id! --context-revision --reason
 agents channels keys revoke	--agent-id! --channel-id! --context-revision --key-id! --reason
 agents channels keys rotate	--agent-id! --channel-id! --context-revision --key-id! --overlap-hours --reason
-agents channels list	--agent-id! --context-revision --reason
+agents channels list	--agent-id --context-revision --reason <agent_id>
 agents channels publish	--agent-id! --channel-id! --context-revision --reason
 agents channels trigger	--agent-id! --channel-id! --context-revision --reason
 agents channels unpublish	--agent-id! --channel-id! --context-revision --reason

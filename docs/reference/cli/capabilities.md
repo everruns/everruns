@@ -35,6 +35,8 @@ everruns capabilities create [OPTIONS] --definition <definition>
 |---|---|
 | `--definition <DEFINITION>` | Required. Definition for the new declarative capability. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -53,6 +55,8 @@ everruns capabilities get [OPTIONS] [ID]
 | Flag | Description |
 |---|---|
 | `--id <ID>` | Prefixed public identifier. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -75,6 +79,8 @@ everruns capabilities list [OPTIONS]
 | `--limit <LIMIT>` | Maximum number of items returned in this page. |
 | `--offset <OFFSET>` | Zero-based offset into the result set. |
 | `--search <SEARCH>` | Case-insensitive substring match on name or description. |
+
+Output: one page as {data, total, offset, limit}. Read the items with jq '.data[]'; page with --offset and --limit.
 
 Example:
 
@@ -133,6 +139,8 @@ everruns capabilities declarative get [OPTIONS] [ID]
 |---|---|
 | `--id <ID>` | Prefixed public identifier. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -152,6 +160,8 @@ everruns capabilities declarative list [OPTIONS]
 |---|---|
 | `--include-archived` | Also return archived items. |
 | `--search <SEARCH>` | Case-insensitive substring match on name or description. |
+
+Output: a JSON array. Read the items with jq '.[]'.
 
 Example:
 
@@ -173,6 +183,8 @@ everruns capabilities declarative update [OPTIONS] [ID]
 | `--id <ID>` | Prefixed public identifier. |
 | `--definition <DEFINITION>` | Replacement declarative definition. |
 | `--status <STATUS>` | Optional lifecycle state update. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -196,6 +208,8 @@ everruns capabilities guardrails dry-run dry [OPTIONS] --config <config> --stage
 | `--text <TEXT>` | Required. Sample content: model output, serialized tool arguments, or tool output, depending on `stage`. |
 | `--tool-name <TOOL_NAME>` | Tool name for `tool_use` stage checks (`tool_pattern` rules). |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -210,6 +224,8 @@ List adoptable guardrail presets (the guardrail gallery), each with its config a
 ```bash
 everruns capabilities guardrails examples list [OPTIONS]
 ```
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
