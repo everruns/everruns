@@ -12827,7 +12827,7 @@
         "tags": [
           "budgets"
         ],
-        "summary": "Summarize organization costs over a window, with combined agent/session/source/starter filters and an optional joint group_by breakdown",
+        "summary": "Summarize organization costs",
         "description": "Summarize organization costs over a window, with combined agent/session/source/starter filters and an optional joint group_by breakdown. Includes unpriced counts and reports truncated joint groups.",
         "operationId": "get_cost_summary",
         "parameters": [

@@ -462,6 +462,7 @@ pub(crate) fn month_start(now: DateTime<Utc>, tz: chrono_tz::Tz) -> DateTime<Utc
 #[command(
     name = "get_cost_summary",
     category = "budgets",
+    summary = "Summarize organization costs",
     description = "Summarize organization costs over a window, with combined agent/session/source/starter filters and an optional joint group_by breakdown. Includes unpriced counts and reports truncated joint groups.",
     method = "GET",
     path = "/v1/platform/costs/summary",

@@ -3207,7 +3207,7 @@ export interface paths {
       cookie?: never;
     };
     /**
-     * Summarize organization costs over a window, with combined agent/session/source/starter filters and an optional joint group_by breakdown
+     * Summarize organization costs
      * @description Summarize organization costs over a window, with combined agent/session/source/starter filters and an optional joint group_by breakdown. Includes unpriced counts and reports truncated joint groups.
      */
     get: operations["get_cost_summary"];
