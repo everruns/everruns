@@ -68,6 +68,9 @@ correspondents. The same agent definition is reusable across Slack and email;
 conversation history and sender identity are not automatically shared. The inbox
 admin page exposes page identity to Platform Chat without projecting mail or
 provider-account caches; its approval actions remain explicit manual actions.
+Read-only personal tokens can inspect the admin read surfaces but cannot claim
+work, approve execution or send replies. Inbox credential binding requires full
+token scope; provider webhook authentication remains independent of PAT scope.
 
 ## Backpressure and recovery
 
