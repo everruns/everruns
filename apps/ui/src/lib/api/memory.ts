@@ -7,6 +7,9 @@ import type {
   ListMemoriesParams,
   UpdateMemoryRequest,
   Memory,
+  MemoryEntriesView,
+  MemoryFileVersion,
+  MemoryStoreView,
 } from "./types";
 
 function memoryQuery(params: ListMemoriesParams = {}): string {
@@ -45,11 +48,30 @@ export async function updateMemory(
   return response.data;
 }
 
-export async function syncMemoryNow(memoryId: string): Promise<Memory> {
-  const response = await api.post<Memory>(`/v1/platform/memories/${memoryId}/sync`);
+export async function archiveMemory(memoryId: string): Promise<void> {
+  await api.delete(`/v1/platform/memories/${memoryId}`);
+}
+
+// Memory v2 views (knowledge/runtime-resources/memory.md): a memory row is a
+// store, its typed entries are Markdown files in kind folders.
+
+export async function listMemoryStores(): Promise<MemoryStoreView[]> {
+  const response = await api.get<ListResponse<MemoryStoreView>>("/v1/platform/memory/stores");
+  return response.data.data;
+}
+
+export async function listMemoryEntries(memoryId: string): Promise<MemoryEntriesView> {
+  const response = await api.get<MemoryEntriesView>(`/v1/platform/memories/${memoryId}/entries`);
   return response.data;
 }
 
-export async function archiveMemory(memoryId: string): Promise<void> {
-  await api.delete(`/v1/platform/memories/${memoryId}`);
+export async function listMemoryHistory(
+  memoryId: string,
+  path?: string,
+): Promise<MemoryFileVersion[]> {
+  const query = path ? `?path=${encodeURIComponent(path)}` : "";
+  const response = await api.get<ListResponse<MemoryFileVersion>>(
+    `/v1/platform/memories/${memoryId}/history${query}`,
+  );
+  return response.data.data;
 }

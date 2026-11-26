@@ -3,12 +3,13 @@
 use everruns_core::{Permission, Policy, Rule};
 
 pub mod commands;
+pub mod entries;
 pub mod files;
 pub mod record;
-pub mod source_sync;
 pub mod types;
 
 pub use commands::*;
+pub use entries::*;
 
 pub const MEMORY_VIEW: Policy = Policy {
     id: "memory.view",

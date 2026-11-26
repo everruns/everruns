@@ -1,11 +1,16 @@
 "use client";
 
+// Settings for the `agent_memory` capability. Mirrors AgentMemoryConfig in
+// crates/contracts/src/runtime/memory.rs: one switch per store (off, read,
+// read_write; parent is read-only), named memories to attach, and whether the
+// memory card is shown to the agent. Missing keys keep the server defaults.
+
 import { useMemo } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -13,20 +18,59 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useMemories } from "@/hooks/use-memory";
-import type { Memory } from "@/lib/api/types";
-import type { MessageKey } from "@/lib/i18n";
-import { useLocale } from "@/providers/locale-provider";
+import { useMemoryStores } from "@/hooks/use-memory";
+import { useUiTranslations } from "@/providers/locale-provider";
 
-// Mirrors crates/core/src/memory.rs: MemoryConfig wire shape.
-export interface MemoryMountEntry {
+export type MemoryAccess = "off" | "read" | "read_write";
+
+export interface MemoryAttachment {
   memory: string;
-  path: string;
-  mode?: "readonly" | "readwrite";
+  mode: MemoryAccess;
 }
 
-interface MemoryConfig {
-  mounts?: MemoryMountEntry[];
+type StoreKey = "agent" | "team" | "parent" | "user" | "org";
+
+export const MEMORY_STORE_DEFAULTS: Record<StoreKey, MemoryAccess> = {
+  agent: "read_write",
+  team: "read_write",
+  parent: "read",
+  user: "read_write",
+  org: "read",
+};
+
+const STORES: { key: StoreKey; label: string; help: string }[] = [
+  { key: "agent", label: "Agent", help: "This agent's own memory, shared by all its sessions." },
+  {
+    key: "team",
+    label: "Team",
+    help: "Shared by a coordinator and every thread or agent it starts.",
+  },
+  {
+    key: "parent",
+    label: "Parent",
+    help: "The memory of the agent that started this one. Read only.",
+  },
+  {
+    key: "user",
+    label: "Person",
+    help: "Private to the person using the agent; only their sessions read it.",
+  },
+  { key: "org", label: "Organization", help: "The organization's memory, read by every agent." },
+];
+
+function readAccess(value: unknown, fallback: MemoryAccess): MemoryAccess {
+  return value === "off" || value === "read" || value === "read_write" ? value : fallback;
+}
+
+/** The attachments in `config`, ignoring malformed rows. */
+export function readAttachments(config: Record<string, unknown>): MemoryAttachment[] {
+  const attach = Array.isArray(config.attach) ? config.attach : [];
+  return attach.flatMap((row) => {
+    if (!row || typeof row !== "object") return [];
+    const memory = (row as Record<string, unknown>).memory;
+    if (typeof memory !== "string") return [];
+    return [{ memory, mode: readAccess((row as Record<string, unknown>).mode, "read") }];
+  });
 }
 
 interface MemoryConfigEditorProps {
@@ -35,285 +79,153 @@ interface MemoryConfigEditorProps {
   disabled?: boolean;
 }
 
-const VOLUME_ID_PATTERN = /^mem_[0-9a-f]{32}$/;
-const PATH_PREFIX = "/workspace";
-
-// Validate the structural shape of a mount path. Mirrors
-// validate_mount_config_shape in crates/core/src/memory.rs so that errors
-// surface client-side with the same semantics as the server. Returns a
-// message key so the caller renders it in the active locale.
-//
-// Returns null for empty paths so freshly-added rows render without an
-// immediate error; the empty path is still rejected at save time because the
-// row is filtered from the overlap check and the server validates the final
-// config.
-export function validateMountPath(path: string): MessageKey | null {
-  if (!path) return null;
-  if (path !== PATH_PREFIX && !path.startsWith(`${PATH_PREFIX}/`)) {
-    return "mount_path_must_start";
-  }
-  if (path.includes("//")) return "mount_path_double_slash";
-  if (path.includes("\0")) return "mount_path_null";
-  if (path.split("/").some((segment) => segment === "..")) {
-    return "mount_path_dotdot";
-  }
-  if (path.length > 1 && path.endsWith("/")) {
-    return "mount_path_trailing_slash";
-  }
-  return null;
-}
-
-// Returns true if `a` and `b` overlap: equal, or one is a path prefix of the
-// other on a `/`-segment boundary. Mirrors mount_paths_overlap in
-// crates/core/src/memory.rs but compares path segments so the result is
-// independent of multi-byte character widths in non-ASCII paths.
-export function pathsOverlap(a: string, b: string): boolean {
-  if (a === b) return true;
-  const segA = a.split("/");
-  const segB = b.split("/");
-  const [shorter, longer] = segA.length < segB.length ? [segA, segB] : [segB, segA];
-  for (let i = 0; i < shorter.length; i++) {
-    if (shorter[i] !== longer[i]) return false;
-  }
-  return true;
-}
-
-interface LocalizedError {
-  key: MessageKey;
-  values?: Record<string, string | number>;
-}
-
-interface MountValidation {
-  pathError?: LocalizedError;
-  memoryError?: LocalizedError;
-  overlapError?: LocalizedError;
-}
-
-function validateMounts(mounts: MemoryMountEntry[]): MountValidation[] {
-  const validations: MountValidation[] = mounts.map((mount) => {
-    const validation: MountValidation = {};
-    const pathErr = validateMountPath(mount.path);
-    if (pathErr) validation.pathError = { key: pathErr };
-    if (!mount.memory) {
-      validation.memoryError = { key: "memory_required" };
-    } else if (!VOLUME_ID_PATTERN.test(mount.memory)) {
-      validation.memoryError = { key: "memory_invalid_id" };
-    }
-    return validation;
-  });
-
-  // Detect duplicate / overlapping paths between rows. Mark both rows so the
-  // user sees the conflict on either side regardless of row order.
-  for (let i = 0; i < mounts.length; i++) {
-    const a = mounts[i];
-    if (!a.path || validations[i].pathError) continue;
-    for (let j = i + 1; j < mounts.length; j++) {
-      const b = mounts[j];
-      if (!b.path || validations[j].pathError) continue;
-      if (pathsOverlap(a.path, b.path)) {
-        // Each row leads with its own path so the error reads naturally
-        // under that row's input.
-        const [messageA, messageB]: [LocalizedError, LocalizedError] =
-          a.path === b.path
-            ? [
-                { key: "mount_path_duplicate", values: { value: a.path } },
-                { key: "mount_path_duplicate", values: { value: b.path } },
-              ]
-            : [
-                { key: "mount_path_overlap", values: { value: a.path, other: b.path } },
-                { key: "mount_path_overlap", values: { value: b.path, other: a.path } },
-              ];
-        if (!validations[i].overlapError) validations[i].overlapError = messageA;
-        if (!validations[j].overlapError) validations[j].overlapError = messageB;
-      }
-    }
-  }
-
-  return validations;
-}
-
-function readMounts(config: unknown): MemoryMountEntry[] {
-  if (!config || typeof config !== "object") return [];
-  const typed = config as MemoryConfig;
-  if (!Array.isArray(typed.mounts)) return [];
-  return typed.mounts
-    .filter((m): m is MemoryMountEntry => Boolean(m) && typeof m === "object")
-    .map((m) => ({
-      memory: String(m.memory ?? ""),
-      path: String(m.path ?? ""),
-      mode: m.mode === "readwrite" ? "readwrite" : "readonly",
-    }));
-}
-
-function writeMounts(mounts: MemoryMountEntry[]): Record<string, unknown> {
-  if (mounts.length === 0) return {};
-  return {
-    mounts: mounts.map((m) => ({
-      memory: m.memory,
-      path: m.path,
-      mode: m.mode ?? "readonly",
-    })),
-  };
-}
-
 export function MemoryConfigEditor({ config, onChange, disabled }: MemoryConfigEditorProps) {
-  const { t } = useLocale();
-  const mounts = readMounts(config);
-  const { data: memory, isLoading, error } = useMemories({ includeArchived: false });
-
-  const activeMemories = useMemo<Memory[]>(
-    () => (memory ?? []).filter((v) => v.status === "active"),
-    [memory],
+  const ui = useUiTranslations();
+  const current = useMemo<Record<string, unknown>>(
+    () => (config && typeof config === "object" ? (config as Record<string, unknown>) : {}),
+    [config],
   );
+  const attachments = readAttachments(current);
+  const card = current.card !== false;
+  const { data: stores, isLoading } = useMemoryStores();
 
-  const memoryOptions = useMemo<ComboboxOption[]>(
+  const namedOptions = useMemo<ComboboxOption[]>(
     () =>
-      activeMemories.map((v) => ({
-        value: v.id,
-        label: v.name,
-      })),
-    [activeMemories],
+      (stores ?? [])
+        .filter((store) => store.scope === "org" && store.store !== "org")
+        .map((store) => ({ value: store.store, label: store.store })),
+    [stores],
   );
 
-  const validations = validateMounts(mounts);
-
-  const updateMounts = (next: MemoryMountEntry[]) => {
-    onChange(writeMounts(next));
-  };
-
-  const updateRow = (index: number, patch: Partial<MemoryMountEntry>) => {
-    const next = mounts.map((mount, i) => (i === index ? { ...mount, ...patch } : mount));
-    updateMounts(next);
-  };
-
-  const removeRow = (index: number) => {
-    updateMounts(mounts.filter((_, i) => i !== index));
-  };
-
-  const addRow = () => {
-    // Default to an empty path so the row does not start in an error state
-    // (a placeholder shows "/workspace/research" as a hint instead).
-    updateMounts([...mounts, { memory: "", path: "", mode: "readonly" }]);
-  };
+  const set = (patch: Record<string, unknown>) => onChange({ ...current, ...patch });
+  const setAttachments = (next: MemoryAttachment[]) => set({ attach: next });
 
   return (
-    <div className="space-y-3 pt-2">
-      <div className="space-y-1">
-        <Label className="text-xs font-normal text-muted-foreground">{t("memory_mounts")}</Label>
-        <p className="text-xs text-muted-foreground">{t("memory_mounts_help")}</p>
-      </div>
-
-      {error && <p className="text-xs text-destructive">{t("memory_load_failed")}</p>}
-
-      {!isLoading && activeMemories.length === 0 && mounts.length === 0 && (
-        <p className="text-xs text-muted-foreground">{t("memory_none_active")}</p>
-      )}
-
-      {mounts.length > 0 && (
-        <div className="space-y-2">
-          {mounts.map((mount, index) => {
-            const validation = validations[index];
-            // If the configured memory is no longer in the active list, surface
-            // a hint so the user can correct or replace it. Suppress while the
-            // memory list is still loading or errored — `activeMemories` is
-            // empty in those states and would falsely flag valid IDs.
-            const isUnknownMemory =
-              !isLoading &&
-              !error &&
-              mount.memory.length > 0 &&
-              VOLUME_ID_PATTERN.test(mount.memory) &&
-              !activeMemories.some((v) => v.id === mount.memory);
-            const memoryError =
-              validation.memoryError ??
-              (isUnknownMemory ? ({ key: "memory_unavailable" } as LocalizedError) : undefined);
-
+    <div className="space-y-4 pt-2">
+      <div className="space-y-2">
+        <Label className="text-xs font-normal text-muted-foreground">{ui("Stores")}</Label>
+        <div className="divide-y border">
+          {STORES.map((store) => {
+            const access = readAccess(current[store.key], MEMORY_STORE_DEFAULTS[store.key]);
             return (
-              <div
-                key={index}
-                className="space-y-1.5 rounded-md border border-border/60 p-2"
-                data-testid="memory-mount-row"
-              >
-                <div className="flex items-start gap-2">
-                  <div className="flex-1 space-y-1">
-                    <Label className="text-xs font-normal text-muted-foreground">
-                      {t("memory_label")}
-                    </Label>
-                    <Combobox
-                      options={memoryOptions}
-                      value={mount.memory}
-                      onValueChange={(value) => updateRow(index, { memory: value })}
-                      placeholder={isLoading ? t("memory_loading") : t("memory_select")}
-                      searchPlaceholder={t("memory_search")}
-                      disabled={disabled || isLoading}
-                    />
-                    {memoryError && (
-                      <p className="text-xs text-destructive">
-                        {t(memoryError.key, memoryError.values)}
-                      </p>
-                    )}
+              <div key={store.key} className="flex items-center gap-3 p-2">
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm">
+                    {ui(store.label)}{" "}
+                    <span className="font-mono text-xs text-muted-foreground">
+                      /memory/{store.key}
+                    </span>
                   </div>
-                  <div className="flex-1 space-y-1">
-                    <Label className="text-xs font-normal text-muted-foreground">
-                      {t("mount_path_label")}
-                    </Label>
-                    <Input
-                      value={mount.path}
-                      placeholder="/workspace/research"
-                      disabled={disabled}
-                      className="h-8 text-sm font-mono"
-                      onChange={(event) => updateRow(index, { path: event.target.value })}
-                    />
-                    {(validation.pathError || validation.overlapError) && (
-                      <p className="text-xs text-destructive">
-                        {(() => {
-                          const err = validation.pathError ?? validation.overlapError;
-                          return err ? t(err.key, err.values) : null;
-                        })()}
-                      </p>
-                    )}
-                  </div>
-                  <div className="w-32 space-y-1">
-                    <Label className="text-xs font-normal text-muted-foreground">
-                      {t("mount_mode_label")}
-                    </Label>
-                    <Select
-                      value={mount.mode ?? "readonly"}
-                      onValueChange={(value) =>
-                        updateRow(index, { mode: value as "readonly" | "readwrite" })
-                      }
-                      disabled={disabled}
-                    >
-                      <SelectTrigger className="h-8 text-sm">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="readonly">{t("mount_mode_readonly")}</SelectItem>
-                        <SelectItem value="readwrite">{t("mount_mode_readwrite")}</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    aria-label={t("mount_remove")}
-                    disabled={disabled}
-                    className="mt-5 h-8 w-8 text-muted-foreground hover:text-destructive"
-                    onClick={() => removeRow(index)}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
+                  <p className="text-xs text-muted-foreground">{ui(store.help)}</p>
                 </div>
+                <Select
+                  value={access}
+                  disabled={disabled}
+                  onValueChange={(value) => set({ [store.key]: value })}
+                >
+                  <SelectTrigger
+                    className="h-8 w-36 text-sm"
+                    aria-label={`${ui(store.label)} ${ui("access")}`}
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="off">{ui("Off")}</SelectItem>
+                    <SelectItem value="read">{ui("Read")}</SelectItem>
+                    {store.key !== "parent" && (
+                      <SelectItem value="read_write">{ui("Read and write")}</SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
               </div>
             );
           })}
         </div>
-      )}
+      </div>
 
-      <Button type="button" variant="outline" size="sm" disabled={disabled} onClick={addRow}>
-        <Plus className="mr-1 h-3.5 w-3.5" />
-        {t("mount_add")}
-      </Button>
+      <div className="space-y-2">
+        <Label className="text-xs font-normal text-muted-foreground">{ui("Named memories")}</Label>
+        <p className="text-xs text-muted-foreground">
+          {ui("Shared stores this agent reads at /memory/<name>, alongside other agents.")}
+        </p>
+        {attachments.map((attachment, index) => (
+          <div key={index} className="flex items-center gap-2">
+            <Combobox
+              className="flex-1"
+              options={namedOptions}
+              value={attachment.memory}
+              loading={isLoading}
+              disabled={disabled}
+              ariaLabel={ui("Named memory")}
+              placeholder={ui("Select a memory")}
+              searchPlaceholder={ui("Search memory")}
+              onValueChange={(value) =>
+                setAttachments(
+                  attachments.map((row, i) => (i === index ? { ...row, memory: value } : row)),
+                )
+              }
+            />
+            <Select
+              value={attachment.mode === "read_write" ? "read_write" : "read"}
+              disabled={disabled}
+              onValueChange={(value) =>
+                setAttachments(
+                  attachments.map((row, i) =>
+                    i === index ? { ...row, mode: value as MemoryAccess } : row,
+                  ),
+                )
+              }
+            >
+              <SelectTrigger className="h-8 w-36 text-sm" aria-label={ui("Access")}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="read">{ui("Read")}</SelectItem>
+                <SelectItem value="read_write">{ui("Read and write")}</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              disabled={disabled}
+              aria-label={ui("Remove")}
+              onClick={() => setAttachments(attachments.filter((_, i) => i !== index))}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
+        ))}
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={disabled}
+          onClick={() => setAttachments([...attachments, { memory: "", mode: "read" }])}
+        >
+          <Plus className="h-4 w-4" />
+          {ui("Attach a named memory")}
+        </Button>
+      </div>
+
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <Label htmlFor="memory-card" className="text-sm font-normal">
+            {ui("Memory card")}
+          </Label>
+          <p className="text-xs text-muted-foreground">
+            {ui(
+              "Keep the agent's open blocked items, decisions and rules in its context as they change.",
+            )}
+          </p>
+        </div>
+        <Switch
+          id="memory-card"
+          checked={card}
+          disabled={disabled}
+          onCheckedChange={(checked) => set({ card: checked })}
+        />
+      </div>
     </div>
   );
 }

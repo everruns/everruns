@@ -262,4 +262,4 @@ credential values in tool results, events, traces, files, or session exports.
 - [GitHub Connection Model](../integrations/github-model.md)
 - [Connection-backed MCP audience checks](../../crates/server/src/domains/mcp_servers/connection_backed.rs)
 - [GitHub per-use resolution](../../crates/server/src/storage/connection_resolver/github.rs)
-- [Current memory mount routing](../../crates/server/src/domains/session_files/memory_mounts.rs)
+- [Current memory mount routing](../../crates/server/src/domains/session_files/memory_mounts/mod.rs)

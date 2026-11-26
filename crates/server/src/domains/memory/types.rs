@@ -21,7 +21,7 @@ pub struct MemoryResponse {
     /// Human-readable description. Safe to render in user-facing messages.
     #[schema(example = "Living design documents synced from GitHub")]
     pub description: Option<String>,
-    /// Ownership scope (`org`, `agent`, or `user`).
+    /// Ownership scope (`org`, `agent`, `team`, or `user`).
     #[schema(example = "org")]
     pub scope: String,
     /// Owning agent when `scope = agent`.

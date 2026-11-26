@@ -375,7 +375,6 @@ impl CommandMeta {
         match self.category {
             "evals" => Some("evals"),
             "skills" => Some("skills"),
-            "memories" => Some("memory"),
             "observers" => Some("observers"),
             _ => None,
         }

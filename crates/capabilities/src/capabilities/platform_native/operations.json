@@ -15700,6 +15700,31 @@
     "read_only": true
   },
   {
+    "description": "List a memory's typed entries: decisions, rules, facts, preferences, blocked items, notes and dreaming proposals.",
+    "input_schema": {
+      "properties": {
+        "memory_id": {
+          "description": "Memory's prefixed public identifier.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "memory_id"
+      ],
+      "type": "object"
+    },
+    "name": "list_memory_entries",
+    "read_only": true
+  },
+  {
+    "description": "List the memory stores agents use: the organization's, named memories, team and agent memories, and your own private memory.",
+    "input_schema": {
+      "type": "object"
+    },
+    "name": "list_memory_stores",
+    "read_only": true
+  },
+  {
     "description": "List your good and bad ratings of the messages in a session.",
     "input_schema": {
       "description": "List your ratings of the messages in a session.",
@@ -17536,6 +17561,30 @@
     },
     "name": "mark_room_read",
     "read_only": false
+  },
+  {
+    "description": "List the versions of a memory file, newest first; every write and delete is kept.",
+    "input_schema": {
+      "properties": {
+        "memory_id": {
+          "description": "Memory's prefixed public identifier.",
+          "type": "string"
+        },
+        "path": {
+          "description": "A path inside the memory (`/decisions/everruns-5528.md`). Omit for\nthe memory's latest changes across every file.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "memory_id"
+      ],
+      "type": "object"
+    },
+    "name": "memory_file_history",
+    "read_only": true
   },
   {
     "description": "Move or rename a file in a room's shared folder. The file keeps its history.",

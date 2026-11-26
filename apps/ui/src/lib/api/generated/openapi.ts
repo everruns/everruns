@@ -5675,6 +5675,26 @@ export interface paths {
     patch: operations["update_memory"];
     trace?: never;
   };
+  "/v1/platform/memories/{memory_id}/entries": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List memory entries
+     * @description List a memory's typed entries, newest first, and any entry files that do not parse.
+     */
+    get: operations["list_memory_entries"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/platform/memories/{memory_id}/fs": {
     parameters: {
       query?: never;
@@ -5787,6 +5807,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/platform/memories/{memory_id}/history": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Memory file history
+     * @description List the kept versions of a memory's files, newest first; every write and delete is kept.
+     */
+    get: operations["memory_file_history"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/platform/memories/{memory_id}/sync": {
     parameters: {
       query?: never;
@@ -5801,6 +5841,26 @@ export interface paths {
      * @description Trigger a synchronous sync of a memory now.
      */
     post: operations["sync_memory_now"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/memory/stores": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List memory stores
+     * @description List the memory stores agents use: the organization's, named memories, team and agent memories, and your own private memory.
+     */
+    get: operations["list_memory_stores"];
+    put?: never;
+    post?: never;
     delete?: never;
     options?: never;
     head?: never;
@@ -20512,6 +20572,13 @@ export interface components {
        */
       plugin_name: string;
     };
+    /** @description An entry file that does not parse. */
+    InvalidMemoryEntry: {
+      /** @description Why it does not parse. */
+      error: string;
+      /** @description Path of the file inside the store. */
+      path: string;
+    };
     /** @description The result of running a fixer. */
     IssueFixOutcome: {
       /**
@@ -22098,7 +22165,7 @@ export interface components {
          */
         owner_user_id?: string | null;
         /**
-         * @description Ownership scope (`org`, `agent`, or `user`).
+         * @description Ownership scope (`org`, `agent`, `team`, or `user`).
          * @example org
          */
         scope: string;
@@ -22134,15 +22201,54 @@ export interface components {
     ListResponse_MemoryFileInfo: {
       /** @description Array of items returned by the list operation. */
       data: {
+        /** @description Hash of the content; absent for a folder. */
         content_hash?: string | null;
-        /** Format: date-time */
+        /**
+         * Format: date-time
+         * @description When the file was created.
+         */
         created_at: string;
+        /** @description True for a folder. */
         is_directory: boolean;
+        /** @description Path inside the memory, starting with `/`. */
         path: string;
-        /** Format: int64 */
+        /**
+         * Format: int64
+         * @description Size in bytes; 0 for a folder.
+         */
         size_bytes: number;
-        /** Format: date-time */
+        /**
+         * Format: date-time
+         * @description When the file last changed.
+         */
         updated_at: string;
+      }[];
+    };
+    /**
+     * @description Response wrapper for list endpoints.
+     *     All list endpoints return responses wrapped in a `data` field.
+     */
+    ListResponse_MemoryFileVersion: {
+      /** @description Array of items returned by the list operation. */
+      data: {
+        /** @description `write` or `delete`. */
+        action: string;
+        /** @description Who changed it, when known (`session:<id>`, `user:<id>`). */
+        changed_by?: string | null;
+        /** @description The text after the change; absent for a delete or a binary file. */
+        content?: string | null;
+        /**
+         * Format: date-time
+         * @description When the change happened.
+         */
+        created_at: string;
+        /** @description Path of the file inside the memory. */
+        path: string;
+        /**
+         * Format: int64
+         * @description Size of the file after the change, in bytes.
+         */
+        size_bytes: number;
       }[];
     };
     /**
@@ -22156,6 +22262,43 @@ export interface components {
         /** Format: int64 */
         size_bytes: number;
       }[];
+    };
+    /**
+     * @description Response wrapper for list endpoints.
+     *     All list endpoints return responses wrapped in a `data` field.
+     */
+    ListResponse_MemoryStoreView: {
+      /** @description Array of items returned by the list operation. */
+      data: (components["schemas"]["Memory"] & {
+        /** @description Who it belongs to, in a sentence. */
+        about: string;
+        /** @description Open blocked items. */
+        blocked_count: number;
+        /** @description Typed entries (files in kind folders, proposals included). */
+        entry_count: number;
+        /** @description Every file, entries included. */
+        file_count: number;
+        /**
+         * Format: date-time
+         * @description When any file last changed; the store's creation when it has none.
+         */
+        last_changed_at: string;
+        /**
+         * @description Where it hangs in a session of an agent that uses it.
+         * @example /memory/team
+         */
+        mount_path: string;
+        /** @description The owning agent's name, for an agent or team memory. */
+        owner_name?: string | null;
+        /** @description Dreaming proposals waiting to be accepted. */
+        proposal_count: number;
+        /**
+         * @description How agents name it: `agent`, `user`, `org`, `team`, or the memory's
+         *     name.
+         * @example team
+         */
+        store: string;
+      })[];
     };
     /**
      * @description Response wrapper for list endpoints.
@@ -24479,7 +24622,7 @@ export interface components {
        */
       owner_user_id?: string | null;
       /**
-       * @description Ownership scope (`org`, `agent`, or `user`).
+       * @description Ownership scope (`org`, `agent`, `team`, or `user`).
        * @example org
        */
       scope: string;
@@ -24507,35 +24650,145 @@ export interface components {
        */
       updated_at: string;
     };
+    /** @description A store's entries. */
+    MemoryEntriesView: {
+      /** @description Newest first. */
+      entries: components["schemas"]["MemoryEntry"][];
+      /** @description Entry files that do not parse, with the reason. */
+      invalid: components["schemas"]["InvalidMemoryEntry"][];
+      /** @description The store's mount name (`agent`, `team`, a memory name). */
+      store: string;
+    };
+    /** @description A recorded entry: one file in an entry folder of a store. */
+    MemoryEntry: {
+      /** @description What sort of entry it is: decision, rule, fact, preference, blocked or note. */
+      kind: components["schemas"]["MemoryEntryKind"];
+      /**
+       * Format: date-time
+       * @description When the remembered thing happened.
+       */
+      occurred_at: string;
+      /** @description Path inside the store (`/decisions/everruns-5528.md`). */
+      path: string;
+      /** @description A dreaming proposal in a shared store, waiting to be accepted. */
+      proposed?: boolean;
+      /** @description Exact words the entry rests on, when quoted. */
+      quote?: string | null;
+      /**
+       * Format: date-time
+       * @description When the entry was written.
+       */
+      recorded_at: string;
+      /**
+       * @description Who recorded it: `agent:<id>`, `user:<id>`, `session:<id>`,
+       *     `dreaming`, `person`.
+       */
+      recorded_by: string;
+      /** @description How a blocked item was resolved. */
+      resolution?: string | null;
+      /**
+       * Format: date-time
+       * @description Set when a blocked item was resolved.
+       */
+      resolved_at?: string | null;
+      source?: components["schemas"]["MemorySource"] | null;
+      /** @description The entry itself, in one or a few sentences. */
+      statement: string;
+      /** @description The store the entry lives in. */
+      store: components["schemas"]["MemoryStoreKey"];
+      /** @description What the entry is about, when one thing stands out. */
+      subject?: string | null;
+    };
+    /**
+     * @description What an entry is.
+     * @enum {string}
+     */
+    MemoryEntryKind: "decision" | "rule" | "fact" | "preference" | "blocked" | "note";
     MemoryFile: {
       /** @description Text or base64-encoded content; check `encoding`. */
       content: string;
+      /** @description Hash of the content. */
       content_hash?: string | null;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description When the file was created.
+       */
       created_at: string;
       /** @description "text" or "base64". */
       encoding: string;
+      /** @description Path inside the memory, starting with `/`. */
       path: string;
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Size in bytes.
+       */
       size_bytes: number;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description When the file last changed.
+       */
       updated_at: string;
     };
     MemoryFileInfo: {
+      /** @description Hash of the content; absent for a folder. */
       content_hash?: string | null;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description When the file was created.
+       */
       created_at: string;
+      /** @description True for a folder. */
       is_directory: boolean;
+      /** @description Path inside the memory, starting with `/`. */
       path: string;
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Size in bytes; 0 for a folder.
+       */
       size_bytes: number;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description When the file last changed.
+       */
       updated_at: string;
+    };
+    /** @description One version of a memory file. */
+    MemoryFileVersion: {
+      /** @description `write` or `delete`. */
+      action: string;
+      /** @description Who changed it, when known (`session:<id>`, `user:<id>`). */
+      changed_by?: string | null;
+      /** @description The text after the change; absent for a delete or a binary file. */
+      content?: string | null;
+      /**
+       * Format: date-time
+       * @description When the change happened.
+       */
+      created_at: string;
+      /** @description Path of the file inside the memory. */
+      path: string;
+      /**
+       * Format: int64
+       * @description Size of the file after the change, in bytes.
+       */
+      size_bytes: number;
     };
     MemoryGrepResult: {
       path: string;
       /** Format: int64 */
       size_bytes: number;
+    };
+    /** @description Where an entry's words came from. */
+    MemorySource: {
+      /**
+       * @description `message`, `slack`, `github`, `session`, `file`, `tool`, `api`,
+       *     `person` or `dreaming`.
+       */
+      kind: string;
+      /** @description The source's own id: a message id, `owner/repo#123`, a file path. */
+      reference?: string | null;
+      /** @description A link a person can open. */
+      url?: string | null;
     };
     /** @description Response body for memory source. */
     MemorySourceResponse:
@@ -24551,6 +24804,49 @@ export interface components {
           /** @enum {string} */
           provider: "git";
         });
+    /** @description Which store: a scope, plus the name for a named memory. */
+    MemoryStoreKey: {
+      /** @description The memory's name, set only for a named store. */
+      name?: string | null;
+      /** @description Whose memory: agent, user, org, team, parent or named. */
+      scope: components["schemas"]["MemoryStoreScope"];
+    };
+    /**
+     * @description Whose memory.
+     * @enum {string}
+     */
+    MemoryStoreScope: "agent" | "user" | "org" | "team" | "parent" | "named";
+    /** @description One store, as the console lists it. */
+    MemoryStoreView: components["schemas"]["Memory"] & {
+      /** @description Who it belongs to, in a sentence. */
+      about: string;
+      /** @description Open blocked items. */
+      blocked_count: number;
+      /** @description Typed entries (files in kind folders, proposals included). */
+      entry_count: number;
+      /** @description Every file, entries included. */
+      file_count: number;
+      /**
+       * Format: date-time
+       * @description When any file last changed; the store's creation when it has none.
+       */
+      last_changed_at: string;
+      /**
+       * @description Where it hangs in a session of an agent that uses it.
+       * @example /memory/team
+       */
+      mount_path: string;
+      /** @description The owning agent's name, for an agent or team memory. */
+      owner_name?: string | null;
+      /** @description Dreaming proposals waiting to be accepted. */
+      proposal_count: number;
+      /**
+       * @description How agents name it: `agent`, `user`, `org`, `team`, or the memory's
+       *     name.
+       * @example team
+       */
+      store: string;
+    };
     /** @description Message - primary conversation data (API response) */
     Message: {
       /**
@@ -54086,6 +54382,47 @@ export interface operations {
       };
     };
   };
+  list_memory_entries: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Memory ID */
+        memory_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Entries */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["MemoryEntriesView"];
+        };
+      };
+      /** @description The memory holds no typed entries */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Memory not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
   list_root: {
     parameters: {
       query?: never;
@@ -54434,6 +54771,41 @@ export interface operations {
       };
     };
   };
+  memory_file_history: {
+    parameters: {
+      query?: {
+        /** @description One file's path (`/decisions/merges.md`); omit for every file. */
+        path?: string | null;
+      };
+      header?: never;
+      path: {
+        /** @description Memory ID */
+        memory_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Versions */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ListResponse_MemoryFileVersion"];
+        };
+      };
+      /** @description Memory not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
   sync_memory_now: {
     parameters: {
       query?: never;
@@ -54471,6 +54843,26 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  list_memory_stores: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Memory stores */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ListResponse_MemoryStoreView"];
         };
       };
     };

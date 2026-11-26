@@ -26,7 +26,11 @@ async fn application_name_undo_preserves_current_grants_and_uses_current_version
     .await
     .unwrap();
     let id = original["id"].as_str().unwrap();
-    let memory = run("create_memory", json!({"name":"History handbook"}), &ctx)
+    let memory_name = format!(
+        "handbook-{}",
+        &uuid::Uuid::now_v7().simple().to_string()[..12]
+    );
+    let memory = run("create_memory", json!({"name": memory_name}), &ctx)
         .await
         .unwrap();
     let resources = json!([{

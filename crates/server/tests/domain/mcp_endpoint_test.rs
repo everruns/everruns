@@ -137,8 +137,6 @@ async fn test_disabled_feature_is_hidden_from_api_platform_and_mcp_catalog() {
         ("/v1/platform/evals", "evals"),
         ("/v1/platform/skills", "skills"),
         ("/v1/platform/skills/config", "skills"),
-        ("/v1/platform/memories", "memory"),
-        ("/v1/platform/memories/memory_missing/fs", "memory"),
     ] {
         let response = server.get(path).await;
         assert_eq!(
@@ -177,7 +175,9 @@ async fn test_disabled_feature_is_hidden_from_api_platform_and_mcp_catalog() {
         .filter_map(|category| category["category"].as_str())
         .collect();
     assert!(categories.contains(&"knowledge"));
-    for gated in ["evals", "skills", "memories"] {
+    // Memory v2 needs no flag.
+    assert!(categories.contains(&"memories"));
+    for gated in ["evals", "skills"] {
         assert!(!categories.contains(&gated), "{gated}");
     }
 

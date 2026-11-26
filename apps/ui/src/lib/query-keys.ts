@@ -305,6 +305,9 @@ export const queryKeys = {
     list: (includeArchived = false, search = "") =>
       ["memories", { includeArchived, search }] as const,
     detail: (memoryId: string) => ["memory", memoryId] as const,
+    stores: ["memory-stores"] as const,
+    entries: (memoryId: string) => ["memory-entries", memoryId] as const,
+    history: (memoryId: string, path = "") => ["memory-history", memoryId, path] as const,
   },
 
   // Knowledge Index queries — split list/detail roots to avoid prefix collision

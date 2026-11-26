@@ -39,10 +39,9 @@ Two existing primitives sit next to this gap:
 * **Knowledge Bases** (`knowledge/runtime-resources/knowledge-bases.md`), human-curated short
   entries, keyword search, optional per-KB embedding model. Curation-first;
   no external sources, no chunking, no large-corpus retrieval.
-* **Memory** (`knowledge/runtime-resources/memory.md`), org-scoped file stores mounted into
-  `/workspace`, including **source-backed memories** synced from GitHub / Git.
-  Filesystem-first; the agent reads/greps files, there is no semantic retrieval
-  or chunk-level citation.
+* **Memory** (`knowledge/runtime-resources/memory.md`), stores under `/memory` with typed
+  entries the agent records and recalls by words. Source-backed memories were
+  retired with memory v1; repositories sync into Knowledge instead.
 
 Neither covers "connect a large external corpus, keep it in sync, and let an
 agent retrieve and cite the most relevant passages." A Dropbox folder, a

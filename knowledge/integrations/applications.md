@@ -137,4 +137,4 @@ and restarts. Keep the session encryption key stable across upgrades.
 * [Published interface](../../apps/chat-ui/src/components/application.tsx)
 * [Boundary tests](../../crates/server/tests/domain/applications_test.rs)
 * [Work Chat](work-chat.md), the underlying chat and browser-auth contract
-* [Rooms](../runtime-resources/rooms.md) and [Memory model](../runtime-resources/memory-model.md)
+* [Rooms](../runtime-resources/rooms.md) and [Memory](../runtime-resources/memory.md)

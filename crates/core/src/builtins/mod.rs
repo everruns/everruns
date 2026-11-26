@@ -32,6 +32,7 @@ use everruns_contracts::CapabilityError;
 #[cfg(feature = "ui-capabilities")]
 pub mod a2ui;
 pub mod agent_instructions;
+pub mod agent_memory;
 pub mod ask_user;
 pub mod attach_skill;
 pub mod auto_tool_search;
@@ -135,6 +136,7 @@ pub use agent_instructions::{
     AgentInstructionsConfig, DEFAULT_AGENT_INSTRUCTIONS_FILE, MAX_AGENT_INSTRUCTIONS_FILES,
     MAX_AGENTS_MD_SIZE, format_agents_md_content, format_instruction_file_content,
 };
+pub use agent_memory::{AGENT_MEMORY_CAPABILITY_ID, AgentMemoryCapability, MemoryEngine};
 pub use attach_skill::AttachSkillCapability;
 pub use auto_tool_search::{AUTO_TOOL_SEARCH_CAPABILITY_ID, AutoToolSearchCapability};
 pub use btw::{BTW_CAPABILITY_ID, BtwCapability};
@@ -337,6 +339,7 @@ fn capabilities_with_ask_user(ask_user: AskUserCapability) -> Vec<Arc<dyn Capabi
         Arc::new(StatelessTodoListCapability),
         Arc::new(BtwCapability),
         Arc::new(dreaming::DreamingCapability),
+        Arc::new(AgentMemoryCapability),
         Arc::new(BudgetingCapability),
         Arc::new(SelfBudgetCapability),
         Arc::new(CompactionCapability),
@@ -369,7 +372,7 @@ fn capabilities_with_ask_user(ask_user: AskUserCapability) -> Vec<Arc<dyn Capabi
 mod bundle_tests {
     use super::*;
 
-    const RUNTIME_IDS: [&str; 36] = [
+    const RUNTIME_IDS: [&str; 37] = [
         "human_intent",
         "ask_user",
         "infinity_context",
@@ -381,6 +384,7 @@ mod bundle_tests {
         "stateless_todo_list",
         "btw",
         "dreaming",
+        "agent_memory",
         "budgeting",
         "self_budget",
         "compaction",

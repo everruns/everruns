@@ -108,6 +108,10 @@ install first; offer the demo only as a way to look around.
   workspace. Creating a session is distinct from completing its task.
 - **Workspace**: durable files used by an agent. A virtual workspace does not
   imply native processes, packages, or network services are available.
+- **Memory**: what an agent keeps between sessions, in stores under `/memory`
+  (agent, team, parent, user, org, named). Agents record decisions, rules,
+  facts, preferences and blocked items with `remember` and find them with
+  `recall`. Session key/value storage is not memory: it ends with the session.
 - **Trigger**: a schedule or webhook that starts work on an agent. Use Agent
   Triggers for recurring autonomous work.
 - **Organization**: the boundary for shared platform resources and permissions.

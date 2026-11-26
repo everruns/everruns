@@ -17514,6 +17514,43 @@
     "read_only": true
   },
   {
+    "category": "memories",
+    "cli": "memories entries",
+    "description": "List a memory's typed entries: decisions, rules, facts, preferences, blocked items, notes and dreaming proposals.",
+    "input_schema": {
+      "properties": {
+        "memory_id": {
+          "description": "Memory's prefixed public identifier.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "memory_id"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "list_memory_entries",
+    "output_shape": "object",
+    "path": "/v1/platform/memories/{memory_id}/entries",
+    "positional_arg": "memory_id",
+    "read_only": true
+  },
+  {
+    "category": "memories",
+    "cli": "memories stores",
+    "description": "List the memory stores agents use: the organization's, named memories, team and agent memories, and your own private memory.",
+    "input_schema": {
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "list_memory_stores",
+    "output_shape": "array",
+    "path": "/v1/platform/memory/stores",
+    "positional_arg": null,
+    "read_only": true
+  },
+  {
     "category": "messages",
     "cli": "sessions messages ratings",
     "description": "List your good and bad ratings of the messages in a session.",
@@ -19822,6 +19859,36 @@
     "path": "/v1/platform/rooms/{room_id}/read",
     "positional_arg": null,
     "read_only": false
+  },
+  {
+    "category": "memories",
+    "cli": "memories history",
+    "description": "List the versions of a memory file, newest first; every write and delete is kept.",
+    "input_schema": {
+      "properties": {
+        "memory_id": {
+          "description": "Memory's prefixed public identifier.",
+          "type": "string"
+        },
+        "path": {
+          "description": "A path inside the memory (`/decisions/everruns-5528.md`). Omit for\nthe memory's latest changes across every file.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "memory_id"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "memory_file_history",
+    "output_shape": "array",
+    "path": "/v1/platform/memories/{memory_id}/history",
+    "positional_arg": "memory_id",
+    "read_only": true
   },
   {
     "category": "rooms",

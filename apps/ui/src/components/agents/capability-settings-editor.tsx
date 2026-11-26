@@ -41,7 +41,7 @@ import { WebSearchConfigEditor } from "./web-search-config-editor";
 
 // Capability IDs with purpose-built editors. Mirrors the constants exported
 // from crates/core/src/capabilities/*.
-const MEMORY_CAPABILITY_ID = "memory";
+const MEMORY_CAPABILITY_ID = "agent_memory";
 const KNOWLEDGE_INDEX_CAPABILITY_ID = "knowledge_index";
 const GUARDRAILS_CAPABILITY_ID = "guardrails";
 const WEB_SEARCH_CAPABILITY_ID = "web_search";

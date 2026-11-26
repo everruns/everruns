@@ -58,6 +58,7 @@ pub mod mcp_extensions;
 pub mod mcp_proxy;
 pub mod mcp_resources;
 pub mod mcp_server;
+pub mod memory;
 pub mod message;
 pub mod message_filter;
 pub use crate::message_origin;

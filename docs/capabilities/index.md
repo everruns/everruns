@@ -113,7 +113,7 @@ Structured data, knowledge retrieval, and memory.
 | [Web Citations](/capabilities/citation-web/) | `citation_web` | 0 |
 | [Data Knowledge](/capabilities/data-knowledge/) | `data_knowledge` | 0 |
 | [Knowledge](/capabilities/knowledge/) | `knowledge` | 2; `FEATURE_KNOWLEDGE` grade |
-| [Memory](/capabilities/memory/) | `memory` | 0; `FEATURE_MEMORY` grade |
+| [Memory](/capabilities/memory/) | `agent_memory` | 5 |
 
 ### Media
 
@@ -327,7 +327,6 @@ Some capabilities depend on others. Dependencies are resolved automatically at r
 | [Computer Use](/capabilities/computer-use/) | [Storage](/capabilities/session-storage/) |
 | [Data Knowledge](/capabilities/data-knowledge/) | [File System](/capabilities/file-system/) |
 | [Knowledge](/capabilities/knowledge/) | [File System](/capabilities/file-system/) |
-| [Memory](/capabilities/memory/) | [File System](/capabilities/file-system/) |
 | [Dreaming](/features/dreaming/) | [File System](/capabilities/file-system/) |
 | [Container Sandbox](/capabilities/container-sandbox/) | [Storage](/capabilities/session-storage/) |
 | [Spawn agents](/capabilities/spawn-agents/) | Session Tasks |

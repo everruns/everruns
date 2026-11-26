@@ -1,61 +1,136 @@
 ---
-title: Agent and User Memory
-description: Understand organization, agent, and user memory scopes, their automatic mount paths, and the privacy and access rules for each.
+title: How Memory Works
+description: "How Everruns agents remember across sessions: memory stores for the agent, team, parent, person and organization, typed Markdown entries and history."
 ---
 
-Memory keeps files available across sessions. Everruns provides three ownership scopes so shared organization knowledge, an agent's learned context, and a user's preferences do not have to share the same access boundary.
+An agent that forgets what was decided yesterday asks again, or worse, acts
+against it. Everruns memory keeps decisions, rules, facts, preferences and
+blocked items between sessions, in plain Markdown files the agent, a person and
+any file tool can read. Nothing is hidden in a database the agent cannot see.
 
-## The three scopes
+## Stores
 
-| Scope | Lifetime and owner | How it enters a session | Access |
+A store is a folder under `/memory`. Each one answers "who shares this?":
+
+| Store | Path | Shared by | Default |
 |---|---|---|---|
-| Organization | A named store managed within one organization | Select it in the `memory` capability and choose a path under `/workspace` | Read-only by default; read-write must be selected explicitly |
-| Agent | One server-managed store per agent | Automatically mounted for sessions hosted by that agent at `/memory/agent` | Read-write in the hosted session |
-| User | One server-managed store per user | Automatically mounted in the owning user's private, default session workspace at `/memory/user` | Read-write for the owner and the agent working in that session |
+| Agent | `/memory/agent` | Every session of one agent | read and write |
+| Team | `/memory/team` | A coordinator agent and every thread or agent it starts | read and write |
+| Parent | `/memory/parent` | The agent memory of the agent that started this one | read only |
+| Person | `/memory/user` | One person's own sessions; nobody else | read and write |
+| Organization | `/memory/org` | Every agent in the organization | read only |
+| Named | `/memory/<name>` | The agents it is attached to | per attachment |
 
-Organization memories are appropriate for shared references such as runbooks or product documentation. Agent memory follows one host agent across its sessions. User memory follows one user so preferences and personal context can persist across their sessions.
+Every store is a switch in the [Memory capability](/capabilities/memory/), so a
+coordinator can write to its team memory while a reviewer only reads it. The
+agent's instructions describe each store it has, so it knows where a decision
+belongs: a person's preference goes to their private memory, a team decision to
+the team.
 
-## Privacy defaults
+Agent, team and person memories are created the first time they are used.
+Organization and named memories are created on the **Memory** page or with
+`everruns memories create`.
 
-**User memory is private by default.** Only the session owner may access `/memory/user` through user-facing session file APIs. Other users cannot read or mutate the subtree, and file searches redact matches from it. Internal runtime access lets the agent working for the owner read and update that memory.
+## Entries
 
-User memory is never mounted into a workspace that more than one session shares (only sessions created before shared workspaces were retired can have one).
+An entry is one Markdown file in a kind folder:
 
-Agent memory is separate from user memory. It is shared by sessions hosted by the same agent, so do not use `/memory/agent` for user-private data. A guest agent's private memory is not merged into a shared session's workspace-wide `/memory/agent` path.
+```text
+/memory/team/decisions/everruns-5528.md
+/memory/team/blocked/everruns-5528.md
+/memory/agent/rules/merge-policy.md
+/memory/user/preferences/reply-length.md
+```
 
-## How automatic mounts work
+```markdown
+---
+kind: decision
+subject: everruns#5528
+occurred_at: 2026-11-26T04:10:00Z
+recorded_by: agent:coordinator
+source: slack
+source_url: https://example.slack.com/archives/C1/p1764130200
+---
+Allowlist @a2ui/web_core instead of denying the upgrade.
 
-When a session starts, Everruns lazily creates any missing scoped stores and mounts their current files:
+> allow it, it's ours
+```
 
-- `/memory/agent` contains the host agent's persistent files.
-- `/memory/user` contains the session owner's persistent files when the session uses the owner's private default workspace.
+| Kind | Use it for |
+|---|---|
+| `decision` | Something a person decided, which the agent must follow |
+| `rule` | A standing instruction: "always squash merge" |
+| `fact` | Something true about the world the agent works in |
+| `preference` | How a person likes things done |
+| `blocked` | Work waiting on someone, until it is resolved |
+| `note` | Anything else worth keeping |
 
-Both automatic mounts are read-write. The regular file tools and Workspace UI traverse them alongside session files, and writes persist to the scoped memory for later sessions.
+One subject holds one current entry of each kind. When the coordinator
+remembers a new decision about `everruns#5528`, it replaces the old one, and
+the old version stays in the store's history. The quote keeps the person's
+exact words, so the agent can tell what was said from what it inferred.
 
-The `/memory/*` namespace is reserved. You cannot use it for caller-supplied initial files or for mounts configured through the public `memory` capability.
+Free-form files are welcome too: a runbook at `/memory/team/runbook.md` is part
+of memory and `recall` searches it.
 
-## Workspace and Memory
+## The memory card
 
-A session's **Workspace** at `/workspace` is its working area. Its files and its session SQL database belong to that session, and one session cannot see another's Workspace. **Memory** is the durable tier, and the only way files are shared across sessions.
+At the start of a session, and when memory changes, the agent gets a short card:
+which stores it has, the open blocked items, and the latest decisions, rules
+and preferences in each. The card is sent as a context update, not inside the
+instructions, so it does not break prompt caching. Turn it off with
+`"card": false`.
 
-The mount configuration is captured when the session is created, so archiving or renaming a Memory later does not change what a running session mounted: an archived Memory surfaces an error rather than files silently disappearing. The same file tools read native and mounted paths, and a write to a read-only mount returns an error.
+## Tools
 
-## Organization memory access
+The agent uses `remember` to record an entry, `recall` to search by words
+(identifiers such as `everruns#5528` match exactly), `resolve` to close a
+blocked item, `forget` to delete an entry, and `accept` to take a proposal. Read-only stores refuse writes
+with an error the agent can act on.
 
-Organization memories are created and managed through the Memory UI and `/v1/platform/memories` API. Add the `memory` capability to select an active organization memory, its mount path, and its access mode.
+## History
 
-- Omitted access mode defaults to `readonly`.
-- A `readwrite` mount writes through to the durable organization memory.
-- Source-backed GitHub or Git memories are always read-only.
-- Agent- and user-scoped memories are server-managed and cannot be selected through `memory.mounts`.
+Every write and delete to a memory file is kept, with who made it. Forgetting
+deletes the file, never its history. See a store's history on the **Memory**
+page, or:
 
-See the [API reference](/api/) for current organization-memory schemas.
+```bash
+everruns memories history mem_01h9... --path /decisions/everruns-5528.md
+```
+
+## Proposals and dreaming
+
+An entry can be recorded as a proposal instead: it waits under `/proposals/`,
+off the card, until an agent with write access calls `accept`. Proposals are
+meant for stores many agents share, where a consolidation pass should not
+change what everyone follows on its own.
+
+[Dreaming](/features/dreaming/) consolidates finished sessions into notes in
+the person's memory, under `/memory/user/learned`.
+
+## Seeing memory
+
+The **Memory** page under **Blocks** lists every store you can see with its
+entry count, open blocked items and proposals to review. A store's page groups
+entries by kind, shows entry files that do not parse so they can be fixed, and
+lists every change. From the command line:
+
+```bash
+everruns memories stores
+everruns memories entries mem_01h9...
+```
+
+## Privacy
+
+A person's memory is private to that person. Only their own sessions mount
+`/memory/user`, and the Memory page and API show it only to them, whatever
+their role in the organization. Never put personal context in agent, team or
+organization memory, which other people's sessions read.
+
+A session with no person (a scheduled or webhook run) has no person memory.
 
 ## See also
 
+- [Memory capability](/capabilities/memory/), configuration and tools.
 - [Session participants](/features/session-participants/), host and guest agent behavior in shared sessions.
-- [File System capability](/capabilities/file-system/), tools that access session and mounted files.
-
-## Background consolidation
-
-The optional [Dreaming capability](/features/dreaming/) consolidates completed experience into authorized Memory files without rewriting the active conversation.
+- [Rooms](/features/rooms/) keep their own facts next to their messages.

@@ -213,7 +213,7 @@ acts.
   member's own instructions, and where the room's files are. The instructions
   are fixed for the session, so the prompt cache holds.
 - **Room files.** The session mounts the room's folder at `/room`
-  ([`memory_mounts.rs`](../../crates/server/src/domains/session_files/memory_mounts.rs)).
+  ([`memory_mounts/mod.rs`](../../crates/server/src/domains/session_files/memory_mounts/mod.rs)).
   The agent reads, greps and edits it with its usual file tools; each change is
   a room file version under the agent's handle, with its session.
 - **What it reads.** Each message arrives with a room origin header and the

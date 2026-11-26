@@ -250,7 +250,7 @@ async fn org_session(
     if let Some(mount) = body
         .memory
         .iter()
-        .find(|mount| !crate::memory::MOUNTS.contains(&mount.as_str()))
+        .find(|mount| !crate::memory::allowed_mount(mount))
     {
         return Err((
             StatusCode::BAD_REQUEST,

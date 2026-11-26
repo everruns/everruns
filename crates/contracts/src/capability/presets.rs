@@ -79,9 +79,12 @@ impl BuiltInHarnessPreset {
             Self::Conversation => vec![
                 CapabilityRef::new("ask_user"),
                 CapabilityRef::new("message_metadata"),
+                // Durable memory with its card (knowledge/runtime-resources/memory.md).
+                CapabilityRef::new("agent_memory"),
             ],
             Self::Worker => vec![
                 CapabilityRef::new("session_file_system"),
+                CapabilityRef::new("agent_memory"),
                 CapabilityRef::with_config(
                     "dreaming",
                     serde_json::json!({
@@ -260,7 +263,6 @@ mod tests {
                 "web_fetch",
                 "session_storage",
                 "session_schedule",
-                "memory",
                 "citation_retrieval",
                 "citation_web",
             ] {

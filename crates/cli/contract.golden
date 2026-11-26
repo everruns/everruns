@@ -251,8 +251,11 @@ mcp-servers tools	--context-revision --id --reason <id>
 mcp-servers update	--api-key --auth-mode --context-revision --description --elicitation-policy --headers --id --interactive-views --name --protocol-mode --reason --service-connection-provider --status --tool-timeout-ms --transport-type --url <id>
 memories create	--context-revision --description --name! --reason --source
 memories delete	--context-revision --memory-id! --reason
+memories entries	--context-revision --memory-id --reason <memory_id>
 memories get	--context-revision --memory-id --reason <memory_id>
+memories history	--context-revision --memory-id --path --reason <memory_id>
 memories list	--context-revision --include-archived --reason --search
+memories stores	--context-revision --reason
 memories sync	--context-revision --memory-id! --reason
 memories update	--context-revision --description --memory-id! --name --reason --source
 model-presets apply	--context-revision --id --reason <id>

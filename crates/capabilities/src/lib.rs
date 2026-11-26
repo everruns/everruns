@@ -19,7 +19,6 @@ pub mod integrations_catalog;
 pub mod knowledge_store;
 #[cfg(feature = "hosted-integration-catalog")]
 pub mod leased_cleanup;
-pub mod memory;
 pub mod platform_store;
 pub mod sandbox_checkpoint;
 pub mod sandbox_state;
@@ -41,10 +40,6 @@ pub use host_extension::{PlatformHostBackendsExt, PlatformStoreFactory, Platform
 pub use knowledge_store::{
     KnowledgeIndexSearchExt, KnowledgeIndexSearchHit, KnowledgeSearchHit, KnowledgeStore,
     KnowledgeStoreExt,
-};
-pub use memory::{
-    MemoryConfig, MemoryMountAccess, MemoryMountConfig, validate_memory_config,
-    validate_mount_config_shape,
 };
 pub use platform_store::{
     PlatformCreateSessionRequest, PlatformMessage, PlatformStore, PlatformStoreExt,

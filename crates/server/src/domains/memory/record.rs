@@ -170,8 +170,3 @@ pub struct MemoryFile {
 fn default_encoding() -> String {
     "text".to_string()
 }
-
-pub use everruns_capabilities::memory::{
-    MemoryConfig, MemoryMountAccess, MemoryMountConfig, validate_memory_config,
-    validate_mount_config_shape,
-};

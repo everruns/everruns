@@ -6,7 +6,9 @@ import {
   createMemory,
   getMemory,
   listMemories,
-  syncMemoryNow,
+  listMemoryEntries,
+  listMemoryHistory,
+  listMemoryStores,
   updateMemory,
 } from "@/lib/api/memory";
 import type {
@@ -33,8 +35,11 @@ function syncMemoryCache(queryClient: QueryClient, memory: Memory) {
 
 function invalidateMemoryQueries(queryClient: QueryClient, memoryId?: string) {
   queryClient.invalidateQueries({ queryKey: queryKeys.memory.all });
+  queryClient.invalidateQueries({ queryKey: queryKeys.memory.stores });
   if (memoryId) {
-    queryClient.invalidateQueries({ queryKey: queryKeys.memory.detail(memoryId) });
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.memory.detail(memoryId),
+    });
   }
 }
 
@@ -91,18 +96,6 @@ export function useUpdateMemory() {
   });
 }
 
-export function useSyncMemory() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (memoryId: string) => syncMemoryNow(memoryId),
-    onSuccess: (memory) => {
-      syncMemoryCache(queryClient, memory);
-      invalidateMemoryQueries(queryClient, memory.id);
-    },
-  });
-}
-
 export function useArchiveMemory() {
   const queryClient = useQueryClient();
 
@@ -111,5 +104,31 @@ export function useArchiveMemory() {
     onSuccess: (_result, memoryId) => {
       invalidateMemoryQueries(queryClient, memoryId);
     },
+  });
+}
+
+/** Every memory store the caller can see (organization, named, team, agent, own private). */
+export function useMemoryStores() {
+  return useOrgScopedQuery({
+    queryKey: queryKeys.memory.stores,
+    queryFn: listMemoryStores,
+  });
+}
+
+/** A store's typed entries, newest first, plus entry files that do not parse. */
+export function useMemoryEntries(memoryId: string | undefined) {
+  return useOrgScopedQuery({
+    queryKey: queryKeys.memory.entries(memoryId ?? ""),
+    queryFn: () => listMemoryEntries(memoryId!),
+    enabled: !!memoryId,
+  });
+}
+
+/** Kept versions of a store's files, newest first; one file's when `path` is set. */
+export function useMemoryHistory(memoryId: string | undefined, path?: string) {
+  return useOrgScopedQuery({
+    queryKey: queryKeys.memory.history(memoryId ?? "", path ?? ""),
+    queryFn: () => listMemoryHistory(memoryId!, path),
+    enabled: !!memoryId,
   });
 }

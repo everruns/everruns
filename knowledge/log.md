@@ -2,6 +2,8 @@
 
 ## 2026-11-26
 
+- [Memory](runtime-resources/memory.md) v2 replaces v1: stores under `/memory` (agent, team, parent, user, org, named), each a switch on `agent_memory`; typed Markdown entries; memory card as a context update; every file version kept. The v1 `memory` capability, source-backed memories, the `memory` flag and the Memory Model note are removed.
+
 - Added existing-domain investigation reads: frozen episode evidence, attributable
   trigger history, joint cost filters and session cost windows, with schedule and
   cost reads respecting each session's data-plane authority. See [Platform Chat](harnesses/platform-chat.md).
@@ -1881,7 +1883,7 @@
 
 * **Memory model moves into knowledge.** The design note on how the
   per-session Workspace and the durable org Memory tiers relate left the public docs Advanced group
-  and is now [Memory Model](runtime-resources/memory-model.md). The user-facing
+  and is now [Memory Model](runtime-resources/memory.md). The user-facing
   part stays in the docs Memory Scopes page.
 
 * **Parked approvals and questions survive a restart.** A turn waiting on a

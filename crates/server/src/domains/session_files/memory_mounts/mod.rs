@@ -38,6 +38,11 @@ use crate::storage::StorageBackend;
 use crate::storage::{
     CreateMemoryRow, MemoryFileInfoRow, MemoryRow, RoomFileAuthor, RoomFileChange, RoomFileStore,
 };
+use everruns_contracts::runtime::memory::{
+    AgentMemoryConfig, MemoryAccess, MemoryStoreKey, MemoryStoreScope, entry_location,
+    parse_entry_file,
+};
+use everruns_core::builtins::AGENT_MEMORY_CAPABILITY_ID;
 
 /// Mount point of the memory owned by the session's host agent.
 pub const AGENT_MEMORY_MOUNT_PATH: &str = "/memory/agent";
@@ -185,29 +190,36 @@ impl MemoryMountRouter {
         };
 
         let mut mounts = Vec::new();
-        if let Some(agent_id) = session.agent_id {
-            self.push_scoped(
-                &mut mounts,
-                session.org_id,
-                "agent",
-                Some(agent_id),
-                None,
-                AGENT_MEMORY_MOUNT_PATH,
-            )
-            .await?;
-        }
-        if !self.db.is_playground_session(session.id).await?
-            && let Some(user_id) = session.resolved_owner_user_id
-        {
-            self.push_scoped(
-                &mut mounts,
-                session.org_id,
-                "user",
-                None,
-                Some(user_id),
-                USER_MEMORY_MOUNT_PATH,
-            )
-            .await?;
+        match self.agent_memory_config(&session).await? {
+            Some(config) => self.push_v2_stores(&mut mounts, &session, &config).await?,
+            None => {
+                // Without the Memory capability, the agent and person stores
+                // stay reachable as files when they already exist.
+                if let Some(agent_id) = session.agent_id {
+                    self.push_scoped(
+                        &mut mounts,
+                        session.org_id,
+                        "agent",
+                        Some(agent_id),
+                        None,
+                        AGENT_MEMORY_MOUNT_PATH,
+                    )
+                    .await?;
+                }
+                if !self.db.is_playground_session(session.id).await?
+                    && let Some(user_id) = session.resolved_owner_user_id
+                {
+                    self.push_scoped(
+                        &mut mounts,
+                        session.org_id,
+                        "user",
+                        None,
+                        Some(user_id),
+                        USER_MEMORY_MOUNT_PATH,
+                    )
+                    .await?;
+                }
+            }
         }
         if let Some(name) = self.shared_memory_name(&session).await? {
             self.push_named(&mut mounts, session.org_id, &name, SHARED_MEMORY_MOUNT_PATH)
@@ -280,6 +292,151 @@ impl MemoryMountRouter {
         // nests inside another.
         mounts.sort_by_key(|mount| std::cmp::Reverse(mount.mount_path.len()));
         Ok((mounts, cacheable))
+    }
+
+    /// The session's `agent_memory` configuration: the agent's attachment,
+    /// else its harness's. `None` when neither has the capability.
+    async fn agent_memory_config(
+        &self,
+        session: &crate::storage::SessionRow,
+    ) -> Result<Option<AgentMemoryConfig>> {
+        let parse = |value: &serde_json::Value| {
+            AgentMemoryConfig::from_value(value).unwrap_or_else(|error| {
+                tracing::warn!(error = %error, "invalid agent_memory config; using defaults");
+                AgentMemoryConfig::default()
+            })
+        };
+        if let Some(agent_id) = session.agent_id
+            && let Some(row) = self
+                .db
+                .get_agent_capabilities(agent_id.uuid())
+                .await?
+                .into_iter()
+                .find(|row| row.capability_id == AGENT_MEMORY_CAPABILITY_ID)
+        {
+            return Ok(Some(parse(&row.config)));
+        }
+        if let Some(harness_id) = session.harness_id
+            && let Some(row) = self
+                .db
+                .get_harness_capabilities(harness_id.uuid())
+                .await?
+                .into_iter()
+                .find(|row| row.capability_id == AGENT_MEMORY_CAPABILITY_ID)
+        {
+            return Ok(Some(parse(&row.config)));
+        }
+        Ok(None)
+    }
+
+    /// Mount every store the `agent_memory` config switches on and this
+    /// session has an owner for, creating stores on first use.
+    ///
+    /// Decisions:
+    /// - team: owned by the coordinator agent, the agent of the run's first
+    ///   session, so it outlives any one run; a first session owns it only
+    ///   when its agent starts other agents (Spawn agents or Threads).
+    /// - parent: the agent memory of the agent of the session that started
+    ///   this one, if it has one; never created on the parent's behalf.
+    /// - a named memory is created on first attach, like the shared surface
+    ///   memory, so attaching one is all it takes.
+    async fn push_v2_stores(
+        &self,
+        mounts: &mut Vec<MemoryMount>,
+        session: &crate::storage::SessionRow,
+        config: &AgentMemoryConfig,
+    ) -> Result<()> {
+        let org_id = session.org_id;
+        let mut push = |memory: MemoryRow, store: &MemoryStoreKey, access: MemoryAccess| {
+            let mut mount = mount_from_row(&memory, &store.mount_path());
+            mount.readonly = mount.readonly || !access.writable();
+            mounts.push(mount);
+        };
+        for (store, access) in config.stores() {
+            let memory = match store.scope {
+                MemoryStoreScope::Agent => match session.agent_id {
+                    Some(agent) => Some(
+                        self.ensure_owned(org_id, "agent", Some(agent), None)
+                            .await?,
+                    ),
+                    None => None,
+                },
+                MemoryStoreScope::User => match session.resolved_owner_user_id {
+                    Some(user) if !self.db.is_playground_session(session.id).await? => {
+                        Some(self.ensure_owned(org_id, "user", None, Some(user)).await?)
+                    }
+                    _ => None,
+                },
+                MemoryStoreScope::Org => {
+                    Some(ensure_shared_memory(&self.db, org_id, ORG_MEMORY_NAME).await?)
+                }
+                MemoryStoreScope::Team => match self.team_coordinator(session).await? {
+                    Some(agent) => {
+                        Some(self.ensure_owned(org_id, "team", Some(agent), None).await?)
+                    }
+                    None => None,
+                },
+                MemoryStoreScope::Parent => match self.parent_agent(session).await? {
+                    Some(agent) => self
+                        .db
+                        .get_memory_by_scope_owner(org_id, "agent", Some(agent), None)
+                        .await?
+                        .filter(|memory| memory.status == "active"),
+                    None => None,
+                },
+                MemoryStoreScope::Named => match store.name.as_deref() {
+                    Some(name) => Some(ensure_shared_memory(&self.db, org_id, name).await?),
+                    None => None,
+                },
+            };
+            if let Some(memory) = memory {
+                push(memory, &store, access);
+            }
+        }
+        Ok(())
+    }
+
+    async fn ensure_owned(
+        &self,
+        org_id: i64,
+        scope: &str,
+        owner_agent_id: Option<everruns_contracts::typed_id::AgentId>,
+        owner_user_id: Option<Uuid>,
+    ) -> Result<MemoryRow> {
+        ensure_owned_memory(&self.db, org_id, scope, owner_agent_id, owner_user_id).await
+    }
+
+    /// The agent that owns this session's team memory.
+    async fn team_coordinator(
+        &self,
+        session: &crate::storage::SessionRow,
+    ) -> Result<Option<everruns_contracts::typed_id::AgentId>> {
+        let Some(root) = self.team_folder_owner(session).await? else {
+            return Ok(None);
+        };
+        if root == session.id {
+            return Ok(session.agent_id);
+        }
+        Ok(self
+            .db
+            .get_session_unscoped(root)
+            .await?
+            .and_then(|row| row.agent_id))
+    }
+
+    /// The agent of the session that started this one.
+    async fn parent_agent(
+        &self,
+        session: &crate::storage::SessionRow,
+    ) -> Result<Option<everruns_contracts::typed_id::AgentId>> {
+        let Some(parent) = session.parent_session_id else {
+            return Ok(None);
+        };
+        Ok(self
+            .db
+            .get_session_unscoped(parent)
+            .await?
+            .and_then(|row| row.agent_id))
     }
 
     /// The first session of the run whose shared folder `session` sees.
@@ -465,6 +622,7 @@ impl MemoryMountRouter {
         content: &str,
     ) -> Result<bool> {
         self.ensure_writable(mount)?;
+        check_entry_write(&mount.mount_path, inner, content.as_bytes())?;
         if let Some(room) = mount.room {
             return match self
                 .write_room(room, inner, content.as_bytes(), Some(0))
@@ -488,6 +646,7 @@ impl MemoryMountRouter {
         content: Vec<u8>,
     ) -> Result<()> {
         self.ensure_writable(mount)?;
+        check_entry_write(&mount.mount_path, inner, &content)?;
         if let Some(room) = mount.room {
             return match self.write_room(room, inner, &content, None).await? {
                 RoomFileChange::Done(_) => Ok(()),
@@ -645,6 +804,78 @@ pub fn shared_memory_name_for_harness(harness_name: &str) -> Option<String> {
     }
 }
 
+/// `memories.name` of the organization's default memory, `/memory/org`.
+/// Reserved as a store name, so no named memory can take it.
+pub const ORG_MEMORY_NAME: &str = "org";
+
+/// The agent, user or team memory of one owner, created on first use. The
+/// loser of a creation race reads the winner's row.
+pub(crate) async fn ensure_owned_memory(
+    db: &StorageBackend,
+    org_id: i64,
+    scope: &str,
+    owner_agent_id: Option<everruns_contracts::typed_id::AgentId>,
+    owner_user_id: Option<Uuid>,
+) -> Result<MemoryRow> {
+    let find = || async {
+        Ok::<_, anyhow::Error>(
+            db.get_memory_by_scope_owner(org_id, scope, owner_agent_id, owner_user_id)
+                .await?
+                .filter(|memory| memory.status == "active"),
+        )
+    };
+    if let Some(memory) = find().await? {
+        return Ok(memory);
+    }
+    let owner = owner_agent_id
+        .map(|id| id.uuid().simple().to_string())
+        .or_else(|| owner_user_id.map(|id| id.simple().to_string()))
+        .unwrap_or_default();
+    let created = db
+        .create_memory(
+            org_id,
+            CreateMemoryRow {
+                public_id: everruns_contracts::typed_id::MemoryId::new().to_string(),
+                name: format!("{scope}-memory-{owner}"),
+                description: Some(format!("Server-managed {scope} memory.")),
+                scope: scope.to_string(),
+                owner_agent_id,
+                owner_user_id,
+                source_type: "manual".to_string(),
+                source_config: serde_json::json!({}),
+                is_readonly: false,
+                sync_status: "idle".to_string(),
+                owner_principal_id: None,
+                resolved_owner_user_id: None,
+            },
+        )
+        .await;
+    match created {
+        Ok(memory) => Ok(memory),
+        Err(error) => find().await?.ok_or(error),
+    }
+}
+
+/// Refuse an entry file that would not parse, so every entry in a store is
+/// one the engine can read (`everruns_core::builtins::agent_memory`).
+/// Only `/memory/<store>` mounts hold entries; other mounts are plain files.
+pub fn check_entry_write(mount_path: &str, inner: &str, content: &[u8]) -> Result<()> {
+    let Some(label) = mount_path.strip_prefix("/memory/") else {
+        return Ok(());
+    };
+    if entry_location(inner).is_none() {
+        return Ok(());
+    }
+    let Ok(store) = MemoryStoreKey::parse(label) else {
+        return Ok(());
+    };
+    let text = std::str::from_utf8(content)
+        .map_err(|_| anyhow!("{mount_path}{inner}: a memory entry is UTF-8 Markdown"))?;
+    parse_entry_file(&store, inner, text)
+        .map(|_| ())
+        .map_err(|error| anyhow!("not saved: {error}"))
+}
+
 /// Reserved `memories.name` of the Platform Chat shared memory.
 ///
 /// `UNIQUE(org_id, name)` on live rows is what makes a reserved name a
@@ -772,3 +1003,6 @@ mod tests {
         assert!(mount.child_segment_of("/notes").is_none());
     }
 }
+
+#[cfg(test)]
+mod v2_tests;

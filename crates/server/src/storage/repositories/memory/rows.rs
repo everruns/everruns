@@ -101,3 +101,14 @@ pub struct MemoryFileInfoRow {
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
+
+/// One kept version of a memory file (`memory_file_versions`).
+#[derive(Debug, Clone, FromRow, everruns_server_macros::Columns)]
+pub struct MemoryFileVersionRow {
+    pub path: String,
+    pub action: String,
+    pub content: Option<Vec<u8>>,
+    pub size_bytes: i64,
+    pub changed_by: Option<String>,
+    pub created_at: DateTime<Utc>,
+}

@@ -9769,8 +9769,8 @@
     ],
     "examples": [
       {
-        "intent": "Sync a docs repository into a workspace memory",
-        "command": "everruns memories create --name design-docs --description 'Living design documents' --source '{\"type\":\"github\",\"repository\":\"acme/design-docs\",\"branch\":\"main\",\"root_folder\":\"docs/\"}' --reason 'Give agents the design docs'"
+        "intent": "Create a named memory a coordinator and its workers share",
+        "command": "everruns memories create --name everruns-maintenance --description 'Decisions and rules for repository maintenance' --reason 'Housekeeping and Developer share decisions'"
       }
     ],
     "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
@@ -9801,6 +9801,33 @@
     ]
   },
   {
+    "wire_name": "list_memory_entries",
+    "path": [
+      "memories"
+    ],
+    "verb": "entries",
+    "description": "List a memory's typed entries: decisions, rules, facts, preferences, blocked items, notes and dreaming proposals.",
+    "method": "GET",
+    "http_path": "/v1/platform/memories/{memory_id}/entries",
+    "args": [
+      {
+        "field": "memory_id",
+        "long": "memory-id",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Memory's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Read what a team decided and what it is blocked on",
+        "command": "everruns memories entries mem_01h9"
+      }
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
+  },
+  {
     "wire_name": "get_memory",
     "path": [
       "memories"
@@ -9826,6 +9853,40 @@
       }
     ],
     "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
+  },
+  {
+    "wire_name": "memory_file_history",
+    "path": [
+      "memories"
+    ],
+    "verb": "history",
+    "description": "List the versions of a memory file, newest first; every write and delete is kept.",
+    "method": "GET",
+    "http_path": "/v1/platform/memories/{memory_id}/history",
+    "args": [
+      {
+        "field": "memory_id",
+        "long": "memory-id",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Memory's prefixed public identifier."
+      },
+      {
+        "field": "path",
+        "long": "path",
+        "kind": "string",
+        "required": false,
+        "help": "A path inside the memory (`/decisions/everruns-5528.md`)."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "See every version of one decision",
+        "command": "everruns memories history mem_01h9 --path /decisions/everruns-5528.md"
+      }
+    ],
+    "output": "a JSON array. Read the items with jq '.[]'."
   },
   {
     "wire_name": "list_memories",
@@ -9856,6 +9917,24 @@
       {
         "intent": "Find memories by name when you do not know the id",
         "command": "everruns memories list --search design"
+      }
+    ],
+    "output": "a JSON array. Read the items with jq '.[]'."
+  },
+  {
+    "wire_name": "list_memory_stores",
+    "path": [
+      "memories"
+    ],
+    "verb": "stores",
+    "description": "List the memory stores agents use: the organization's, named memories, team and agent memories, and your own private memory.",
+    "method": "GET",
+    "http_path": "/v1/platform/memory/stores",
+    "args": [],
+    "examples": [
+      {
+        "intent": "See which memories exist and how much each holds",
+        "command": "everruns memories stores"
       }
     ],
     "output": "a JSON array. Read the items with jq '.[]'."
