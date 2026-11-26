@@ -1,4 +1,4 @@
-import type { MemoryEntry, MemoryStoreView } from "@/lib/api/memory";
+import type { MemoryEntry, MemoryStoreView } from "@/lib/api/types";
 
 export function memoryStore(overrides: Partial<MemoryStoreView> = {}): MemoryStoreView {
   return {

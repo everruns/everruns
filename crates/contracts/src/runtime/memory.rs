@@ -1,5 +1,4 @@
-//! Memory: what an agent, a person or an org keeps across sessions
-//! (`knowledge/runtime-resources/memory.md`).
+//! Memory: what an agent, a person or an org keeps across sessions.
 //!
 //! Decisions:
 //! - One store per owner (an agent, a person, the org, a named memory several

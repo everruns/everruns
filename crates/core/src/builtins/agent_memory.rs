@@ -1,6 +1,6 @@
 //! Agent memory: the `agent_memory` capability and its engine.
 //!
-//! Memory is folders of files (`knowledge/runtime-resources/memory.md`).
+//! Memory is folders of files.
 //! Each store an agent uses is a directory at `/memory/<store>` in its
 //! session: `agent`, `user`, `org`, `team`, `parent`, or a named memory.
 //! Typed entries are Markdown files in kind folders
@@ -419,7 +419,10 @@ impl<'a> MemoryEngine<'a> {
                         lexical_score(&terms, entry.subject.as_deref(), &body)
                     };
                     if terms.is_empty() || score > 0.0 {
-                        hits.push(RecallHit::Entry { entry: Box::new(entry), score });
+                        hits.push(RecallHit::Entry {
+                            entry: Box::new(entry),
+                            score,
+                        });
                     }
                 } else if !terms.is_empty() {
                     let score = lexical_score(&terms, Some(&inner), &text);
@@ -679,7 +682,22 @@ fn entry_json(entry: &MemoryEntry) -> Value {
 const KIND_ENUM: [&str; 6] = ["decision", "rule", "fact", "preference", "blocked", "note"];
 
 macro_rules! memory_tool_basics {
-    ($name:literal, $display:literal) => {
+    ($name:literal, $display:literal, [$started:literal, $done:literal, $failed:literal]) => {
+        fn narrate(
+            &self,
+            _tool_call: &crate::builtins::tool_types::ToolCall,
+            phase: crate::builtins::tool_narration::ToolNarrationPhase,
+            _locale: Option<&str>,
+            _ctx: crate::builtins::tool_narration::ToolNarrationContext<'_>,
+        ) -> Option<String> {
+            use crate::builtins::tool_narration::ToolNarrationPhase as Phase;
+            let text = match phase {
+                Phase::Started | Phase::Waiting => $started,
+                Phase::Completed => $done,
+                Phase::Failed => $failed,
+            };
+            Some(text.to_string())
+        }
         fn name(&self) -> &str {
             $name
         }
@@ -697,7 +715,11 @@ pub struct RememberTool(Arc<AgentMemoryConfig>);
 
 #[async_trait]
 impl Tool for RememberTool {
-    memory_tool_basics!("remember", "Remember");
+    memory_tool_basics!(
+        "remember",
+        "Remember",
+        ["Remembering", "Remembered", "Could not remember"]
+    );
 
     fn description(&self) -> &str {
         "Keep something in durable memory for later sessions. One subject holds one current decision, rule, fact, preference or blocked item: remembering the same kind and subject again replaces it. Put the person's exact words in `quote`."
@@ -792,7 +814,15 @@ pub struct RecallTool(Arc<AgentMemoryConfig>);
 
 #[async_trait]
 impl Tool for RecallTool {
-    memory_tool_basics!("recall", "Recall");
+    memory_tool_basics!(
+        "recall",
+        "Recall",
+        [
+            "Searching memory",
+            "Searched memory",
+            "Could not search memory"
+        ]
+    );
 
     fn description(&self) -> &str {
         "Search durable memory by words: entries first, then matching lines of memory files. With no query, lists the newest entries."
@@ -905,7 +935,11 @@ pub struct ForgetTool(Arc<AgentMemoryConfig>);
 
 #[async_trait]
 impl Tool for ForgetTool {
-    memory_tool_basics!("forget", "Forget");
+    memory_tool_basics!(
+        "forget",
+        "Forget",
+        ["Forgetting", "Forgot", "Could not forget"]
+    );
 
     fn description(&self) -> &str {
         "Remove an entry or file from durable memory because it is wrong or no longer applies. Its earlier versions stay in the store's history. To change an entry, `remember` it again instead."
@@ -950,7 +984,15 @@ pub struct ResolveTool(Arc<AgentMemoryConfig>);
 
 #[async_trait]
 impl Tool for ResolveTool {
-    memory_tool_basics!("resolve", "Resolve");
+    memory_tool_basics!(
+        "resolve",
+        "Resolve",
+        [
+            "Resolving a blocked item",
+            "Resolved a blocked item",
+            "Could not resolve the blocked item"
+        ]
+    );
 
     fn description(&self) -> &str {
         "Mark a blocked item in memory as resolved, saying how it cleared."
@@ -997,7 +1039,15 @@ pub struct AcceptTool(Arc<AgentMemoryConfig>);
 
 #[async_trait]
 impl Tool for AcceptTool {
-    memory_tool_basics!("accept", "Accept proposal");
+    memory_tool_basics!(
+        "accept",
+        "Accept proposal",
+        [
+            "Accepting a proposal",
+            "Accepted a proposal",
+            "Could not accept the proposal"
+        ]
+    );
 
     fn description(&self) -> &str {
         "Accept a proposed memory entry (from /memory/<store>/proposals/) so it becomes current. Only when a person asked you to, or the entry is plainly right."

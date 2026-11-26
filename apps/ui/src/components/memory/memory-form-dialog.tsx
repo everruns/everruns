@@ -39,7 +39,7 @@ export function storeNameError(name: string): string | null {
 interface MemoryFormDialogProps {
   mode: MemoryFormMode;
   open: boolean;
-  memory?: Memory | null;
+  memory?: Pick<Memory, "id" | "name" | "description"> | null;
   isPending?: boolean;
   writable?: boolean;
   onOpenChange: (open: boolean) => void;

@@ -9,7 +9,6 @@ import {
   listMemoryEntries,
   listMemoryHistory,
   listMemoryStores,
-  syncMemoryNow,
   updateMemory,
 } from "@/lib/api/memory";
 import type {
@@ -90,18 +89,6 @@ export function useUpdateMemory() {
   return useMutation({
     mutationFn: ({ memoryId, data }: { memoryId: string; data: UpdateMemoryRequest }) =>
       updateMemory(memoryId, data),
-    onSuccess: (memory) => {
-      syncMemoryCache(queryClient, memory);
-      invalidateMemoryQueries(queryClient, memory.id);
-    },
-  });
-}
-
-export function useSyncMemory() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (memoryId: string) => syncMemoryNow(memoryId),
     onSuccess: (memory) => {
       syncMemoryCache(queryClient, memory);
       invalidateMemoryQueries(queryClient, memory.id);

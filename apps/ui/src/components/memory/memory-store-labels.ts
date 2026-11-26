@@ -1,6 +1,6 @@
 // Labels for memory stores, shared by the Memory list and detail pages.
 
-import type { MemoryEntry, MemoryEntryKind, MemoryStoreView } from "@/lib/api/memory";
+import type { MemoryEntry, MemoryEntryKind, MemoryStoreView } from "@/lib/api/types";
 
 export type MemoryStoreGroup = "shared" | "agents" | "yours";
 

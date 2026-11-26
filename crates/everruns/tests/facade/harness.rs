@@ -205,12 +205,21 @@ async fn conversation_preset_runs_a_minimal_framework_session() {
         .start()
         .await
         .unwrap();
-    // Conversation carries dialogue, approval and retained-history retrieval:
-    // no workspace, shell or web search.
+    // Conversation carries dialogue, approval, retained-history retrieval and
+    // durable memory: no workspace, shell or web search.
     let tools = session.inspect().await.unwrap().tools;
     assert!(
         tools.iter().all(|tool| tool.name.contains("approval")
-            || matches!(tool.name.as_str(), "ask_user" | "query_history")),
+            || matches!(
+                tool.name.as_str(),
+                "ask_user"
+                    | "query_history"
+                    | "remember"
+                    | "recall"
+                    | "forget"
+                    | "resolve"
+                    | "accept"
+            )),
         "unexpected tools: {tools:?}"
     );
     assert!(tools.iter().any(|tool| tool.name == "query_history"));

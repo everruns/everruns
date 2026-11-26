@@ -11,7 +11,6 @@ use everruns_core::tool_narration::{ToolNarrationContext, ToolNarrationPhase};
 
 const HOSTED_IDS: &[&str] = &[
     "research",
-    "memory",
     "background_execution",
     "session_schedule",
     "subagents",

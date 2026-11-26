@@ -44,7 +44,7 @@ import {
   useUpdateMemory,
 } from "@/hooks";
 import type { UpdateMemoryRequest } from "@/lib/api/types";
-import type { MemoryEntry, MemoryFileVersion } from "@/lib/api/memory";
+import type { MemoryEntry, MemoryFileVersion } from "@/lib/api/types";
 import { formatRelativeTime } from "@/lib/formatting";
 
 type Tab = "entries" | "history";

@@ -21159,6 +21159,65 @@
         }
       }
     },
+    "/v1/platform/memories/{memory_id}/entries": {
+      "get": {
+        "tags": [
+          "memory"
+        ],
+        "summary": "List memory entries",
+        "description": "List a memory's typed entries, newest first, and any entry files that do not parse.",
+        "operationId": "list_memory_entries",
+        "parameters": [
+          {
+            "name": "memory_id",
+            "in": "path",
+            "description": "Memory ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Entries",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryEntriesView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The memory holds no typed entries",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Memory not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "knowledge-memory",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/platform/memories/{memory_id}/fs": {
       "get": {
         "tags": [
@@ -21689,6 +21748,67 @@
         }
       }
     },
+    "/v1/platform/memories/{memory_id}/history": {
+      "get": {
+        "tags": [
+          "memory"
+        ],
+        "summary": "Memory file history",
+        "description": "List the kept versions of a memory's files, newest first; every write and delete is kept.",
+        "operationId": "memory_file_history",
+        "parameters": [
+          {
+            "name": "memory_id",
+            "in": "path",
+            "description": "Memory ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "path",
+            "in": "query",
+            "description": "One file's path (`/decisions/merges.md`); omit for every file.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Versions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListResponse_MemoryFileVersion"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Memory not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "knowledge-memory",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/platform/memories/{memory_id}/sync": {
       "post": {
         "tags": [
@@ -21735,6 +21855,34 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "knowledge-memory",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/platform/memory/stores": {
+      "get": {
+        "tags": [
+          "memory"
+        ],
+        "summary": "List memory stores",
+        "description": "List the memory stores agents use: the organization's, named memories, team and agent memories, and your own private memory.",
+        "operationId": "list_memory_stores",
+        "responses": {
+          "200": {
+            "description": "Memory stores",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListResponse_MemoryStoreView"
                 }
               }
             }
@@ -56932,6 +57080,22 @@
           }
         }
       },
+      "InvalidMemoryEntry": {
+        "type": "object",
+        "description": "An entry file that does not parse.",
+        "required": [
+          "path",
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          }
+        }
+      },
       "IssueFixOutcome": {
         "type": "object",
         "description": "The result of running a fixer.",
@@ -59590,7 +59754,7 @@
                 },
                 "scope": {
                   "type": "string",
-                  "description": "Ownership scope (`org`, `agent`, or `user`).",
+                  "description": "Ownership scope (`org`, `agent`, `team`, or `user`).",
                   "example": "org"
                 },
                 "source": {
@@ -59673,6 +59837,60 @@
           }
         }
       },
+      "ListResponse_MemoryFileVersion": {
+        "type": "object",
+        "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "description": "One version of a memory file.",
+              "required": [
+                "path",
+                "action",
+                "size_bytes",
+                "created_at"
+              ],
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "description": "`write` or `delete`."
+                },
+                "changed_by": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Who changed it, when known (`session:<id>`, `user:<id>`)."
+                },
+                "content": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "The text after the change; absent for a delete or a binary file."
+                },
+                "created_at": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "path": {
+                  "type": "string"
+                },
+                "size_bytes": {
+                  "type": "integer",
+                  "format": "int64"
+                }
+              }
+            },
+            "description": "Array of items returned by the list operation."
+          }
+        }
+      },
       "ListResponse_MemoryGrepResult": {
         "type": "object",
         "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
@@ -59697,6 +59915,88 @@
                   "format": "int64"
                 }
               }
+            },
+            "description": "Array of items returned by the list operation."
+          }
+        }
+      },
+      "ListResponse_MemoryStoreView": {
+        "type": "object",
+        "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Memory"
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "store",
+                    "mount_path",
+                    "about",
+                    "entry_count",
+                    "file_count",
+                    "blocked_count",
+                    "proposal_count",
+                    "last_changed_at"
+                  ],
+                  "properties": {
+                    "about": {
+                      "type": "string",
+                      "description": "Who it belongs to, in a sentence."
+                    },
+                    "blocked_count": {
+                      "type": "integer",
+                      "description": "Open blocked items.",
+                      "minimum": 0
+                    },
+                    "entry_count": {
+                      "type": "integer",
+                      "description": "Typed entries (files in kind folders, proposals included).",
+                      "minimum": 0
+                    },
+                    "file_count": {
+                      "type": "integer",
+                      "description": "Every file, entries included.",
+                      "minimum": 0
+                    },
+                    "last_changed_at": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "When any file last changed; the store's creation when it has none."
+                    },
+                    "mount_path": {
+                      "type": "string",
+                      "description": "Where it hangs in a session of an agent that uses it.",
+                      "example": "/memory/team"
+                    },
+                    "owner_name": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "The owning agent's name, for an agent or team memory."
+                    },
+                    "proposal_count": {
+                      "type": "integer",
+                      "description": "Dreaming proposals waiting to be accepted.",
+                      "minimum": 0
+                    },
+                    "store": {
+                      "type": "string",
+                      "description": "How agents name it: `agent`, `user`, `org`, `team`, or the memory's\nname.",
+                      "example": "team"
+                    }
+                  }
+                }
+              ],
+              "description": "One store, as the console lists it."
             },
             "description": "Array of items returned by the list operation."
           }
@@ -64015,7 +64315,7 @@
           },
           "scope": {
             "type": "string",
-            "description": "Ownership scope (`org`, `agent`, or `user`).",
+            "description": "Ownership scope (`org`, `agent`, `team`, or `user`).",
             "example": "org"
           },
           "source": {
@@ -64044,6 +64344,125 @@
             "example": "2026-05-25T08:00:00Z"
           }
         }
+      },
+      "MemoryEntriesView": {
+        "type": "object",
+        "description": "A store's entries.",
+        "required": [
+          "store",
+          "entries",
+          "invalid"
+        ],
+        "properties": {
+          "entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MemoryEntry"
+            },
+            "description": "Newest first."
+          },
+          "invalid": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InvalidMemoryEntry"
+            }
+          },
+          "store": {
+            "type": "string"
+          }
+        }
+      },
+      "MemoryEntry": {
+        "type": "object",
+        "description": "A recorded entry: one file in an entry folder of a store.",
+        "required": [
+          "store",
+          "path",
+          "kind",
+          "statement",
+          "occurred_at",
+          "recorded_at",
+          "recorded_by"
+        ],
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/MemoryEntryKind"
+          },
+          "occurred_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "path": {
+            "type": "string",
+            "description": "Path inside the store (`/decisions/everruns-5528.md`)."
+          },
+          "proposed": {
+            "type": "boolean",
+            "description": "A dreaming proposal in a shared store, waiting to be accepted."
+          },
+          "quote": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "recorded_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "recorded_by": {
+            "type": "string",
+            "description": "Who recorded it: `agent:<id>`, `user:<id>`, `session:<id>`,\n`dreaming`, `person`."
+          },
+          "resolution": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "resolved_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Set when a blocked item was resolved."
+          },
+          "source": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/MemorySource"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "statement": {
+            "type": "string"
+          },
+          "store": {
+            "$ref": "#/components/schemas/MemoryStoreKey"
+          },
+          "subject": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "MemoryEntryKind": {
+        "type": "string",
+        "description": "What an entry is.",
+        "enum": [
+          "decision",
+          "rule",
+          "fact",
+          "preference",
+          "blocked",
+          "note"
+        ]
       },
       "MemoryFile": {
         "type": "object",
@@ -64123,6 +64542,47 @@
           }
         }
       },
+      "MemoryFileVersion": {
+        "type": "object",
+        "description": "One version of a memory file.",
+        "required": [
+          "path",
+          "action",
+          "size_bytes",
+          "created_at"
+        ],
+        "properties": {
+          "action": {
+            "type": "string",
+            "description": "`write` or `delete`."
+          },
+          "changed_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Who changed it, when known (`session:<id>`, `user:<id>`)."
+          },
+          "content": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The text after the change; absent for a delete or a binary file."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "path": {
+            "type": "string"
+          },
+          "size_bytes": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
       "MemoryGrepResult": {
         "type": "object",
         "required": [
@@ -64136,6 +64596,33 @@
           "size_bytes": {
             "type": "integer",
             "format": "int64"
+          }
+        }
+      },
+      "MemorySource": {
+        "type": "object",
+        "description": "Where an entry's words came from.",
+        "required": [
+          "kind"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "description": "`message`, `slack`, `github`, `session`, `file`, `tool`, `api`,\n`person` or `dreaming`."
+          },
+          "reference": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The source's own id: a message id, `owner/repo#123`, a file path."
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A link a person can open."
           }
         }
       },
@@ -64206,6 +64693,105 @@
           }
         ],
         "description": "Response body for memory source."
+      },
+      "MemoryStoreKey": {
+        "type": "object",
+        "description": "Which store: a scope, plus the name for a named memory.",
+        "required": [
+          "scope"
+        ],
+        "properties": {
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "scope": {
+            "$ref": "#/components/schemas/MemoryStoreScope"
+          }
+        }
+      },
+      "MemoryStoreScope": {
+        "type": "string",
+        "description": "Whose memory.",
+        "enum": [
+          "agent",
+          "user",
+          "org",
+          "team",
+          "parent",
+          "named"
+        ]
+      },
+      "MemoryStoreView": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Memory"
+          },
+          {
+            "type": "object",
+            "required": [
+              "store",
+              "mount_path",
+              "about",
+              "entry_count",
+              "file_count",
+              "blocked_count",
+              "proposal_count",
+              "last_changed_at"
+            ],
+            "properties": {
+              "about": {
+                "type": "string",
+                "description": "Who it belongs to, in a sentence."
+              },
+              "blocked_count": {
+                "type": "integer",
+                "description": "Open blocked items.",
+                "minimum": 0
+              },
+              "entry_count": {
+                "type": "integer",
+                "description": "Typed entries (files in kind folders, proposals included).",
+                "minimum": 0
+              },
+              "file_count": {
+                "type": "integer",
+                "description": "Every file, entries included.",
+                "minimum": 0
+              },
+              "last_changed_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "When any file last changed; the store's creation when it has none."
+              },
+              "mount_path": {
+                "type": "string",
+                "description": "Where it hangs in a session of an agent that uses it.",
+                "example": "/memory/team"
+              },
+              "owner_name": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "The owning agent's name, for an agent or team memory."
+              },
+              "proposal_count": {
+                "type": "integer",
+                "description": "Dreaming proposals waiting to be accepted.",
+                "minimum": 0
+              },
+              "store": {
+                "type": "string",
+                "description": "How agents name it: `agent`, `user`, `org`, `team`, or the memory's\nname.",
+                "example": "team"
+              }
+            }
+          }
+        ],
+        "description": "One store, as the console lists it."
       },
       "Message": {
         "type": "object",
@@ -91510,7 +92096,7 @@
     },
     {
       "name": "memory",
-      "description": "Org-scoped named Memory management endpoints",
+      "description": "Memory stores, their typed entries, files and kept versions",
       "x-displayName": "Memory"
     },
     {

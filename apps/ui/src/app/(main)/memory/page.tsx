@@ -31,7 +31,7 @@ import {
 } from "@/components/layout";
 import { useCreateMemory, useMemoryStores, usePageTitle } from "@/hooks";
 import type { CreateMemoryRequest } from "@/lib/api/types";
-import type { MemoryStoreView } from "@/lib/api/memory";
+import type { MemoryStoreView } from "@/lib/api/types";
 import { formatRelativeTime } from "@/lib/formatting";
 import {
   memoryStoreGroup,
