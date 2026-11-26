@@ -181,6 +181,8 @@ everruns sessions cancel [OPTIONS] [SESSION]
 |---|---|
 | `--session <SESSION_ID>` | Session's prefixed public identifier. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -220,6 +222,8 @@ everruns sessions fork [OPTIONS] [SESSION]
 | `--session <SESSION_ID>` | Session to fork (prefixed public id). |
 | `--overrides <OVERRIDES>` | Request to fork a session. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -239,6 +243,8 @@ everruns sessions get [OPTIONS] [SESSION]
 |---|---|
 | `--session <SESSION_ID>` | Session's prefixed public identifier. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -257,6 +263,8 @@ everruns sessions context [OPTIONS] [SESSION]
 | Flag | Description |
 |---|---|
 | `--session <SESSION_ID>` | Session's prefixed public identifier. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -288,6 +296,8 @@ everruns sessions facets [OPTIONS]
 | `--source <SOURCE>` | Comma-separated sources (`chat`, `api`, `slack`, `ag_ui`, `fcp`, `schedule`, `webhook`, `a2a`... |
 | `--status <STATUS>` | Comma-separated derived activities (`running`, `paused`, `failed`, `completed`, `idle`). |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -302,6 +312,8 @@ Get session counts by status.
 ```bash
 everruns sessions stats [OPTIONS]
 ```
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -334,6 +346,8 @@ everruns sessions list [OPTIONS]
 | `--side-chats-only` | Exclude the permanent Chat from side-conversation pagination. |
 | `--source <SOURCE>` | Comma-separated sources (`chat`, `api`, `slack`, `ag_ui`, `fcp`, `schedule`, `webhook`, `a2a`... |
 | `--status <STATUS>` | Comma-separated derived activities (`running`, `paused`, `failed`, `completed`, `idle`). |
+
+Output: one page as {data, total, offset, limit}. Read the items with jq '.data[]'; page with --offset and --limit.
 
 Example:
 
@@ -372,6 +386,8 @@ everruns sessions resume [OPTIONS] [SESSION_ID]
 | Flag | Description |
 |---|---|
 | `--session-id <SESSION_ID>` | Session's prefixed public identifier. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -435,6 +451,8 @@ everruns sessions update [OPTIONS] [SESSION]
 | `--tags <TAGS>` | Tags for organizing and filtering sessions. Comma-separated or a JSON array of strings. Repeatable. |
 | `--title <TITLE>` | Human-readable title for the session. |
 | `--virtual-user-id <VIRTUAL_USER_ID>` | Optional resident virtual user used for unattended/background execution. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -500,6 +518,8 @@ everruns sessions approval-mode get [OPTIONS] --session-id <session_id>
 |---|---|
 | `--session-id <SESSION_ID>` | Required. Session's prefixed public identifier. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -520,6 +540,8 @@ everruns sessions approval-mode set [OPTIONS] --session-id <session_id>
 | `--mode <MODE>` | `off`, `auto`, `normal` or `protective`; `null` clears the switch so the session follows the ... |
 | `--session-id <SESSION_ID>` | Required. Session's prefixed public identifier. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -538,6 +560,8 @@ everruns sessions budget-check check [OPTIONS] [SESSION_ID]
 | Flag | Description |
 |---|---|
 | `--session-id <SESSION_ID>` | Session's prefixed public identifier. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -558,6 +582,8 @@ everruns sessions budgets list [OPTIONS] [SESSION_ID]
 |---|---|
 | `--session-id <SESSION_ID>` | Session's prefixed public identifier. |
 
+Output: a JSON array. Read the items with jq '.[]'.
+
 Example:
 
 ```bash
@@ -576,6 +602,8 @@ everruns sessions cost get [OPTIONS] [SESSION_ID]
 | Flag | Description |
 |---|---|
 | `--session-id <SESSION_ID>` | Session's prefixed public identifier (a path parameter). |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -597,6 +625,8 @@ everruns sessions databases create [OPTIONS] --name <name> --session-id <session
 | `--name <NAME>` | Required. Human-readable name. |
 | `--session-id <SESSION_ID>` | Required. Session's prefixed public identifier. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -616,6 +646,8 @@ everruns sessions databases delete [OPTIONS] --name <name> --session-id <session
 |---|---|
 | `--name <NAME>` | Required. Human-readable name. |
 | `--session-id <SESSION_ID>` | Required. Session's prefixed public identifier. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -637,6 +669,8 @@ everruns sessions databases get [OPTIONS] --name <name> --session-id <session_id
 | `--name <NAME>` | Required. Human-readable name. |
 | `--session-id <SESSION_ID>` | Required. Session's prefixed public identifier. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -655,6 +689,8 @@ everruns sessions databases list [OPTIONS] [SESSION_ID]
 | Flag | Description |
 |---|---|
 | `--session-id <SESSION_ID>` | Session's prefixed public identifier. |
+
+Output: a JSON array. Read the items with jq '.[]'.
 
 Example:
 
@@ -675,6 +711,8 @@ everruns sessions databases schema get [OPTIONS] --name <name> --session-id <ses
 |---|---|
 | `--name <NAME>` | Required. Human-readable name. |
 | `--session-id <SESSION_ID>` | Required. Session's prefixed public identifier. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -712,6 +750,8 @@ everruns sessions events list [OPTIONS] [SESSION_ID]
 | `--types <TYPES>` | Only these event types, e.g. Comma-separated or a JSON array of strings. Repeatable. |
 | `--window <WINDOW>` | Window size for `around` (events on each side). |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -733,6 +773,8 @@ everruns sessions events summary events [OPTIONS] [SESSION_ID]
 | Flag | Description |
 |---|---|
 | `--session-id <SESSION_ID>` | Session's prefixed public identifier. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -758,6 +800,8 @@ everruns sessions fs create [OPTIONS] --path <path> --session-id <session_id>
 | `--path <PATH>` | Required. Path in the session filesystem (relative to the filesystem root). |
 | `--session-id <SESSION_ID>` | Required. Session's prefixed public identifier. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -778,6 +822,8 @@ everruns sessions fs delete [OPTIONS] --path <path> --session-id <session_id>
 | `--path <PATH>` | Required. Path in the session filesystem (relative to the filesystem root). |
 | `--recursive` | Delete a directory and everything under it. |
 | `--session-id <SESSION_ID>` | Required. Session's prefixed public identifier. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -800,6 +846,8 @@ everruns sessions fs get [OPTIONS] --path <path> --session-id <session_id>
 | `--recursive` | List nested entries recursively when the path is a directory. |
 | `--session-id <SESSION_ID>` | Required. Session's prefixed public identifier. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -819,6 +867,8 @@ everruns sessions fs list [OPTIONS] [SESSION_ID]
 |---|---|
 | `--session-id <SESSION_ID>` | Session's prefixed public identifier. |
 | `--recursive` | List nested entries recursively, not just the top level. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -845,6 +895,8 @@ everruns sessions fs update [OPTIONS] --path <path> --session-id <session_id>
 | `--path <PATH>` | Required. Path in the session filesystem (relative to the filesystem root). |
 | `--session-id <SESSION_ID>` | Required. Session's prefixed public identifier. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -865,6 +917,8 @@ everruns sessions fs - copy [OPTIONS] --dst-path <dst_path> --session-id <sessio
 | `--dst-path <DST_PATH>` | Required. Destination path (relative to the workspace filesystem root). |
 | `--session-id <SESSION_ID>` | Required. Session's prefixed public identifier. |
 | `--src-path <SRC_PATH>` | Required. Source path (relative to the workspace filesystem root). |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -887,6 +941,8 @@ everruns sessions fs - grep [OPTIONS] --pattern <pattern> --session-id <session_
 | `--pattern <PATTERN>` | Required. Regex pattern to search for. |
 | `--session-id <SESSION_ID>` | Required. Session's prefixed public identifier. |
 
+Output: a JSON array. Read the items with jq '.[]'.
+
 Example:
 
 ```bash
@@ -907,6 +963,8 @@ everruns sessions fs - move [OPTIONS] --dst-path <dst_path> --session-id <sessio
 | `--dst-path <DST_PATH>` | Required. Destination path (relative to the workspace filesystem root). |
 | `--session-id <SESSION_ID>` | Required. Session's prefixed public identifier. |
 | `--src-path <SRC_PATH>` | Required. Source path (relative to the workspace filesystem root). |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -934,6 +992,8 @@ everruns sessions fs - search [OPTIONS] --pattern <pattern> --session-id <sessio
 | `--pattern <PATTERN>` | Required. Regular expression to match against file contents. |
 | `--session-id <SESSION_ID>` | Required. Session's prefixed public identifier. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -954,6 +1014,8 @@ everruns sessions fs - stat [OPTIONS] --path <path> --session-id <session_id>
 | `--path <PATH>` | Required. Path to the file or directory (relative to the workspace filesystem root). |
 | `--session-id <SESSION_ID>` | Required. Session's prefixed public identifier. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -972,6 +1034,8 @@ everruns sessions mcp-servers list [OPTIONS] [SESSION_ID]
 | Flag | Description |
 |---|---|
 | `--session-id <SESSION_ID>` | Session's prefixed public identifier. |
+
+Output: a JSON array. Read the items with jq '.[]'.
 
 Example:
 
@@ -1014,6 +1078,8 @@ everruns sessions messages react [OPTIONS] [SESSION] [MESSAGE_ID] [EMOJI]
 | `--message-id <MESSAGE_ID>` | Message to react to (`message_...`), a user or agent message of the session. |
 | `--emoji <EMOJI>` | One emoji, or a custom emoji as `:name:`. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -1041,6 +1107,8 @@ everruns sessions messages create [OPTIONS] --message <message> --session-id <se
 | `--session-id <SESSION_ID>` | Required. Session's prefixed public identifier. |
 | `--tags <TAGS>` | Free-form tags attached to this resource. Comma-separated or a JSON array of strings. Repeatable. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -1059,6 +1127,8 @@ everruns sessions messages ratings [OPTIONS] [SESSION]
 | Flag | Description |
 |---|---|
 | `--session <SESSION_ID>` | Session's prefixed public identifier. |
+
+Output: a JSON array. Read the items with jq '.[]'.
 
 Example:
 
@@ -1080,6 +1150,8 @@ everruns sessions messages reactions [OPTIONS] [SESSION]
 | `--session <SESSION_ID>` | Session's prefixed public identifier. |
 | `--message-id <MESSAGE_ID>` | Only this message's reactions. |
 
+Output: a JSON array. Read the items with jq '.[]'.
+
 Example:
 
 ```bash
@@ -1099,6 +1171,8 @@ everruns sessions messages list [OPTIONS] [SESSION_ID]
 |---|---|
 | `--session-id <SESSION_ID>` | Session's prefixed public identifier. |
 | `--limit <LIMIT>` | Maximum number of items returned in this page. |
+
+Output: a JSON array. Read the items with jq '.[]'.
 
 Example:
 
@@ -1120,6 +1194,8 @@ everruns sessions messages unreact [OPTIONS] [SESSION] [MESSAGE_ID] [EMOJI]
 | `--session <SESSION_ID>` | Session's prefixed public identifier. |
 | `--message-id <MESSAGE_ID>` | Message the reaction is on (`message_...`). |
 | `--emoji <EMOJI>` | The emoji to take off. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -1143,6 +1219,8 @@ everruns sessions messages rate [OPTIONS] [SESSION] [MESSAGE_ID]
 | `--comment <COMMENT>` | Optional note on what was good or bad. |
 | `--rating <RATING>` |  |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -1165,6 +1243,8 @@ everruns sessions participants add [OPTIONS] --kind <kind> --session <session_id
 | `--role <ROLE>` |  |
 | `--session <SESSION_ID>` | Required. Session that receives the participant. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -1185,6 +1265,8 @@ everruns sessions participants leave [OPTIONS] --participant-id <participant_id>
 | `--participant-id <PARTICIPANT_ID>` | Required. Participant row to mark as left. |
 | `--session <SESSION_ID>` | Required. Session that owns the participant. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -1204,6 +1286,8 @@ everruns sessions participants list [OPTIONS] --session <session_id>
 |---|---|
 | `--session <SESSION_ID>` | Required. Session whose participant history should be returned. |
 
+Output: a JSON array. Read the items with jq '.[]'.
+
 Example:
 
 ```bash
@@ -1218,6 +1302,8 @@ Open the current user's permanent platform conversation.
 ```bash
 everruns sessions platform-chat ensure [OPTIONS]
 ```
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -1238,6 +1324,8 @@ everruns sessions repositories get [OPTIONS] [SESSION_ID]
 |---|---|
 | `--session-id <SESSION_ID>` | Session's prefixed public identifier. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -1256,6 +1344,8 @@ everruns sessions resources list [OPTIONS] [SESSION_ID]
 | Flag | Description |
 |---|---|
 | `--session-id <SESSION_ID>` | Session's prefixed public identifier. |
+
+Output: a JSON array. Read the items with jq '.[]'.
 
 Example:
 
@@ -1276,6 +1366,8 @@ everruns sessions run get [OPTIONS] [SESSION_ID]
 |---|---|
 | `--session-id <SESSION_ID>` | Session's prefixed public identifier (a path parameter). |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -1294,6 +1386,8 @@ everruns sessions sandbox get [OPTIONS] [SESSION_ID]
 | Flag | Description |
 |---|---|
 | `--session-id <SESSION_ID>` | Session's prefixed public identifier. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -1314,6 +1408,8 @@ everruns sessions sandbox manage [OPTIONS] --action <action> --session-id <sessi
 |---|---|
 | `--action <ACTION>` | Required. Operator action to take against a session's managed sandbox. One of `pause`, `resume`, `delete`. |
 | `--session-id <SESSION_ID>` | Required. Session's prefixed public identifier. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -1374,6 +1470,8 @@ everruns sessions storage secrets batch [OPTIONS] --secrets <secrets> --session-
 | `--secrets <SECRETS>` | Required. Secret values keyed by name, e.g. |
 | `--session-id <SESSION_ID>` | Required. Session's prefixed public identifier. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -1433,6 +1531,8 @@ everruns sessions tasks cancel [OPTIONS] --session-id <session_id> --task-id <ta
 | `--session-id <SESSION_ID>` | Required. Session's prefixed public identifier. |
 | `--task-id <TASK_ID>` | Required. Task's prefixed public identifier. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -1455,6 +1555,8 @@ everruns sessions tasks get [OPTIONS] --session-id <session_id> --task-id <task_
 | `--session-id <SESSION_ID>` | Required. Session's prefixed public identifier. |
 | `--task-id <TASK_ID>` | Required. Task's prefixed public identifier. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -1475,6 +1577,8 @@ everruns sessions tasks list [OPTIONS] [SESSION_ID]
 | `--session-id <SESSION_ID>` | Session's prefixed public identifier. |
 | `--kind <KIND>` | Optional kind filter (subagent, external_agent, background_tool, ...). |
 | `--state <STATE>` | Optional state filter (queued, running, awaiting_input, succeeded, failed, canceled). |
+
+Output: a JSON array. Read the items with jq '.[]'.
 
 Example:
 
@@ -1499,6 +1603,8 @@ everruns sessions tasks messages post [OPTIONS] --session-id <session_id> --task
 | `--task-id <TASK_ID>` | Required. Task's prefixed public identifier. |
 | `--text <TEXT>` | Plain-text message (alternative to `content`). |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -1521,6 +1627,8 @@ everruns sessions tasks push-configs create [OPTIONS] --session-id <session_id> 
 | `--session-id <SESSION_ID>` | Required. Session's prefixed public identifier. |
 | `--task-id <TASK_ID>` | Required. Task's prefixed public identifier. |
 | `--url <URL>` | Required. URL to POST task events to. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -1563,6 +1671,8 @@ everruns sessions tasks push-configs list [OPTIONS] --session-id <session_id> --
 | `--session-id <SESSION_ID>` | Required. Session's prefixed public identifier. |
 | `--task-id <TASK_ID>` | Required. Task's prefixed public identifier. |
 
+Output: a JSON array. Read the items with jq '.[]'.
+
 Example:
 
 ```bash
@@ -1583,6 +1693,8 @@ everruns sessions tool-results submit [OPTIONS] --tool-results <tool_results> [S
 | `--session-id <SESSION_ID>` | Session's prefixed public identifier. |
 | `--tool-results <TOOL_RESULTS>` | Required. Results for the pending client-side tool calls, one entry per `tool_call_id`. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -1602,6 +1714,8 @@ everruns sessions trace get [OPTIONS] --session-id <session_id>
 |---|---|
 | `--buckets <BUCKETS>` | Minimap buckets wanted, 1 to 500. |
 | `--session-id <SESSION_ID>` | Required. Session's prefixed public identifier (a path parameter). |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -1627,6 +1741,8 @@ everruns sessions trace turns list [OPTIONS] --session-id <session_id>
 | `--sequence <SEQUENCE>` | Turns centered on the turn holding this event sequence. |
 | `--session-id <SESSION_ID>` | Required. Session's prefixed public identifier (a path parameter). |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -1649,6 +1765,8 @@ everruns sessions trace turns events list [OPTIONS] --session-id <session_id> --
 | `--session-id <SESSION_ID>` | Required. Session's prefixed public identifier (a path parameter). |
 | `--turn <TURN>` | Required. Turn number (a path parameter). |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -1668,6 +1786,8 @@ everruns sessions trace turns input get [OPTIONS] --session-id <session_id> --tu
 |---|---|
 | `--session-id <SESSION_ID>` | Required. Session's prefixed public identifier. |
 | `--turn <TURN>` | Required. Turn number. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -1690,6 +1810,8 @@ everruns sessions trace turns steps get [OPTIONS] --session-id <session_id> --st
 | `--session-id <SESSION_ID>` | Required. Session's prefixed public identifier (a path parameter). |
 | `--step <STEP>` | Required. Step number within the turn (a path parameter). |
 | `--turn <TURN>` | Required. Turn number (a path parameter). |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -1714,6 +1836,8 @@ everruns sessions trace turns steps list [OPTIONS] --session-id <session_id> --t
 | `--session-id <SESSION_ID>` | Required. Session's prefixed public identifier (a path parameter). |
 | `--to-step <TO_STEP>` | Last step of the range, inclusive. |
 | `--turn <TURN>` | Required. Turn number (a path parameter). |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -1741,6 +1865,8 @@ everruns sessions trace turns steps request list [OPTIONS] --session-id <session
 | `--step <STEP>` | Required. Step number of a model call (a path parameter). |
 | `--turn <TURN>` | Required. Turn number (a path parameter). |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -1760,6 +1886,8 @@ everruns sessions work get [OPTIONS] [SESSION_ID]
 |---|---|
 | `--session-id <SESSION_ID>` | Session's prefixed public identifier. |
 | `--turn-id <TURN_ID>` | Turn to report on. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 

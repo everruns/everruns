@@ -285,7 +285,7 @@ impl Command for AdoptAgentExample {
             max_iterations: None,
             parallel_tool_calls: None,
             max_output_tokens: None,
-            communication: Default::default(),
+            communication: seed.communication,
         };
 
         // Composed under this command's own policy (the same AGENT_MANAGE) and

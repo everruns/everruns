@@ -28,6 +28,8 @@ everruns users list [OPTIONS]
 |---|---|
 | `--search <SEARCH>` | Only users whose name or email matches this text. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -48,6 +50,8 @@ everruns users me update [OPTIONS] --id <id> --name <name>
 | `--id <ID>` | Required. |
 | `--name <NAME>` | Required. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -66,6 +70,8 @@ everruns users profile get [OPTIONS] --id <id>
 | Flag | Description |
 |---|---|
 | `--id <ID>` | Required. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 

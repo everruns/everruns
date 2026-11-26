@@ -423,3 +423,29 @@ fn files_are_omitted_from_a_text_only_message() {
     let serialized = serde_json::to_value(&sent).unwrap();
     assert!(serialized.get("files").is_none(), "{serialized}");
 }
+
+#[tokio::test]
+async fn message_is_the_field_and_text_still_reads_as_it() {
+    let schema = SendMessageTool.parameters_schema();
+    assert_eq!(schema["required"], json!(["message"]));
+    assert!(schema["properties"]["message"].is_object());
+
+    for args in [json!({"message": "hi"}), json!({"text": "hi"})] {
+        let sender = RecordingSender::new(Outcome::Delivered);
+        let ctx = context(Some(sender.clone()));
+        let ToolExecutionResult::Success(result) = send(args.clone(), &ctx).await else {
+            panic!("send failed for {args}");
+        };
+        assert_eq!(sender.sends.lock().unwrap()[0].0, "hi");
+        let sent = sent_message(SEND_MESSAGE_TOOL_NAME, "call-1", &args, Some(&result)).unwrap();
+        assert_eq!(sent.text, "hi");
+    }
+    // Both at once is ambiguous, so it is refused rather than guessed.
+    let ctx = context(Some(RecordingSender::new(Outcome::Delivered)));
+    assert!(matches!(
+        send(json!({"message": "a", "text": "b"}), &ctx).await,
+        ToolExecutionResult::ToolError(_)
+    ));
+    assert_eq!(send_message_text(&json!({"message": "m"})), Some("m"));
+    assert_eq!(send_message_text(&json!({"text": "t"})), Some("t"));
+}

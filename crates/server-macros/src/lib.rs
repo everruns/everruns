@@ -258,6 +258,27 @@ fn element_type(output: &Type, wrapper: &str) -> syn::Result<Type> {
     ))
 }
 
+/// The jq-oriented shape of a command's output type: `array` for `Vec<T>`,
+/// `paginated` for `Paginated<T>` (`{data, total, offset, limit}`), `object`
+/// for a named struct, and `unknown` for anything whose JSON root is not fixed
+/// by its type (`Value`, `Option<T>`, scalars).
+fn output_shape_of(output: &Type) -> &'static str {
+    let Type::Path(path) = output else {
+        return "unknown";
+    };
+    let Some(last) = path.path.segments.last() else {
+        return "unknown";
+    };
+    match last.ident.to_string().as_str() {
+        "Vec" => "array",
+        "Paginated" => "paginated",
+        "Value" | "Option" | "bool" | "String" | "i64" | "u64" | "i32" | "u32" | "usize" => {
+            "unknown"
+        }
+        _ => "object",
+    }
+}
+
 fn expand(args: CommandArgs, mut item: ItemImpl) -> syn::Result<TokenStream2> {
     let Some((trait_path, _)) = &item.trait_ else {
         return Err(syn::Error::new(
@@ -349,6 +370,17 @@ fn expand(args: CommandArgs, mut item: ItemImpl) -> syn::Result<TokenStream2> {
             fn cli() -> ::core::option::Option<crate::domains::common::CliRoute> {
                 const ROUTE: crate::domains::common::CliRoute = #cli;
                 ::core::option::Option::Some(ROUTE)
+            }
+        });
+    }
+    // The jq shape follows from the declared output type, so a script can
+    // rely on it without the command remembering to say. A hand-written
+    // `output_shape` still wins.
+    if !defined.iter().any(|d| d == "output_shape") {
+        let shape = output_shape_of(&output);
+        generated.push(syn::parse_quote! {
+            fn output_shape() -> &'static str {
+                #shape
             }
         });
     }

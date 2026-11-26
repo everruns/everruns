@@ -24,6 +24,8 @@ Health check endpoint.
 everruns system health [OPTIONS]
 ```
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -44,6 +46,8 @@ everruns system detections [OPTIONS]
 | `--limit <LIMIT>` | Page size from 1 through 100; defaults to 20. |
 | `--offset <OFFSET>` | Number of detections to skip; defaults to zero. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -62,6 +66,8 @@ everruns system doctor [OPTIONS]
 | Flag | Description |
 |---|---|
 | `--refresh` | Run every check now instead of returning the report from the last minute. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 

@@ -370,6 +370,7 @@ fn output_shape_hints() -> Value {
     json!({
         "array": "Root JSON value is an array. Use jq '.[]'.",
         "paginated": "Root JSON value is an object with data/total/offset/limit. Use jq '.data[]'.",
+        "object": "Root JSON value is one object. Read its fields, such as jq '.id'; nested settings stay nested (a trigger's target is .config.target).",
         "unknown": "Inspect output_schema or run a small sample before choosing a jq path."
     })
 }

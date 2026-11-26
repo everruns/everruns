@@ -33,6 +33,8 @@ everruns plugins get [OPTIONS] [ID]
 |---|---|
 | `--id <ID>` | Public plugin ID (`plugin_<32-hex>`). |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -53,6 +55,8 @@ everruns plugins install [OPTIONS] --marketplace-id <marketplace_id> --plugin-na
 | `--marketplace-id <MARKETPLACE_ID>` | Required. Public ID of the marketplace to install from. |
 | `--plugin-name <PLUGIN_NAME>` | Required. Name of the plugin entry in the marketplace catalog. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -71,6 +75,8 @@ everruns plugins list [OPTIONS]
 | Flag | Description |
 |---|---|
 | `--search <SEARCH>` | Only plugins whose name matches this text. |
+
+Output: a JSON array. Read the items with jq '.[]'.
 
 Example:
 
@@ -92,6 +98,8 @@ everruns plugins patch [OPTIONS] [ID]
 | `--id <ID>` | Public plugin ID. |
 | `--mcp-server-identities <MCP_SERVER_IDENTITIES>` | Explicit acting-identity choices for legacy authenticated MCP servers. Only `user` and `servi... |
 | `--status <STATUS>` | New lifecycle status: `active` or `disabled`. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -131,6 +139,8 @@ everruns plugins update [OPTIONS] [ID]
 |---|---|
 | `--id <ID>` | Public plugin ID. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -145,6 +155,8 @@ List the organization's approved plugins with your own choices: added for yourse
 ```bash
 everruns plugins mine list [OPTIONS]
 ```
+
+Output: a JSON array. Read the items with jq '.[]'.
 
 Example:
 
@@ -165,6 +177,8 @@ everruns plugins mine set [OPTIONS] --enabled [<enabled>] [ID]
 |---|---|
 | `--id <ID>` | Installed plugin id (`plugin_…`). |
 | `--enabled` | Required. In your new conversations, or not. |
+
+Output: a JSON array. Read the items with jq '.[]'.
 
 Example:
 

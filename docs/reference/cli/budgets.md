@@ -33,6 +33,8 @@ everruns budgets check [OPTIONS] --budget-id <budget_id>
 |---|---|
 | `--budget-id <BUDGET_ID>` | Required. Budget's prefixed public identifier. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -59,6 +61,8 @@ everruns budgets create [OPTIONS] --currency <currency> --limit <limit> --subjec
 | `--subject-id <SUBJECT_ID>` | Required. Public identifier of the constrained resource. |
 | `--subject-type <SUBJECT_TYPE>` | Required. Kind of resource constrained by the budget. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -77,6 +81,8 @@ everruns budgets delete [OPTIONS] [BUDGET_ID]
 | Flag | Description |
 |---|---|
 | `--budget-id <BUDGET_ID>` | Budget's prefixed public identifier. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -97,6 +103,8 @@ everruns budgets get [OPTIONS] [BUDGET_ID]
 |---|---|
 | `--budget-id <BUDGET_ID>` | Budget's prefixed public identifier. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -116,6 +124,8 @@ everruns budgets list [OPTIONS]
 |---|---|
 | `--subject-id <SUBJECT_ID>` | Only budgets on this subject's prefixed public identifier. |
 | `--subject-type <SUBJECT_TYPE>` | Only budgets on this kind of subject (session, agent, user, org, ...). |
+
+Output: a JSON array. Read the items with jq '.[]'.
 
 Example:
 
@@ -141,6 +151,8 @@ everruns budgets update [OPTIONS] --budget-id <budget_id>
 | `--soft-limit <SOFT_LIMIT>` | Replacement soft threshold, or null to remove it. |
 | `--status <STATUS>` | Current lifecycle status. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -162,6 +174,8 @@ everruns budgets ledger list [OPTIONS] --budget-id <budget_id>
 | `--limit <LIMIT>` | Maximum number of items returned in this page. |
 | `--offset <OFFSET>` | Zero-based offset into the result set. |
 
+Output: a JSON array. Read the items with jq '.[]'.
+
 Example:
 
 ```bash
@@ -182,6 +196,8 @@ everruns budgets top-up top [OPTIONS] --amount <amount> --budget-id <budget_id>
 | `--amount <AMOUNT>` | Required. Credits to add, in the budget's currency. |
 | `--budget-id <BUDGET_ID>` | Required. Budget's prefixed public identifier. |
 | `--description <DESCRIPTION>` | Human-readable description. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 

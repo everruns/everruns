@@ -33,6 +33,8 @@ everruns skills create [OPTIONS] --skill-md <skill_md>
 |---|---|
 | `--skill-md <SKILL_MD>` | Required. Full SKILL.md content (YAML frontmatter + markdown body) |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -90,6 +92,8 @@ everruns skills get [OPTIONS] [ID]
 |---|---|
 | `--id <ID>` | Prefixed public identifier. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -108,6 +112,8 @@ everruns skills content [OPTIONS] [ID]
 | Flag | Description |
 |---|---|
 | `--id <ID>` | Prefixed public identifier. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -129,6 +135,8 @@ everruns skills list [OPTIONS]
 | `--include-archived` | Include archived skills. |
 | `--search <SEARCH>` | Search by name or description (case-insensitive substring match). |
 
+Output: a JSON array. Read the items with jq '.[]'.
+
 Example:
 
 ```bash
@@ -143,6 +151,8 @@ Count agents and harnesses referencing each skill capability.
 ```bash
 everruns skills usage [OPTIONS]
 ```
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -164,6 +174,8 @@ everruns skills update [OPTIONS] [ID]
 | `--id <ID>` | Prefixed public identifier. |
 | `--skill-md <SKILL_MD>` | Updated SKILL.md content (re-parses frontmatter) |
 | `--status <STATUS>` |  |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 

@@ -33,6 +33,8 @@ everruns history diff [OPTIONS] --from <from> [ENTITY_REF]
 | `--kind <KIND>` | Entity kind, for ids without a prefix. |
 | `--to <TO>` | The newer revision; the latest when omitted. |
 
+Output: a JSON array. Read the items with jq '.[]'.
+
 Example:
 
 ```bash
@@ -55,6 +57,8 @@ everruns history list [OPTIONS] [ENTITY_REF]
 | `--before <BEFORE>` | Only changes older than this timestamp (page cursor). |
 | `--kind <KIND>` | Entity kind. |
 | `--limit <LIMIT>` | Max entries (default 50, max 200). |
+
+Output: a JSON array. Read the items with jq '.[]'.
 
 Example:
 
@@ -80,6 +84,8 @@ everruns history org [OPTIONS]
 | `--limit <LIMIT>` | Max entries (default 50, max 200). |
 | `--since <SINCE>` | Only changes at or after this timestamp. |
 | `--via-agent <VIA_AGENT_ID>` | Only changes an agent made, by the agent's public id. |
+
+Output: a JSON array. Read the items with jq '.[]'.
 
 Example:
 

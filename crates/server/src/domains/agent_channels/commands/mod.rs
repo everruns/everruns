@@ -122,7 +122,7 @@ pub struct ListAgentChannels {
     method = "GET",
     path = "/v1/platform/agents/{agent_id}/channels",
     policy = AGENT_VIEW,
-    cli = CliRoute::new(&["agents", "channels"], "list").with_examples(&[CliExample::new("See every way an agent can be reached before adding another", "everruns agents channels list --agent-id agent_01h9",)]),
+    cli = CliRoute::new(&["agents", "channels"], "list").with_args(&[CliArg::new("agent_id").at(1)]).with_examples(&[CliExample::new("See every way an agent can be reached before adding another", "everruns agents channels list agent_01h9",)]),
 )]
 impl Command for ListAgentChannels {
     type Output = Vec<AgentChannel>;

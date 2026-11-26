@@ -67,7 +67,7 @@ impl SlackAppProvisioner for Provisioner {
 }
 
 #[tokio::test]
-async fn draft_slack_channel_completes_oauth_without_accepting_webhooks() {
+async fn draft_slack_channel_completes_oauth_and_goes_live() {
     exercise_install(test_harness::TestServer::in_memory().await).await;
 }
 
@@ -319,18 +319,42 @@ async fn exercise_install(server: test_harness::TestServer) {
         serde_json::from_value(stored.channel_config).unwrap();
     assert_eq!(config.bot_token, "xoxb-installed");
     assert_eq!(config.team_id.as_deref(), Some("T1"));
-    assert!(config.provisioned_app.unwrap().install_state.is_none());
+    let provisioned = config.provisioned_app.unwrap();
+    assert!(provisioned.install_state.is_none());
+    assert!(!provisioned.publish_on_install, "spent with the nonce");
+    // A finished install publishes the draft: an installed Slack app that
+    // stays a draft answers nobody, and nothing in Slack says why.
     assert_eq!(
         stored.status,
-        everruns_server::domains::agent_channels::record::ChannelStatus::Draft
+        everruns_server::domains::agent_channels::record::ChannelStatus::Live
     );
-    server
-        .post(
-            &format!("/v1/channels/{id}/slack/events"),
-            json!({"type":"url_verification","challenge":"test"}),
-        )
+
+    // Only a draft is published: a live channel is untouched, and a channel
+    // someone turned off stays off.
+    assert!(
+        !server
+            .db
+            .publish_draft_channel_by_id(stored.internal_id)
+            .await
+            .unwrap()
+    );
+    let channel_path = format!(
+        "/v1/platform/agents/{}/channels/{id}",
+        agent["id"].as_str().unwrap()
+    );
+    let disabled: Value = server
+        .patch(&channel_path, json!({"enabled": false}))
         .await
-        .assert_status(axum::http::StatusCode::NOT_FOUND);
+        .assert_status(axum::http::StatusCode::OK)
+        .json();
+    assert_eq!(disabled["status"], "disabled");
+    assert!(
+        !server
+            .db
+            .publish_draft_channel_by_id(stored.internal_id)
+            .await
+            .unwrap()
+    );
 }
 
 /// Records the manifest Slack would receive.

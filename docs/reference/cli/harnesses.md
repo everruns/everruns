@@ -36,6 +36,8 @@ everruns harnesses copy [OPTIONS] [ID]
 |---|---|
 | `--id <ID>` | Prefixed public identifier. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -69,6 +71,8 @@ everruns harnesses create [OPTIONS] --name <name>
 | `--starters <STARTERS>` | Deprecated: configure conversation presentation on the Agent instead. |
 | `--system-prompt <SYSTEM_PROMPT>` | Base system prompt defining the harness's behavior. |
 | `--tags <TAGS>` | Tags for organizing harnesses. Comma-separated or a JSON array of strings. Repeatable. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -127,6 +131,8 @@ everruns harnesses get [OPTIONS] [ID]
 |---|---|
 | `--id <ID>` | Prefixed public identifier. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -146,6 +152,8 @@ everruns harnesses list [OPTIONS]
 |---|---|
 | `--include-archived` | Include archived harnesses. |
 | `--search <SEARCH>` | Only harnesses whose name matches this text. |
+
+Output: a JSON array. Read the items with jq '.[]'.
 
 Example:
 
@@ -168,6 +176,8 @@ everruns harnesses preview [OPTIONS]
 | `--mcp-servers <MCP_SERVERS>` |  |
 | `--parent-harness-id <PARENT_HARNESS_ID>` |  |
 | `--system-prompt <SYSTEM_PROMPT>` | Base system prompt to preview. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -205,6 +215,8 @@ everruns harnesses update [OPTIONS] [ID]
 | `--system-prompt <SYSTEM_PROMPT>` | New system prompt the harness contributes to sessions; omit to leave unchanged. |
 | `--tags <TAGS>` | Replace the tag list entirely; omit to leave unchanged. Comma-separated or a JSON array of strings. Repeatable. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -225,6 +237,8 @@ everruns harnesses check-name check [OPTIONS] --name <name>
 | `--exclude-id <EXCLUDE_ID>` | Harness id to ignore, so a harness can keep its own name. |
 | `--name <NAME>` | Required. Human-readable name. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -244,6 +258,8 @@ everruns harnesses examples adopt [OPTIONS] [NAME]
 |---|---|
 | `--name <NAME>` | Example name from list_harness_examples, such as `coding`. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -258,6 +274,8 @@ List adoptable harness examples (ready-made harnesses such as coding, the Yolop-
 ```bash
 everruns harnesses examples list [OPTIONS]
 ```
+
+Output: a JSON array. Read the items with jq '.[]'.
 
 Example:
 

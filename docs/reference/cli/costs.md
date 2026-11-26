@@ -35,6 +35,8 @@ everruns costs rates create [OPTIONS] --meter <meter>
 | `--meter <METER>` | Required. `model.tokens` or `sandbox.time`. |
 | `--unit-price-usd <UNIT_PRICE_USD>` | Fixed USD per million tokens (model tokens) or per hour (sandboxes). |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -49,6 +51,8 @@ List the organization's price list, history included.
 ```bash
 everruns costs rates list [OPTIONS]
 ```
+
+Output: a JSON array. Read the items with jq '.[]'.
 
 Example:
 
@@ -70,6 +74,8 @@ everruns costs rates retire [OPTIONS] --rate-id <rate_id>
 | `--effective-from <EFFECTIVE_FROM>` | When it ends; now when absent. |
 | `--rate-id <RATE_ID>` | Required. Rate id (`rate_...`) whose match to retire. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -84,6 +90,8 @@ Read the organization's cost settings.
 ```bash
 everruns costs settings get [OPTIONS]
 ```
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -103,6 +111,8 @@ everruns costs settings update [OPTIONS]
 | Flag | Description |
 |---|---|
 | `--timezone <TIMEZONE>` | IANA timezone, or null for UTC. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -124,6 +134,8 @@ everruns costs summary get [OPTIONS]
 | `--agent-id <AGENT_ID>` | Only this agent (`agent_...`). |
 | `--from <FROM>` | Window start (inclusive). |
 | `--to <TO>` | Window end (exclusive). |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 

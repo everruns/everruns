@@ -30,6 +30,8 @@ everruns tasks list [OPTIONS]
 | `--root-session-id <ROOT_SESSION_ID>` | Optional delegation-tree filter (EVE-680): only tasks whose owning session's root is this ses... |
 | `--state <STATE>` | Optional state filter (queued, running, awaiting_input, succeeded, failed, canceled). |
 
+Output: a JSON array. Read the items with jq '.[]'.
+
 Example:
 
 ```bash

@@ -41,6 +41,8 @@ everruns providers create [OPTIONS] --name <name> --provider-type <provider_type
 | `--request-options <REQUEST_OPTIONS>` |  |
 | `--trace <TRACE>` |  |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -59,6 +61,8 @@ everruns providers delete [OPTIONS] [ID]
 | Flag | Description |
 |---|---|
 | `--id <ID>` | Prefixed public identifier. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -79,6 +83,8 @@ everruns providers get [OPTIONS] [ID]
 |---|---|
 | `--id <ID>` | Prefixed public identifier. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -93,6 +99,8 @@ List all LLM providers.
 ```bash
 everruns providers list [OPTIONS]
 ```
+
+Output: a JSON array. Read the items with jq '.[]'.
 
 Example:
 
@@ -121,6 +129,8 @@ everruns providers update [OPTIONS] --id <id>
 | `--status <STATUS>` |  |
 | `--trace <TRACE>` |  |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -141,6 +151,8 @@ everruns providers check-credentials check [OPTIONS] --api-key <api_key> --provi
 | `--api-key <API_KEY>` | Required. The credential to probe. |
 | `--base-url <BASE_URL>` | Optional custom endpoint. |
 | `--provider-type <PROVIDER_TYPE>` | Required. LLM provider type. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -168,6 +180,8 @@ everruns providers models create [OPTIONS] --display-name <display_name> --model
 | `--provider-id <PROVIDER_ID>` | Required. LLM provider's prefixed public identifier. |
 | `--service <SERVICE>` |  |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -186,6 +200,8 @@ everruns providers models list [OPTIONS] --provider-id <provider_id>
 | Flag | Description |
 |---|---|
 | `--provider-id <PROVIDER_ID>` | Required. LLM provider's prefixed public identifier. |
+
+Output: a JSON array. Read the items with jq '.[]'.
 
 Example:
 
@@ -206,6 +222,8 @@ everruns providers models review [OPTIONS] --id <id>
 |---|---|
 | `--id <ID>` | Required. Prefixed public identifier. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -224,6 +242,8 @@ everruns providers sync-models sync [OPTIONS] --id <id>
 | Flag | Description |
 |---|---|
 | `--id <ID>` | Required. Prefixed public identifier. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
