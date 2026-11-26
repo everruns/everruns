@@ -419,7 +419,7 @@ impl<'a> MemoryEngine<'a> {
                         lexical_score(&terms, entry.subject.as_deref(), &body)
                     };
                     if terms.is_empty() || score > 0.0 {
-                        hits.push(RecallHit::Entry { entry, score });
+                        hits.push(RecallHit::Entry { entry: Box::new(entry), score });
                     }
                 } else if !terms.is_empty() {
                     let score = lexical_score(&terms, Some(&inner), &text);

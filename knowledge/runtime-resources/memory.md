@@ -66,7 +66,7 @@ Decisions:
 Every store is a switch in the capability config (`AgentMemoryConfig`). The
 stores a session has are the config intersected with the folders the host
 mounted. The server mounts them in `MemoryMountRouter::resolve`
-(`crates/server/src/domains/session_files/memory_mounts.rs`) when the agent or
+(`crates/server/src/domains/session_files/memory_mounts/mod.rs`) when the agent or
 its harness has `agent_memory`; without it, only the legacy agent and user
 mounts.
 

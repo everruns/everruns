@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import * as mockReact from "react";
 import { MemoryConfigEditor, readAttachments } from "@/components/agents/memory-config-editor";
-import { memoryStore } from "./fixtures/memory";
+import { memoryStore } from "@/test-utils/memory-fixtures";
 
 jest.mock("@/hooks/use-memory", () => ({
   useMemoryStores: () => ({

@@ -1,6 +1,6 @@
 ---
 title: "Agents remember what you decided"
-description: "Agent memory is rebuilt: decisions, rules, facts, preferences and blocked items kept as Markdown files in stores for the agent, its team, its parent, you and the organization."
+description: "Agents keep decisions, rules, facts and blocked items as Markdown files in memory stores for the agent, its team, its parent, you and the organization."
 date: "2026-11-26"
 kind: feature
 significance: major

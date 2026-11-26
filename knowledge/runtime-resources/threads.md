@@ -77,7 +77,7 @@ Evidence from the review of main at f063e04 plus #5640 (2026-11-24):
    (`crates/server/src/domains/sessions/service/create.rs`), threads included.
 5. **Shared folder skips the parent.** `/team` is mounted in every child
    session but in a first session only when its agent has `agent_handoff`
-   (`team_folder_owner` in `domains/session_files/memory_mounts.rs`), so
+   (`team_folder_owner` in `domains/session_files/memory_mounts/mod.rs`), so
    Platform Chat cannot open its own threads' folder. Writes are whole-file:
    two agents writing one file lose an edit silently.
 6. **Overloaded words.** "Thread" also names side chats ("Threads of this

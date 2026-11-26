@@ -1005,5 +1005,4 @@ mod tests {
 }
 
 #[cfg(test)]
-#[path = "memory_mounts_v2_tests.rs"]
 mod v2_tests;

@@ -120,7 +120,7 @@ const ID_PREFIX_MAP: Record<
     listOnly: true,
   },
   eval_: { category: "eval", label: "Eval", path: "/evals", flag: "evals" },
-  mem_: { category: "id", label: "Memory", path: "/memory", flag: "memory" },
+  mem_: { category: "id", label: "Memory", path: "/memory" },
   kn_: { category: "knowledge", label: "Knowledge", path: "/knowledge" },
   plugin_: {
     category: "plugin",
@@ -165,7 +165,6 @@ export function useGlobalSearch(query: string) {
   const entitySearchEnabled = query.trim().length > 0;
   const skillsEnabled = featureFlags.skills;
   const evalsEnabled = featureFlags.evals;
-  const memoryEnabled = featureFlags.memory;
   const observersEnabled = featureFlags.observers;
   const { can } = usePolicies("durable");
   const durableAllowed = can("durable.view");
@@ -239,7 +238,7 @@ export function useGlobalSearch(query: string) {
   });
   const { data: evalsData } = useEvals({ enabled: evalsEnabled && entitySearchEnabled });
   const { data: virtualUsersData } = useVirtualUsers({ enabled: entitySearchEnabled });
-  const { data: memoriesData } = useMemories({ enabled: memoryEnabled && entitySearchEnabled });
+  const { data: memoriesData } = useMemories({ enabled: entitySearchEnabled });
   const { data: knowledgeData } = useKnowledgeCollections({
     enabled: entitySearchEnabled,
   });
@@ -259,7 +258,7 @@ export function useGlobalSearch(query: string) {
   const declarativeCapabilities = declarativeCapabilitiesData ?? EMPTY_ARRAY;
   const evals = evalsEnabled ? (evalsData ?? EMPTY_ARRAY) : EMPTY_ARRAY;
   const virtualUsers = virtualUsersData ?? EMPTY_ARRAY;
-  const memories = memoryEnabled ? (memoriesData ?? EMPTY_ARRAY) : EMPTY_ARRAY;
+  const memories = memoriesData ?? EMPTY_ARRAY;
   const knowledgeCollections = useMemo(
     () => knowledgeData?.pages.flatMap((page) => page.data) ?? EMPTY_ARRAY,
     [knowledgeData],

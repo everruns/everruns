@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import { Suspense } from "react";
 import MemoryDetailPage from "@/app/(main)/memory/[memoryId]/page";
 import { groupMemoryEntries } from "@/components/memory/memory-store-labels";
-import { memoryEntry, memoryStore } from "./fixtures/memory";
+import { memoryEntry, memoryStore } from "@/test-utils/memory-fixtures";
 
 const mockUseMemoryStores = jest.fn();
 const mockUseMemoryEntries = jest.fn();

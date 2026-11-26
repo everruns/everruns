@@ -586,7 +586,7 @@ pub struct MemoryFileHit {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum RecallHit {
-    Entry { entry: MemoryEntry, score: f32 },
+    Entry { entry: Box<MemoryEntry>, score: f32 },
     File { file: MemoryFileHit, score: f32 },
 }
 

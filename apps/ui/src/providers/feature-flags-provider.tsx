@@ -16,7 +16,6 @@ const DEFAULT_FLAGS: FeatureFlags = {
   evals: false,
   extractions: false,
   skills: false,
-  memory: false,
   voice: false,
   observers: false,
   public_chat: false,

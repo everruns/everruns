@@ -3,7 +3,7 @@ jest.mock("@/providers/org-provider", () => ({
 }));
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import MemoryPage from "@/app/(main)/memory/page";
-import { memoryStore } from "./fixtures/memory";
+import { memoryStore } from "@/test-utils/memory-fixtures";
 
 const mockUseMemoryStores = jest.fn();
 const mockCreate = jest.fn();

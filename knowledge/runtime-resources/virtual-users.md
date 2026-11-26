@@ -76,7 +76,7 @@ Evidence and implementation entry points:
 - [User preferences](../../crates/server/src/api/user_preferences.rs) are
   arbitrary console/UI settings and persist across orgs. Do not classify every
   existing preference as runtime state.
-- [Private memory](../../crates/server/src/domains/session_files/memory_mounts.rs)
+- [Private memory](../../crates/server/src/domains/session_files/memory_mounts/mod.rs)
   resolves from the management owner today. Memory functionality is outside
   this proposal's feature scope.
 - [Platform command authorization](../../crates/server/src/worker_link/grpc_service/worker/commands.rs)
