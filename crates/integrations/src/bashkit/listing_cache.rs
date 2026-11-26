@@ -17,6 +17,20 @@ use everruns_contracts::runtime::session_files::SessionFileSystem;
 use std::path::Path;
 use std::time::SystemTime;
 
+/// Session files carry no Unix ownership or permissions: every entry is owned
+/// by the sandbox user (`Metadata::default()`) with mode 0o755, so scripts in
+/// /workspace stay directly executable and `test -O` holds.
+pub(super) fn session_metadata(file_type: FileType, size: u64, now: SystemTime) -> Metadata {
+    Metadata {
+        file_type,
+        size,
+        mode: 0o755,
+        modified: now,
+        created: now,
+        ..Metadata::default()
+    }
+}
+
 pub(super) struct ForgetListings<'a>(&'a std::sync::Mutex<ListingCache>);
 
 impl ForgetListings<'_> {
@@ -91,28 +105,18 @@ impl ListingCache {
             String,
             std::collections::BTreeMap<String, Metadata>,
         > = std::collections::HashMap::new();
-        let directory = Metadata {
-            file_type: FileType::Directory,
-            size: 0,
-            mode: 0o755,
-            modified: now,
-            created: now,
-            ..Metadata::default()
-        };
+        let directory = session_metadata(FileType::Directory, 0, now);
         for info in infos {
             let rest = info.path.trim_start_matches('/');
-            let metadata = Metadata {
-                file_type: if info.is_directory {
+            let metadata = session_metadata(
+                if info.is_directory {
                     FileType::Directory
                 } else {
                     FileType::File
                 },
-                size: info.size_bytes as u64,
-                mode: 0o755,
-                modified: now,
-                created: now,
-                ..Metadata::default()
-            };
+                info.size_bytes as u64,
+                now,
+            );
             // Every ancestor is a directory, whether or not the store has a row for it.
             let mut dir = root.to_string();
             let mut parts = rest.split('/').filter(|part| !part.is_empty()).peekable();
@@ -203,18 +207,15 @@ impl SessionFileSystemAdapter {
             .into_iter()
             .map(|e| DirEntry {
                 name: e.name,
-                metadata: Metadata {
-                    file_type: if e.is_directory {
+                metadata: session_metadata(
+                    if e.is_directory {
                         FileType::Directory
                     } else {
                         FileType::File
                     },
-                    size: e.size_bytes as u64,
-                    mode: 0o755,
-                    modified: now,
-                    created: now,
-                    ..Metadata::default()
-                },
+                    e.size_bytes as u64,
+                    now,
+                ),
             })
             .collect();
         if let Ok(mut listings) = self.listings.lock() {
