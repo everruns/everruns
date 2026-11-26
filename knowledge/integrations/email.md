@@ -65,7 +65,9 @@ batch triage rather than a free-form, inbox-wide triage-agent session.
 Model judgments cannot guarantee injection resistance or detect every secret.
 Use an agent whose instructions and preloaded context are appropriate for external
 correspondents. The same agent definition is reusable across Slack and email;
-conversation history and sender identity are not automatically shared.
+conversation history and sender identity are not automatically shared. The inbox
+admin page exposes page identity to Platform Chat without projecting mail or
+provider-account caches; its approval actions remain explicit manual actions.
 
 ## Backpressure and recovery
 

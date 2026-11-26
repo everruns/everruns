@@ -112,6 +112,7 @@
   ],
   "manual": [
     "agents/[agentId]/setup/page.tsx",
+    "email/page.tsx",
     "orgs/[orgId]/setup/page.tsx",
     "settings/ai-clients/page.tsx",
     "settings/connections/page.tsx",
