@@ -512,7 +512,7 @@ jobs:
               - 'crates/integrations/Cargo.toml'
               - 'Cargo.toml'
               - 'rust-toolchain.toml'
-              - 'scripts/test-monty.sh'
+              - '.github/scripts/qualify-monty.sh'
               - 'evals/shell-code-mode/**'
               - 'evals/common/code_mode.rs'
               - 'Cargo.lock'
@@ -758,7 +758,7 @@ jobs:
           path: .local/monty/bin/monty
           key: monty-runtime-1.5.0-${{ runner.os }}-${{ runner.arch }}
       - name: Qualify hardened worker, bridge and durable resume
-        run: ./scripts/test-monty.sh
+        run: ./.github/scripts/qualify-monty.sh
       - name: Qualify Framework approval eval with the hardened worker
         env:
           EVERRUNS_MONTY_BIN: ${{ github.workspace }}/.local/monty/bin/everruns-monty-worker

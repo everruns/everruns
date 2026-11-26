@@ -289,4 +289,4 @@ bench-chat-capacity *args:
 
 # Monty interpreter, durable resume and Linux kernel isolation (Landlock ABI >= 3).
 test-monty:
-    ./scripts/test-monty.sh
+    ./.github/scripts/qualify-monty.sh
