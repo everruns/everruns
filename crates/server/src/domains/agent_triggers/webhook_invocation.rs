@@ -131,6 +131,7 @@ pub(super) async fn dispatch_webhook(
             .or_else(|| super::manual::event_id(manual, None)),
     };
     let event = events::TriggerEvent {
+        requested_by: manual.and_then(|f| f.requested_by),
         source,
         event_id,
         event_type: None,

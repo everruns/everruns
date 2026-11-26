@@ -247,10 +247,15 @@ impl std::str::FromStr for TriggerDeliveryStatus {
 /// One recorded event delivery for an agent trigger.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct AgentTriggerDelivery {
+    /// Input that caused the turn, when known. Join it to the session trace.
+    pub input_message_id: Option<everruns_contracts::typed_id::MessageId>,
+    /// Authenticated manual requester; absent for automatic or historical deliveries.
+    pub requested_by: Option<uuid::Uuid>,
     /// Delivery identifier.
     #[schema(value_type = String)]
     pub id: uuid::Uuid,
-    /// Where the event came from (`schedule`, `webhook`, ...).
+    /// Where the event came from (`schedule`, `webhook`, ...), or `unknown`
+    /// when a legacy schedule label could also have been a manual fire.
     pub source: String,
     /// Source event identifier used for deduplication, when the source has one.
     #[serde(skip_serializing_if = "Option::is_none")]

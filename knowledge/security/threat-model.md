@@ -2275,3 +2275,19 @@ a custom launcher must establish its own equivalent kernel boundary.
 | TM-MONTY-004 | Agent injects, crosses tenants with or downgrades a snapshot | Critical | Host-private stores only; session/input namespace; Server worker commands verify org/session ownership and reject forced settlement; version check; no snapshot bytes in model inputs, KV, workspace, change history or public feed. | MITIGATED |
 | TM-MONTY-005 | Resource exhaustion through source, output, cyclic values or repeated suspensions | High | Independent source, JSON, depth, output, snapshot, memory, time and suspension limits; saved budgets survive resume; failed/cancelled workers are discarded. | MITIGATED |
 | TM-MONTY-006 | Composition enables more privileged fallback or hides unreachable tools | High | No automatic fallback; native schemas retained; Python is a direct execution entry point for shell/Lua routing; Bashkit runtime selection unchanged. | MITIGATED |
+
+## Investigation read extensions
+
+The existing TM-TENANT, TM-AUTHZ, TM-SCHED and TM-TRIGGER boundaries also cover
+historical evidence. Health episode lookups constrain both issue and authenticated
+organization. Schedule commands use the configured permission resolver and check
+both organization and parent session before reading either authority. Trigger
+requesters are stamped from the caller, not caller-controlled event payloads;
+missing historical actors are never inferred. Corrected ingress writes carry provenance,
+and ambiguous older schedule labels are reported as unknown. Native discovery and CLI composition
+continue through the same domain dispatcher.
+
+Joint cost grouping uses fixed SQL fragments from an allowlist; filters are bound
+parameters. Read pages are bounded, delivery retention is time-based, and compact
+v2 cost reads omit model request/response content. The new reads retain the existing
+privilege boundaries.

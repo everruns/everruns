@@ -17,7 +17,7 @@ What usage cost the organization, its price list and cost settings.
 | [`costs rates retire`](#costs-rates-retire) | End a rate from a date. |
 | [`costs settings get`](#costs-settings-get) | Read the organization's cost settings. |
 | [`costs settings update`](#costs-settings-update) | Set the timezone usage policy windows reset in. |
-| [`costs summary get`](#costs-summary-get) | Summarize what usage cost the organization. |
+| [`costs summary get`](#costs-summary-get) | Summarize organization costs over a window, with combined agent/session/source/starter filters and an optional joint group_by breakdown. |
 
 ## costs rates create
 
@@ -123,7 +123,7 @@ everruns costs settings update --timezone America/Chicago --reason 'Team is in A
 
 ## costs summary get
 
-Summarize what usage cost the organization.
+Summarize organization costs over a window, with combined agent/session/source/starter filters and an optional joint group_by breakdown. Includes unpriced counts and reports truncated joint groups.
 
 ```bash
 everruns costs summary get [OPTIONS]
@@ -133,6 +133,10 @@ everruns costs summary get [OPTIONS]
 |---|---|
 | `--agent-id <AGENT_ID>` | Only this agent (`agent_...`). |
 | `--from <FROM>` | Window start (inclusive). |
+| `--group-by <GROUP_BY>` | Comma-separated joint dimensions: agent,session,source,started_by,basis,user,day. |
+| `--session-id <SESSION_ID>` | Restrict usage to this session. |
+| `--source <SOURCE>` | Exact source key from by_source (for example a provider/model). |
+| `--started-by <STARTED_BY>` | Person, unattended, or unknown for historical records. |
 | `--to <TO>` | Window end (exclusive). |
 
 Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.

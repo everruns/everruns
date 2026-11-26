@@ -308,6 +308,11 @@ impl From<CostSummaryRow> for CostSummaryLine {
 /// Org cost over a window, grouped several ways.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct CostSummary {
+    /// Joint breakdown requested by group_by; at most 200 groups.
+    pub breakdown: Vec<CostSummaryBreakdown>,
+    /// Whether additional joint groups were omitted after the first 200.
+    #[schema(example = false)]
+    pub breakdown_truncated: bool,
     /// Window start (inclusive).
     pub from: DateTime<Utc>,
     /// Window end (exclusive).
@@ -326,8 +331,8 @@ pub struct CostSummary {
     pub by_agent: Vec<CostSummaryLine>,
     /// Totals by the person the usage counts for.
     pub by_user: Vec<CostSummaryLine>,
-    /// Totals by who started the work: `person`, or `unattended` (schedules
-    /// and other runs nobody watches).
+    /// Totals by recorded starter: `person`, `unattended` (including schedules
+    /// and agent triggers), or `unknown` when attribution was not recorded.
     pub by_started_by: Vec<CostSummaryLine>,
     /// Totals by day, in the org's timezone.
     pub by_day: Vec<CostSummaryLine>,
@@ -335,6 +340,23 @@ pub struct CostSummary {
     /// the agent the run started with, split by the agent that spent it.
     /// Every amount is also in `by_agent`, under the agent that spent it.
     pub runs_with_agents: Vec<RunsWithAgentsLine>,
+}
+
+/// One joint cost group. Null dimensions mean attribution was not recorded.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct CostSummaryBreakdown {
+    /// Requested dimension keys mapped to their recorded attribution values.
+    #[schema(example = json!({"started_by": "unattended", "basis": "host"}))]
+    pub dimensions: serde_json::Value,
+    /// Priced usage cost in USD within this group and the selected filters.
+    #[schema(example = 6.61)]
+    pub cost_usd: f64,
+    /// Usage journal records in this group whose cost is unpriced.
+    #[schema(example = 1)]
+    pub unpriced_records: i64,
+    /// Usage journal records in this group, after the selected filters.
+    #[schema(example = 20)]
+    pub records: i64,
 }
 
 /// The runs one agent led, with whole-run cost and who spent it.
@@ -422,6 +444,14 @@ pub(crate) fn runs_with_agents(
 #[derive(Debug, Default, Deserialize, Serialize, ToSchema, IntoParams)]
 #[into_params(parameter_in = Query)]
 pub struct GetCostSummary {
+    /// Restrict usage to this session.
+    pub session_id: Option<String>,
+    /// Exact source key from by_source (for example a provider/model).
+    pub source: Option<String>,
+    /// person, unattended, or unknown for historical records.
+    pub started_by: Option<String>,
+    /// Comma-separated joint dimensions: agent,session,source,started_by,basis,user,day.
+    pub group_by: Option<String>,
     /// Window start (inclusive). Default: the start of this month.
     pub from: Option<DateTime<Utc>>,
     /// Window end (exclusive). Default: now.
@@ -442,7 +472,8 @@ pub(crate) fn month_start(now: DateTime<Utc>, tz: chrono_tz::Tz) -> DateTime<Utc
 #[command(
     name = "get_cost_summary",
     category = "budgets",
-    description = "Summarize what usage cost the organization.",
+    summary = "Summarize organization costs",
+    description = "Summarize organization costs over a window, with combined agent/session/source/starter filters and an optional joint group_by breakdown. Includes unpriced counts and reports truncated joint groups.",
     method = "GET",
     path = "/v1/platform/costs/summary",
     policy = BUDGET_VIEW,
@@ -462,17 +493,35 @@ impl Command for GetCostSummary {
         if from >= to {
             return Err(CommandError::bad_request("from must be before to"));
         }
-        if self.agent_id.is_some() {
-            return Err(CommandError::bad_request(
-                "agent_id filtering is served by GET /v1/platform/agents/{agent_id}/costs",
-            ));
-        }
+        let filter = crate::storage::costs::CostFilter {
+            agent_id: self
+                .agent_id
+                .as_deref()
+                .map(|id| {
+                    id.parse::<everruns_contracts::typed_id::AgentId>()
+                        .map(|id| id.uuid())
+                })
+                .transpose()
+                .map_err(|_| CommandError::bad_request("Invalid agent ID"))?,
+            session_id: self
+                .session_id
+                .as_deref()
+                .map(|id| {
+                    id.parse::<everruns_contracts::typed_id::SessionId>()
+                        .map(|id| id.uuid())
+                })
+                .transpose()
+                .map_err(|_| CommandError::bad_request("Invalid session ID"))?,
+            source: self.source,
+            started_by: self.started_by,
+        };
+        let dimensions = parse_cost_dimensions(self.group_by.as_deref())?;
         let tz_name = tz.name().to_string();
         let mut groups = Vec::new();
         for dimension in ["basis", "source", "agent", "user", "started_by", "day"] {
             let rows = ctx
                 .db
-                .cost_summary(ctx.org_id(), from, to, dimension, &tz_name)
+                .cost_summary_filtered(ctx.org_id(), from, to, dimension, &tz_name, &filter)
                 .await?;
             groups.push(
                 rows.into_iter()
@@ -486,9 +535,31 @@ impl Command for GetCostSummary {
         let by_agent = groups.pop().unwrap_or_default();
         let by_source = groups.pop().unwrap_or_default();
         let by_basis = groups.pop().unwrap_or_default();
-        let runs_with_agents =
-            runs_with_agents(ctx.db.runs_with_agents_cost(ctx.org_id(), from, to).await?);
+        let runs_with_agents = runs_with_agents(
+            ctx.db
+                .runs_with_agents_cost_filtered(ctx.org_id(), from, to, &filter)
+                .await?,
+        );
+        let mut breakdown = if dimensions.is_empty() {
+            Vec::new()
+        } else {
+            ctx.db
+                .cost_breakdown(ctx.org_id(), from, to, &tz_name, &filter, &dimensions)
+                .await?
+        };
+        let breakdown_truncated = breakdown.len() > 200;
+        breakdown.truncate(200);
         Ok(CostSummary {
+            breakdown: breakdown
+                .into_iter()
+                .map(|r| CostSummaryBreakdown {
+                    dimensions: r.dimensions,
+                    cost_usd: r.cost_usd,
+                    unpriced_records: r.unpriced_records,
+                    records: r.records,
+                })
+                .collect(),
+            breakdown_truncated,
             from,
             to,
             timezone: tz_name,
@@ -629,6 +700,24 @@ impl Command for UpdateCostSettings {
             .await?;
         Ok(CostSettings { timezone })
     }
+}
+
+fn parse_cost_dimensions(value: Option<&str>) -> Result<Vec<&str>, CommandError> {
+    let mut dimensions = Vec::new();
+    for dimension in value.unwrap_or("").split(',').filter(|s| !s.is_empty()) {
+        if !matches!(
+            dimension,
+            "agent" | "session" | "source" | "started_by" | "basis" | "user" | "day"
+        ) {
+            return Err(CommandError::bad_request(
+                "group_by supports agent,session,source,started_by,basis,user,day",
+            ));
+        }
+        if !dimensions.contains(&dimension) {
+            dimensions.push(dimension);
+        }
+    }
+    Ok(dimensions)
 }
 
 #[cfg(test)]

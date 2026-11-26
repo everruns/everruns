@@ -91,6 +91,23 @@ pub struct SandboxSpanRow {
     pub end_at: DateTime<Utc>,
 }
 
+/// Filters apply to usage facts before grouping, never to budget debits.
+#[derive(Debug, Default, Clone)]
+pub struct CostFilter {
+    pub agent_id: Option<Uuid>,
+    pub session_id: Option<Uuid>,
+    pub source: Option<String>,
+    pub started_by: Option<String>,
+}
+
+#[derive(Debug, sqlx::FromRow)]
+pub struct CostBreakdownRow {
+    pub dimensions: serde_json::Value,
+    pub cost_usd: f64,
+    pub unpriced_records: i64,
+    pub records: i64,
+}
+
 impl StorageBackend {
     // ------------------------------------------------------------------
     // Price list
@@ -215,11 +232,35 @@ impl StorageBackend {
         dimension: &str,
         timezone: &str,
     ) -> Result<Vec<CostSummaryRow>> {
+        self.cost_summary_filtered(
+            org_id,
+            from,
+            to,
+            dimension,
+            timezone,
+            &CostFilter::default(),
+        )
+        .await
+    }
+
+    pub async fn cost_summary_filtered(
+        &self,
+        org_id: i64,
+        from: DateTime<Utc>,
+        to: DateTime<Utc>,
+        dimension: &str,
+        timezone: &str,
+        filter: &CostFilter,
+    ) -> Result<Vec<CostSummaryRow>> {
         // Decision: one query shape with the grouping key chosen from a fixed
         // list, so no caller text reaches the SQL.
         let (key, label) = match dimension {
             "basis" => ("per.basis", "per.basis"),
             "agent" => ("a.public_id", "a.name"),
+            "session" => (
+                "'session_' || replace(j.session_id::text, '-', '')",
+                "'session_' || replace(j.session_id::text, '-', '')",
+            ),
             "user" => ("j.user_id::text", "u.name"),
             "source" => (
                 "COALESCE(j.metadata->>'source_key', j.kind)",
@@ -230,8 +271,8 @@ impl StorageBackend {
                 "to_char(per.at AT TIME ZONE $4::text, 'YYYY-MM-DD')",
             ),
             "started_by" => (
-                "COALESCE(j.metadata->>'started_by', 'person')",
-                "COALESCE(j.metadata->>'started_by', 'person')",
+                "COALESCE(j.metadata->>'started_by', 'unknown')",
+                "COALESCE(j.metadata->>'started_by', 'unknown')",
             ),
             other => anyhow::bail!("unknown cost dimension {other}"),
         };
@@ -261,6 +302,10 @@ impl StorageBackend {
             JOIN usage_journal j ON j.id = per.journal_id
             LEFT JOIN agents a ON a.id = j.agent_id
             LEFT JOIN users u ON u.id = j.user_id
+            WHERE ($5::uuid IS NULL OR j.agent_id=$5)
+              AND ($6::uuid IS NULL OR j.session_id=$6)
+              AND ($7::text IS NULL OR COALESCE(j.metadata->>'source_key',j.kind)=$7)
+              AND ($8::text IS NULL OR COALESCE(j.metadata->>'started_by','unknown')=$8)
             GROUP BY 1
             ORDER BY amount_usd DESC NULLS LAST
             LIMIT 200
@@ -272,6 +317,10 @@ impl StorageBackend {
             .bind(from)
             .bind(to)
             .bind(timezone)
+            .bind(filter.agent_id)
+            .bind(filter.session_id)
+            .bind(&filter.source)
+            .bind(&filter.started_by)
             .fetch_all(self.database().pool())
             .await?)
     }
@@ -286,6 +335,17 @@ impl StorageBackend {
         org_id: i64,
         from: DateTime<Utc>,
         to: DateTime<Utc>,
+    ) -> Result<Vec<RunsWithAgentsCostRow>> {
+        self.runs_with_agents_cost_filtered(org_id, from, to, &CostFilter::default())
+            .await
+    }
+
+    pub async fn runs_with_agents_cost_filtered(
+        &self,
+        org_id: i64,
+        from: DateTime<Utc>,
+        to: DateTime<Utc>,
+        filter: &CostFilter,
     ) -> Result<Vec<RunsWithAgentsCostRow>> {
         Ok(sqlx::query_as(
             r#"
@@ -302,6 +362,10 @@ impl StorageBackend {
                 FROM per
                 JOIN usage_journal j ON j.id = per.journal_id
                 JOIN sessions s ON s.id = j.session_id
+                WHERE ($4::uuid IS NULL OR j.agent_id=$4)
+                  AND ($5::uuid IS NULL OR j.session_id=$5)
+                  AND ($6::text IS NULL OR COALESCE(j.metadata->>'source_key',j.kind)=$6)
+                  AND ($7::text IS NULL OR COALESCE(j.metadata->>'started_by','unknown')=$7)
             ),
             runs AS (
                 SELECT DISTINCT spent.root
@@ -337,6 +401,7 @@ impl StorageBackend {
         .bind(org_id)
         .bind(from)
         .bind(to)
+        .bind(filter.agent_id).bind(filter.session_id).bind(&filter.source).bind(&filter.started_by)
         .fetch_all(self.database().pool())
         .await?)
     }
@@ -495,5 +560,69 @@ impl StorageBackend {
         .bind(limit)
         .fetch_all(self.database().pool())
         .await?)
+    }
+}
+
+impl StorageBackend {
+    /// Joint breakdown, capped at 201 so the caller can report truncation.
+    pub async fn cost_breakdown(
+        &self,
+        org: i64,
+        from: DateTime<Utc>,
+        to: DateTime<Utc>,
+        tz: &str,
+        filter: &CostFilter,
+        dimensions: &[&str],
+    ) -> Result<Vec<CostBreakdownRow>> {
+        let mut keys = Vec::new();
+        for dimension in dimensions {
+            // THREAT[TM-SQL]: only fixed fragments enter SQL, never caller text.
+            let expression = match *dimension {
+                "agent" => "a.public_id",
+                "session" => "'session_' || replace(j.session_id::text, '-', '')",
+                "source" => "COALESCE(j.metadata->>'source_key',j.kind)",
+                "started_by" => "COALESCE(j.metadata->>'started_by','unknown')",
+                "user" => "j.user_id::text",
+                "basis" => "per.basis",
+                "day" => "to_char(per.at AT TIME ZONE $4::text,'YYYY-MM-DD')",
+                _ => anyhow::bail!("Unknown cost dimension"),
+            };
+            keys.push(format!("'{dimension}', {expression}"));
+        }
+        let keys = keys.join(",");
+        let sql = format!(
+            r#"
+            WITH per AS (
+                SELECT l.journal_id, MIN(l.created_at) AS at,
+                    CASE WHEN bool_or(l.meter_source='cost_host') THEN 'host' ELSE MAX(l.basis) END AS basis,
+                    SUM(l.amount) FILTER (WHERE l.basis IS DISTINCT FROM 'unpriced') AS amount
+                FROM usage_ledger l
+                WHERE l.org_id=$1 AND l.budget_id IS NULL AND l.currency='usd'
+                  AND l.created_at >= $2 AND l.created_at < $3 AND $4::text IS NOT NULL
+                GROUP BY l.journal_id
+            )
+            SELECT jsonb_build_object({keys}) AS dimensions,
+                COALESCE(SUM(per.amount),0)::float8 AS cost_usd,
+                COUNT(*) FILTER (WHERE per.basis='unpriced') AS unpriced_records,
+                COUNT(*) AS records
+            FROM per JOIN usage_journal j ON j.id=per.journal_id
+            LEFT JOIN agents a ON a.id=j.agent_id
+            WHERE ($5::uuid IS NULL OR j.agent_id=$5) AND ($6::uuid IS NULL OR j.session_id=$6)
+              AND ($7::text IS NULL OR COALESCE(j.metadata->>'source_key',j.kind)=$7)
+              AND ($8::text IS NULL OR COALESCE(j.metadata->>'started_by','unknown')=$8)
+            GROUP BY 1 ORDER BY cost_usd DESC, dimensions LIMIT 201
+        "#
+        );
+        Ok(sqlx::query_as(sqlx::AssertSqlSafe(sql))
+            .bind(org)
+            .bind(from)
+            .bind(to)
+            .bind(tz)
+            .bind(filter.agent_id)
+            .bind(filter.session_id)
+            .bind(&filter.source)
+            .bind(&filter.started_by)
+            .fetch_all(self.database().pool())
+            .await?)
     }
 }

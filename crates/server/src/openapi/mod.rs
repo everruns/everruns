@@ -273,6 +273,8 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         api::sessions::fork_session,
         api::sessions::list_sessions,
         api::sessions::get_session,
+        api::session_schedules::list_schedules,
+        api::session_schedules::get_schedule,
         api::sessions::get_session_resolved_model,
         api::sessions::list_session_participants,
         api::sessions::add_session_participant,

@@ -17,8 +17,8 @@
 //! 4. **Dispatch** the rendered message on the agent's harness as the agent's
 //!    own identity, and record the outcome.
 //!
-//! Delivery history is bounded per trigger ([`DELIVERY_HISTORY_LIMIT`]) so a
-//! busy source cannot grow the table without limit.
+//! Delivery history is retained for 90 days, independently of the bounded
+//! page size, so a busy trigger does not erase yesterday's evidence.
 
 use super::commands::{
     AgentTriggerInvocationResult, dispatch_trigger_message, emit_agent_trigger_audit_event,
@@ -37,8 +37,8 @@ use everruns_core::channel::SessionBinding;
 use serde_json::Value;
 use std::sync::Arc;
 
-/// Deliveries kept per trigger; older rows are pruned after each event.
-pub const DELIVERY_HISTORY_LIMIT: i64 = 200;
+/// Maximum deliveries returned per history page.
+pub const DELIVERY_PAGE_LIMIT: i64 = 200;
 
 /// Subjects whose last value a `changes_only` trigger remembers; the least
 /// recently updated are forgotten first.
@@ -50,6 +50,7 @@ const MAX_EVENT_FIELD_LEN: usize = 512;
 /// A normalized event, as handed to the pipeline by a source.
 #[derive(Debug, Clone)]
 pub struct TriggerEvent {
+    pub requested_by: Option<uuid::Uuid>,
     /// Source name recorded on the delivery (`schedule`, `webhook`, `github`,
     /// `mcp_event`, or `manual` for an event fired by hand).
     pub source: &'static str,
@@ -126,6 +127,7 @@ pub async fn dispatch_trigger_event(
     let new_row =
         |status: TriggerDeliveryStatus, reason: Option<String>| CreateAgentTriggerDeliveryRow {
             org_id: trigger.org_id,
+            requested_by: event.requested_by,
             trigger_id: trigger.id,
             source: event.source.to_string(),
             event_id: event.event_id.clone(),
@@ -203,8 +205,19 @@ pub async fn dispatch_trigger_event(
             )
         }
     };
+    let input_message_id = result
+        .as_ref()
+        .ok()
+        .and_then(|r| r.input_message_id)
+        .map(|id| id.uuid());
     if let Err(error) = db
-        .finish_agent_trigger_delivery(delivery.id, status.as_str(), reason.as_deref(), session_id)
+        .finish_agent_trigger_delivery(
+            delivery.id,
+            status.as_str(),
+            reason.as_deref(),
+            session_id,
+            input_message_id,
+        )
         .await
     {
         tracing::warn!(%error, delivery_id = %delivery.id, "failed to record trigger delivery outcome");
@@ -243,6 +256,7 @@ async fn run(
         )
         .await?;
         return Ok(AgentTriggerInvocationResult {
+            input_message_id: None,
             session_id,
             created_session,
         });
@@ -263,7 +277,7 @@ async fn run(
         },
     )
     .await?;
-    dispatch_trigger_message(
+    let input_message_id = dispatch_trigger_message(
         message_service,
         trigger.org_id,
         agent,
@@ -287,6 +301,7 @@ async fn run(
         created_session,
     );
     Ok(AgentTriggerInvocationResult {
+        input_message_id,
         session_id,
         created_session,
     })
@@ -384,7 +399,8 @@ async fn record_duplicate(
 
 async fn prune(db: &Arc<StorageBackend>, trigger: &AgentTriggerRow) {
     if let Err(error) = db
-        .prune_agent_trigger_deliveries(trigger.id, DELIVERY_HISTORY_LIMIT)
+        .database()
+        .prune_agent_trigger_delivery_history(trigger.id, 90)
         .await
     {
         tracing::warn!(%error, trigger_id = %trigger.id, "failed to prune trigger deliveries");

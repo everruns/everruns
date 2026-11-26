@@ -262,3 +262,27 @@ rejected. `SessionSchedule` ("continue this conversation later") and App
 
 The Agent detail Triggers UI supports list/create/edit, enable/disable, delete,
 manual run, human-readable cron/timezone display, and recent durable execution outcomes.
+
+## Investigating past fires
+
+Run and delivery reads accept time windows and stable cursors. Runs expose the
+observed task attempt count, resulting session and authenticated manual requester
+when known. Deliveries link to the input message that started a turn, so shared
+sessions do not collapse several fires into one unexplained session. Channel
+routes and old receipts can lack this link; absence is reported rather than inferred.
+
+Default manual schedule fires use the same manual event pipeline as explicit event
+fires. Requester attribution comes from authenticated ingress, never event payloads.
+Manual and scheduled run evidence records the observed trigger revision and a safe
+snapshot of its schedule settings, so later edits do not rewrite that history. Delivery
+retention is age-based, 90 days, independent of the bounded page size; previously
+pruned records cannot be recovered. Stored delivery outcomes describe dispatch,
+not whether the agent completed useful work; read the resulting session trace.
+See [history reads](../../crates/server/src/domains/agent_triggers/commands/runs.rs)
+and [delivery commands](../../crates/server/src/domains/agent_triggers/deliveries.rs).
+
+Durable execution history follows the current schedule binding and is removed
+when that binding is torn down. Retained delivery history remains available
+across disabling and re-enabling a trigger. Legacy `schedule` delivery labels
+could include default manual fires, so the public read calls their source unknown
+unless the corrected ingress writer recorded it.

@@ -8,3 +8,5 @@
 * [TC004: Create a Scheduled Agent via Platform Chat](TC004_create_scheduled_agent_via_platform.md) - Verify that Platform Chat can discover models and control-plane operations, create an Agent with an explicit default model, and create an Agent Trigger for recurring autonomous work.
 * [TC005: Ground Plugin and Connection State Before Agent Creation](TC005_ground_plugin_agent_preflight.md) - Verify that Platform Chat distinguishes operation discovery from resource inspection and grounds an Agent-creation confirmation in authoritative plugin, capability, Agent, connector, and current-user connection reads.
 * [TC006: Matched Platform Surfaces and Mutation Evidence](TC006_matched_platform_surfaces.md) - Compare CLI and native discovery with exact mutation evidence, context accounting and separate large-result diagnostics.
+
+* [TC007: Investigate background work](TC007_investigate_background_work.md) - Verify original alert evidence, attributable trigger history, schedule reads and filtered costs through existing platform commands.

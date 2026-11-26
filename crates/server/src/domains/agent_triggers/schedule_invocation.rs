@@ -68,6 +68,7 @@ pub(super) async fn dispatch_schedule(
             }),
         },
         events::TriggerEvent {
+            requested_by: fire.and_then(|f| f.requested_by),
             source: super::manual::source_name(fire, "schedule"),
             // Only an explicit id dedupes: two manual test fires both run.
             event_id: fire

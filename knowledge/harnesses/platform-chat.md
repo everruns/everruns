@@ -20,7 +20,7 @@ Harnesses no longer supply conversation presentation.
 ## Native operations and shell composition
 
 The managed Agent opts into `{"surface":"native"}` for the Platform capability.
-This registers all 350 public, noninternal, nondurable inventory operations as
+This registers the public, noninternal, nondurable inventory operations as
 native `platform_<wire_name>` functions; omitting `surface` still selects the
 legacy `discover` / `query` / `execute` interface. The assistant uses those
 native functions for individual platform operations and the `everruns` CLI in
@@ -160,7 +160,7 @@ it does not qualify Framework durable replay or provider inline tool changes.
 Separate large-result tasks measure filtering and aggregation.
 
 The historical corrected Muse comparison used an offline, unprefixed 344-tool
-catalog including 11 durable operations; production exposes 350 native
+catalog including 11 durable operations; production exposes native
 operations with the `platform_` prefix. Keep those measurements and limitations
 as historical evidence; they do not qualify production models, domain
 authorization, transactions, hosted persistence, or provider inline tool
@@ -190,3 +190,19 @@ avatar during initialization. Repeated provisioning fills only a missing avatar
 and preserves existing branding. It uses the ordinary immutable avatar variants
 and is displayed in the chat header; no provider call is needed. See
 [Agent Avatars](../ui/agent-avatars.md).
+
+## Investigating background work
+
+Platform Chat investigates through the existing health, trigger, cost and session
+schedule commands. Schedule list/get reads use the session's authority on either
+data plane and include stopped/deleted schedules. Discovery exposes those same
+commands as native functions and CLI routes; there is no separate investigation domain.
+
+Opening health evidence is frozen by episode. Trigger histories retain authenticated
+manual requesters and input-message links when collected; missing historical
+attribution stays unknown. Costs support joint dimensions and explicit windows.
+The agent must distinguish stored estimates from provider bills and report missing,
+pruned or unpriced evidence. Reads keep each domain's current authorization.
+See [background limits](../operations/background-limits.md),
+[agent triggers](../runtime-resources/agent-triggers.md) and
+[costs](../security/budgeting.md).

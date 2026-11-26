@@ -206,7 +206,11 @@ export function CostsOverviewView({ summary }: { summary: CostSummary }) {
     quantity: 0,
   };
   const startedBy = summary.by_started_by.map((line) =>
-    line.key === "unattended" ? ui("Unattended work") : ui("People"),
+    line.key === "unattended"
+      ? ui("Unattended work")
+      : line.key === "person"
+        ? ui("People")
+        : ui("Unknown"),
   );
   return (
     <div className="space-y-6">
@@ -272,7 +276,7 @@ export function CostsOverviewView({ summary }: { summary: CostSummary }) {
 
       <SectionTable
         title={ui("By who started the work")}
-        note={ui("Unattended work is schedules and triggers no person started")}
+        note={ui("Unattended work includes schedules and agent triggers.")}
         head={[ui("Started by"), ui("Usage records"), ui("Cost")]}
         rows={[
           ...summary.by_started_by.map((line, i) => [

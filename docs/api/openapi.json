@@ -10584,9 +10584,45 @@
             }
           },
           {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
             "name": "limit",
             "in": "query",
-            "description": "Maximum rows to return (1-200, default 50).",
+            "description": "Maximum rows to return (1-200; defaults to 10 runs or 50 deliveries).",
             "required": false,
             "schema": {
               "type": [
@@ -10636,7 +10672,7 @@
           "agent-triggers"
         ],
         "summary": "List agent trigger runs",
-        "description": "List the ten most recent durable execution outcomes for an agent trigger.",
+        "description": "List paginated durable execution outcomes for an agent trigger.",
         "operationId": "list_agent_trigger_runs",
         "parameters": [
           {
@@ -10655,6 +10691,55 @@
             "required": true,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum rows to return (1-200; defaults to 10 runs or 50 deliveries).",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
             }
           }
         ],
@@ -12742,9 +12827,46 @@
         "tags": [
           "budgets"
         ],
-        "summary": "Summarize what usage cost the organization",
+        "summary": "Summarize organization costs",
+        "description": "Summarize organization costs over a window, with combined agent/session/source/starter filters and an optional joint group_by breakdown. Includes unpriced counts and reports truncated joint groups.",
         "operationId": "get_cost_summary",
         "parameters": [
+          {
+            "name": "session_id",
+            "in": "query",
+            "description": "Restrict usage to this session.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "description": "Exact source key from by_source (for example a provider/model).",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "started_by",
+            "in": "query",
+            "description": "person, unattended, or unknown for historical records.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "group_by",
+            "in": "query",
+            "description": "Comma-separated joint dimensions: agent,session,source,started_by,basis,user,day.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
           {
             "name": "from",
             "in": "query",
@@ -18706,6 +18828,19 @@
             "required": true,
             "schema": {
               "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "episode_id",
+            "in": "query",
+            "description": "Select frozen opening evidence from this episode.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
               "format": "uuid"
             }
           }
@@ -31435,6 +31570,26 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "description": "Inclusive model-call and tool-start time. Omitted means lifetime.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "Exclusive model-call and tool-start time. Omitted means no upper bound.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
           }
         ],
         "responses": {
@@ -33742,6 +33897,103 @@
           },
           "404": {
             "description": "Session not found"
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "sessions-workspaces",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/platform/sessions/{session_id}/schedules": {
+      "get": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "List all schedules for a session",
+        "operationId": "list_session_schedules",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session's prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of schedules",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/WithUrls_SessionSchedule"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Caller may not view this session"
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "sessions-workspaces",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/platform/sessions/{session_id}/schedules/{schedule_id}": {
+      "get": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "Get a specific schedule",
+        "operationId": "get_session_schedule",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session's prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "schedule_id",
+            "in": "path",
+            "description": "Schedule's prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Schedule details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WithUrls_SessionSchedule"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Caller may not view this session"
+          },
+          "404": {
+            "description": "Schedule not found"
           }
         },
         "x-docs": {
@@ -42301,12 +42553,31 @@
             "type": "string",
             "description": "Delivery identifier."
           },
+          "input_message_id": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/messageId",
+                "description": "Input that caused the turn, when known. Join it to the session trace."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "reason": {
             "type": [
               "string",
               "null"
             ],
             "description": "Why the event was filtered or failed."
+          },
+          "requested_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "Authenticated manual requester; absent for automatic or historical deliveries."
           },
           "session_id": {
             "type": [
@@ -42317,7 +42588,7 @@
           },
           "source": {
             "type": "string",
-            "description": "Where the event came from (`schedule`, `webhook`, ...)."
+            "description": "Where the event came from (`schedule`, `webhook`, ...), or `unknown`\nwhen a legacy schedule label could also have been a manual fire."
           },
           "status": {
             "$ref": "#/components/schemas/TriggerDeliveryStatus",
@@ -42341,6 +42612,15 @@
           "scheduled_at"
         ],
         "properties": {
+          "attempts": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Number of task attempts observed; absent when unavailable.",
+            "minimum": 0
+          },
           "completed_at": {
             "type": [
               "string",
@@ -42348,6 +42628,9 @@
             ],
             "format": "date-time",
             "description": "Time the execution completed, when terminal."
+          },
+          "configuration": {
+            "description": "Non-secret trigger kind, cron, timezone and session mode at dispatch."
           },
           "error": {
             "type": [
@@ -42360,14 +42643,56 @@
             "type": "string",
             "description": "Durable execution identifier."
           },
+          "input_message_id": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/messageId",
+                "description": "Stable input message admitted by this execution, when recorded."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "requested_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "Authenticated user who fired it, when recorded."
+          },
           "scheduled_at": {
             "type": "string",
             "format": "date-time",
             "description": "Time the execution was scheduled."
           },
+          "session_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Resulting session's prefixed public identifier, when available.",
+            "example": "session_550e8400e29b41d4a716446655440000"
+          },
+          "source": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What fired it: manual, schedule, or unknown for old records."
+          },
           "status": {
             "type": "string",
             "description": "Outcome of the run's task: completed, failed, skipped, cancelled, or queued, running or retrying while it is outstanding."
+          },
+          "trigger_revision": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Trigger configuration revision observed at dispatch."
           }
         }
       },
@@ -47066,6 +47391,8 @@
         "type": "object",
         "description": "Org cost over a window, grouped several ways.",
         "required": [
+          "breakdown",
+          "breakdown_truncated",
           "from",
           "to",
           "timezone",
@@ -47080,6 +47407,18 @@
           "runs_with_agents"
         ],
         "properties": {
+          "breakdown": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CostSummaryBreakdown"
+            },
+            "description": "Joint breakdown requested by group_by; at most 200 groups."
+          },
+          "breakdown_truncated": {
+            "type": "boolean",
+            "description": "Whether additional joint groups were omitted after the first 200.",
+            "example": false
+          },
           "by_agent": {
             "type": "array",
             "items": {
@@ -47113,7 +47452,7 @@
             "items": {
               "$ref": "#/components/schemas/CostSummaryLine"
             },
-            "description": "Totals by who started the work: `person`, or `unattended` (schedules\nand other runs nobody watches)."
+            "description": "Totals by recorded starter: `person`, `unattended` (including schedules\nand agent triggers), or `unknown` when attribution was not recorded."
           },
           "by_user": {
             "type": "array",
@@ -47152,6 +47491,39 @@
             "type": "integer",
             "format": "int64",
             "description": "Usage records over the window with no price."
+          }
+        }
+      },
+      "CostSummaryBreakdown": {
+        "type": "object",
+        "description": "One joint cost group. Null dimensions mean attribution was not recorded.",
+        "required": [
+          "dimensions",
+          "cost_usd",
+          "unpriced_records",
+          "records"
+        ],
+        "properties": {
+          "cost_usd": {
+            "type": "number",
+            "format": "double",
+            "description": "Priced usage cost in USD within this group and the selected filters.",
+            "example": 6.61
+          },
+          "dimensions": {
+            "description": "Requested dimension keys mapped to their recorded attribution values."
+          },
+          "records": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Usage journal records in this group, after the selected filters.",
+            "example": 20
+          },
+          "unpriced_records": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Usage journal records in this group whose cost is unpriced.",
+            "example": 1
           }
         }
       },
@@ -56492,6 +56864,7 @@
         "type": "object",
         "description": "An organization-scoped operational issue and its current recovery evidence.",
         "required": [
+          "episode_id",
           "id",
           "code",
           "status",
@@ -56538,6 +56911,11 @@
             "type": "string",
             "description": "Detector code: `slack.permissions` for a channel, `org.active_turn_limit` for the organization.",
             "example": "slack.permissions"
+          },
+          "episode_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Current episode, also carried by its notification."
           },
           "error_code": {
             "type": [
@@ -56612,6 +56990,17 @@
             ],
             "description": "Current user's announcement identifier, when one was issued.",
             "example": "notification_550e8400e29b41d4a716446655440001"
+          },
+          "opening_observation": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/HealthIssueObservation",
+                "description": "Frozen opening evidence. Absent for episodes predating evidence capture."
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "session_id": {
             "type": [
@@ -56690,6 +57079,31 @@
             "format": "int64",
             "description": "Number of issues matching the current filter.",
             "example": 1
+          }
+        }
+      },
+      "HealthIssueObservation": {
+        "type": "object",
+        "description": "Evidence frozen when a health issue episode first opened.",
+        "required": [
+          "episode_id",
+          "observed_at"
+        ],
+        "properties": {
+          "episode_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Episode whose first accepted opening evidence was captured.",
+            "example": "550e8400-e29b-41d4-a716-446655440000"
+          },
+          "evidence": {
+            "description": "Original detector evidence; excludes session content."
+          },
+          "observed_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Observation time of that episode's opening evidence.",
+            "example": "2026-11-25T12:00:00Z"
           }
         }
       },
@@ -76447,6 +76861,34 @@
         },
         "additionalProperties": false
       },
+      "ScheduleBudget": {
+        "type": "object",
+        "description": "A schedule's spend cap, read from its `session_schedule` budget.",
+        "required": [
+          "limit_usd",
+          "spent_usd",
+          "status"
+        ],
+        "properties": {
+          "limit_usd": {
+            "type": "number",
+            "format": "double",
+            "description": "Cap in USD.",
+            "example": 2
+          },
+          "spent_usd": {
+            "type": "number",
+            "format": "double",
+            "description": "Spent so far in USD.",
+            "example": 0.25
+          },
+          "status": {
+            "type": "string",
+            "description": "`active`, `paused`, `exhausted` or `disabled`.",
+            "example": "active"
+          }
+        }
+      },
       "ScheduleExecutionResponse": {
         "type": "object",
         "description": "Schedule execution response",
@@ -76856,6 +77298,14 @@
             "description": "The agent's channel the conversation belongs to."
           }
         }
+      },
+      "ScheduleType": {
+        "type": "string",
+        "description": "Type of schedule: one-shot or recurring.",
+        "enum": [
+          "oneshot",
+          "recurring"
+        ]
       },
       "SchedulesListResponse": {
         "type": "object",
@@ -78702,6 +79152,15 @@
             },
             "description": "Spend and tokens per cost category, in a fixed order: `uncached_input`,\n`cache_read`, `cache_write`, `output`."
           },
+          "from": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Inclusive selected start; null means no lower time bound.",
+            "example": "2026-11-24T12:00:00Z"
+          },
           "hours": {
             "type": "array",
             "items": {
@@ -78740,6 +79199,15 @@
               "$ref": "#/components/schemas/CostSource"
             },
             "description": "Turns and spend by what started them, largest spend first."
+          },
+          "to": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Exclusive selected end; null means no upper time bound.",
+            "example": "2026-11-25T12:00:00Z"
           },
           "tools": {
             "$ref": "#/components/schemas/CostTools",
@@ -79525,6 +79993,192 @@
           "paused",
           "lost"
         ]
+      },
+      "SessionSchedule": {
+        "type": "object",
+        "description": "A session-scoped schedule.",
+        "required": [
+          "id",
+          "session_id",
+          "owner_principal_id",
+          "description",
+          "timezone",
+          "enabled",
+          "schedule_type",
+          "trigger_count",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "budget": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ScheduleBudget",
+                "description": "This schedule's spend cap and what its turns spent so far."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Time the schedule was created.",
+            "example": "2026-11-25T12:00:00Z"
+          },
+          "cron_expression": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Cron expression for recurring schedules (None for one-shot).",
+            "example": "*/30 * * * *"
+          },
+          "deleted_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the schedule was deleted. The row stays so a session recording can\nshow it; a deleted schedule does not fire and is hidden from the agent."
+          },
+          "description": {
+            "type": "string",
+            "description": "What the agent should do when the schedule fires.",
+            "example": "Check whether the pull request is merged"
+          },
+          "effective_owner": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PrincipalSummary",
+                "description": "Effective human owner summary."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "Whether the schedule is active.",
+            "example": true
+          },
+          "ends_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "The schedule stops firing after this time.",
+            "example": "2026-11-27T12:00:00Z"
+          },
+          "id": {
+            "type": "string",
+            "description": "Unique identifier (format: sched_{32-hex}).",
+            "example": "sched_01933b5a00007000800000000000001"
+          },
+          "last_triggered_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Last time this schedule fired."
+          },
+          "max_runs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "The schedule stops after this many fires.",
+            "example": 96,
+            "minimum": 0
+          },
+          "next_trigger_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Next computed trigger time."
+          },
+          "owner": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PrincipalSummary",
+                "description": "Owning principal summary."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "owner_principal_id": {
+            "type": "string",
+            "description": "Owning principal for this schedule.",
+            "example": "principal_01933b5a000070008000000000000001"
+          },
+          "resolved_owner_user_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "Denormalized effective human owner of the owning principal lineage."
+          },
+          "schedule_type": {
+            "$ref": "#/components/schemas/ScheduleType",
+            "description": "Computed type based on cron_expression vs scheduled_at."
+          },
+          "scheduled_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "One-shot trigger time (None for recurring)."
+          },
+          "session_id": {
+            "type": "string",
+            "description": "Session this schedule belongs to.",
+            "example": "session_01933b5a00007000800000000000001"
+          },
+          "stop_reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why the schedule stopped on its own (`ended`, `budget_exhausted`)."
+          },
+          "stop_when": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "When the work is done, in the agent's words.",
+            "example": "The pull request is merged or closed"
+          },
+          "timezone": {
+            "type": "string",
+            "description": "IANA timezone for cron interpretation.",
+            "example": "UTC"
+          },
+          "trigger_count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Total number of times this schedule has fired.",
+            "example": 4,
+            "minimum": 0
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Time the schedule's stored state was last changed.",
+            "example": "2026-11-25T14:00:00Z"
+          }
+        }
       },
       "SessionScope": {
         "type": "string",
@@ -90986,6 +91640,226 @@
           "model": "#/components/schemas/Session"
         }
       },
+      "WithUrls_SessionSchedule": {
+        "allOf": [
+          {
+            "type": "object",
+            "description": "A session-scoped schedule.",
+            "required": [
+              "id",
+              "session_id",
+              "owner_principal_id",
+              "description",
+              "timezone",
+              "enabled",
+              "schedule_type",
+              "trigger_count",
+              "created_at",
+              "updated_at"
+            ],
+            "properties": {
+              "budget": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/ScheduleBudget",
+                    "description": "This schedule's spend cap and what its turns spent so far."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "created_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "Time the schedule was created.",
+                "example": "2026-11-25T12:00:00Z"
+              },
+              "cron_expression": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Cron expression for recurring schedules (None for one-shot).",
+                "example": "*/30 * * * *"
+              },
+              "deleted_at": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time",
+                "description": "When the schedule was deleted. The row stays so a session recording can\nshow it; a deleted schedule does not fire and is hidden from the agent."
+              },
+              "description": {
+                "type": "string",
+                "description": "What the agent should do when the schedule fires.",
+                "example": "Check whether the pull request is merged"
+              },
+              "effective_owner": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/PrincipalSummary",
+                    "description": "Effective human owner summary."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "enabled": {
+                "type": "boolean",
+                "description": "Whether the schedule is active.",
+                "example": true
+              },
+              "ends_at": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time",
+                "description": "The schedule stops firing after this time.",
+                "example": "2026-11-27T12:00:00Z"
+              },
+              "id": {
+                "type": "string",
+                "description": "Unique identifier (format: sched_{32-hex}).",
+                "example": "sched_01933b5a00007000800000000000001"
+              },
+              "last_triggered_at": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time",
+                "description": "Last time this schedule fired."
+              },
+              "max_runs": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int32",
+                "description": "The schedule stops after this many fires.",
+                "example": 96,
+                "minimum": 0
+              },
+              "next_trigger_at": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time",
+                "description": "Next computed trigger time."
+              },
+              "owner": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/PrincipalSummary",
+                    "description": "Owning principal summary."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "owner_principal_id": {
+                "type": "string",
+                "description": "Owning principal for this schedule.",
+                "example": "principal_01933b5a000070008000000000000001"
+              },
+              "resolved_owner_user_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "description": "Denormalized effective human owner of the owning principal lineage."
+              },
+              "schedule_type": {
+                "$ref": "#/components/schemas/ScheduleType",
+                "description": "Computed type based on cron_expression vs scheduled_at."
+              },
+              "scheduled_at": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time",
+                "description": "One-shot trigger time (None for recurring)."
+              },
+              "session_id": {
+                "type": "string",
+                "description": "Session this schedule belongs to.",
+                "example": "session_01933b5a00007000800000000000001"
+              },
+              "stop_reason": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Why the schedule stopped on its own (`ended`, `budget_exhausted`)."
+              },
+              "stop_when": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "When the work is done, in the agent's words.",
+                "example": "The pull request is merged or closed"
+              },
+              "timezone": {
+                "type": "string",
+                "description": "IANA timezone for cron interpretation.",
+                "example": "UTC"
+              },
+              "trigger_count": {
+                "type": "integer",
+                "format": "int32",
+                "description": "Total number of times this schedule has fired.",
+                "example": 4,
+                "minimum": 0
+              },
+              "updated_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "Time the schedule's stored state was last changed.",
+                "example": "2026-11-25T14:00:00Z"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "self_url",
+              "view_url",
+              "ui_link"
+            ],
+            "properties": {
+              "allowed_actions": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/AllowedAction"
+                },
+                "description": "State-aware hypermedia actions the caller can take on this resource\nnext (e.g. `cancel`, `events`, `update`). Omitted from the wire\nshape when empty so resources that haven't opted into the\nconvention don't grow their payloads."
+              },
+              "self_url": {
+                "type": "string",
+                "description": "Full API endpoint URL for this resource."
+              },
+              "ui_link": {
+                "type": "string",
+                "description": "Alias for `view_url`, used by command and MCP outputs."
+              },
+              "view_url": {
+                "type": "string",
+                "description": "Full UI URL for viewing this resource."
+              }
+            }
+          }
+        ],
+        "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer). The\n`allowed_actions` array carries state-aware hypermedia links — empty\n(and omitted from the wire shape) until the underlying resource opts\ninto the convention by overriding `ResourceUrlable::allowed_actions`."
+      },
       "WithUrls_Skill": {
         "allOf": [
           {
@@ -92013,6 +92887,12 @@
         "description": "Prefixed identifier with 'harness' prefix",
         "example": "harness_01933b5a000070008000000000000001",
         "pattern": "^harness_[0-9a-f]{32}$"
+      },
+      "messageId": {
+        "type": "string",
+        "description": "Prefixed identifier with 'message' prefix",
+        "example": "message_01933b5a000070008000000000000001",
+        "pattern": "^message_[0-9a-f]{32}$"
       },
       "modelId": {
         "type": "string",

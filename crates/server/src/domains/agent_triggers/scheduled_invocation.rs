@@ -51,6 +51,9 @@ pub async fn invoke_scheduled_agent_trigger(
                 return serde_json::from_value(result)
                     .map_err(|error| CommandError::internal(error.into()));
             }
+            db.database()
+                .record_scheduled_trigger_run(org_id, trigger, invocation_id)
+                .await?;
             let result = invoke_agent_trigger(
                 db,
                 session_service,
@@ -100,6 +103,7 @@ async fn record_failed_attempt(
         }
     }
     let row = CreateAgentTriggerDeliveryRow {
+        requested_by: None,
         org_id,
         trigger_id,
         source: "schedule".to_string(),

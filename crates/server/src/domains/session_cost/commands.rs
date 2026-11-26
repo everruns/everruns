@@ -47,6 +47,10 @@ pub const USER_SOURCE: &str = "user";
 #[derive(Debug, Deserialize, ToSchema, IntoParams, Serialize)]
 #[into_params(parameter_in = Query)]
 pub struct GetSessionCost {
+    /// Inclusive model-call and tool-start time. Omitted means lifetime.
+    pub from: Option<DateTime<Utc>>,
+    /// Exclusive model-call and tool-start time. Omitted means no upper bound.
+    pub to: Option<DateTime<Utc>>,
     /// Session's prefixed public identifier (a path parameter).
     #[param(ignore)]
     pub session_id: String,
@@ -69,6 +73,9 @@ impl Command for GetSessionCost {
     type Output = SessionCost;
 
     async fn execute(self, ctx: &Ctx) -> Result<SessionCost, CommandError> {
+        if self.from.zip(self.to).is_some_and(|(from, to)| from >= to) {
+            return Err(CommandError::bad_request("from must be before to"));
+        }
         let session_id: SessionId = self
             .session_id
             .parse()
@@ -83,16 +90,90 @@ impl Command for GetSessionCost {
         }
         let id = session_id.uuid();
         let org = ctx.org_id();
-        // Turns and tool calls come from the trace index; bring it up to date.
-        ctx.db.database().catch_up_session_trace_fully(id).await?;
-
-        let generations = ctx.db.session_cost_generations(org, id).await?;
-        let turns = ctx.db.session_cost_turns(id).await?;
-        let origins = ctx.db.session_cost_turn_origins(id).await?;
-        let schedules = ctx.db.session_cost_schedules(org, id).await?;
-        let tools = ctx.db.session_cost_tools(id).await?;
+        let in_window = |at: DateTime<Utc>| {
+            self.from.is_none_or(|from| at >= from) && self.to.is_none_or(|to| at < to)
+        };
+        let (mut generations, mut turns, origins, tools) = if let Some(plane) =
+            crate::domains::data_plane::session_plane::SessionPlane::of(&ctx.db, org, session_id)
+                .await
+                .map_err(CommandError::internal)?
+        {
+            let inputs: everruns_contracts::runtime::session_cost::SessionCostInputs =
+                serde_json::from_value(
+                    plane
+                        .read(&everruns_contracts::session_commands::COST)
+                        .await
+                        .map_err(CommandError::internal)?,
+                )
+                .map_err(|e| CommandError::internal(e.into()))?;
+            let trace: everruns_contracts::dataplane::SessionTraceRows = serde_json::from_value(
+                plane
+                    .read(&everruns_contracts::session_commands::TRACE)
+                    .await
+                    .map_err(CommandError::internal)?,
+            )
+            .map_err(|e| CommandError::internal(e.into()))?;
+            let turns = trace
+                .turns
+                .into_iter()
+                .map(|t| CostTurnRow {
+                    turn_no: t.turn_no,
+                    turn_id: t.turn_id,
+                    started_at: t.started_at,
+                    status: t.status,
+                })
+                .collect::<Vec<_>>();
+            let tools = tool_rows(
+                trace
+                    .steps
+                    .into_iter()
+                    .filter(|s| s.kind == "tool" && in_window(s.started_at)),
+            );
+            (inputs.generations, turns, inputs.origins, tools)
+        } else {
+            ctx.db.database().catch_up_session_trace_fully(id).await?;
+            let tools = if self.from.is_some() || self.to.is_some() {
+                window_tools(ctx, id, self.from, self.to).await?
+            } else {
+                ctx.db.session_cost_tools(id).await?
+            };
+            (
+                ctx.db
+                    .session_cost_generations_between(org, id, self.from, self.to)
+                    .await?,
+                ctx.db.session_cost_turns(id).await?,
+                ctx.db.session_cost_turn_origins(id).await?,
+                tools,
+            )
+        };
+        generations.retain(|g| in_window(g.created_at));
+        let charged_turns: std::collections::HashSet<_> =
+            generations.iter().filter_map(|g| g.turn_id).collect();
+        turns.retain(|t| in_window(t.started_at) || charged_turns.contains(&t.turn_id));
+        let schedules = crate::domains::session_schedules::reads::read_schedules(ctx, session_id)
+            .await?
+            .into_iter()
+            .map(|s| CostScheduleRow {
+                public_id: s.id.to_string(),
+                description: s.description,
+                cron_expression: s.cron_expression,
+                enabled: s.enabled,
+                deleted: s.deleted_at.is_some(),
+            })
+            .collect::<Vec<_>>();
         let sandboxes = ctx.db.session_cost_sandboxes(org, id).await?;
         let mut spans = spans_by_sandbox(ctx.db.session_cost_sandbox_transitions(org, id).await?);
+        for values in spans.values_mut() {
+            for span in values.iter_mut() {
+                if let Some(from) = self.from {
+                    span.start = span.start.max(from);
+                }
+                if let Some(to) = self.to {
+                    span.end = span.end.min(to);
+                }
+            }
+            values.retain(|span| span.start < span.end);
+        }
 
         let mut cost = aggregate(
             session_id.to_string(),
@@ -103,6 +184,8 @@ impl Command for GetSessionCost {
             tools,
             &|provider, model, usage| price_split(provider, model, usage),
         );
+        cost.from = self.from;
+        cost.to = self.to;
         cost.sandboxes = sandboxes
             .into_iter()
             .map(|row| {
@@ -365,6 +448,8 @@ pub fn aggregate(
     };
 
     SessionCost {
+        from: None,
+        to: None,
         session_id,
         total_usd,
         model_calls: generations.len() as i64,
@@ -379,4 +464,33 @@ pub fn aggregate(
         tools,
         sandboxes: Vec::new(),
     }
+}
+
+fn tool_rows(
+    steps: impl Iterator<Item = everruns_contracts::trace::TraceStepRow>,
+) -> Vec<CostToolRow> {
+    let mut tools: BTreeMap<String, CostToolRow> = BTreeMap::new();
+    for step in steps {
+        let name = step.name.unwrap_or_else(|| "unknown".into());
+        let row = tools.entry(name.clone()).or_insert(CostToolRow {
+            name,
+            calls: 0,
+            failed: 0,
+            duration_ms: 0,
+        });
+        row.calls += 1;
+        row.failed += i64::from(step.status == "error");
+        row.duration_ms += step.duration_ms.unwrap_or(0);
+    }
+    tools.into_values().collect()
+}
+
+async fn window_tools(
+    ctx: &Ctx,
+    session: Uuid,
+    from: Option<DateTime<Utc>>,
+    to: Option<DateTime<Utc>>,
+) -> Result<Vec<CostToolRow>, CommandError> {
+    sqlx::query_as("SELECT COALESCE(name,'unknown') AS name, COUNT(*)::bigint AS calls, COUNT(*) FILTER (WHERE status='error')::bigint AS failed, COALESCE(SUM(duration_ms),0)::bigint AS duration_ms FROM session_trace_steps WHERE session_id=$1 AND kind='tool' AND ($2::timestamptz IS NULL OR started_at >= $2) AND ($3::timestamptz IS NULL OR started_at < $3) GROUP BY 1 ORDER BY calls DESC, name")
+        .bind(session).bind(from).bind(to).fetch_all(ctx.db.database().pool()).await.map_err(|e| CommandError::internal(e.into()))
 }

@@ -434,6 +434,10 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
     ),
     ("sessions participants", "Who is attached to a session."),
     (
+        "sessions schedules",
+        "Scheduled follow-ups in a session, including purpose and stop conditions.",
+    ),
+    (
         "sessions platform-chat",
         "Your permanent Platform Chat conversation.",
     ),

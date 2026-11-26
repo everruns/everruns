@@ -190,6 +190,7 @@ async fn reading_and_repeated_failures_do_not_resolve_or_duplicate_an_issue() {
     assert_eq!(list(&ctx).await.total, 0);
     assert_eq!(
         GetHealthIssue {
+            episode_id: None,
             issue_id: first.data[0].id
         }
         .run(&ctx)
@@ -312,6 +313,7 @@ async fn denied_policy_revoked_membership_and_other_org_cannot_read_health() {
     let mut other = Ctx::minimal_for_test(Caller::internal(999), db.clone(), None);
     assert!(
         GetHealthIssue {
+            episode_id: None,
             issue_id: first.data[0].id
         }
         .run(&other)
@@ -604,4 +606,90 @@ async fn active_turn_limit_issue_opens_reopens_and_resolves_below_the_limit() {
         .unwrap();
     assert_eq!(reopened.status, "open");
     assert_ne!(reopened.episode_id, opened.episode_id);
+}
+
+#[tokio::test]
+async fn investigation_opening_evidence_survives_rechecks_and_episode_changes() {
+    use crate::storage::background_work::SubjectHealthIssue;
+    let db = Arc::new(StorageBackend::test_database());
+    let ctx = Ctx::minimal_for_test(
+        everruns_core::Caller::internal(everruns_core::DEFAULT_ORG_ID),
+        db.clone(),
+        None,
+    );
+    let at = Utc::now();
+    let observation = |status, amount, checked_at| SubjectHealthIssue {
+        org_id: ctx.org_id(),
+        code: "agent.unattended_spend_spike",
+        subject_id: "agent:test",
+        agent_id: None,
+        session_id: None,
+        status,
+        evidence: json!({"last_day_usd":amount,"evaluation":{"from":"2026-11-24T04:13:00Z","to":"2026-11-25T04:13:00Z"}}),
+        checked_at,
+    };
+    let opened = db
+        .observe_subject_health_issue(observation("open", 6.61, at))
+        .await
+        .unwrap()
+        .unwrap();
+    db.observe_subject_health_issue(observation("open", 7.0, at + chrono::Duration::seconds(1)))
+        .await
+        .unwrap();
+    let read = |episode_id| GetHealthIssue {
+        issue_id: opened.id,
+        episode_id,
+    };
+    let issue = read(None).run(&ctx).await.unwrap();
+    assert_eq!(issue.evidence.unwrap()["last_day_usd"], json!(7.0));
+    let frozen = issue.opening_observation.unwrap();
+    assert_eq!(frozen.evidence.unwrap()["last_day_usd"], json!(6.61));
+    assert_eq!(frozen.observed_at.timestamp_micros(), at.timestamp_micros());
+    db.observe_subject_health_issue(observation(
+        "resolved",
+        0.0,
+        at + chrono::Duration::seconds(2),
+    ))
+    .await
+    .unwrap();
+    db.observe_subject_health_issue(observation("open", 8.0, at + chrono::Duration::seconds(3)))
+        .await
+        .unwrap();
+    assert_ne!(
+        read(None).run(&ctx).await.unwrap().episode_id,
+        opened.episode_id
+    );
+    let original = read(Some(opened.episode_id))
+        .run(&ctx)
+        .await
+        .unwrap()
+        .opening_observation
+        .unwrap();
+    assert_eq!(original.evidence.unwrap()["last_day_usd"], json!(6.61));
+    // A recheck cannot invent the opening evidence of an older uncaptured episode.
+    sqlx::query("DELETE FROM health_issue_observations WHERE issue_id=$1")
+        .bind(opened.id)
+        .execute(db.database().pool())
+        .await
+        .unwrap();
+    db.observe_subject_health_issue(observation("open", 9.0, at + chrono::Duration::seconds(4)))
+        .await
+        .unwrap();
+    assert!(
+        read(None)
+            .run(&ctx)
+            .await
+            .unwrap()
+            .opening_observation
+            .is_none()
+    );
+    let other = Ctx::minimal_for_test(everruns_core::Caller::internal(ctx.org_id() + 1), db, None);
+    assert!(matches!(
+        read(Some(opened.episode_id))
+            .run(&other)
+            .await
+            .unwrap_err()
+            .kind,
+        CommandErrorKind::NotFound(_)
+    ));
 }

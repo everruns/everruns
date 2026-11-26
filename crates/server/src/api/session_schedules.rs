@@ -2,6 +2,8 @@
 // Routes nested under /v1/platform/sessions/{session_id}/schedules
 
 use crate::auth::{AuthState, ResolvedOrg};
+use crate::domains::common::{Command, Ctx};
+use crate::domains::session_schedules::reads::{GetSessionSchedule, ListSessionSchedules};
 use crate::domains::session_schedules::{ScheduleChange, SessionScheduleService};
 use crate::domains::sessions::{SESSION_MANAGE, SESSION_VIEW, SessionService};
 use crate::storage::StorageBackend;
@@ -106,12 +108,14 @@ pub fn routes(state: AppState) -> Router {
 /// List all schedules for a session.
 #[utoipa::path(
     get,
+    operation_id = "list_session_schedules",
     path = "/v1/platform/sessions/{session_id}/schedules",
+    params(("session_id" = String, Path, description = "Session's prefixed public identifier")),
     responses(
         (status = 200, description = "List of schedules", body = [WithUrls<SessionSchedule>]),
         (status = 403, description = "Caller may not view this session"),
     ),
-    tag = "session-schedules"
+    tag = "sessions"
 )]
 pub async fn list_schedules(
     org: ResolvedOrg,
@@ -119,11 +123,13 @@ pub async fn list_schedules(
     Path(session_id): Path<SessionId>,
 ) -> ApiResult<Vec<WithUrls<SessionSchedule>>> {
     authorize(&state, &org, &SESSION_VIEW)?;
-    let schedules = state
-        .schedule_service
-        .list(org.org_id, session_id)
-        .await
-        .log_internal_error_json("list schedules")?;
+    let ctx = Ctx::minimal(
+        Caller::from(&org),
+        state.db.clone(),
+        None,
+        state.auth.permission_resolver.clone(),
+    );
+    let schedules = ListSessionSchedules { session_id }.run(&ctx).await?;
 
     let urls = UrlBuilder::from_auth_config(&state.auth.config);
     Ok(Json(urls.wrap_vec(schedules)))
@@ -132,13 +138,18 @@ pub async fn list_schedules(
 /// Get a specific schedule.
 #[utoipa::path(
     get,
+    operation_id = "get_session_schedule",
     path = "/v1/platform/sessions/{session_id}/schedules/{schedule_id}",
+    params(
+        ("session_id" = String, Path, description = "Session's prefixed public identifier"),
+        ("schedule_id" = String, Path, description = "Schedule's prefixed public identifier")
+    ),
     responses(
         (status = 200, description = "Schedule details", body = WithUrls<SessionSchedule>),
         (status = 403, description = "Caller may not view this session"),
         (status = 404, description = "Schedule not found"),
     ),
-    tag = "session-schedules"
+    tag = "sessions"
 )]
 pub async fn get_schedule(
     org: ResolvedOrg,
@@ -146,9 +157,18 @@ pub async fn get_schedule(
     Path((session_id, schedule_id)): Path<(SessionId, ScheduleId)>,
 ) -> ApiResult<WithUrls<SessionSchedule>> {
     authorize(&state, &org, &SESSION_VIEW)?;
-    let schedule =
-        get_schedule_in_session(&state, org.org_id, session_id, schedule_id, "get schedule")
-            .await?;
+    let ctx = Ctx::minimal(
+        Caller::from(&org),
+        state.db.clone(),
+        None,
+        state.auth.permission_resolver.clone(),
+    );
+    let schedule = GetSessionSchedule {
+        session_id,
+        schedule_id,
+    }
+    .run(&ctx)
+    .await?;
 
     let urls = UrlBuilder::from_auth_config(&state.auth.config);
     Ok(Json(urls.wrap(schedule)))

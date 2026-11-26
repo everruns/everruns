@@ -2822,7 +2822,7 @@
       "deliveries"
     ],
     "verb": "list",
-    "description": "List recent events delivered to an agent trigger: dispatched, filtered, duplicate or failed.",
+    "description": "List retained trigger deliveries (90 days), with source, authenticated manual requester, outcome, session and input-message links. Supports time windows and a stable before cursor. Legacy schedule labels with ambiguous ingress are unknown. Older or previously pruned deliveries are unavailable.",
     "method": "GET",
     "http_path": "/v1/platform/agents/{agent_id}/triggers/{trigger_id}/deliveries",
     "args": [
@@ -2834,11 +2834,30 @@
         "help": "Owning agent's prefixed public identifier."
       },
       {
+        "field": "before",
+        "long": "before",
+        "kind": "string",
+        "required": false,
+        "help": "Return records older than this delivery (exclusive)."
+      },
+      {
+        "field": "from",
+        "long": "from",
+        "kind": "string",
+        "required": false
+      },
+      {
         "field": "limit",
         "long": "limit",
         "kind": "integer",
         "required": false,
         "help": "Maximum rows to return (1-200, default 50)."
+      },
+      {
+        "field": "to",
+        "long": "to",
+        "kind": "string",
+        "required": false
       },
       {
         "field": "trigger_id",
@@ -2933,7 +2952,7 @@
       "runs"
     ],
     "verb": "list",
-    "description": "List recent execution outcomes for an agent trigger.",
+    "description": "List executions in a trigger's current durable schedule binding, with time windows, attempts, authenticated manual requester and resulting session. Disabling a trigger removes durable execution history; use list_agent_trigger_deliveries for retained event history. Historical attribution can be unknown.",
     "method": "GET",
     "http_path": "/v1/platform/agents/{agent_id}/triggers/{trigger_id}/runs",
     "args": [
@@ -2941,21 +2960,47 @@
         "field": "agent_id",
         "long": "agent-id",
         "kind": "string",
-        "required": true,
-        "help": "Owning agent's prefixed public identifier."
+        "required": true
+      },
+      {
+        "field": "before",
+        "long": "before",
+        "kind": "string",
+        "required": false,
+        "help": "Stable cursor: return executions older than this execution."
+      },
+      {
+        "field": "from",
+        "long": "from",
+        "kind": "string",
+        "required": false,
+        "help": "Inclusive scheduled time."
+      },
+      {
+        "field": "limit",
+        "long": "limit",
+        "kind": "integer",
+        "required": false,
+        "help": "Page size, 1-200; default 10."
+      },
+      {
+        "field": "to",
+        "long": "to",
+        "kind": "string",
+        "required": false,
+        "help": "Exclusive scheduled time."
       },
       {
         "field": "trigger_id",
         "long": "trigger-id",
         "kind": "string",
-        "required": true,
-        "help": "Agent trigger's prefixed public identifier."
+        "required": true
       }
     ],
     "examples": [
       {
-        "intent": "See whether recent firings of a trigger succeeded",
-        "command": "everruns agents triggers runs list --agent-id agent_01h9 --trigger-id trg_01h9"
+        "intent": "See recent trigger runs and the sessions they started",
+        "command": "everruns agents triggers runs list --agent-id agent_01h9 --trigger-id trg_01h9 --limit 20"
       }
     ],
     "output": "a JSON array. Read the items with jq '.[]'."
@@ -4986,7 +5031,7 @@
       "summary"
     ],
     "verb": "get",
-    "description": "Summarize what usage cost the organization.",
+    "description": "Summarize organization costs over a window, with combined agent/session/source/starter filters and an optional joint group_by breakdown. Includes unpriced counts and reports truncated joint groups.",
     "method": "GET",
     "http_path": "/v1/platform/costs/summary",
     "args": [
@@ -5003,6 +5048,34 @@
         "kind": "string",
         "required": false,
         "help": "Window start (inclusive)."
+      },
+      {
+        "field": "group_by",
+        "long": "group-by",
+        "kind": "string",
+        "required": false,
+        "help": "Comma-separated joint dimensions: agent,session,source,started_by,basis,user,day."
+      },
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "kind": "string",
+        "required": false,
+        "help": "Restrict usage to this session."
+      },
+      {
+        "field": "source",
+        "long": "source",
+        "kind": "string",
+        "required": false,
+        "help": "Exact source key from by_source (for example a provider/model)."
+      },
+      {
+        "field": "started_by",
+        "long": "started-by",
+        "kind": "string",
+        "required": false,
+        "help": "person, unattended, or unknown for historical records."
       },
       {
         "field": "to",
@@ -8083,10 +8156,17 @@
       "health-issues"
     ],
     "verb": "get",
-    "description": "Get an operational health issue.",
+    "description": "Get a health issue with current evidence and frozen opening evidence for its current or selected episode. Opening evidence is unavailable for older episodes that predate collection.",
     "method": "GET",
     "http_path": "/v1/platform/health-issues/{issue_id}",
     "args": [
+      {
+        "field": "episode_id",
+        "long": "episode-id",
+        "kind": "string",
+        "required": false,
+        "help": "Read the opening evidence of this episode; omitted means the current episode."
+      },
       {
         "field": "issue_id",
         "long": "issue-id",
@@ -15260,6 +15340,20 @@
         "kind": "string",
         "required": true,
         "help": "Session's prefixed public identifier (a path parameter)."
+      },
+      {
+        "field": "from",
+        "long": "from",
+        "kind": "string",
+        "required": false,
+        "help": "Inclusive model-call and tool-start time."
+      },
+      {
+        "field": "to",
+        "long": "to",
+        "kind": "string",
+        "required": false,
+        "help": "Exclusive model-call and tool-start time."
       }
     ],
     "examples": [
@@ -17322,6 +17416,67 @@
       }
     ],
     "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
+  },
+  {
+    "wire_name": "get_session_schedule",
+    "path": [
+      "sessions",
+      "schedules"
+    ],
+    "verb": "get",
+    "description": "Read one follow-up schedule in its owning session, with its purpose, stop condition, lifetime, spend and stop reason.",
+    "method": "GET",
+    "http_path": "/v1/platform/sessions/{session_id}/schedules/{schedule_id}",
+    "args": [
+      {
+        "field": "schedule_id",
+        "long": "schedule-id",
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed identifier with 'sched' prefix"
+      },
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed identifier with 'session' prefix"
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Read one follow-up's purpose, limits and stop reason",
+        "command": "everruns sessions schedules get --session-id session_01h9 --schedule-id sched_01h9"
+      }
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
+  },
+  {
+    "wire_name": "list_session_schedules",
+    "path": [
+      "sessions",
+      "schedules"
+    ],
+    "verb": "list",
+    "description": "Read a session's follow-up schedules, including purpose, stop conditions, limits, spend and deleted schedules.",
+    "method": "GET",
+    "http_path": "/v1/platform/sessions/{session_id}/schedules",
+    "args": [
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed identifier with 'session' prefix"
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Inspect a session's follow-ups and their stop conditions",
+        "command": "everruns sessions schedules list --session-id session_01h9"
+      }
+    ],
+    "output": "a JSON array. Read the items with jq '.[]'."
   },
   {
     "wire_name": "stream_sse",

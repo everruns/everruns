@@ -108,6 +108,7 @@ pub enum ManualFireStatus {
 /// How a manual fire presents itself to a source's normalization.
 #[derive(Debug, Clone)]
 pub struct ManualFire {
+    pub requested_by: Option<uuid::Uuid>,
     /// The id the pipeline dedupes on.
     pub event_id: String,
     /// The caller named the id, rather than taking a fresh one.
@@ -123,10 +124,12 @@ impl ManualFire {
             Some(event_id) => Self {
                 event_id,
                 explicit_id: true,
+                requested_by: None,
             },
             None => Self {
                 event_id: format!("manual-{}", uuid::Uuid::now_v7()),
                 explicit_id: false,
+                requested_by: None,
             },
         }
     }
@@ -147,6 +150,7 @@ pub fn event_id(manual: Option<&ManualFire>, source_id: Option<String>) -> Optio
 
 /// The outcome of a manual fire, as the fire command reports it.
 pub struct ManualFireResult {
+    pub input_message_id: Option<everruns_contracts::typed_id::MessageId>,
     pub status: ManualFireStatus,
     pub session_id: Option<SessionId>,
     pub created_session: bool,
@@ -157,18 +161,21 @@ impl From<TriggerEventOutcome> for ManualFireResult {
     fn from(outcome: TriggerEventOutcome) -> Self {
         match outcome {
             TriggerEventOutcome::Dispatched(result) => Self {
+                input_message_id: result.input_message_id,
                 status: ManualFireStatus::Dispatched,
                 session_id: Some(result.session_id),
                 created_session: result.created_session,
                 reason: None,
             },
             TriggerEventOutcome::Filtered { reason } => Self {
+                input_message_id: None,
                 status: ManualFireStatus::Filtered,
                 session_id: None,
                 created_session: false,
                 reason: Some(reason),
             },
             TriggerEventOutcome::Duplicate => Self {
+                input_message_id: None,
                 status: ManualFireStatus::Duplicate,
                 session_id: None,
                 created_session: false,
@@ -209,7 +216,8 @@ pub(super) async fn fire(
         .ok_or_else(|| CommandError::unavailable("Message service is not available"))?;
     let trigger_type = AgentTriggerType::from(trigger.trigger_type.as_str());
     let shape = EventShape::of(&event);
-    let fire = ManualFire::new(event.id.clone());
+    let mut fire = ManualFire::new(event.id.clone());
+    fire.requested_by = ctx.caller.user_id;
 
     let outcome = match trigger_type {
         AgentTriggerType::Schedule => {

@@ -37,6 +37,7 @@ function activity(
 
 function issue(overrides: Partial<HealthIssue>): HealthIssue {
   return {
+    episode_id: "00000000-0000-7000-8000-000000000002",
     id: "issue-1",
     code: "slack.permissions",
     status: "open",

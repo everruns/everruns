@@ -142,6 +142,9 @@ impl Fixture {
 
     async fn deliveries(&self, trigger_id: &str) -> Vec<(String, TriggerDeliveryStatus, String)> {
         ListAgentTriggerDeliveries {
+            from: None,
+            to: None,
+            before: None,
             agent_id: self.agent_id.clone(),
             trigger_id: trigger_id.to_string(),
             limit: None,
@@ -404,4 +407,56 @@ async fn webhook_and_schedule_triggers_read_the_manual_event() {
             ),
         ]
     );
+}
+
+#[tokio::test]
+async fn investigation_manual_fires_record_authenticated_actor_and_input_identity() {
+    let fx = fixture(None).await;
+    let trigger = CreateAgentTrigger {
+        agent_id: fx.agent_id.clone(),
+        req: create_req("0 9 * * *", "Investigate", true),
+    }
+    .run(&fx.ctx)
+    .await
+    .unwrap();
+    let fired = fx.fire(&trigger.id.to_string(), None).await.unwrap();
+    let runs = ListAgentTriggerRuns {
+        agent_id: fx.agent_id.clone(),
+        trigger_id: trigger.id.to_string(),
+        ..Default::default()
+    }
+    .run(&fx.ctx)
+    .await
+    .unwrap();
+    assert_eq!(runs[0].source.as_deref(), Some("manual"));
+    assert_eq!(
+        runs[0].configuration.as_ref().unwrap()["cron_expression"],
+        trigger.schedule_config().unwrap().cron_expression
+    );
+    assert_eq!(runs[0].requested_by, fx.ctx.caller.user_id);
+    assert_eq!(runs[0].session_id, fired.session_id.map(|s| s.to_string()));
+    fx.fire(
+        &trigger.id.to_string(),
+        Some(ManualTriggerEvent {
+            payload: Some(json!({"requested_by":"forged"})),
+            ..Default::default()
+        }),
+    )
+    .await
+    .unwrap();
+    let deliveries = ListAgentTriggerDeliveries {
+        agent_id: fx.agent_id.clone(),
+        trigger_id: trigger.id.to_string(),
+        from: None,
+        to: None,
+        before: None,
+        limit: None,
+    }
+    .run(&fx.ctx)
+    .await
+    .unwrap();
+    assert!(deliveries.iter().all(|d| d.input_message_id.is_some()));
+    let manual = deliveries.iter().find(|d| d.source == "manual").unwrap();
+    assert_eq!(manual.requested_by, fx.ctx.caller.user_id);
+    assert!(manual.session_id.is_some());
 }
