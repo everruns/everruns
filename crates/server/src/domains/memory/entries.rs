@@ -190,16 +190,20 @@ impl Command for ListMemoryStores {
 /// An entry file that does not parse.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct InvalidMemoryEntry {
+    /// Path of the file inside the store.
     pub path: String,
+    /// Why it does not parse.
     pub error: String,
 }
 
 /// A store's entries.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct MemoryEntriesView {
+    /// The store's mount name (`agent`, `team`, a memory name).
     pub store: String,
     /// Newest first.
     pub entries: Vec<MemoryEntry>,
+    /// Entry files that do not parse, with the reason.
     pub invalid: Vec<InvalidMemoryEntry>,
 }
 
@@ -273,16 +277,19 @@ impl Command for ListMemoryEntries {
 /// One version of a memory file.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct MemoryFileVersion {
+    /// Path of the file inside the memory.
     pub path: String,
     /// `write` or `delete`.
     pub action: String,
     /// The text after the change; absent for a delete or a binary file.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content: Option<String>,
+    /// Size of the file after the change, in bytes.
     pub size_bytes: i64,
     /// Who changed it, when known (`session:<id>`, `user:<id>`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub changed_by: Option<String>,
+    /// When the change happened.
     pub created_at: DateTime<Utc>,
 }
 

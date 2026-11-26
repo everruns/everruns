@@ -62,24 +62,35 @@ pub fn routes(state: ApiState) -> Router {
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct MemoryFileInfo {
+    /// Path inside the memory, starting with `/`.
     pub path: String,
+    /// True for a folder.
     pub is_directory: bool,
+    /// Size in bytes; 0 for a folder.
     pub size_bytes: i64,
+    /// Hash of the content; absent for a folder.
     pub content_hash: Option<String>,
+    /// When the file was created.
     pub created_at: chrono::DateTime<chrono::Utc>,
+    /// When the file last changed.
     pub updated_at: chrono::DateTime<chrono::Utc>,
 }
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct MemoryFile {
+    /// Path inside the memory, starting with `/`.
     pub path: String,
     /// Text or base64-encoded content; check `encoding`.
     pub content: String,
     /// "text" or "base64".
     pub encoding: String,
+    /// Size in bytes.
     pub size_bytes: i64,
+    /// Hash of the content.
     pub content_hash: Option<String>,
+    /// When the file was created.
     pub created_at: chrono::DateTime<chrono::Utc>,
+    /// When the file last changed.
     pub updated_at: chrono::DateTime<chrono::Utc>,
 }
 

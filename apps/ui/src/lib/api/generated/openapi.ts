@@ -20574,7 +20574,9 @@ export interface components {
     };
     /** @description An entry file that does not parse. */
     InvalidMemoryEntry: {
+      /** @description Why it does not parse. */
       error: string;
+      /** @description Path of the file inside the store. */
       path: string;
     };
     /** @description The result of running a fixer. */
@@ -22199,14 +22201,26 @@ export interface components {
     ListResponse_MemoryFileInfo: {
       /** @description Array of items returned by the list operation. */
       data: {
+        /** @description Hash of the content; absent for a folder. */
         content_hash?: string | null;
-        /** Format: date-time */
+        /**
+         * Format: date-time
+         * @description When the file was created.
+         */
         created_at: string;
+        /** @description True for a folder. */
         is_directory: boolean;
+        /** @description Path inside the memory, starting with `/`. */
         path: string;
-        /** Format: int64 */
+        /**
+         * Format: int64
+         * @description Size in bytes; 0 for a folder.
+         */
         size_bytes: number;
-        /** Format: date-time */
+        /**
+         * Format: date-time
+         * @description When the file last changed.
+         */
         updated_at: string;
       }[];
     };
@@ -22223,10 +22237,17 @@ export interface components {
         changed_by?: string | null;
         /** @description The text after the change; absent for a delete or a binary file. */
         content?: string | null;
-        /** Format: date-time */
+        /**
+         * Format: date-time
+         * @description When the change happened.
+         */
         created_at: string;
+        /** @description Path of the file inside the memory. */
         path: string;
-        /** Format: int64 */
+        /**
+         * Format: int64
+         * @description Size of the file after the change, in bytes.
+         */
         size_bytes: number;
       }[];
     };
@@ -24633,26 +24654,37 @@ export interface components {
     MemoryEntriesView: {
       /** @description Newest first. */
       entries: components["schemas"]["MemoryEntry"][];
+      /** @description Entry files that do not parse, with the reason. */
       invalid: components["schemas"]["InvalidMemoryEntry"][];
+      /** @description The store's mount name (`agent`, `team`, a memory name). */
       store: string;
     };
     /** @description A recorded entry: one file in an entry folder of a store. */
     MemoryEntry: {
+      /** @description What sort of entry it is: decision, rule, fact, preference, blocked or note. */
       kind: components["schemas"]["MemoryEntryKind"];
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description When the remembered thing happened.
+       */
       occurred_at: string;
       /** @description Path inside the store (`/decisions/everruns-5528.md`). */
       path: string;
       /** @description A dreaming proposal in a shared store, waiting to be accepted. */
       proposed?: boolean;
+      /** @description Exact words the entry rests on, when quoted. */
       quote?: string | null;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description When the entry was written.
+       */
       recorded_at: string;
       /**
        * @description Who recorded it: `agent:<id>`, `user:<id>`, `session:<id>`,
        *     `dreaming`, `person`.
        */
       recorded_by: string;
+      /** @description How a blocked item was resolved. */
       resolution?: string | null;
       /**
        * Format: date-time
@@ -24660,8 +24692,11 @@ export interface components {
        */
       resolved_at?: string | null;
       source?: components["schemas"]["MemorySource"] | null;
+      /** @description The entry itself, in one or a few sentences. */
       statement: string;
+      /** @description The store the entry lives in. */
       store: components["schemas"]["MemoryStoreKey"];
+      /** @description What the entry is about, when one thing stands out. */
       subject?: string | null;
     };
     /**
@@ -24672,26 +24707,49 @@ export interface components {
     MemoryFile: {
       /** @description Text or base64-encoded content; check `encoding`. */
       content: string;
+      /** @description Hash of the content. */
       content_hash?: string | null;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description When the file was created.
+       */
       created_at: string;
       /** @description "text" or "base64". */
       encoding: string;
+      /** @description Path inside the memory, starting with `/`. */
       path: string;
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Size in bytes.
+       */
       size_bytes: number;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description When the file last changed.
+       */
       updated_at: string;
     };
     MemoryFileInfo: {
+      /** @description Hash of the content; absent for a folder. */
       content_hash?: string | null;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description When the file was created.
+       */
       created_at: string;
+      /** @description True for a folder. */
       is_directory: boolean;
+      /** @description Path inside the memory, starting with `/`. */
       path: string;
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Size in bytes; 0 for a folder.
+       */
       size_bytes: number;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description When the file last changed.
+       */
       updated_at: string;
     };
     /** @description One version of a memory file. */
@@ -24702,10 +24760,17 @@ export interface components {
       changed_by?: string | null;
       /** @description The text after the change; absent for a delete or a binary file. */
       content?: string | null;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description When the change happened.
+       */
       created_at: string;
+      /** @description Path of the file inside the memory. */
       path: string;
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Size of the file after the change, in bytes.
+       */
       size_bytes: number;
     };
     MemoryGrepResult: {
@@ -24741,7 +24806,9 @@ export interface components {
         });
     /** @description Which store: a scope, plus the name for a named memory. */
     MemoryStoreKey: {
+      /** @description The memory's name, set only for a named store. */
       name?: string | null;
+      /** @description Whose memory: agent, user, org, team, parent or named. */
       scope: components["schemas"]["MemoryStoreScope"];
     };
     /**

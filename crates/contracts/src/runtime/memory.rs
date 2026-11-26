@@ -146,7 +146,9 @@ pub const MAX_STORE_NAME_CHARS: usize = 63;
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct MemoryStoreKey {
+    /// Whose memory: agent, user, org, team, parent or named.
     pub scope: MemoryStoreScope,
+    /// The memory's name, set only for a named store.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
 }
@@ -482,18 +484,26 @@ pub struct NewMemoryEntry {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct MemoryEntry {
+    /// The store the entry lives in.
     pub store: MemoryStoreKey,
     /// Path inside the store (`/decisions/everruns-5528.md`).
     pub path: String,
+    /// What sort of entry it is: decision, rule, fact, preference, blocked or note.
     pub kind: MemoryEntryKind,
+    /// What the entry is about, when one thing stands out.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub subject: Option<String>,
+    /// The entry itself, in one or a few sentences.
     pub statement: String,
+    /// Exact words the entry rests on, when quoted.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub quote: Option<String>,
+    /// Where the entry came from (session, message, link).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<MemorySource>,
+    /// When the remembered thing happened.
     pub occurred_at: DateTime<Utc>,
+    /// When the entry was written.
     pub recorded_at: DateTime<Utc>,
     /// Who recorded it: `agent:<id>`, `user:<id>`, `session:<id>`,
     /// `dreaming`, `person`.
@@ -501,6 +511,7 @@ pub struct MemoryEntry {
     /// Set when a blocked item was resolved.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resolved_at: Option<DateTime<Utc>>,
+    /// How a blocked item was resolved.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resolution: Option<String>,
     /// A dreaming proposal in a shared store, waiting to be accepted.

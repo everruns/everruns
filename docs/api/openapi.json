@@ -58171,10 +58171,12 @@
         ],
         "properties": {
           "error": {
-            "type": "string"
+            "type": "string",
+            "description": "Why it does not parse."
           },
           "path": {
-            "type": "string"
+            "type": "string",
+            "description": "Path of the file inside the store."
           }
         }
       },
@@ -60893,25 +60895,31 @@
                   "type": [
                     "string",
                     "null"
-                  ]
+                  ],
+                  "description": "Hash of the content; absent for a folder."
                 },
                 "created_at": {
                   "type": "string",
-                  "format": "date-time"
+                  "format": "date-time",
+                  "description": "When the file was created."
                 },
                 "is_directory": {
-                  "type": "boolean"
+                  "type": "boolean",
+                  "description": "True for a folder."
                 },
                 "path": {
-                  "type": "string"
+                  "type": "string",
+                  "description": "Path inside the memory, starting with `/`."
                 },
                 "size_bytes": {
                   "type": "integer",
-                  "format": "int64"
+                  "format": "int64",
+                  "description": "Size in bytes; 0 for a folder."
                 },
                 "updated_at": {
                   "type": "string",
-                  "format": "date-time"
+                  "format": "date-time",
+                  "description": "When the file last changed."
                 }
               }
             },
@@ -60958,14 +60966,17 @@
                 },
                 "created_at": {
                   "type": "string",
-                  "format": "date-time"
+                  "format": "date-time",
+                  "description": "When the change happened."
                 },
                 "path": {
-                  "type": "string"
+                  "type": "string",
+                  "description": "Path of the file inside the memory."
                 },
                 "size_bytes": {
                   "type": "integer",
-                  "format": "int64"
+                  "format": "int64",
+                  "description": "Size of the file after the change, in bytes."
                 }
               }
             },
@@ -65447,10 +65458,12 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/InvalidMemoryEntry"
-            }
+            },
+            "description": "Entry files that do not parse, with the reason."
           },
           "store": {
-            "type": "string"
+            "type": "string",
+            "description": "The store's mount name (`agent`, `team`, a memory name)."
           }
         }
       },
@@ -65468,11 +65481,13 @@
         ],
         "properties": {
           "kind": {
-            "$ref": "#/components/schemas/MemoryEntryKind"
+            "$ref": "#/components/schemas/MemoryEntryKind",
+            "description": "What sort of entry it is: decision, rule, fact, preference, blocked or note."
           },
           "occurred_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "When the remembered thing happened."
           },
           "path": {
             "type": "string",
@@ -65486,11 +65501,13 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Exact words the entry rests on, when quoted."
           },
           "recorded_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "When the entry was written."
           },
           "recorded_by": {
             "type": "string",
@@ -65500,7 +65517,8 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "How a blocked item was resolved."
           },
           "resolved_at": {
             "type": [
@@ -65513,7 +65531,8 @@
           "source": {
             "oneOf": [
               {
-                "$ref": "#/components/schemas/MemorySource"
+                "$ref": "#/components/schemas/MemorySource",
+                "description": "Where the entry came from (session, message, link)."
               },
               {
                 "type": "null"
@@ -65521,16 +65540,19 @@
             ]
           },
           "statement": {
-            "type": "string"
+            "type": "string",
+            "description": "The entry itself, in one or a few sentences."
           },
           "store": {
-            "$ref": "#/components/schemas/MemoryStoreKey"
+            "$ref": "#/components/schemas/MemoryStoreKey",
+            "description": "The store the entry lives in."
           },
           "subject": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "What the entry is about, when one thing stands out."
           }
         }
       },
@@ -65565,26 +65587,31 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Hash of the content."
           },
           "created_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "When the file was created."
           },
           "encoding": {
             "type": "string",
             "description": "\"text\" or \"base64\"."
           },
           "path": {
-            "type": "string"
+            "type": "string",
+            "description": "Path inside the memory, starting with `/`."
           },
           "size_bytes": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Size in bytes."
           },
           "updated_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "When the file last changed."
           }
         }
       },
@@ -65602,25 +65629,31 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Hash of the content; absent for a folder."
           },
           "created_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "When the file was created."
           },
           "is_directory": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "True for a folder."
           },
           "path": {
-            "type": "string"
+            "type": "string",
+            "description": "Path inside the memory, starting with `/`."
           },
           "size_bytes": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Size in bytes; 0 for a folder."
           },
           "updated_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "When the file last changed."
           }
         }
       },
@@ -65654,14 +65687,17 @@
           },
           "created_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "When the change happened."
           },
           "path": {
-            "type": "string"
+            "type": "string",
+            "description": "Path of the file inside the memory."
           },
           "size_bytes": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Size of the file after the change, in bytes."
           }
         }
       },
@@ -65787,10 +65823,12 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "The memory's name, set only for a named store."
           },
           "scope": {
-            "$ref": "#/components/schemas/MemoryStoreScope"
+            "$ref": "#/components/schemas/MemoryStoreScope",
+            "description": "Whose memory: agent, user, org, team, parent or named."
           }
         }
       },
