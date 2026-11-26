@@ -14880,7 +14880,7 @@
     },
     "method": "GET",
     "name": "get_session_schedule",
-    "output_shape": "unknown",
+    "output_shape": "object",
     "path": "/v1/platform/sessions/{session_id}/schedules/{schedule_id}",
     "positional_arg": null,
     "read_only": true
@@ -19001,7 +19001,7 @@
     },
     "method": "GET",
     "name": "list_session_schedules",
-    "output_shape": "unknown",
+    "output_shape": "array",
     "path": "/v1/platform/sessions/{session_id}/schedules",
     "positional_arg": null,
     "read_only": true

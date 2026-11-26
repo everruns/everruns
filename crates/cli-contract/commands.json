@@ -17448,7 +17448,8 @@
         "intent": "Read one follow-up's purpose, limits and stop reason",
         "command": "everruns sessions schedules get --session-id session_01h9 --schedule-id sched_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_session_schedules",
@@ -17474,7 +17475,8 @@
         "intent": "Inspect a session's follow-ups and their stop conditions",
         "command": "everruns sessions schedules list --session-id session_01h9"
       }
-    ]
+    ],
+    "output": "a JSON array. Read the items with jq '.[]'."
   },
   {
     "wire_name": "stream_sse",

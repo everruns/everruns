@@ -1312,6 +1312,8 @@ everruns sessions schedules get [OPTIONS] --schedule-id <schedule_id> --session-
 | `--schedule-id <SCHEDULE_ID>` | Required. Prefixed identifier with 'sched' prefix. |
 | `--session-id <SESSION_ID>` | Required. Prefixed identifier with 'session' prefix. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -1330,6 +1332,8 @@ everruns sessions schedules list [OPTIONS] --session-id <session_id>
 | Flag | Description |
 |---|---|
 | `--session-id <SESSION_ID>` | Required. Prefixed identifier with 'session' prefix. |
+
+Output: a JSON array. Read the items with jq '.[]'.
 
 Example:
 
