@@ -261,7 +261,7 @@ impl Command for ListMemoryEntries {
                 }),
             }
         }
-        entries.sort_by(|a, b| b.occurred_at.cmp(&a.occurred_at));
+        entries.sort_by_key(|entry| std::cmp::Reverse(entry.occurred_at));
         Ok(MemoryEntriesView {
             store: store.label(),
             entries,

@@ -1,6 +1,6 @@
 ---
 title: How Memory Works
-description: How Everruns agents remember across sessions: memory stores for the agent, team, parent, person and organization, typed Markdown entries and history.
+description: "How Everruns agents remember across sessions: memory stores for the agent, team, parent, person and organization, typed Markdown entries and history."
 ---
 
 An agent that forgets what was decided yesterday asks again, or worse, acts
