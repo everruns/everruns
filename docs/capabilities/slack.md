@@ -87,7 +87,7 @@ Everruns opens the channel editor after it saves the channel.
 
 ### 2. Publish the Channel
 
-A channel starts as a draft, which answers nobody. **Add to Slack** publishes it for you once Slack's consent screen returns successfully, if you are allowed to publish channels. Otherwise, or when you configure the Slack app by hand, select **Publish** in the channel editor (or run `everruns agents channels publish`). Publishing makes only this channel live, and a channel someone turned off stays off.
+A channel starts as a draft, which answers nobody. **Add to Slack** publishes it for you once Slack's consent screen returns successfully, if you are allowed to publish channels. Otherwise, or when you configure the Slack app by hand, publish it yourself. Select **Publish** in the channel editor, or run `everruns agents channels publish`. Publishing makes only this channel live, and a channel someone turned off stays off.
 
 When you create the Slack app by hand, publish first: the manifest contains the channel's Request URL, and Slack verifies that URL when it creates the app.
 

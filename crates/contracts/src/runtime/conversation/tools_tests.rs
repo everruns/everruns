@@ -446,6 +446,16 @@ async fn message_is_the_field_and_text_still_reads_as_it() {
         send(json!({"message": "a", "text": "b"}), &ctx).await,
         ToolExecutionResult::ToolError(_)
     ));
+    // The schema check sees the upgraded form, so `text` passes it.
+    let call = crate::runtime::tool_types::ToolCall {
+        id: "call-1".into(),
+        name: SEND_MESSAGE_TOOL_NAME.into(),
+        arguments: json!({"text": "hi"}),
+    };
+    assert_eq!(
+        crate::runtime::tools::validate_tool_arguments(&SendMessageTool, &call).unwrap(),
+        None
+    );
     assert_eq!(send_message_text(&json!({"message": "m"})), Some("m"));
     assert_eq!(send_message_text(&json!({"text": "t"})), Some("t"));
 }

@@ -178,6 +178,18 @@ impl Tool for SendMessageTool {
         "Send a message to the person you are talking with. This is the only way they see anything from you; your assistant text is private notes. Use it for answers, questions and results. Write the complete message in Markdown. To share files you made (images, PDFs, reports), list their session paths in `files`; they are delivered with the message. The runtime picks the destination: the conversation this turn came from. Success means it was delivered. If this is the only tool in the step, the turn ends after delivery."
     }
 
+    /// `text` is the field's earlier name: read it as `message` so a call in
+    /// that form passes the schema check (both at once still fails).
+    fn upgrade_arguments(&self, mut arguments: Value) -> Value {
+        if let Some(object) = arguments.as_object_mut()
+            && !object.contains_key("message")
+            && let Some(text) = object.remove("text")
+        {
+            object.insert("message".into(), text);
+        }
+        arguments
+    }
+
     fn parameters_schema(&self) -> Value {
         json!({"type":"object", "properties": {
             "message": {
