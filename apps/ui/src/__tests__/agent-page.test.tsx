@@ -417,15 +417,14 @@ describe("Agent breadcrumbs", () => {
 });
 
 describe("Agent views", () => {
-  it("hides view configuration and disables its query before adoption", async () => {
+  it("offers view configuration without any feature opt-in", async () => {
     await renderPage();
     const more = within(screen.getByRole("navigation", { name: "More settings" }));
-    expect(more.queryByRole("button", { name: /^Views/ })).not.toBeInTheDocument();
-    expect(mockViewSettings).toHaveBeenCalledWith("agent-1", false);
+    expect(more.getByRole("button", { name: /^Views/ })).toBeInTheDocument();
+    expect(mockViewSettings).toHaveBeenCalledWith("agent-1", true);
   });
 
   it("opens a settings sheet from the Views row after Sandbox", async () => {
-    mockFeatureFlag.mockImplementation((key) => key === "agent_views");
     await renderPage();
     const more = within(screen.getByRole("navigation", { name: "More settings" }));
     const sandbox = more.getByRole("button", { name: /^Sandbox/ });

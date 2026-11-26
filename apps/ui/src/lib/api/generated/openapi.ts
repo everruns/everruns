@@ -12123,6 +12123,12 @@ export interface components {
       /** @description What it would act on, by public id. */
       target_id: string;
     };
+    /** @description A portrait is separate from files seeded into the agent's workspace. */
+    Avatar: string | components["schemas"]["AvatarImage"] | boolean;
+    AvatarImage: {
+      content_type: string;
+      image_base64: string;
+    };
     /** @description Presentation and search metadata for one curated agent avatar. */
     AvatarPreset: {
       /** @description Short description of the preset's appearance. */
@@ -23505,6 +23511,7 @@ export interface components {
        *     archives keep them in `.agents/agents/<name>/`; text formats inline them.
        */
       agents?: components["schemas"]["Manifest"][];
+      avatar?: components["schemas"]["Avatar"] | null;
       /** @description Named capabilities, optionally with configuration; the host validates availability. */
       capabilities?: components["schemas"]["PackageCapability"][];
       /** @description Named channel descriptions, upserted without removing omitted destination channels. */

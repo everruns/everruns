@@ -37,6 +37,19 @@ use crate::phase_reads::PhaseReads;
 use crate::worker_adapters::{OrgAdapter, SessionAdapter, WorkerAdapters};
 use crate::write_behind::WriteBehind;
 
+/// GitHub's MCP server feature switches; see the form-deferral decision in
+/// `WorkerMcpResolver::resolve`.
+const GITHUB_MCP_FEATURES_HEADER: &str = "X-MCP-Features";
+const GITHUB_MCP_NO_FORM_DEFERRAL: &str = "mcp_apps_disable_form_deferral";
+
+/// GitHub's hosted MCP server, the only one that reads these switches.
+fn is_github_mcp(url: &str) -> bool {
+    reqwest::Url::parse(url)
+        .ok()
+        .and_then(|url| url.host_str().map(|host| host == "api.githubcopilot.com"))
+        .unwrap_or(false)
+}
+
 /// Resolves an `mcp_*` server prefix to a connection by asking the control
 /// plane over gRPC (`get_mcp_server_by_prefix`). The control plane returns a
 /// fully resolved descriptor.
@@ -171,6 +184,26 @@ impl<A: WorkerAdapters> McpConnectionResolver for WorkerMcpResolver<A> {
                         "Authorization".to_string(),
                         format!("Bearer {}", credential.token),
                     );
+                    // Decision (2026-11-26): GitHub's MCP server turns a write
+                    // (close an issue, edit a pull request) into an MCP Apps
+                    // form when the client declares the views extension, and
+                    // waits for a person to submit it. An agent acting as its
+                    // own GitHub App has no such person: in Slack or a
+                    // scheduled run the form is never seen and the write never
+                    // happens. Everruns' own tool approvals gate the call, so
+                    // ask GitHub to run it. An explicit header on the server
+                    // still wins.
+                    if credential.acted_as == crate::core::McpServerActsAs::Service
+                        && is_github_mcp(&info.url)
+                        && !headers
+                            .keys()
+                            .any(|k| k.eq_ignore_ascii_case(GITHUB_MCP_FEATURES_HEADER))
+                    {
+                        headers.insert(
+                            GITHUB_MCP_FEATURES_HEADER.to_string(),
+                            GITHUB_MCP_NO_FORM_DEFERRAL.to_string(),
+                        );
+                    }
                     acted_as = Some(credential.acted_as);
                 }
                 Ok(None) => {

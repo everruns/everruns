@@ -72,5 +72,15 @@ immutable. Sources: [`avatar.rs`](../../crates/server/src/domains/agents/avatar.
   search and assistive technology. Roles never change the agent's behavior or configuration. Current
   selection survives reload; custom images remain uploadable, replaceable and removable.
 
+- **Platform Chat has a built-in Caretaker portrait.** Organization provisioning
+  attaches the shipped artwork through the existing avatar renderer, without a
+  model call. Existing managed agents receive it only when missing; custom
+  portraits and stable URLs survive repeated initialization, including races.
+  Chat headers render the stored portrait and keep initials as the fallback.
+- **Packages carry portraits.** ZIP, text and GitHub sync reuse the shared
+  [portable package contract](../runtime-resources/agent-packages.md). Imports
+  regenerate destination variants and preserve legacy omitted portraits; source
+  ownership also covers upload, preset, generation and removal.
+
 ## Open
 - Branding has no "Generate" button yet; generation is CLI, MCP and API only.

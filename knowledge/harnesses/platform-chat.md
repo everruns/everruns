@@ -182,3 +182,11 @@ qualification. The [recorded comparison](../../evals/platform-capability/README.
 owns measurements and the HTTP/cache limitations; the
 [provenance](../../evals/platform-capability/results/corrected-2026-10-24-summary.json)
 separates cohorts and preserves failed attempts.
+
+## Built-in portrait
+
+Every organization's managed Platform Chat agent receives the shipped Caretaker
+avatar during initialization. Repeated provisioning fills only a missing avatar
+and preserves existing branding. It uses the ordinary immutable avatar variants
+and is displayed in the chat header; no provider call is needed. See
+[Agent Avatars](../ui/agent-avatars.md).

@@ -1367,7 +1367,7 @@
         ],
         "x-docs": {
           "audience": "public",
-          "availability": "Requires organization adoption of the agent_views feature flag",
+          "availability": "Everruns Cloud and self-hosted Platform",
           "group": "agent-api",
           "support": "preview"
         }
@@ -1429,7 +1429,7 @@
         ],
         "x-docs": {
           "audience": "public",
-          "availability": "Requires organization adoption of the agent_views feature flag",
+          "availability": "Everruns Cloud and self-hosted Platform",
           "group": "agent-api",
           "support": "preview"
         }
@@ -3767,7 +3767,7 @@
         },
         "x-docs": {
           "audience": "public",
-          "availability": "Requires organization adoption of the agent_views feature flag",
+          "availability": "Everruns Cloud and self-hosted Platform",
           "group": "agent-api",
           "support": "preview"
         },
@@ -3834,7 +3834,7 @@
         },
         "x-docs": {
           "audience": "public",
-          "availability": "Requires organization adoption of the agent_views feature flag",
+          "availability": "Everruns Cloud and self-hosted Platform",
           "group": "agent-api",
           "support": "preview"
         },
@@ -10753,7 +10753,7 @@
         },
         "x-docs": {
           "audience": "public",
-          "availability": "Requires organization adoption of the agent_views feature flag",
+          "availability": "Everruns Cloud and self-hosted Platform",
           "group": "agents-authoring",
           "support": "preview"
         }
@@ -10799,7 +10799,7 @@
         },
         "x-docs": {
           "audience": "public",
-          "availability": "Requires organization adoption of the agent_views feature flag",
+          "availability": "Everruns Cloud and self-hosted Platform",
           "group": "agents-authoring",
           "support": "preview"
         }
@@ -30339,7 +30339,7 @@
         },
         "x-docs": {
           "audience": "public",
-          "availability": "Requires organization adoption of the agent_views feature flag",
+          "availability": "Everruns Cloud and self-hosted Platform",
           "group": "agents-authoring",
           "support": "preview"
         }
@@ -30401,7 +30401,7 @@
         },
         "x-docs": {
           "audience": "public",
-          "availability": "Requires organization adoption of the agent_views feature flag",
+          "availability": "Everruns Cloud and self-hosted Platform",
           "group": "agents-authoring",
           "support": "preview"
         }
@@ -42337,6 +42337,38 @@
             "description": "What it would act on, by public id."
           }
         }
+      },
+      "Avatar": {
+        "oneOf": [
+          {
+            "type": "string",
+            "description": "Package-relative PNG, JPEG, GIF or WebP. No URLs or host paths."
+          },
+          {
+            "$ref": "#/components/schemas/AvatarImage"
+          },
+          {
+            "type": "boolean",
+            "description": "Only false is valid: explicitly remove a destination avatar."
+          }
+        ],
+        "description": "A portrait is separate from files seeded into the agent's workspace."
+      },
+      "AvatarImage": {
+        "type": "object",
+        "required": [
+          "content_type",
+          "image_base64"
+        ],
+        "properties": {
+          "content_type": {
+            "type": "string"
+          },
+          "image_base64": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
       },
       "AvatarPreset": {
         "type": "object",
@@ -62878,6 +62910,17 @@
               "$ref": "#/components/schemas/Manifest"
             },
             "description": "Agents bundled with this one, each a complete definition. Folders and\narchives keep them in `.agents/agents/<name>/`; text formats inline them."
+          },
+          "avatar": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Avatar",
+                "description": "Portable portrait. Relative image path in folders, inline image in text;\nfalse removes it. Omission preserves a destination's existing avatar."
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "capabilities": {
             "type": "array",

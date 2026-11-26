@@ -19,6 +19,8 @@
 //! builders and enforce their own capability, identity and transport policy.
 
 mod assets;
+mod avatar;
+pub use avatar::{Avatar, AvatarImage, MAX_AVATAR_BYTES};
 mod edit;
 #[cfg(feature = "agent-package-fs")]
 mod fs;
@@ -186,6 +188,10 @@ pub struct Manifest {
     /// Optional description of the agent's purpose.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    /// Portable portrait. Relative image path in folders, inline image in text;
+    /// false removes it. Omission preserves a destination's existing avatar.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub avatar: Option<Avatar>,
     /// Authored instructions. Legacy system_prompt input is also accepted.
     #[serde(default, alias = "system_prompt")]
     pub instructions: String,
@@ -609,6 +615,13 @@ impl AgentPackage {
         if let Err(message) = m.localizations.validate() {
             fail("localizations".into(), &message);
         }
+        if let Some(avatar) = &m.avatar
+            && let Err(error) = avatar.validate()
+        {
+            for diagnostic in error.0 {
+                fail(diagnostic.path, &diagnostic.message);
+            }
+        }
         if m.schema_version != SCHEMA_VERSION {
             fail("schema_version".into(), "unsupported version; expected 1");
         }
@@ -986,7 +999,14 @@ impl AgentPackage {
                 File::Inline(file)
             })
             .collect();
-        Self::render_manifest(&manifest, format)
+        let text = Self::render_manifest(&manifest, format)?;
+        if text.len() > MAX_PACKAGE_BYTES {
+            return Err(error(
+                "package",
+                "text export exceeds 10 MiB; use a ZIP package",
+            ));
+        }
+        Ok(text)
     }
 
     fn render_manifest(manifest: &Manifest, format: Format) -> Result<String> {

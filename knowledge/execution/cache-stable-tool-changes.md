@@ -519,3 +519,14 @@ for freshness, removal, restart and history-reduction semantics.
 - Manus: [Context Engineering for AI Agents](https://manus.im/blog/Context-Engineering-for-AI-Agents-Lessons-from-Building-Manus)
 - MCP: [tools, list changed](https://modelcontextprotocol.io/specification/2025-11-25/server/tools)
 - Internal: [Tool Search](tool-search.md), [LLM Drivers](../foundations/llm-drivers.md)
+
+## Fallback request budgets
+
+OpenRouter sends the current tool list. Its request budget therefore excludes
+historical inline epochs that never reach that transport, preventing repeated
+phantom tool rebases. Provider-neutral declarations and prompt baselines remain
+available to every driver, together with ordering and warm-cache removal holds.
+Other routes retain conservative replay accounting, including custom drivers
+that interpret those declarations themselves. The [budget regression](../../crates/core/src/engine/execution/reason/request_budget.rs)
+and [runtime lifecycle checks](../../crates/everruns/tests/host/tool_catalog_lifecycle.rs)
+cover the gateway correction and unchanged custom-driver metadata.

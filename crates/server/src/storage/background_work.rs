@@ -15,7 +15,7 @@ pub struct SubjectHealthIssue<'a> {
     pub subject_id: &'a str,
     pub agent_id: Option<Uuid>,
     pub session_id: Option<Uuid>,
-    /// `open` or `resolved`.
+    /// `open`, `resolved`, or `inapplicable` after an acknowledged spike clears.
     pub status: &'a str,
     pub evidence: serde_json::Value,
     pub checked_at: DateTime<Utc>,
@@ -50,6 +50,14 @@ pub struct UnattendedSpendRow {
     pub last_day_usd: f64,
     /// Average spend per day over the six days before the last one.
     pub baseline_daily_usd: f64,
+    pub window_end: DateTime<Utc>,
+}
+
+/// Bounded drill-down from the same ledger and window as a spend alert.
+#[derive(Debug, sqlx::FromRow)]
+pub struct UnattendedSpendSession {
+    pub session_id: Uuid,
+    pub amount_usd: f64,
 }
 
 /// A session's recent model calls: prompt size and how much of it was cached.
@@ -215,6 +223,12 @@ impl StorageBackend {
                 evidence = COALESCE(EXCLUDED.evidence, health_issues.evidence),
                 last_checked_at = EXCLUDED.last_checked_at
              WHERE health_issues.last_checked_at <= EXCLUDED.last_checked_at
+               AND NOT (health_issues.code = 'agent.unattended_spend_spike'
+                   AND health_issues.status = 'resolved' AND EXCLUDED.status = 'open'
+                   AND EXISTS (SELECT 1 FROM finding_investigations i
+                       WHERE i.health_issue_id = health_issues.id
+                         AND i.episode_id = health_issues.episode_id
+                         AND i.dismissed_at IS NOT NULL))
              RETURNING id, episode_id, status,
                  $6 = 'open' AND COALESCE((SELECT status FROM before), 'resolved')
                      NOT IN ('open', 'needs_check')",
@@ -262,6 +276,23 @@ impl StorageBackend {
              FROM health_issues h LEFT JOIN agents a ON a.id = h.agent_id
              WHERE h.code = $1 AND h.subject_id IS NOT NULL
                AND h.status IN ('open', 'needs_check')",
+        )
+        .bind(code)
+        .fetch_all(self.database().pool())
+        .await?)
+    }
+
+    /// Closed acknowledgments still need a healthy observation before a new
+    /// spend episode can notify again. Keep the original dismissal as history.
+    pub async fn dismissed_subject_health_issues(&self, code: &str) -> Result<Vec<HealthIssueRow>> {
+        Ok(sqlx::query_as(
+            "SELECT h.*, NULL::text AS channel_public_id, a.public_id AS agent_public_id,
+                    COALESCE(a.display_name, a.name) AS agent_name
+             FROM health_issues h LEFT JOIN agents a ON a.id = h.agent_id
+             WHERE h.code = $1 AND h.subject_id IS NOT NULL AND h.status = 'resolved'
+               AND EXISTS (SELECT 1 FROM finding_investigations i
+                   WHERE i.health_issue_id = h.id AND i.episode_id = h.episode_id
+                     AND i.dismissed_at IS NOT NULL)",
         )
         .bind(code)
         .fetch_all(self.database().pool())
@@ -384,27 +415,54 @@ impl StorageBackend {
         &self,
         floor_usd: f64,
         factor: f64,
+        window_end: DateTime<Utc>,
     ) -> Result<Vec<UnattendedSpendRow>> {
         Ok(sqlx::query_as(
             r#"WITH spend AS (
                 SELECT b.org_id, COALESCE(l.agent_id, s.agent_id) AS agent_id,
-                    SUM(l.amount) FILTER (WHERE l.created_at >= NOW() - INTERVAL '1 day') AS last_day,
-                    SUM(l.amount) FILTER (WHERE l.created_at < NOW() - INTERVAL '1 day') AS before
+                    SUM(l.amount) FILTER (WHERE l.created_at >= $3::timestamptz - INTERVAL '1 day') AS last_day,
+                    SUM(l.amount) FILTER (WHERE l.created_at < $3::timestamptz - INTERVAL '1 day') AS before
                 FROM budgets b
-                JOIN usage_ledger l ON l.budget_id = b.id
-                LEFT JOIN sessions s ON s.id = l.session_id
+                JOIN usage_ledger l ON l.budget_id = b.id AND l.org_id = b.org_id
+                LEFT JOIN sessions s ON s.id = l.session_id AND s.org_id = b.org_id
                 WHERE b.subject_type = 'org_unattended' AND l.amount > 0
-                  AND l.created_at >= NOW() - INTERVAL '7 days'
+                  AND l.created_at >= $3::timestamptz - INTERVAL '7 days' AND l.created_at < $3::timestamptz
                 GROUP BY b.org_id, COALESCE(l.agent_id, s.agent_id)
             )
             SELECT org_id, agent_id, COALESCE(last_day, 0)::float8 AS last_day_usd,
-                   (COALESCE(before, 0) / 6.0)::float8 AS baseline_daily_usd
+                   (COALESCE(before, 0) / 6.0)::float8 AS baseline_daily_usd,
+                   $3::timestamptz AS window_end
             FROM spend
             WHERE agent_id IS NOT NULL AND COALESCE(last_day, 0) > $1
               AND COALESCE(last_day, 0) > $2 * COALESCE(before, 0) / 6.0"#,
         )
         .bind(floor_usd)
         .bind(factor)
+        .bind(window_end)
+        .fetch_all(self.database().pool())
+        .await?)
+    }
+
+    /// No session content is copied into alert evidence. Only existing,
+    /// same-organization sessions can become links in the drill-down.
+    pub async fn unattended_spend_sessions(
+        &self,
+        org_id: i64,
+        agent_id: Uuid,
+        window_end: DateTime<Utc>,
+    ) -> Result<Vec<UnattendedSpendSession>> {
+        Ok(sqlx::query_as(
+            "SELECT s.id AS session_id, SUM(l.amount)::float8 AS amount_usd
+             FROM usage_ledger l JOIN budgets b ON b.id = l.budget_id AND b.org_id = l.org_id
+             JOIN sessions s ON s.id = l.session_id AND s.org_id = l.org_id
+             WHERE l.org_id = $1 AND b.subject_type = 'org_unattended'
+               AND COALESCE(l.agent_id, s.agent_id) = $2 AND l.amount > 0
+               AND l.created_at >= $3::timestamptz - INTERVAL '1 day' AND l.created_at < $3::timestamptz
+             GROUP BY s.id ORDER BY SUM(l.amount) DESC, s.id LIMIT 5",
+        )
+        .bind(org_id)
+        .bind(agent_id)
+        .bind(window_end)
         .fetch_all(self.database().pool())
         .await?)
     }

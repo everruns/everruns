@@ -32,8 +32,18 @@ impl AgentPackage {
             .collect();
         let mut output = entries.clone();
         let mut changed_manifest = false;
+        let external_team =
+            original.manifest.agents.is_empty() && !previous.manifest.agents.is_empty();
+        if external_team && before.get("agents") != after.get("agents") {
+            edit_bundled_agents(&mut output, previous, desired)?;
+        }
         for key in keys {
-            if key == "files" || key == "instructions" || before.get(&key) == after.get(&key) {
+            if key == "files"
+                || key == "instructions"
+                || key == "avatar"
+                || (key == "agents" && external_team)
+                || before.get(&key) == after.get(&key)
+            {
                 continue;
             }
             changed_manifest = true;
@@ -46,6 +56,57 @@ impl AgentPackage {
                     after.get(&key).unwrap_or(&Value::Null),
                     value,
                 );
+            }
+        }
+        if before.get("avatar") != after.get("avatar") {
+            // Keep an authored asset path; a new portrait must never overwrite
+            // an unrelated repository file or share a runtime/instructions source.
+            if let Some(super::Avatar::Image(image)) = &desired.manifest.avatar {
+                let mut path = original
+                    .manifest
+                    .avatar
+                    .as_ref()
+                    .and_then(super::Avatar::source)
+                    .map(str::to_string)
+                    .unwrap_or_else(|| format!("avatar.{}", image.extension()));
+                let existing = original
+                    .manifest
+                    .avatar
+                    .as_ref()
+                    .and_then(super::Avatar::source);
+                if existing.is_some()
+                    && (path == manifest
+                        || sources.values().any(|source| source == &path)
+                        || original.manifest.instructions_file.as_deref() == Some(path.as_str()))
+                {
+                    return Err(error(
+                        "avatar",
+                        "portrait source overlaps another package asset",
+                    ));
+                }
+                if existing.is_none()
+                    || super::avatar::image_type(&path) != Some(image.content_type.as_str())
+                {
+                    path = format!("avatar.{}", image.extension());
+                    let mut suffix = 1;
+                    while super::avatar::path_taken(&output, &path) {
+                        path = format!("avatar-{suffix}.{}", image.extension());
+                        suffix += 1;
+                    }
+                }
+                output.insert(path.clone(), image.bytes()?);
+                let reference = json_string(&path);
+                changed_manifest |= authored.get("avatar") != Some(&reference);
+                authored["avatar"] = reference;
+            } else {
+                changed_manifest = true;
+                // Removing a reference leaves bytes in Git: another definition
+                // may refer to the same image. No unrelated asset is deleted.
+                authored.as_object_mut().unwrap().remove("avatar");
+                if let Some(avatar) = &desired.manifest.avatar {
+                    authored["avatar"] =
+                        serde_json::to_value(avatar).map_err(|e| error("avatar", e))?;
+                }
             }
         }
         if before["instructions"] != after["instructions"] {
@@ -171,6 +232,121 @@ impl AgentPackage {
         }
         Ok(output)
     }
+}
+
+// Preserve independently authored child folders when one team portrait or
+// definition changes. Moving teams is an explicit repository edit.
+fn edit_bundled_agents(
+    entries: &mut BTreeMap<String, Vec<u8>>,
+    previous: &AgentPackage,
+    desired: &AgentPackage,
+) -> Result<()> {
+    let previous_names: BTreeSet<_> = previous.manifest.agents.iter().map(|a| &a.name).collect();
+    let desired_names: BTreeSet<_> = desired.manifest.agents.iter().map(|a| &a.name).collect();
+    if previous_names != desired_names {
+        return Err(error(
+            "agents",
+            "add, remove or rename bundled agent folders in GitHub",
+        ));
+    }
+    let root = format!("{MEMBERS_DIR}/");
+    let folders: BTreeSet<_> = entries
+        .keys()
+        .filter_map(|p| p.strip_prefix(&root))
+        .filter_map(|p| p.split_once('/').map(|(folder, _)| folder.to_string()))
+        .collect();
+    let mut found = BTreeSet::new();
+    for folder in folders {
+        let prefix = format!("{root}{folder}/");
+        let child: BTreeMap<_, _> = entries
+            .iter()
+            .filter_map(|(path, bytes)| {
+                path.strip_prefix(&prefix)
+                    .map(|path| (path.to_string(), bytes.clone()))
+            })
+            .collect();
+        let package = AgentPackage::from_entries(child.clone())?;
+        let name = &package.manifest.name;
+        let Some(before) = previous
+            .manifest
+            .agents
+            .iter()
+            .find(|agent| &agent.name == name)
+        else {
+            continue;
+        };
+        let after = desired
+            .manifest
+            .agents
+            .iter()
+            .find(|agent| &agent.name == name)
+            .ok_or_else(|| error("agents", "bundled team changed during edit"))?;
+        found.insert(name.clone());
+        let manifest = child
+            .keys()
+            .find(|path| {
+                matches!(
+                    path.as_str(),
+                    "agent.toml" | "agent.md" | "agent.yaml" | "agent.yml" | "agent.json"
+                )
+            })
+            .ok_or_else(|| error("agents", "missing bundled manifest"))?;
+        let updated = AgentPackage::edit_entries(
+            child.clone(),
+            manifest,
+            &AgentPackage::new(before.clone())?,
+            &AgentPackage::new(after.clone())?,
+        )?;
+        for path in child.keys() {
+            entries.remove(&format!("{prefix}{path}"));
+        }
+        for (path, bytes) in updated {
+            entries.insert(format!("{prefix}{path}"), bytes);
+        }
+    }
+    for after in &desired.manifest.agents {
+        if found.contains(&after.name) {
+            continue;
+        }
+        let before = previous
+            .manifest
+            .agents
+            .iter()
+            .find(|agent| agent.name == after.name)
+            .ok_or_else(|| error("agents", "bundled team changed during edit"))?;
+        let before = AgentPackage::new(before.clone())?;
+        let after = AgentPackage::new(after.clone())?;
+        if before.diff(&after)?.is_empty() {
+            continue;
+        }
+        let candidate = entries
+            .iter()
+            .filter(|(path, _)| {
+                path.strip_prefix(&root)
+                    .is_some_and(|path| !path.contains('/') && path.ends_with(".md"))
+            })
+            .find_map(|(path, bytes)| {
+                std::str::from_utf8(bytes)
+                    .ok()
+                    .and_then(|text| AgentPackage::parse(text, Format::Markdown).ok())
+                    .filter(|package| package.manifest.name == after.manifest.name)
+                    .map(|package| (path.clone(), package))
+            })
+            .ok_or_else(|| error("agents", "missing single-file bundled agent"))?;
+        let authored =
+            serde_json::to_value(&candidate.1.manifest).map_err(|e| error("agents", e))?;
+        let next = serde_json::to_value(&after.manifest).map_err(|e| error("agents", e))?;
+        let merged = merge_authored(&authored, &before.canonical()?, &after.canonical()?, &next);
+        let manifest: Manifest = serde_json::from_value(merged).map_err(|e| error("agents", e))?;
+        // Single Markdown agents stay self-contained, including their portrait.
+        entries.insert(
+            candidate.0,
+            AgentPackage::new(manifest)?
+                .to_string(Format::Markdown)?
+                .into_bytes(),
+        );
+    }
+    Ok(())
 }
 
 // Host exports normalize defaults and publication. Preserve authored values at

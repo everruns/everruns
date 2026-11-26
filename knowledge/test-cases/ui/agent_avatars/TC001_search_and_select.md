@@ -28,6 +28,11 @@ tags:
 9. Check keyboard navigation, small viewport, light and dark themes. Cancel never submits the agent draft.
 10. Archive the test agent, reopen it and open Branding. Avatar mutation controls are disabled.
 
+11. In a newly provisioned organization, open Main chat. Verify the Caretaker portrait appears; reload and confirm the avatar URL stays stable. Existing custom portraits survive managed-agent initialization.
+12. Give a parent and a team member different portraits. Export ZIP and import under fresh names. Verify both images and that portraits do not appear in Agent Files or Session Files.
+13. Import a legacy package without `avatar`; verify existing branding survives. Import an explicit `avatar = false`; verify it is removed. A corrupt image must fail before creating any agents.
+14. Connect a GitHub package with an image asset. Pull it and inspect the portrait. Pull-only Branding edits are disabled/refused. In two-way mode change the portrait locally; verify the owned image asset updates without overwriting unrelated files and normal conflict review still applies.
+
 ## Expected Result
 
 Search ignores case and surrounding whitespace; all words can match different metadata fields.

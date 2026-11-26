@@ -204,6 +204,30 @@ describe("health issue actions", () => {
     });
     expect(item.kind).toBe("health");
   });
+
+  it("treats increased unattended spend as a warning while a broken model remains an error", () => {
+    const items = attentionItems({
+      agents: [agent()],
+      exposures: [],
+      models,
+      healthIssues: [
+        issue({
+          id: "spend",
+          code: "agent.unattended_spend_spike",
+          channel_id: null,
+          missing_scopes: [],
+        }),
+        issue({
+          id: "broken",
+          code: "agent.model_unavailable",
+          channel_id: null,
+          missing_scopes: [],
+        }),
+      ],
+    });
+    expect(items.find((item) => item.healthIssueId === "spend")?.severity).toBe("warning");
+    expect(items.find((item) => item.healthIssueId === "broken")?.severity).toBe("error");
+  });
 });
 
 describe("agent now", () => {

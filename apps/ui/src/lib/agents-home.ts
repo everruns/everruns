@@ -313,7 +313,11 @@ export function attentionItems({
       body: issue.body,
       agentId: issue.agent_id,
       agentName: issue.agent_name ?? "",
-      severity: kind === "permission" ? "warning" : "error",
+      // Higher unattended usage can be expected work, not broken setup.
+      severity:
+        kind === "permission" || issue.code === "agent.unattended_spend_spike"
+          ? "warning"
+          : "error",
       detail: `Checked ${formatRelativeTime(issue.last_checked_at)}`,
       healthIssueId: issue.id,
       channelId: issue.channel_id ?? undefined,

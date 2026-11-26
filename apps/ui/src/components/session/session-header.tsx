@@ -8,10 +8,10 @@ import {
 
 import { SessionCredentialsDialog } from "@/components/credentials/session-credentials-dialog";
 import { AgentIcon } from "@/components/icons/facet-icons";
-import type { ComponentType } from "react";
+import { useState, type ComponentType } from "react";
 import Link from "next/link";
 import type { Agent, ModelWithProvider, Session, SessionStatus, TokenUsage } from "@/lib/api/types";
-import { buttonVariants } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { EntityIdentity } from "@/components/ui/entity-identity";
 import { SessionContextButton } from "@/components/session/session-context-button";
@@ -457,6 +457,7 @@ export function SessionHeader({
       : null;
   const agentReferenceStatus = session.agent_id != null ? (agent?.status ?? "deleted") : null;
   const approvalMode = agentApprovalMode(agent);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   return (
     <div className="border-b border-border/70 bg-background/80 px-4 py-3 backdrop-blur-[1px]">
       {/* EVE-869: the breadcrumb names the owning group and keeps the way back —
@@ -472,17 +473,17 @@ export function SessionHeader({
         ]}
       />
 
-      <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
-        <div className="flex min-w-0 items-start gap-3">
+      <div className="flex min-w-0 flex-wrap items-start justify-between gap-2 @min-[900px]/session:flex-nowrap">
+        <div className="flex min-w-0 flex-1 items-start gap-3">
           <IconTile size="md" icon={<MessageSquare />} className="mt-0.5" />
-          <div className="min-w-0">
-            <h1 className="flex min-w-0 flex-wrap items-center gap-2 text-xl font-bold">
-              <EntityIdentity value={sessionId}>
+          <div className="min-w-0 flex-1">
+            <h1 className="flex min-w-0 items-center gap-2 text-xl font-bold">
+              <EntityIdentity value={sessionId} className="min-w-0 flex-1">
                 {session.title || ui("Session {value0}", { value0: shortenId(session.id) })}
               </EntityIdentity>
               <SessionInfoIcon session={session} />
             </h1>
-            <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+            <div className="flex min-w-0 flex-wrap items-center gap-2 text-sm text-muted-foreground">
               {agentReferenceLabel &&
                 (agent && agentId ? (
                   <Link
@@ -502,39 +503,61 @@ export function SessionHeader({
                     </span>
                   </span>
                 ))}
-              <span>•</span>
-              <span>{secondaryMetaText}</span>
+              <span className={cn(!detailsOpen && "hidden @min-[900px]/session:inline")}>•</span>
+              <span
+                className={cn(
+                  "min-w-0 [overflow-wrap:anywhere]",
+                  !detailsOpen && "hidden @min-[900px]/session:inline",
+                )}
+              >
+                {secondaryMetaText}
+              </span>
             </div>
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-          {liveUsage && <SessionUsageBadge usage={liveUsage} />}
-
-          {llmModel && (
-            <Badge variant="outline" className="gap-1">
-              <Sparkles className="icon-sharp h-3 w-3" />
-              {llmModel.display_name}
-            </Badge>
-          )}
-
-          <SessionTraceBadge href={sessionTraceUrl} label={sessionTraceLabel} />
-
+        <div className="flex max-w-full flex-wrap items-center gap-2 @min-[900px]/session:justify-end">
           <SessionStatusBadge status={effectiveStatus} session={session} />
+          <Button
+            variant="outline"
+            size="sm"
+            className="@min-[900px]/session:hidden"
+            aria-expanded={detailsOpen}
+            onClick={() => setDetailsOpen(!detailsOpen)}
+          >
+            {ui("Session details")}
+          </Button>
+          <div
+            className={cn(
+              "max-w-full flex-wrap items-center gap-2 @min-[900px]/session:flex @min-[900px]/session:justify-end",
+              detailsOpen ? "flex" : "hidden",
+            )}
+          >
+            {liveUsage && <SessionUsageBadge usage={liveUsage} />}
 
-          {approvalMode && (
-            <SessionApprovalModeSwitch sessionId={sessionId} agentMode={approvalMode} />
-          )}
+            {llmModel && (
+              <Badge variant="outline" className="gap-1">
+                <Sparkles className="icon-sharp h-3 w-3" />
+                {llmModel.display_name}
+              </Badge>
+            )}
 
-          <SessionRecordingActions
-            sessionId={sessionId}
-            agentId={agent && agentId ? agentId : undefined}
-            sessionTitle={session.title ?? null}
-            sessionTags={session.tags ?? []}
-            platformChat={agent?.name === "platform-chat"}
-            credentialsAction={credentialsAction}
-            onForked={onForked}
-          />
+            <SessionTraceBadge href={sessionTraceUrl} label={sessionTraceLabel} />
+
+            {approvalMode && (
+              <SessionApprovalModeSwitch sessionId={sessionId} agentMode={approvalMode} />
+            )}
+
+            <SessionRecordingActions
+              sessionId={sessionId}
+              agentId={agent && agentId ? agentId : undefined}
+              sessionTitle={session.title ?? null}
+              sessionTags={session.tags ?? []}
+              platformChat={agent?.name === "platform-chat"}
+              credentialsAction={credentialsAction}
+              onForked={onForked}
+            />
+          </div>
         </div>
       </div>
 

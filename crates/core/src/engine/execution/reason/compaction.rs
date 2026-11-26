@@ -155,7 +155,8 @@ pub(super) async fn apply_proactive_compaction(
     let durable_source = context
         .checkpoint_store
         .zip(context.message_source_sequence);
-    let tool_tokens = request_budget::tool_tokens_for_request(config, messages);
+    let tool_tokens =
+        request_budget::tool_tokens_for_request(context.provider_type, config, messages);
     let current_tool_tokens = request_budget::tools_tokens(&config.tools);
     let mut history_budget = request_budget::history_budget(
         context.policy,

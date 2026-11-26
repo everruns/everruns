@@ -59,3 +59,17 @@ and that Trace and the exact raw Events ledger stay read-only and responsive.
 - Back/Forward restores the correct route and active tab.
 - Empty, loading, and missing-session states are clear and do not expose mutation controls.
 - At the narrow viewport the step list fills the width and the inspector opens over it.
+
+## Responsive trace inspection
+
+1. Open a trace on a phone, then in a desktop pane beside docked Chat.
+2. Confirm the timeline uses the available width, without a minimap stacked
+   above it or a step inspector consuming its bottom half.
+3. Open **Turns**, jump to a distant turn and confirm the drawer closes on that
+   turn. Open **Filters**, select Plain text and confirm the URL retains it.
+4. Open a step and follow its full request. Close the request, then return with
+   **Back to trace** or Escape; the same turn remains visible. Reload a step link
+   and confirm its inspector opens. Full turn messages use the same drawer.
+5. Expand **Session details** and confirm context, credentials, export and fork
+   actions remain reachable. Resize the pane wide: the inspector and turn rail
+   return only when each column has room. Check dark and light themes.

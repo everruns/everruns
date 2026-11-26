@@ -3,7 +3,48 @@ import { messages as qualityMonitoring } from "./en-GB/quality-monitoring";
 import { messages as extractions } from "./en-GB/extractions";
 // British English overrides; identifiers and authored values stay unchanged.
 export const messages: Readonly<Record<string, string>> = {
+  "Tool definitions refreshed": "Tool definitions refreshed",
+  "Tool declarations changed; no conversation messages were removed.":
+    "Tool declarations changed; no conversation messages were removed.",
   ...applications,
+  "Session details": "Session details",
+  "Continue in chat": "Continue in chat",
+  "Opening chat…": "Opening chat…",
+  "Could not open Platform Chat. Try again.": "Could not open Platform Chat. Try again.",
+  "Help me investigate this issue. Check its current state, explain the cause and suggest what to do next.":
+    "Help me investigate this issue. Check its current state, explain the cause and suggest what to do next.",
+
+  "Open alerts · {value0}": "Open alerts · {value0}",
+
+  "1 alert needs": "1 alert needs",
+  "{value0} alerts need": "{value0} alerts need",
+
+  "Dismiss alert": "Dismiss alert",
+  "Explain why this needs no action, for example expected work or a false alarm. Dismissal does not stop the agent or change its budget.":
+    "Explain why this needs no action, for example expected work or a false alarm. Dismissal does not stop the agent or change its budget.",
+  "Alert dismissed": "Alert dismissed",
+  "Spend breakdown": "Spend breakdown",
+  "Previous daily average": "Previous daily average",
+  Increase: "Increase",
+  "Compares recorded unattended usage over 24 hours with the daily average over the six days before, including days with no usage. Alerts above $5 and 3× that average.":
+    "Compares recorded unattended usage over 24 hours with the daily average over the six days before, including days with no usage. Alerts above $5 and 3× that average.",
+  "Usage window": "Usage window",
+  "An increase can be expected work; it does not mean the agent failed. Review the sessions and triggers before changing its budget.":
+    "An increase can be expected work; it does not mean the agent failed. Review the sessions and triggers before changing its budget.",
+  "Top sessions by unattended spend": "Top sessions by unattended spend",
+  "Session {value0}": "Session {value0}",
+  "Agent sessions": "Agent sessions",
+  "Usage policies": "Usage policies",
+  "Review alerts, understand their impact, and choose what to do next.":
+    "Review alerts, understand their impact, and choose what to do next.",
+  "Back to issues": "Back to issues",
+  "Select an issue to see its details and actions.":
+    "Select an issue to see its details and actions.",
+  "{from}–{to} of {total}": "{from}–{to} of {total}",
+  "{value0}× the daily average": "{value0}× the daily average",
+  "Session breakdown is unavailable. Check again to refresh this alert.":
+    "Session breakdown is unavailable. Check again to refresh this alert.",
+
   Team: "Team",
   Recoverable: "Recoverable",
   "Instance unavailable": "Instance unavailable",

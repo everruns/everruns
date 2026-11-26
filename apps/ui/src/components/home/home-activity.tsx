@@ -61,7 +61,7 @@ export function HomeTimelineCharts({ data }: { data: MonitoringTimeline }) {
   ];
   return (
     <ActivityCard monitoring>
-      <ChartHead title={ui("Parallel sessions")} series={sessions} />
+      <ChartHead title={ui("Sessions")} series={sessions} />
       <TimeSeriesChart
         {...common}
         series={sessions}

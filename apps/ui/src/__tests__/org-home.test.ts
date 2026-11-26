@@ -191,6 +191,14 @@ describe("homeAttentionItems", () => {
     expect(items.map((item) => item.key)).toEqual(["health:expired-snooze"]);
     expect(countOpenIssues([issue({ snoozed_until: "2026-11-01T13:00:00Z" })], NOW)).toBe(0);
   });
+
+  it("keeps a spend increase advisory instead of presenting it as a failed agent", () => {
+    const items = homeAttentionItems({
+      ...base,
+      healthIssues: [issue({ code: "agent.unattended_spend_spike" })],
+    });
+    expect(items[0].severity).toBe("warning");
+  });
 });
 
 describe("rankAttention", () => {

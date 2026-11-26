@@ -71,7 +71,11 @@ function NotificationMenuContent() {
                 <p className="text-sm font-medium">{issue.title}</p>
                 <p className="mt-1 text-xs text-muted-foreground">
                   {issue.agent_name ?? ui("Organization")} ·{" "}
-                  {issue.stale ? ui("Needs check") : ui("Action required")}
+                  {issue.stale
+                    ? ui("Needs check")
+                    : issue.code === "agent.unattended_spend_spike"
+                      ? ui("Warning")
+                      : ui("Action required")}
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">{issue.body}</p>
                 <p className="mt-2 text-xs underline">{ui("Review issue")}</p>

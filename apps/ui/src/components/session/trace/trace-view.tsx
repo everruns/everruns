@@ -24,8 +24,10 @@ import {
 } from "@/hooks/use-session-trace";
 import type { TraceBatch } from "@/lib/api/types";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
-import { TraceInspector, type InspectorTarget } from "./trace-inspector";
+import { List, SlidersHorizontal } from "lucide-react";
+import { Drawer, DrawerContent, DrawerTitle } from "@/components/ui/drawer";
+import "./trace-layout.css";
+import { TraceInspector, type InspectorTarget, type RequestTarget } from "./trace-inspector";
 import {
   BatchRow,
   EmptyTurnRow,
@@ -53,6 +55,7 @@ import { TraceSearch } from "./trace-search";
 import { TurnRail } from "./turn-rail";
 import { DreamingTrace } from "./dreaming-trace";
 import { TurnInputInspector } from "./turn-input-inspector";
+import { RequestSheet } from "./request-sheet";
 
 const VIEWS: { value: View; label: string }[] = [
   { value: "all", label: "Everything" },
@@ -121,6 +124,7 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
   const [batch, setBatch] = useState<{ turn: number; batch: TraceBatch } | null>(null);
   const [turnInput, setTurnInput] = useState<number | null>(null);
   const [full, setFull] = useState(false);
+  const [request, setRequest] = useState<RequestTarget | null>(null);
   // A sub-agent's step opened inline; its numbers belong to the child session,
   // so it lives in state rather than the URL.
   const [childStep, setChildStep] = useState<{
@@ -160,6 +164,22 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
       showLifecycle,
     ],
   );
+
+  const paneRef = useRef<HTMLElement>(null);
+  const [wide, setWide] = useState(false);
+  const [railVisible, setRailVisible] = useState(false);
+  const [turnsOpen, setTurnsOpen] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  useEffect(() => {
+    const pane = paneRef.current;
+    if (!pane) return;
+    const observer = new ResizeObserver(([entry]) => {
+      setWide(entry.contentRect.width >= 920);
+      setRailVisible(entry.contentRect.width >= 1120);
+    });
+    observer.observe(pane);
+    return () => observer.disconnect();
+  }, []);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const goToRef = useRef<HTMLInputElement>(null);
@@ -238,6 +258,7 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
 
   const jump = useCallback(
     (turn: number, step?: number) => {
+      setTurnsOpen(false);
       setPending({ turn, step });
       void data.jumpTo(turn);
     },
@@ -281,9 +302,12 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
   // Keyboard: j/k walk steps, Escape closes the inspector, ⌘G focuses go-to.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // A request modal owns its keys, including the go-to-turn shortcut.
+      if (document.querySelector("[data-slot='dialog-content']")) return;
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "g") {
         e.preventDefault();
-        goToRef.current?.focus();
+        if (!railVisible) setTurnsOpen(true);
+        requestAnimationFrame(() => goToRef.current?.focus());
         return;
       }
       const el = e.target as HTMLElement | null;
@@ -294,8 +318,6 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
           el.tagName === "SELECT" ||
           el.isContentEditable);
       if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
-      // A dialog (the request sheet) owns its own keys.
-      if (document.querySelector("[data-slot='dialog-content']")) return;
       if (e.key === "j" || e.key === "k") {
         e.preventDefault();
         moveRef.current(e.key === "j" ? 1 : -1);
@@ -305,7 +327,7 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [clearSelection]);
+  }, [clearSelection, railVisible]);
 
   // A search hit: load its turn and select the step that holds it, if loaded.
   const goToSequence = useCallback(
@@ -380,8 +402,41 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
   }
   const totals = overview.data;
 
+  const rail = (
+    <TurnRail
+      overview={overview.data}
+      turns={data.turns}
+      activeTurn={activeTurn}
+      visibleTurns={visibleTurns}
+      onJump={jump}
+      goToRef={goToRef}
+      onScrollTo={(turn) => {
+        setTurnsOpen(false);
+        const index = rows.findIndex((r) => r.key === `t${turn}`);
+        if (index !== -1) virtualizer.scrollToIndex(index, { align: "start", behavior: "smooth" });
+      }}
+    />
+  );
+  const inspector = turnInput ? (
+    <TurnInputInspector sessionId={sessionId} turn={turnInput} onClose={clearSelection} />
+  ) : (
+    <TraceInspector
+      sessionId={sessionId}
+      target={target}
+      full={full}
+      onLoadFull={() => setFull(true)}
+      onRequest={setRequest}
+      onPrev={position > 0 ? () => move(-1) : undefined}
+      onNext={position !== -1 && position < keys.length - 1 ? () => move(1) : undefined}
+    />
+  );
+
   return (
-    <section aria-label={ui("Session trace")} className="flex min-h-0 flex-1 flex-col">
+    <section
+      ref={paneRef}
+      aria-label={ui("Session trace")}
+      className="trace-pane flex min-h-0 min-w-0 flex-1 flex-col"
+    >
       <DreamingTrace sessionId={sessionId} />
       {linkedFailure > 0 && !data.loading && (
         <div
@@ -411,39 +466,70 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
           )}
         </div>
       )}
-      <div className="flex flex-wrap items-center gap-3 border-b bg-card px-6 py-3">
-        <SegmentedControl
-          label={ui("View")}
-          value={view}
-          onValueChange={(value) => setParams({ view: value === "all" ? null : value })}
-          options={VIEWS}
-        />
-        <SegmentedControl
-          label={ui("Message format")}
-          value={plainText ? "plain" : "markdown"}
-          onValueChange={(value) => setParams({ text: value === "plain" ? "plain" : null })}
-          options={[
-            { value: "markdown", label: ui("Markdown") },
-            { value: "plain", label: ui("Plain text") },
-          ]}
-        />
-        <label className="flex items-center gap-2 text-xs">
-          <Checkbox
-            checked={errorsOnly}
-            onCheckedChange={(checked) => setParams({ errors: checked ? "1" : null })}
+      <div className="trace-toolbar border-b bg-card px-3 py-2">
+        <div className="trace-primary-controls flex min-w-0 flex-wrap items-center gap-2">
+          <Button
+            className="trace-turns-trigger"
+            aria-label={ui("Turns")}
+            title={ui("Turns")}
+            variant="outline"
+            size="sm"
+            onClick={() => setTurnsOpen(true)}
+          >
+            <List />
+            <span className="trace-control-label">{ui("Turns")}</span>
+          </Button>
+          <SegmentedControl
+            label={ui("View")}
+            value={view}
+            onValueChange={(value) => setParams({ view: value === "all" ? null : value })}
+            options={VIEWS}
           />
-          {ui("Errors only")}
-        </label>
-        <label className="flex items-center gap-2 text-xs">
-          <Checkbox
-            checked={showLifecycle}
-            onCheckedChange={(checked) => setParams({ lifecycle: checked ? "1" : null })}
+          <Button
+            variant="outline"
+            size="sm"
+            className="trace-filters-trigger ml-auto"
+            aria-label={ui("Filters")}
+            title={ui("Filters")}
+            aria-expanded={filtersOpen}
+            onClick={() => setFiltersOpen(!filtersOpen)}
+          >
+            <SlidersHorizontal />
+            <span className="trace-control-label">{ui("Filters")}</span>
+            {(errorsOnly || showLifecycle || plainText) && <span aria-hidden>•</span>}
+          </Button>
+        </div>
+        <div
+          className="trace-secondary-controls flex flex-wrap items-center gap-3"
+          data-open={filtersOpen}
+        >
+          <SegmentedControl
+            label={ui("Message format")}
+            value={plainText ? "plain" : "markdown"}
+            onValueChange={(value) => setParams({ text: value === "plain" ? "plain" : null })}
+            options={[
+              { value: "markdown", label: ui("Markdown") },
+              { value: "plain", label: ui("Plain text") },
+            ]}
           />
-          {ui("Lifecycle events")}
-        </label>
-        <TraceSearch sessionId={sessionId} onPick={(sequence) => void goToSequence(sequence)} />
+          <label className="flex items-center gap-2 text-xs">
+            <Checkbox
+              checked={errorsOnly}
+              onCheckedChange={(checked) => setParams({ errors: checked ? "1" : null })}
+            />
+            {ui("Errors only")}
+          </label>
+          <label className="flex items-center gap-2 text-xs">
+            <Checkbox
+              checked={showLifecycle}
+              onCheckedChange={(checked) => setParams({ lifecycle: checked ? "1" : null })}
+            />
+            {ui("Lifecycle events")}
+          </label>
+          <TraceSearch sessionId={sessionId} onPick={(sequence) => void goToSequence(sequence)} />
+        </div>
         {totals && (
-          <div className="ml-auto font-mono text-[11px] text-muted-foreground">
+          <div className="trace-totals ml-auto font-mono text-[11px] text-muted-foreground">
             {formatCount(totals.turn_count)} {ui("turns ·")} {formatCount(totals.step_count)}{" "}
             {ui("steps")}
             {totals.error_count > 0 && (
@@ -456,27 +542,17 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
         )}
       </div>
 
-      <div className="bg-brand-dots grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_clamp(320px,32vw,420px)] xl:grid-cols-[232px_minmax(0,1fr)_clamp(320px,32vw,420px)]">
-        <aside className="hidden min-h-0 overflow-y-auto xl:block" aria-label={ui("Turns")}>
-          <TurnRail
-            overview={overview.data}
-            turns={data.turns}
-            activeTurn={activeTurn}
-            visibleTurns={visibleTurns}
-            onJump={jump}
-            onScrollTo={(turn) => {
-              const index = rows.findIndex((r) => r.key === `t${turn}`);
-              if (index !== -1)
-                virtualizer.scrollToIndex(index, { align: "start", behavior: "smooth" });
-            }}
-            goToRef={goToRef}
-          />
-        </aside>
+      <div className="trace-columns bg-brand-dots grid min-h-0 min-w-0 flex-1">
+        {railVisible && (
+          <aside className="min-h-0 overflow-y-auto" aria-label={ui("Turns")}>
+            {rail}
+          </aside>
+        )}
 
         <div
           ref={scrollRef}
           data-trace-list="true"
-          className="min-h-0 overflow-y-auto px-3 py-4 sm:px-6 sm:py-5"
+          className="trace-list min-h-0 min-w-0 overflow-y-auto px-3 py-4"
           onScroll={(e) => {
             const el = e.currentTarget;
             atBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
@@ -666,35 +742,63 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
           )}
         </div>
 
-        {/* Below lg the inspector opens over the list while a detail is selected. */}
-        <aside
-          className={cn(
-            "min-h-0 overflow-y-auto bg-card lg:static lg:z-auto lg:block lg:border-l",
-            inspectorOpen ? "fixed inset-0 z-40 block" : "hidden",
-          )}
-          aria-label={turnInput ? ui("Turn input") : ui("Step inspector")}
-        >
-          {inspectorOpen && (
-            <div className="sticky top-0 z-10 flex justify-end border-b bg-card px-3 py-2 lg:hidden">
-              <Button variant="ghost" size="sm" onClick={clearSelection}>
-                {ui("Back to trace")}
-              </Button>
-            </div>
-          )}
-          {turnInput ? (
-            <TurnInputInspector sessionId={sessionId} turn={turnInput} onClose={clearSelection} />
-          ) : (
-            <TraceInspector
-              sessionId={sessionId}
-              target={target}
-              full={full}
-              onLoadFull={() => setFull(true)}
-              onPrev={position > 0 ? () => move(-1) : undefined}
-              onNext={position !== -1 && position < keys.length - 1 ? () => move(1) : undefined}
-            />
-          )}
-        </aside>
+        {wide && (
+          <aside
+            className="min-h-0 min-w-0 overflow-y-auto border-l bg-card"
+            aria-label={turnInput ? ui("Turn input") : ui("Step inspector")}
+          >
+            {inspectorOpen && (
+              <div className="flex justify-end border-b px-3 py-1">
+                <Button variant="ghost" size="sm" onClick={clearSelection}>
+                  {ui("Close")}
+                </Button>
+              </div>
+            )}
+            {inspector}
+          </aside>
+        )}
+        {!wide && (
+          <Drawer
+            open={inspectorOpen && !request}
+            onOpenChange={(open) => {
+              if (!open && !request) clearSelection();
+            }}
+          >
+            <DrawerContent
+              className="!w-full !max-w-[min(100%,40rem)] gap-0 p-0"
+              showCloseButton={false}
+            >
+              <div className="flex shrink-0 items-center justify-between gap-3 border-b px-4 py-2">
+                <DrawerTitle className="text-sm">
+                  {turnInput ? ui("Turn input") : ui("Step inspector")}
+                </DrawerTitle>
+                <Button variant="ghost" size="sm" onClick={clearSelection}>
+                  {ui("Back to trace")}
+                </Button>
+              </div>
+              <div className="min-h-0 min-w-0 flex-1 overflow-y-auto">{inspector}</div>
+            </DrawerContent>
+          </Drawer>
+        )}
+        {!railVisible && (
+          <Drawer open={turnsOpen} onOpenChange={setTurnsOpen}>
+            <DrawerContent side="left" className="!w-80 !max-w-full gap-0 p-0">
+              <DrawerTitle className="border-b px-6 py-4 text-sm">{ui("Turns")}</DrawerTitle>
+              <div className="min-h-0 overflow-y-auto pr-5">{rail}</div>
+            </DrawerContent>
+          </Drawer>
+        )}
       </div>
+      {/* Keep the request modal mounted when the inspector moves into a drawer. */}
+      {request && (
+        <RequestSheet
+          {...request}
+          open
+          onOpenChange={(open) => {
+            if (!open) setRequest(null);
+          }}
+        />
+      )}
     </section>
   );
 }

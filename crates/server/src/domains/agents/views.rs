@@ -121,15 +121,6 @@ pub(crate) async fn describe_for_execution(
     org_id: i64,
     agent: &mut super::record::Agent,
 ) -> anyhow::Result<()> {
-    let flags = crate::services::org_feature_flags::resolve_org_feature_flags(
-        db,
-        org_id,
-        &crate::records::FeatureFlagPolicy::current(),
-    )
-    .await?;
-    if !flags.agent_views {
-        return Ok(());
-    }
     let Some((_, Some(view))) = db.get_agent_view_settings(org_id, agent.public_id).await? else {
         return Ok(());
     };

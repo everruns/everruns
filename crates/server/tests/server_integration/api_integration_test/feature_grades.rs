@@ -8,9 +8,8 @@ use crate::test_harness::TestServer;
 const FLAGS: &str = "/v1/orgs/org_00000000000000000000000000000001/feature-flags";
 
 #[tokio::test]
-async fn test_agent_view_settings_require_adoption_and_keep_saved_revisions() {
-    let policy = FeatureFlagPolicy::from_env(DeploymentGrade::Prod)
-        .with_grade("agent_views", FeatureFlagGrade::Adoption);
+async fn test_agent_view_settings_are_always_available_and_keep_saved_revisions() {
+    let policy = FeatureFlagPolicy::from_env(DeploymentGrade::Prod);
     let server = TestServer::in_memory_with_feature_policy(policy).await;
     let agent: Value = server
         .post(
@@ -30,19 +29,17 @@ async fn test_agent_view_settings_require_adoption_and_keep_saved_revisions() {
     });
     let request = json!({"revision":0, "view":view});
 
+    // A retired false override must not disable a graduated feature.
     server
-        .get(&route)
+        .db
+        .replace_org_feature_flags(
+            everruns_core::DEFAULT_ORG_ID,
+            &std::collections::HashMap::from([("agent_views".into(), false)]),
+        )
         .await
-        .assert_status(StatusCode::NOT_FOUND);
-    server
-        .put(&route, &request)
-        .await
-        .assert_status(StatusCode::NOT_FOUND);
-    server
-        .patch(FLAGS, json!({"flags":{"agent_views":true}}))
-        .await
-        .assert_status(StatusCode::OK);
-
+        .unwrap();
+    let flags: Value = server.get(FLAGS).await.assert_status(StatusCode::OK).json();
+    assert!(flags.get("agent_views").is_none());
     let initial: Value = server
         .get(&route)
         .await
@@ -91,22 +88,6 @@ async fn test_agent_view_settings_require_adoption_and_keep_saved_revisions() {
         .await
         .assert_status(StatusCode::BAD_REQUEST);
 
-    server
-        .patch(FLAGS, json!({"flags":{"agent_views":false}}))
-        .await
-        .assert_status(StatusCode::OK);
-    server
-        .get(&route)
-        .await
-        .assert_status(StatusCode::NOT_FOUND);
-    server
-        .get(&chat_view)
-        .await
-        .assert_status(StatusCode::NOT_FOUND);
-    server
-        .patch(FLAGS, json!({"flags":{"agent_views":true}}))
-        .await
-        .assert_status(StatusCode::OK);
     let restored: Value = server
         .get(&route)
         .await
@@ -130,26 +111,32 @@ async fn test_feature_grades_control_http_defaults_mutations_and_route_access() 
         (FeatureFlagGrade::Prod, true, true),
         (FeatureFlagGrade::Off, false, false),
     ] {
-        let policy =
-            FeatureFlagPolicy::from_env(DeploymentGrade::Prod).with_grade("agent_views", grade);
+        let policy = FeatureFlagPolicy::from_env(DeploymentGrade::Prod).with_grade("evals", grade);
         let server = TestServer::in_memory_with_feature_policy(policy).await;
+        // The general API fixture opts into Evals. This test measures grade
+        // defaults before exercising explicit tenant and platform overrides.
+        sqlx::query("DELETE FROM org_feature_flags WHERE org_id=$1 AND flag_name='evals'")
+            .bind(everruns_core::DEFAULT_ORG_ID)
+            .execute(&server.pool)
+            .await
+            .unwrap();
         let effective: Value = server.get(FLAGS).await.assert_status(StatusCode::OK).json();
-        assert_eq!(effective["agent_views"], default_enabled, "{grade}");
+        assert_eq!(effective["evals"], default_enabled, "{grade}");
 
         for enabled in [true, false] {
             let response = server
-                .patch(FLAGS, json!({"flags": {"agent_views": enabled}}))
+                .patch(FLAGS, json!({"flags": {"evals": enabled}}))
                 .await;
             if tenant_can_manage {
                 let effective: Value = response.assert_status(StatusCode::OK).json();
-                assert_eq!(effective["agent_views"], enabled);
+                assert_eq!(effective["evals"], enabled);
                 assert_eq!(
                     server
                         .db
                         .list_org_feature_flags(everruns_core::DEFAULT_ORG_ID)
                         .await
                         .unwrap()
-                        .get("agent_views"),
+                        .get("evals"),
                     Some(&enabled)
                 );
             } else {
@@ -157,18 +144,10 @@ async fn test_feature_grades_control_http_defaults_mutations_and_route_access() 
             }
         }
 
-        // The agent view route checks the org-effective flag on each request.
-        let agent: Value = server
-            .post(
-                "/v1/platform/agents",
-                json!({"name":"grade-agent","system_prompt":"You help."}),
-            )
-            .await
-            .assert_status(StatusCode::CREATED)
-            .json();
-        let view_route = format!("/v1/platform/agents/{}/view", agent["id"].as_str().unwrap());
+        // The Evals route still follows its org-effective rollout flag.
+        let view_route = "/v1/platform/evals";
         server
-            .get(&view_route)
+            .get(view_route)
             .await
             .assert_status(StatusCode::NOT_FOUND);
 
@@ -182,7 +161,7 @@ async fn test_feature_grades_control_http_defaults_mutations_and_route_access() 
             StatusCode::BAD_REQUEST
         };
         server
-            .patch(&platform_route, json!({"flags":{"agent_views":true}}))
+            .patch(&platform_route, json!({"flags":{"evals":true}}))
             .await
             .assert_status(status);
         if matches!(
@@ -190,14 +169,14 @@ async fn test_feature_grades_control_http_defaults_mutations_and_route_access() 
             FeatureFlagGrade::Internal | FeatureFlagGrade::Adoption
         ) {
             let effective: Value = server.get(FLAGS).await.assert_status(StatusCode::OK).json();
-            assert_eq!(effective["agent_views"], true);
-            server.get(&view_route).await.assert_status(StatusCode::OK);
+            assert_eq!(effective["evals"], true);
+            server.get(view_route).await.assert_status(StatusCode::OK);
             server
-                .patch(&platform_route, json!({"flags":{"agent_views":false}}))
+                .patch(&platform_route, json!({"flags":{"evals":false}}))
                 .await
                 .assert_status(StatusCode::OK);
             server
-                .get(&view_route)
+                .get(view_route)
                 .await
                 .assert_status(StatusCode::NOT_FOUND);
         }

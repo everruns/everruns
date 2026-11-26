@@ -225,3 +225,14 @@ before/after screenshots on a local stack.
   reason step starts.
 - Stop during Sending restores the draft; Stop during a turn shows "Stopped after Ns" on that
   turn.
+
+## Narrow conversation panes
+
+Transcript rows must fit the conversation pane independently of viewport width.
+Long identifiers and plain-text reports wrap without horizontal clipping; code
+blocks retain their own horizontal scroll. User bubbles and their nested flex
+children can shrink. Run titles stay bounded while metadata and actions wrap
+onto another line when needed. Expanded automatic reports keep vertical scrolling.
+Browser regression coverage uses phone, docked and floating layouts with long
+identifiers, Cyrillic prose, code and task cards in
+[`chat-responsive.spec.ts`](../../apps/ui/e2e/chat-responsive.spec.ts).

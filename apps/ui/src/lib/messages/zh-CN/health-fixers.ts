@@ -1,5 +1,41 @@
 // Simplified Chinese product copy for Health fixers.
 export const messages: Readonly<Record<string, string>> = {
+  "Continue in chat": "在聊天中继续",
+  "Opening chat…": "正在打开聊天…",
+  "Could not open Platform Chat. Try again.": "无法打开 Platform Chat。请重试。",
+  "Help me investigate this issue. Check its current state, explain the cause and suggest what to do next.":
+    "请帮我调查这个问题。检查当前状态，解释原因，并建议下一步操作。",
+
+  "Open alerts · {value0}": "未处理警报 · {value0}",
+
+  "1 alert needs": "1 条警报需要",
+  "{value0} alerts need": "{value0} 条警报需要",
+
+  "Dismiss alert": "忽略警报",
+  "Explain why this needs no action, for example expected work or a false alarm. Dismissal does not stop the agent or change its budget.":
+    "说明为何无需处理，例如预期工作或误报。忽略警报不会停止代理或更改其预算。",
+  "Alert dismissed": "警报已忽略",
+  "Spend breakdown": "费用明细",
+  "Previous daily average": "此前日均费用",
+  Increase: "增加额",
+  "Compares recorded unattended usage over 24 hours with the daily average over the six days before, including days with no usage. Alerts above $5 and 3× that average.":
+    "将已记录的 24 小时无人值守用量与此前六天的日均值比较，包含无用量的日期。超过 5 美元且超过该平均值的 3 倍时发出警报。",
+  "Usage window": "用量时间范围",
+  "An increase can be expected work; it does not mean the agent failed. Review the sessions and triggers before changing its budget.":
+    "增加可能来自预期工作，并不表示代理失败。更改预算前请查看会话和触发器。",
+  "Top sessions by unattended spend": "无人值守费用最高的会话",
+  "Session {value0}": "会话 {value0}",
+  "Agent sessions": "代理会话",
+  "Usage policies": "用量策略",
+  "Review alerts, understand their impact, and choose what to do next.":
+    "查看警报，了解其影响并选择下一步操作。",
+  "Back to issues": "返回问题列表",
+  "Select an issue to see its details and actions.": "选择一个问题以查看详情和操作。",
+  "{from}–{to} of {total}": "第 {from}–{to} 项，共 {total} 项",
+  "{value0}× the daily average": "日均值的 {value0} 倍",
+  "Session breakdown is unavailable. Check again to refresh this alert.":
+    "会话明细暂不可用。请再次检查以刷新此警报。",
+
   Fix: "修复",
   "Fix available": "可修复",
   "Fix not available yet": "暂时无法修复",

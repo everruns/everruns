@@ -19,9 +19,6 @@ pub use everruns_core::{FeatureFlagDefinition, FeatureFlagGrade};
 /// `docs/api/openapi.json`.
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct FeatureFlags {
-    /// Agent-owned views. Organization adoption opt-in.
-    #[serde(default)]
-    pub agent_views: bool,
     /// Evals (user-facing behavioral evals for agents). Organization adoption opt-in.
     pub evals: bool,
     /// Native typed extraction API and console. Organization adoption opt-in.
@@ -92,12 +89,6 @@ pub fn is_known_feature_flag(name: &str) -> bool {
 /// One catalog for platform flags, including infrastructure capabilities.
 /// Integration flags live with their integration crates.
 pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
-    FeatureFlagDefinition {
-        name: "agent_views",
-        label: "Agent views",
-        description: "Configure custom A2UI and HTML views for agents.",
-        grade: FeatureFlagGrade::Adoption,
-    },
     FeatureFlagDefinition {
         name: "evals",
         label: "Evals",
@@ -242,7 +233,6 @@ impl FeatureFlags {
     /// is irrelevant to JSON consumers.
     pub fn to_map(&self) -> FeatureFlagMap {
         let mut map = BTreeMap::from([
-            ("agent_views".to_string(), self.agent_views),
             ("container_sandbox".to_string(), self.container_sandbox),
             ("lua".to_string(), self.lua),
             ("evals".to_string(), self.evals),
@@ -265,7 +255,6 @@ impl FeatureFlags {
     /// Look up a flag by name (for dynamic/string-based access).
     pub fn is_enabled(&self, flag: &str) -> bool {
         match flag {
-            "agent_views" => self.agent_views,
             "container_sandbox" => self.container_sandbox,
             "lua" => self.lua,
             "evals" => self.evals,
@@ -282,7 +271,6 @@ impl FeatureFlags {
 
     fn set(&mut self, name: &str, enabled: bool) {
         match name {
-            "agent_views" => self.agent_views = enabled,
             "evals" => self.evals = enabled,
             "extractions" => self.extractions = enabled,
             "skills" => self.skills = enabled,
@@ -312,9 +300,6 @@ impl FeatureFlags {
     /// Feature flag required by a capability, when one exists.
     pub fn required_for_capability(capability_id: &str) -> Option<&'static str> {
         match capability_id {
-            everruns_capabilities::capabilities::published_views::PUBLISHED_VIEWS_ID => {
-                Some("agent_views")
-            }
             "container_sandbox" => Some("container_sandbox"),
             "lua" | "lua_code_mode" => Some("lua"),
             "skills" => Some("skills"),
@@ -336,7 +321,6 @@ impl FeatureFlags {
     #[cfg(test)]
     pub fn all_enabled() -> Self {
         Self {
-            agent_views: true,
             container_sandbox: true,
             lua: true,
             evals: true,
@@ -461,7 +445,7 @@ mod tests {
                 .map(|def| (def.name.to_string(), def.grade))
                 .collect(),
         };
-        let adoption_flags = ["evals", "extractions", "observers", "voice", "agent_views"];
+        let adoption_flags = ["evals", "extractions", "observers", "voice"];
         let opted_in = adoption_flags
             .iter()
             .map(|name| (name.to_string(), true))
@@ -473,6 +457,7 @@ mod tests {
             assert!(policy.for_org(&opted_in).is_enabled(name), "{name}");
         }
         for removed in [
+            "agent_views",
             "agent_delegation",
             "webmcp",
             "typesafe",

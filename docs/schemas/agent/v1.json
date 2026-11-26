@@ -5,6 +5,49 @@
   "description": "Canonical agent.toml authoring schema. Also applies to parsed YAML and JSON. Validate asset paths, skills, credentials and destination dependencies with everruns agents validate.",
   "$ref": "#/definitions/Manifest",
   "definitions": {
+    "Avatar": {
+      "oneOf": [
+        {
+          "type": "string",
+          "description": "Package-relative PNG, JPEG, GIF or WebP. No URLs or host paths."
+        },
+        {
+          "$ref": "#/definitions/AvatarImage"
+        },
+        {
+          "type": "boolean",
+          "description": "Only false is valid: explicitly remove a destination avatar.",
+          "enum": [
+            false
+          ]
+        }
+      ],
+      "description": "A portrait is separate from files seeded into the agent's workspace."
+    },
+    "AvatarImage": {
+      "type": "object",
+      "required": [
+        "content_type",
+        "image_base64"
+      ],
+      "properties": {
+        "content_type": {
+          "type": "string",
+          "enum": [
+            "image/png",
+            "image/jpeg",
+            "image/gif",
+            "image/webp"
+          ]
+        },
+        "image_base64": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 6990508
+        }
+      },
+      "additionalProperties": false
+    },
     "Channel": {
       "type": "object",
       "description": "Portable channel intent. Authentication and installation are host bindings.\nChannels default to disabled; enabled intent still requires host publication.",
@@ -196,6 +239,17 @@
             "$ref": "#/definitions/Manifest"
           },
           "description": "Agents bundled with this one, each a complete definition. Folders and\narchives keep them in `.agents/agents/<name>/`; text formats inline them."
+        },
+        "avatar": {
+          "oneOf": [
+            {
+              "$ref": "#/definitions/Avatar",
+              "description": "Portable portrait. Relative image path in folders, inline image in text;\nfalse removes it. Omission preserves a destination's existing avatar."
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "capabilities": {
           "type": "array",

@@ -7,7 +7,7 @@ tags: [agents, portability, framework]
 
 # Portable agent packages
 
-A package transfers authored behavior and assets, including complete skill trees.
+A package transfers authored behavior and assets, including complete skill trees and agent portraits.
 The shared [codec](../../crates/core/src/agent_package/mod.rs) owns parsing,
 normalization, bounded materialization and semantic diffs. UI, REST, CLI,
 Platform Chat, MCP and Framework hosts reuse it; transports do not maintain
@@ -70,6 +70,19 @@ serving a real session, and comparing against the result after import. See the
 [Framework tests](../../crates/everruns/tests/facade/package.rs),
 [Platform tests](../../crates/server/tests/domain/agent_packages_test.rs), and
 [serve tests](../../crates/serve/src/wire_tests.rs).
+
+## Portrait portability
+
+Portraits carry image bytes rather than deployment avatar IDs, URLs or provider
+provenance. Folder and GitHub inputs may reference safe relative image assets;
+text is self-contained and ZIP keeps separate portrait assets for the root and
+every bundled team member. Portraits never become workspace files. Omission
+preserves existing destination branding; explicit removal is authored intent.
+The codec bounds encoded/decoded bytes and paths, while the Platform reuses its
+image decoder and pixel bounds before mutation. Semantic previews contain image
+digests and sizes, never encoded image bodies. GitHub write-back preserves owned
+paths and unrelated repository files; avatar edits share source ownership and
+conflict rules with other authored agent settings.
 
 ## Display localization
 

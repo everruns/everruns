@@ -1,0 +1,72 @@
+/* Pane width, rather than browser width: Chat can share a wide viewport. */
+.trace-pane {
+  container: session-trace / inline-size;
+}
+.trace-columns {
+  grid-template-columns: minmax(0, 1fr);
+}
+.trace-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.trace-primary-controls {
+  width: 100%;
+}
+.trace-secondary-controls {
+  display: none;
+  width: 100%;
+}
+.trace-secondary-controls[data-open="true"] {
+  display: flex;
+}
+.trace-totals {
+  display: none;
+}
+.trace-turn-meta {
+  max-width: 32%;
+}
+.trace-waterfall {
+  display: none;
+}
+@container session-trace (min-width: 600px) {
+  .trace-totals {
+    display: block;
+  }
+  .trace-list {
+    padding: 1.25rem;
+  }
+}
+@container session-trace (min-width: 920px) {
+  .trace-columns {
+    grid-template-columns: minmax(0, 1fr) 340px;
+  }
+  .trace-primary-controls {
+    width: auto;
+  }
+  .trace-secondary-controls {
+    display: flex;
+    width: auto;
+  }
+  .trace-filters-trigger {
+    display: none;
+  }
+}
+@container session-trace (min-width: 1120px) {
+  .trace-columns {
+    grid-template-columns: 210px minmax(0, 1fr) 340px;
+  }
+  .trace-turns-trigger {
+    display: none;
+  }
+}
+/* Waterfalls need room in the timeline itself, after the rail/inspector. */
+.trace-list {
+  container: trace-timeline / inline-size;
+}
+@container trace-timeline (min-width: 560px) {
+  .trace-waterfall {
+    display: flex;
+  }
+}

@@ -6,7 +6,20 @@
 
 ## 2026-11-25
 
+- Trace layout follows pane width beside Chat; narrow timelines use
+  turn/detail drawers and collapsible filters. See [Session Trace](ui/session-trace.md).
+
+- OpenRouter request budgeting excludes unused inline tool epochs;
+  tool-only refresh markers are distinguished from history compaction. See
+  [Compaction](runtime-resources/compaction.md).
+
 - [Python Code Mode](execution/python-code-mode.md): separate Server workers use the private session-scoped journal transport; hosted qualification requires executor replacement, approval recovery, effect read-back and cluster leader movement without file fallback.
+- Health and System issues can continue as scoped, editable drafts in Main chat; narrow conversation panes wrap identifiers and reports, with browser coverage for phone, docked and floating layouts.
+
+- Platform Chat provisions the Caretaker portrait in every organization; shared agent packages and GitHub sources preserve root and team portraits. Agent views are available without rollout opt-in. Slack manifest diagnostics distinguish synthetic compatibility warnings from actual agent failures.
+
+- [Health issues](operations/health-issues.md): select issues beside their details, hide unnecessary pagination, dismiss advisory alerts with a reason, and explain unattended spend with a bounded session drill-down and recurrence after recovery.
+
 - [MCP Events](integrations/mcp-events.md): final SEP-3415 discovery, routing, errors, delivery-local 410, independent message IDs, cached callback consent, omitted-cursor parity, and isolated conformance evidence.
 - Added the Applications publication, audience, resource ownership, browser and Kubernetes contracts.
 - Removed the retired App aggregate and its compatibility routes. Agent exposure and channel invocation now document structural attribution, stable channel identities, and the coordinated schema cutover.

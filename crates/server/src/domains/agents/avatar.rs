@@ -118,24 +118,7 @@ pub fn render_avatar(
     data: &[u8],
     content_type: &str,
 ) -> Result<Vec<RenderedAvatarVariant>, AvatarError> {
-    if data.len() > MAX_AVATAR_UPLOAD_BYTES {
-        return Err(AvatarError::TooLarge);
-    }
-    let declared = format_for(content_type).ok_or(AvatarError::UnsupportedType)?;
-    // The bytes decide, not the header: a mislabeled file is refused rather
-    // than handed to a decoder for another format.
-    if image::guess_format(data).ok() != Some(declared) {
-        return Err(AvatarError::Undecodable);
-    }
-    let max_dim = (MAX_AVATAR_PIXELS as f64).sqrt() as u32;
-    let mut reader = ImageReader::with_format(Cursor::new(data), declared);
-    let mut limits = image::Limits::default();
-    limits.max_image_width = Some(max_dim);
-    limits.max_image_height = Some(max_dim);
-    limits.max_alloc = Some(MAX_AVATAR_PIXELS * 4);
-    reader.limits(limits);
-    let decoded = reader.decode().map_err(|_| AvatarError::Undecodable)?;
-
+    let decoded = decode_avatar(data, content_type)?;
     let square = center_square(&decoded);
     if square.width() < MIN_AVATAR_EDGE {
         return Err(AvatarError::TooSmall);
@@ -164,6 +147,36 @@ pub fn render_avatar(
         out.push(encode(variant_name(AvatarShape::Circle, size), &circle)?);
     }
     Ok(out)
+}
+
+/// Validate portable portrait bytes without rendering all output variants.
+pub fn validate_avatar(data: &[u8], content_type: &str) -> Result<(), AvatarError> {
+    decode_avatar(data, content_type).map(|_| ())
+}
+
+fn decode_avatar(data: &[u8], content_type: &str) -> Result<DynamicImage, AvatarError> {
+    if data.len() > MAX_AVATAR_UPLOAD_BYTES {
+        return Err(AvatarError::TooLarge);
+    }
+    let declared = format_for(content_type).ok_or(AvatarError::UnsupportedType)?;
+    // The bytes decide, not the header: a mislabeled file is refused rather
+    // than handed to a decoder for another format.
+    if image::guess_format(data).ok() != Some(declared) {
+        return Err(AvatarError::Undecodable);
+    }
+    let max_dim = (MAX_AVATAR_PIXELS as f64).sqrt() as u32;
+    let mut reader = ImageReader::with_format(Cursor::new(data), declared);
+    let mut limits = image::Limits::default();
+    limits.max_image_width = Some(max_dim);
+    limits.max_image_height = Some(max_dim);
+    limits.max_alloc = Some(MAX_AVATAR_PIXELS * 4);
+    reader.limits(limits);
+    let decoded = reader.decode().map_err(|_| AvatarError::Undecodable)?;
+
+    if decoded.width().min(decoded.height()) < MIN_AVATAR_EDGE {
+        return Err(AvatarError::TooSmall);
+    }
+    Ok(decoded)
 }
 
 fn center_square(image: &DynamicImage) -> RgbaImage {

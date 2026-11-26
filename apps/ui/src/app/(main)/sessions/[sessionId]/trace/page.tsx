@@ -22,7 +22,7 @@ export default function TracePage() {
   return (
     <Suspense>
       {multi && run ? (
-        <div className="flex max-h-[45vh] shrink-0 flex-col gap-4 overflow-y-auto px-6 pt-6 pb-2">
+        <div className="flex max-h-[45vh] shrink-0 flex-col gap-3 overflow-y-auto px-3 pt-2 pb-2">
           <RunScopeSwitch scope={scope} onChange={setScope} agents={run.sessions.length} />
           {scope === "run" ? <RunTimeline run={run} sessionId={sessionId} /> : null}
         </div>

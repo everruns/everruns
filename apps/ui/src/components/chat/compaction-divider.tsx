@@ -26,6 +26,7 @@ export function CompactionDivider({ data }: { data: CompactionMarkerData }) {
   const native = data.strategy_used
     .split("+")
     .some((part) => ["native", "provider_managed"].includes(part));
+  const toolRefresh = data.strategy_used === "tool_rebase";
   const tokensKnown = data.tokens_before != null && data.tokens_after != null;
   const saved = data.messages_before - data.messages_after;
   const countsKnown = !native && saved > 0;
@@ -42,13 +43,14 @@ export function CompactionDivider({ data }: { data: CompactionMarkerData }) {
       >
         <div className="h-px flex-1 bg-border" />
         <span className="text-center">
-          {ui("Context compacted")}
+          {ui(toolRefresh ? "Tool definitions refreshed" : "Context compacted")}
           {countsKnown &&
             !tokensKnown &&
             ` · ${data.messages_before} → ${data.messages_after} messages`}
           {tokensKnown &&
             ` · ${formatCompactNumber(data.tokens_before!)} → ${formatCompactNumber(data.tokens_after!)} ${ui(native ? "tokens" : "estimated tokens")}`}
-          {data.strategy_used !== "none" &&
+          {!toolRefresh &&
+            data.strategy_used !== "none" &&
             ` · ${compactionStrategyLabels(data.strategy_used)
               .map((label) => ui(label))
               .join(" + ")}`}
@@ -59,7 +61,15 @@ export function CompactionDivider({ data }: { data: CompactionMarkerData }) {
       {expanded && (
         <div className="mx-auto max-w-md border bg-muted/50 px-4 py-2 text-xs text-muted-foreground">
           <div className="space-y-1">
-            <div>{ui(data.checkpoint_id ? "Checkpoint saved" : "Request reduction")}</div>
+            <div>
+              {ui(
+                toolRefresh
+                  ? "Tool declarations changed; no conversation messages were removed."
+                  : data.checkpoint_id
+                    ? "Checkpoint saved"
+                    : "Request reduction",
+              )}
+            </div>
             <div>
               {data.duration_ms}
               {ui("ms")}

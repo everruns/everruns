@@ -1,5 +1,9 @@
 // Product-owned tracing copy. Keep credentials and authored destination names outside translation.
 export const messages: Readonly<Record<string, string>> = {
+  "Tool definitions refreshed": "Werkzeugdefinitionen aktualisiert",
+  "Tool declarations changed; no conversation messages were removed.":
+    "Werkzeugdeklarationen wurden geändert; es wurden keine Gesprächsnachrichten entfernt.",
+  "Session details": "Sitzungsdetails",
   "Agent-based LangSmith workspace": "Agentenbasierter LangSmith-Arbeitsbereich",
   "LangSmith agent ID": "LangSmith-Agent-ID",
   "LangSmith environment": "LangSmith-Umgebung",

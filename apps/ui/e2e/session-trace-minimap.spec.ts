@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { mockKnowledgeApi } from "./fixtures/knowledge-app";
 
 // The Trace tab's Turns minimap: clicking a cell must bring that range of
 // turns into view in the trace, in a session far longer than one loaded page.
@@ -7,7 +8,7 @@ const ORG = "org_00000000000000000000000000000001";
 const SESSION = "session_00000000000000000000000000000002";
 const TURN_COUNT = 1851;
 const BUCKET = 16;
-test.use({ viewport: { width: 1440, height: 900 } });
+test.use({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2 });
 
 function turn(n: number) {
   const started = new Date(Date.UTC(2026, 9, 1) + n * 60_000).toISOString();
@@ -74,7 +75,7 @@ function turnsPage(params: URLSearchParams) {
   return { turns, turn_count: TURN_COUNT, has_earlier: from > 1, has_later: to < TURN_COUNT };
 }
 
-async function mockSession(page: Page, baseURL: string) {
+async function mockSession(page: Page, baseURL: string, withChat = false) {
   await page
     .context()
     .addCookies([
@@ -134,7 +135,8 @@ async function mockSession(page: Page, baseURL: string) {
         created_at: "2026-10-01T00:00:00Z",
         updated_at: "2026-10-01T00:00:00Z",
       };
-    else if (path === `/api/v1/platform/sessions/${SESSION}/resolved-model`) json = { model_id: null };
+    else if (path === `/api/v1/platform/sessions/${SESSION}/resolved-model`)
+      json = { model_id: null };
     else if (path === `/api/v1/platform/sessions/${SESSION}/trace`)
       json = {
         turn_count: TURN_COUNT,
@@ -146,7 +148,8 @@ async function mockSession(page: Page, baseURL: string) {
         bucket_size: BUCKET,
         buckets,
       };
-    else if (path === `/api/v1/platform/sessions/${SESSION}/trace/turns`) json = turnsPage(url.searchParams);
+    else if (path === `/api/v1/platform/sessions/${SESSION}/trace/turns`)
+      json = turnsPage(url.searchParams);
     else if (path.startsWith(`/api/v1/platform/sessions/${SESSION}/trace/turns/`)) {
       // turns/{turn}/steps/{step}
       const [turnNo, , stepNo] = path.split("/trace/turns/")[1]!.split("/");
@@ -156,6 +159,7 @@ async function mockSession(page: Page, baseURL: string) {
         : { step: detail, events: [], input: null, output: null, request: null };
     } else if (path === `/api/v1/platform/orgs/${ORG}`)
       json = { id: ORG, name: "Fixture", default_model_id: null };
+    else if (withChat) return route.fallback();
     await route.fulfill({ json });
   });
 }
@@ -297,6 +301,19 @@ test("opens the requested message page or tools in a fixed-size model request mo
   await scroller.press("PageDown");
   await expect.poll(() => scroller.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
 
+  // Crossing the inspector breakpoint must preserve the open request and message.
+  await page.setViewportSize({ width: 820, height: 900 });
+  await expect(modal).toBeVisible();
+  await page.keyboard.press("Control+g");
+  await expect(page.getByRole("dialog", { name: "Turns", exact: true })).toHaveCount(0);
+  await expect(modal.getByRole("button", { name: /^62 user/ })).toHaveAttribute(
+    "aria-expanded",
+    "true",
+  );
+  await expect.poll(() => scroller.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await expect(modal).toBeVisible();
+
   await modal.getByRole("button", { name: /^62 user/ }).click();
   await expect(modal.getByRole("button", { name: /^62 user/ })).toHaveAttribute(
     "aria-expanded",
@@ -330,3 +347,85 @@ test("Playground links to a new private Platform Chat", async ({ page, baseURL }
   await privateChat.click();
   await expect(page).toHaveURL(/\/chats\/new$/, { timeout: 30_000 });
 });
+
+for (const layout of ["phone", "tablet", "beside-chat"] as const) {
+  test(`trace keeps a readable timeline and opens details in the ${layout} layout`, async ({
+    page,
+    baseURL,
+  }, info) => {
+    await page.setViewportSize(
+      layout === "phone"
+        ? { width: 390, height: 844 }
+        : layout === "tablet"
+          ? { width: 820, height: 900 }
+          : { width: 1440, height: 900 },
+    );
+    if (layout === "beside-chat")
+      await mockKnowledgeApi(page, { layout: "classic", classicChat: "docked" });
+    await mockSession(page, baseURL!, layout === "beside-chat");
+    if (layout === "beside-chat")
+      await page
+        .context()
+        .addCookies([
+          { name: "everruns_theme", value: "dark", domain: new URL(baseURL!).hostname, path: "/" },
+        ]);
+    await page.goto(`/sessions/${SESSION}/trace?turn=1833`);
+    if (layout === "beside-chat") {
+      await page.getByRole("button", { name: "Show chat", exact: true }).click();
+      const resize = page.getByRole("separator", { name: "Resize chat", exact: true });
+      await resize.focus();
+      for (let i = 0; i < 5; i++) await page.keyboard.press("ArrowLeft");
+    }
+    const trace = page.getByRole("region", { name: "Session trace", exact: true });
+    const list = traceList(page);
+    await expect(trace.getByRole("button", { name: "Turns", exact: true })).toBeVisible();
+    await expect(page.getByRole("list", { name: "Session minimap" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Session details", exact: true })).toBeVisible();
+    const box = await list.boundingBox();
+    expect(box!.height).toBeGreaterThan(layout === "phone" ? 420 : 490);
+    expect(box!.width).toBeGreaterThan(350);
+    expect(box!.width).toBeCloseTo((await trace.boundingBox())!.width, 0);
+    await trace.getByRole("button", { name: "Filters", exact: true }).click();
+    await expect(
+      trace.getByRole("checkbox", { name: "Lifecycle events", exact: true }),
+    ).toBeVisible();
+    await trace.getByRole("button", { name: "Plain text", exact: true }).click();
+    await expect(page).toHaveURL(/text=plain/);
+    await trace.getByRole("button", { name: "Filters", exact: true }).click();
+    await trace.getByRole("button", { name: "Turns", exact: true }).click();
+    const turns = page.getByRole("dialog", { name: "Turns", exact: true });
+    await turns.getByRole("textbox", { name: "Go to turn", exact: true }).fill("1833");
+    await turns.getByRole("textbox", { name: "Go to turn", exact: true }).press("Enter");
+    await expect(turns).not.toBeVisible();
+    await expect.poll(() => headerInView(page, 1833)).toBe(true);
+    const row = list.getByRole("button").filter({ hasText: "#1" }).first();
+    await row.click();
+    await expect(page).toHaveURL(/step=1833.1/);
+    const detail = page.getByRole("dialog", { name: "Step inspector", exact: true });
+    await expect(detail).toBeVisible();
+    await expect(detail.getByText("Model call", { exact: true })).toBeVisible();
+    const detailBox = await detail.boundingBox();
+    expect(detailBox!.height).toBeGreaterThan(600);
+    if (layout === "phone") {
+      await page.reload();
+      await expect(detail).toBeVisible();
+      await expect(detail.getByText("Model call", { exact: true })).toBeVisible();
+    }
+    await page.addStyleTag({ content: "nextjs-portal { display: none; }" });
+    await info.attach(`${layout} inspector`, {
+      body: await detail.screenshot({ path: info.outputPath(`inspector-${layout}@2x.png`) }),
+      contentType: "image/png",
+    });
+    await page.keyboard.press("Escape");
+    await expect(detail).not.toBeVisible();
+    await expect(page).not.toHaveURL(/step=/);
+    await expect.poll(() => headerInView(page, 1833)).toBe(true);
+    expect(await page.locator("html").evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(
+      true,
+    );
+    await info.attach(`${layout} trace`, {
+      body: await page.screenshot({ path: info.outputPath(`${layout}@2x.png`) }),
+      contentType: "image/png",
+    });
+  });
+}

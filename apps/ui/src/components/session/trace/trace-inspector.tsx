@@ -5,7 +5,6 @@
 
 import { useUiTranslations } from "@/providers/locale-provider";
 import Link from "next/link";
-import { useState } from "react";
 import { ChevronDown, ChevronRight, ChevronUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CopyButton } from "@/components/ui/copy-button";
@@ -15,7 +14,7 @@ import type { TraceBatch, TracePayload, TraceStep, TraceStepDetail } from "@/lib
 import { cn } from "@/lib/utils";
 import { JsonView, formatBytes } from "./json-view";
 import { CacheBar } from "./cache-bar";
-import { ROLE_COLOR, ROLE_HINT, RequestSheet, type RequestFocus } from "./request-sheet";
+import { ROLE_COLOR, ROLE_HINT, type RequestFocus } from "./request-sheet";
 import { ToolChanges } from "./tool-changes";
 import { formatClock, formatCount, formatDuration, parseTraceError } from "./trace-model";
 import { WebSearchTraceSection } from "./web-search-trace";
@@ -24,6 +23,8 @@ export type InspectorTarget =
   /** `sessionId` is set for a sub-agent's step shown inline. */
   | { type: "step"; turn: number; step: number; sessionId?: string }
   | { type: "batch"; turn: number; batch: TraceBatch };
+
+export type RequestTarget = { sessionId: string; turn: number; step: number; focus?: RequestFocus };
 
 const KIND_TITLE: Record<string, string> = {
   model: "Model call",
@@ -200,6 +201,7 @@ export function TraceInspector({
   onLoadFull,
   onPrev,
   onNext,
+  onRequest,
 }: {
   sessionId: string;
   target: InspectorTarget | null;
@@ -207,6 +209,7 @@ export function TraceInspector({
   onLoadFull: () => void;
   onPrev?: () => void;
   onNext?: () => void;
+  onRequest: (target: RequestTarget) => void;
 }) {
   const ui = useUiTranslations();
   const stepTarget = target?.type === "step" ? { turn: target.turn, step: target.step } : null;
@@ -319,6 +322,7 @@ export function TraceInspector({
       detail={data}
       header={header}
       onLoadFull={full ? undefined : onLoadFull}
+      onRequest={onRequest}
     />
   );
 }
@@ -329,12 +333,14 @@ function StepDetail({
   detail,
   header,
   onLoadFull,
+  onRequest,
 }: {
   sessionId: string;
   subAgent: boolean;
   detail: TraceStepDetail;
   header: (label: string, title: string, mono: boolean, status?: string) => React.ReactNode;
   onLoadFull?: () => void;
+  onRequest: (target: RequestTarget) => void;
 }) {
   const ui = useUiTranslations();
   const step: TraceStep = detail.step;
@@ -370,11 +376,8 @@ function StepDetail({
     ]);
   }
   const request = detail.request;
-  const [sheetOpen, setSheetOpen] = useState(false);
-  const [sheetFocus, setSheetFocus] = useState<RequestFocus>();
   function openRequest(focus?: RequestFocus) {
-    setSheetFocus(focus);
-    setSheetOpen(true);
+    onRequest({ sessionId, turn: step.turn, step: step.step, focus });
   }
   return (
     <div>
@@ -442,14 +445,6 @@ function StepDetail({
               />
             ))}
           </ul>
-          <RequestSheet
-            sessionId={sessionId}
-            turn={step.turn}
-            step={step.step}
-            open={sheetOpen}
-            onOpenChange={setSheetOpen}
-            focus={sheetFocus}
-          />
         </Section>
       )}
       {step.name === "web_search" && (

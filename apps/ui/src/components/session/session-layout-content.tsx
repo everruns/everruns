@@ -121,7 +121,7 @@ export function SessionLayoutContent({
   }
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="@container/session flex h-full min-h-0 min-w-0 flex-col">
       <SessionHeader
         credentialsAction={credentialsAction}
         onForked={onForked}

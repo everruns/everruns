@@ -21,27 +21,16 @@ pub(super) fn routes() -> Router<ChannelApiState> {
 
 pub(super) async fn placement(
     state: &ChannelApiState,
-    context: &IngressContext,
+    _context: &IngressContext,
     config: &WorkChatConfig,
 ) -> WorkChatViewPlacement {
     if config.view_placement == WorkChatViewPlacement::None {
         return WorkChatViewPlacement::None;
     }
-    let Some(auth) = &state.runtime_auth else {
+    if state.runtime_auth.is_none() {
         return WorkChatViewPlacement::None;
-    };
-    let enabled = crate::services::org_feature_flags::resolve_org_feature_flags(
-        &state.db,
-        context.org_id,
-        &auth.feature_flag_policy,
-    )
-    .await
-    .is_ok_and(|flags| flags.agent_views);
-    if enabled {
-        config.view_placement
-    } else {
-        WorkChatViewPlacement::None
     }
+    config.view_placement
 }
 
 #[derive(Deserialize, utoipa::IntoParams)]
