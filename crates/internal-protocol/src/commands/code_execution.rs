@@ -3,7 +3,7 @@ use super::{InternalCommandTransport, call_secret};
 use async_trait::async_trait;
 use everruns_contracts::{
     error::Result,
-    runtime::durable_tools::{DurableToolCallStatus, DurableToolResultStore, ToolCallClaimResult},
+    runtime::durability::{DurableToolCallStatus, DurableToolResultStore, ToolCallClaimResult},
     typed_id::SessionId,
 };
 use serde_json::{Value, json};

@@ -2,7 +2,7 @@
 use super::{journal, value::MAX_VALUE_BYTES};
 use everruns_contracts::{
     runtime::{
-        durable_tools::{CodeExecutionJournal, ToolCallClaimResult},
+        durability::{CodeExecutionJournal, ToolCallClaimResult},
         tool_context::ToolContext,
         tool_surface::NATIVE_ONLY_TOOL_NAMES,
         tools::{Tool, validate_tool_arguments},

@@ -652,7 +652,7 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         let mut extensions = ToolContextExtensions::default();
         if let Some(store) = self.adapters.code_execution_store(org_id, session_id) {
             extensions.insert(Arc::new(
-                everruns_contracts::runtime::durable_tools::CodeExecutionStore(store),
+                everruns_contracts::runtime::durability::CodeExecutionStore(store),
             ));
         }
         let platform_store = self.adapters.platform_store(org_id, session_id);

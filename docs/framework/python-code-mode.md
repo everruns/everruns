@@ -96,7 +96,7 @@ A persistent Python journal preserves the program, but the host must also
 preserve the session and paused turn. `Engine::new()` uses in-memory session
 hosting; use a durable hosting profile when recovery must survive application
 restart. Custom hosts can inject the neutral
-`everruns_contracts::runtime::durable_tools::CodeExecutionStore` service through
+`everruns_contracts::runtime::durability::CodeExecutionStore` service through
 host tool-context extensions. The engine binds it to the session and active
 input before exposing a journal to the interpreter bridge.
 

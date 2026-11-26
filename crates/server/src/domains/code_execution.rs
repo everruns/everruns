@@ -2,7 +2,7 @@
 use crate::domains::common::*;
 use crate::domains::sessions::SESSION_MANAGE;
 use everruns_contracts::{
-    runtime::durable_tools::DurableToolResultStore,
+    runtime::durability::DurableToolResultStore,
     typed_id::{MessageId, SessionId},
 };
 use serde::{Deserialize, Serialize};

@@ -2240,7 +2240,6 @@ See [Native Extraction Services](../operations/extractions-service.md).
 See [Framework application boundaries](../framework/application-api.md) and the
 [acceptance tests](../../crates/everruns/tests/service_parity.rs).
 
-
 ## Monty Python Code Mode
 
 See [Python Code Mode](../execution/python-code-mode.md) for the boundary and

@@ -240,13 +240,13 @@ pub use everruns_contracts::runtime::message_retriever;
 mod tool_call_integrity;
 pub use everruns_contracts::runtime::connection_services;
 pub use everruns_contracts::runtime::delegation_services;
+pub use everruns_contracts::runtime::durability;
+pub use everruns_contracts::runtime::event_emitter;
+pub use everruns_contracts::runtime::execution_loading;
 pub use tool_call_integrity::{
     retain_complete_llm_tool_exchanges, retain_complete_llm_tool_exchanges_for_request,
     retain_complete_message_tool_exchanges,
 };
-pub mod durability;
-pub use everruns_contracts::runtime::event_emitter;
-pub use everruns_contracts::runtime::execution_loading;
 pub mod file_services;
 pub use everruns_contracts::runtime::image_services;
 pub use everruns_contracts::runtime::outline;

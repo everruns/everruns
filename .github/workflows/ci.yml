@@ -490,7 +490,7 @@ jobs:
               - 'crates/integrations/src/monty/**'
               - 'crates/integrations/src/bin/everruns-monty-worker.rs'
               - 'crates/integrations/src/code_mode_timeline.rs'
-              - 'crates/contracts/src/runtime/durable_tools.rs'
+              - 'crates/contracts/src/runtime/durability.rs'
               - 'crates/core/src/engine/execution/act_client_policy.rs'
               - 'crates/core/src/engine/execution/act_nested_policy.rs'
               - 'crates/agentd/src/session_code_journal.rs'

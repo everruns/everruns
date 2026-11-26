@@ -37,7 +37,7 @@ not an OS privilege boundary.
 
 ## Continuations and effects
 
-A [neutral host-private journal](../../crates/contracts/src/runtime/durable_tools.rs)
+A [neutral host-private journal](../../crates/contracts/src/runtime/durability.rs)
 uses the existing durable claim/settle contract. The engine binds it to the
 session and admitted input. The [bridge](../../crates/integrations/src/monty/nested.rs)
 records a snapshot before invoking a tool and the policy-filtered result before

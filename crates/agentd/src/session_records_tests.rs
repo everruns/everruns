@@ -448,7 +448,7 @@ fn a_failed_or_abandoned_claim_comes_due_again() {
 
 #[test]
 fn code_journal_claims_are_fenced_private_and_survive_snapshot() {
-    use everruns_contracts::runtime::durable_tools::ToolCallClaimResult;
+    use everruns_contracts::runtime::durability::ToolCallClaimResult;
     let (mut state, session) = session();
     let token = uuid::Uuid::new_v4();
     let claim = || RecordOp::CodeClaim {

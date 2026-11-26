@@ -221,7 +221,7 @@ pub(crate) fn apply(
             fingerprint,
             token,
         } => {
-            use everruns_contracts::runtime::durable_tools::ToolCallClaimResult as Claim;
+            use everruns_contracts::runtime::durability::ToolCallClaimResult as Claim;
             if key.len() > 512 || fingerprint.len() > 128 {
                 return rejected("invalid code journal key");
             }
@@ -785,7 +785,7 @@ pub(crate) fn attach(
             .unwrap_or_default();
         if session == records.session {
             extensions.insert(Arc::new(
-                everruns_contracts::runtime::durable_tools::CodeExecutionStore(records.clone()),
+                everruns_contracts::runtime::durability::CodeExecutionStore(records.clone()),
             ));
         }
         extensions

@@ -230,12 +230,12 @@ where
     tool_context.nested_tool_policy = Some(nested_policy::for_atom(atom));
     let code_store = atom.durable_tool_result_store.clone().or_else(|| {
         tool_context
-            .extension::<everruns_contracts::runtime::durable_tools::CodeExecutionStore>()
+            .extension::<everruns_contracts::runtime::durability::CodeExecutionStore>()
             .map(|store| store.0.clone())
     });
     if let Some(store) = code_store {
         tool_context.extensions.insert(Arc::new(
-            everruns_contracts::runtime::durable_tools::CodeExecutionJournal {
+            everruns_contracts::runtime::durability::CodeExecutionJournal {
                 store,
                 namespace: format!("code:{}:{}", context.session_id, context.input_message_id),
             },

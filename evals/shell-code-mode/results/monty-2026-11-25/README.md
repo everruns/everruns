@@ -62,6 +62,15 @@ The hosted smokes do not test approval recovery after executor replacement,
 Server restart, or agentd Raft leader movement. Framework approval tests and
 private-journal unit tests do not establish those deployment properties.
 
+Follow-up hosted recovery qualification in [PR #5680](https://github.com/everruns/everruns/pull/5680)
+passed both approval decisions on Server after API/worker replacement and on a
+three-node agentd cluster after executor/leader replacement (4/4). Those runs
+disabled the Framework file fallback, required the exact source and verification
+query, and checked one SQL receipt and the actual file state. The pre-fix Server
+attempt exposed a missing remote-worker journal binding; the corrected binding
+passed both fresh trials. This follow-up still used interpreter-only isolation;
+the PR's separate Linux CI job owns kernel qualification.
+
 Focused validation passed: 15 ordinary Framework study tests, the real Monty
 Engine allow/reject test, 33 MCP study tests, three hosted-grader tests, and 49 CI
 policy tests. Docs and local knowledge checks passed. Framework Clippy passed

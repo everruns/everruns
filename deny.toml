@@ -41,6 +41,10 @@ confidence-threshold = 0.8
 
 # Allow specific exceptions (add as needed)
 exceptions = [
+    # Permissive Apache-2.0 with LLVM's linking/attribution exception, already
+    # accepted below. Windows support pulled by Monty pool's cap-std dependency;
+    # it does not enable a host filesystem adapter in Python Code Mode.
+    { allow = ["Apache-2.0 WITH LLVM-exception"], crate = "winx" },
     # PostgreSQL License: OSI-approved, permissive (BSD/MIT-like). Covers the
     # dev/test-only embedded cluster in crates/pg-embedded.
     { allow = ["PostgreSQL"], crate = "postgresql_archive" },

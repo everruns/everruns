@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use everruns_contracts::{
     error::{AgentLoopError, Result},
     runtime::{
-        durable_tools::{
+        durability::{
             CodeExecutionJournal, DurableToolCallStatus, DurableToolResultStore,
             ToolCallClaimResult,
         },

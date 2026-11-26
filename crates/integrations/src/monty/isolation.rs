@@ -61,6 +61,18 @@ pub(super) fn restrict(runtime: &Path) -> io::Result<()> {
         ))? as i32;
         let ruleset = OwnedFd::from_raw_fd(fd);
         allow_path(&ruleset, runtime, EXECUTE | READ_FILE)?;
+        // The kernel executes PT_INTERP too. Read permission on shared
+        // libraries alone leaves execve(runtime) failing with EACCES. Grant
+        // execution to the system loader file, never its whole directory.
+        #[cfg(target_arch = "x86_64")]
+        let loader = Path::new("/lib64/ld-linux-x86-64.so.2");
+        #[cfg(target_arch = "aarch64")]
+        let loader = Path::new("/lib/ld-linux-aarch64.so.1");
+        #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
+        let loader = Path::new("/unsupported-loader");
+        if loader.exists() {
+            allow_path(&ruleset, &loader.canonicalize()?, EXECUTE | READ_FILE)?;
+        }
         for path in ["/lib", "/lib64", "/usr/lib", "/usr/lib64"] {
             if Path::new(path).exists() {
                 allow_path(&ruleset, Path::new(path), READ_FILE | READ_DIR)?;
@@ -254,7 +266,14 @@ unsafe fn seccomp() -> io::Result<()> {
 mod tests {
     #[test]
     fn monty_isolation_child() {
-        if std::env::var_os("EVERRUNS_MONTY_ISOLATION_PROBE").is_none() {
+        let probe = std::env::var("EVERRUNS_MONTY_ISOLATION_PROBE").ok();
+        if probe.is_none() {
+            return;
+        }
+        if probe.as_deref() == Some("exec") {
+            // The actual ELF image must start and inherit the same boundary.
+            assert!(std::fs::read("/etc/passwd").is_err());
+            assert!(std::net::TcpStream::connect("127.0.0.1:9").is_err());
             return;
         }
         let executable = std::env::current_exe().unwrap();
@@ -275,6 +294,13 @@ mod tests {
                 -1
             );
         }
+        use std::os::unix::process::CommandExt;
+        let error = std::process::Command::new(executable)
+            .args(["--exact", "isolation::tests::monty_isolation_child"])
+            .env_clear()
+            .env("EVERRUNS_MONTY_ISOLATION_PROBE", "exec")
+            .exec();
+        panic!("restricted ELF execution failed: {error}");
     }
     #[test]
     fn monty_kernel_boundary_denies_host_access() {

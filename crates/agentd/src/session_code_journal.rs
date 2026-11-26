@@ -1,6 +1,6 @@
 //! Private code execution state follows the session through Raft migration.
 use super::*;
-use everruns_contracts::runtime::durable_tools::{
+use everruns_contracts::runtime::durability::{
     DurableToolCallStatus, DurableToolResultStore, ToolCallClaimResult,
 };
 
