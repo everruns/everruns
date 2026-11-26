@@ -28,6 +28,8 @@ downloads. Agent output neutralizes channel-wide and user-group notifications.
 Slack files reach Responses models. Data plane v2 approval decisions remain
 single-use across shard restarts. Verified Slack approval clicks add one org
 audit record with the Slack workspace, user and decision.
+Long approval waits also allow an expired data plane spend grant to refresh
+before the resumed model call, avoiding a false usage-limit stop.
 
 **Operators** deploy the protocol-aware baseline to every delivery host and drain
 older owners before enabling the adapter. Reconcile legacy pending rows and retain
