@@ -286,7 +286,7 @@ pub struct DeliveriesQuery {
     pub from: Option<chrono::DateTime<chrono::Utc>>,
     pub to: Option<chrono::DateTime<chrono::Utc>>,
     pub before: Option<uuid::Uuid>,
-    /// Maximum rows to return (1-200, default 50).
+    /// Maximum rows to return (1-200; defaults to 10 runs or 50 deliveries).
     pub limit: Option<i64>,
 }
 

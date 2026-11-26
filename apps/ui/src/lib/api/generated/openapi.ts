@@ -46324,7 +46324,7 @@ export interface operations {
         from?: string | null;
         to?: string | null;
         before?: string | null;
-        /** @description Maximum rows to return (1-200, default 50). */
+        /** @description Maximum rows to return (1-200; defaults to 10 runs or 50 deliveries). */
         limit?: number | null;
       };
       header?: never;
@@ -46364,7 +46364,7 @@ export interface operations {
         from?: string | null;
         to?: string | null;
         before?: string | null;
-        /** @description Maximum rows to return (1-200, default 50). */
+        /** @description Maximum rows to return (1-200; defaults to 10 runs or 50 deliveries). */
         limit?: number | null;
       };
       header?: never;

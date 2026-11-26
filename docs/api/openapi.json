@@ -10622,7 +10622,7 @@
           {
             "name": "limit",
             "in": "query",
-            "description": "Maximum rows to return (1-200, default 50).",
+            "description": "Maximum rows to return (1-200; defaults to 10 runs or 50 deliveries).",
             "required": false,
             "schema": {
               "type": [
@@ -10732,7 +10732,7 @@
           {
             "name": "limit",
             "in": "query",
-            "description": "Maximum rows to return (1-200, default 50).",
+            "description": "Maximum rows to return (1-200; defaults to 10 runs or 50 deliveries).",
             "required": false,
             "schema": {
               "type": [
