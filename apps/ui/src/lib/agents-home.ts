@@ -68,7 +68,8 @@ export function agentChannelHref(agentId: string, channelId: string): string {
 /** Short channel name for dense rows. */
 export function channelShortName(kind: ChannelType): string {
   switch (kind) {
-    case "email": return "Email";
+    case "email":
+      return "Email";
     case "a2a":
       return "A2A";
     case "fcp":

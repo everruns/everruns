@@ -19,7 +19,12 @@ export interface ChannelTypeInfo {
 /// a peer waiting for a reply (EVE-1006). Existing webhook channels keep working
 /// and keep their page.
 export const CHANNEL_TYPE_INFO: ChannelTypeInfo[] = [
-  {kind: "email", audience: "people", summary: "People email the agent. It reads selected messages and replies in the same thread.", needs: "Needs an inbox provider account"},
+  {
+    kind: "email",
+    audience: "people",
+    summary: "People email the agent. It reads selected messages and replies in the same thread.",
+    needs: "Needs an inbox provider account",
+  },
   {
     kind: "work_chat",
     audience: "people",
