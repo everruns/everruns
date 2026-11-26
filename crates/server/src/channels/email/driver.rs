@@ -67,12 +67,12 @@ impl ChannelDeliveryAdapter for EmailDriver {
     ) -> DeliveryResult {
         match self.stage(message, context).await {
             Ok(Some(receipt)) => {
-                if let Some(sink) = &context.receipts {
-                    if sink.confirmed(&receipt).await.is_err() {
-                        return DeliveryResult::Unknown {
-                            confirmed: vec![receipt],
-                        };
-                    }
+                if let Some(sink) = &context.receipts
+                    && sink.confirmed(&receipt).await.is_err()
+                {
+                    return DeliveryResult::Unknown {
+                        confirmed: vec![receipt],
+                    };
                 }
                 DeliveryResult::Ok
             }

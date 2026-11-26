@@ -174,9 +174,9 @@ impl Worker {
             if renewed == 0 {
                 continue;
             }
-            let mut tx = self.db.pool().begin().await?;
+            let mut tx = everruns_durable::begin_transaction(self.db.pool()).await?;
             let budget = super::queue::reserve(&mut tx, org, "inspection", 20, 60).await?;
-            tx.commit().await?;
+            everruns_durable::commit_transaction(tx).await?;
             if !budget {
                 queue
                     .dispose(

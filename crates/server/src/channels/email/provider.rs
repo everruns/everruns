@@ -68,7 +68,7 @@ pub async fn hydrate(
     let body = serde_json::to_value(&mail)?;
     let size = serde_json::to_vec(&body)?.len();
     anyhow::ensure!(size <= 1_048_576, "message exceeds storage limit");
-    let mut tx = db.pool().begin().await?;
+    let mut tx = everruns_durable::begin_transaction(db.pool()).await?;
     sqlx::query("SELECT org_id FROM organizations WHERE org_id=$1 FOR UPDATE")
         .bind(org)
         .fetch_one(&mut *tx)
@@ -85,7 +85,7 @@ pub async fn hydrate(
         "email storage quota"
     );
     sqlx::query("UPDATE email_intake SET message=$4,stored_bytes=$5,updated_at=now() WHERE org_id=$1 AND inbox_id=$2 AND id=$3").bind(org).bind(inbox).bind(id).bind(body).bind(size as i32).execute(&mut *tx).await?;
-    tx.commit().await?;
+    everruns_durable::commit_transaction(tx).await?;
     Ok(mail)
 }
 
@@ -120,10 +120,10 @@ pub fn admission(mail: &EmailMessage) -> Result<(), &'static str> {
     }) {
         return Err("provider_hold");
     }
-    if let Some(armor) = &mail.agent_armor {
-        if armor.status != "complete" || armor.verdict.as_deref() != Some("clear") {
-            return Err("provider_security_hold");
-        }
+    if let Some(armor) = &mail.agent_armor
+        && (armor.status != "complete" || armor.verdict.as_deref() != Some("clear"))
+    {
+        return Err("provider_security_hold");
     }
     for (key, value) in &mail.headers {
         if (key.eq_ignore_ascii_case("auto-submitted") && !value.eq_ignore_ascii_case("no"))

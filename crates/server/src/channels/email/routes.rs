@@ -193,7 +193,9 @@ async fn create_inbox(
     let encrypted = encryption
         .encrypt_string(secret.as_deref().unwrap_or_default())
         .map_err(internal)?;
-    let mut tx = s.db.pool().begin().await.map_err(internal)?;
+    let mut tx = everruns_durable::begin_transaction(s.db.pool())
+        .await
+        .map_err(internal)?;
     sqlx::query("SELECT org_id FROM organizations WHERE org_id=$1 FOR UPDATE")
         .bind(org.org_id)
         .fetch_one(&mut *tx)
@@ -209,7 +211,9 @@ async fn create_inbox(
     }
     let row=sqlx::query_as("INSERT INTO email_inboxes (id,org_id,account_id,provider,provider_inbox_id,address,name,signing_secret_encrypted,enabled) VALUES ($1,$2,$3,'agentmail',$4,$4,$5,$6,$7) RETURNING id,account_id,provider,provider_inbox_id,address,name,enabled,created_at")
         .bind(Uuid::now_v7()).bind(org.org_id).bind(connection.id).bind(&body.address).bind(body.name.trim()).bind(encrypted).bind(secret.is_some()).fetch_one(&mut *tx).await.map_err(internal)?;
-    tx.commit().await.map_err(internal)?;
+    everruns_durable::commit_transaction(tx)
+        .await
+        .map_err(internal)?;
     Ok((StatusCode::CREATED, Json(row)))
 }
 
@@ -407,7 +411,9 @@ async fn create_template(
         return Err(bad("Invalid template"));
     }
     let id = input.id.unwrap_or_else(Uuid::now_v7);
-    let mut tx = s.db.pool().begin().await.map_err(internal)?;
+    let mut tx = everruns_durable::begin_transaction(s.db.pool())
+        .await
+        .map_err(internal)?;
     sqlx::query("SELECT org_id FROM organizations WHERE org_id=$1 FOR UPDATE")
         .bind(org.org_id)
         .fetch_one(&mut *tx)
@@ -430,7 +436,9 @@ async fn create_template(
     .await
     .map_err(internal)?;
     sqlx::query("INSERT INTO email_templates (id,org_id,version,name,subject,html,text_body) VALUES ($1,$2,$3,$4,$5,$6,$7)").bind(id).bind(org.org_id).bind(version).bind(t.name).bind(t.subject).bind(t.html).bind(t.text).execute(&mut *tx).await.map_err(internal)?;
-    tx.commit().await.map_err(internal)?;
+    everruns_durable::commit_transaction(tx)
+        .await
+        .map_err(internal)?;
     Ok(Json(json!({"id":id,"version":version})))
 }
 #[derive(Deserialize)]

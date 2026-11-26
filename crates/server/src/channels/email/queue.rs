@@ -16,7 +16,7 @@ const MAX_STORED_BYTES: i64 = 256 * 1024 * 1024;
 /// Bounded retention sweeps preserve deduplication after body expiration. Held
 /// mail and uncertain sends require review and are never silently discarded.
 pub async fn retain(pool: &PgPool) -> anyhow::Result<()> {
-    let mut tx = pool.begin().await?;
+    let mut tx = everruns_durable::begin_transaction(pool).await?;
     let ids:Vec<Uuid>=sqlx::query_scalar("SELECT m.id FROM email_intake m WHERE m.archived_at IS NULL AND m.state IN ('completed','ignored','failed') AND m.updated_at<now()-interval '30 days' AND NOT EXISTS(SELECT 1 FROM email_outbox o WHERE o.intake_id=m.id AND o.state NOT IN ('sent','failed')) ORDER BY m.updated_at LIMIT 100 FOR UPDATE SKIP LOCKED").fetch_all(&mut *tx).await?;
     sqlx::query("UPDATE email_outbox SET body='{}'::jsonb WHERE intake_id=ANY($1)")
         .bind(&ids)
@@ -35,7 +35,7 @@ pub async fn retain(pool: &PgPool) -> anyhow::Result<()> {
     sqlx::query("DELETE FROM email_rate_limits WHERE window_start<now()-interval '1 day'")
         .execute(&mut *tx)
         .await?;
-    tx.commit().await?;
+    everruns_durable::commit_transaction(tx).await?;
     Ok(())
 }
 
@@ -104,7 +104,7 @@ impl EmailQueue {
         let body = serde_json::to_value(&event.message)?;
         let bytes = serde_json::to_vec(&body)?.len();
         anyhow::ensure!(bytes <= 1_048_576, "email body limit");
-        let mut tx = self.pool.begin().await?;
+        let mut tx = everruns_durable::begin_transaction(&self.pool).await?;
         Self::lock_org(&mut tx, org).await?;
         let enabled: bool = sqlx::query_scalar(
             "SELECT EXISTS(SELECT 1 FROM email_inboxes WHERE org_id=$1 AND id=$2 AND enabled)",
@@ -116,7 +116,7 @@ impl EmailQueue {
         anyhow::ensure!(enabled, "inbox disabled");
         let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM email_intake WHERE org_id=$1 AND inbox_id=$2 AND (event_id=$3 OR message_id=$4))").bind(org).bind(inbox).bind(&event.event_id).bind(&event.message.message_id).fetch_one(&mut *tx).await?;
         if exists {
-            tx.commit().await?;
+            everruns_durable::commit_transaction(tx).await?;
             return Ok(false);
         }
         let (count, size): (i64, i64) = sqlx::query_as("SELECT count(*) FILTER (WHERE archived_at IS NULL),coalesce(sum(stored_bytes),0)::bigint FROM email_intake WHERE org_id=$1").bind(org).fetch_one(&mut *tx).await?;
@@ -140,7 +140,7 @@ impl EmailQueue {
             .bind(Uuid::now_v7()).bind(org).bind(inbox).bind(&event.event_id).bind(&event.message.message_id).bind(&event.message.thread_id)
             .bind(excerpt(&event.message.from, 256)).bind(excerpt(&event.message.subject, 256)).bind(excerpt(&event.message.preview, 400))
             .bind(body).bind(bytes as i32).bind(if held { "held" } else { "pending" }).bind(if held { Some("provider_hold") } else { None }).execute(&mut *tx).await?;
-        tx.commit().await?;
+        everruns_durable::commit_transaction(tx).await?;
         Ok(true)
     }
     pub async fn list(
@@ -172,13 +172,13 @@ impl EmailQueue {
             .map_err(Into::into)
     }
     pub async fn claim(&self, org: i64, inbox: Uuid) -> anyhow::Result<Option<Batch>> {
-        let mut tx = self.pool.begin().await?;
+        let mut tx = everruns_durable::begin_transaction(&self.pool).await?;
         Self::lock_org(&mut tx, org).await?;
         sqlx::query("UPDATE email_intake SET state=CASE WHEN attempts>=3 THEN 'held' ELSE 'pending' END,reason='triage_lease_expired',lease_id=NULL,lease_until=NULL WHERE org_id=$1 AND state='triaging' AND lease_until<=now()")
             .bind(org).execute(&mut *tx).await?;
         let (active, same): (i64, bool) = sqlx::query_as("SELECT count(DISTINCT lease_id),coalesce(bool_or(inbox_id=$2),false) FROM email_intake WHERE org_id=$1 AND state='triaging'").bind(org).bind(inbox).fetch_one(&mut *tx).await?;
         if active >= 4 || same {
-            tx.commit().await?;
+            everruns_durable::commit_transaction(tx).await?;
             return Ok(None);
         }
         let enabled: bool = sqlx::query_scalar(
@@ -189,16 +189,16 @@ impl EmailQueue {
         .fetch_one(&mut *tx)
         .await?;
         if !enabled {
-            tx.commit().await?;
+            everruns_durable::commit_transaction(tx).await?;
             return Ok(None);
         }
         let (pending, old_enough): (i64, bool) = sqlx::query_as("SELECT count(*),coalesce(min(received_at)<=now()-interval '5 seconds',false) FROM email_intake WHERE org_id=$1 AND inbox_id=$2 AND state IN ('pending','deferred') AND available_at<=now()").bind(org).bind(inbox).fetch_one(&mut *tx).await?;
         if pending < BATCH_SIZE && !old_enough {
-            tx.commit().await?;
+            everruns_durable::commit_transaction(tx).await?;
             return Ok(None);
         }
         if !reserve(&mut tx, org, "triage", 4, 60).await? {
-            tx.commit().await?;
+            everruns_durable::commit_transaction(tx).await?;
             return Ok(None);
         }
         let lease_id = Uuid::now_v7();
@@ -213,32 +213,32 @@ impl EmailQueue {
             .bind(lease_id)
             .fetch_all(&mut *tx)
             .await?;
-        tx.commit().await?;
+        everruns_durable::commit_transaction(tx).await?;
         Ok(Some(Batch { lease_id, messages }))
     }
     pub async fn claim_run(&self, org: i64, inbox: Uuid) -> anyhow::Result<Option<(Uuid, Uuid)>> {
-        let mut tx = self.pool.begin().await?;
+        let mut tx = everruns_durable::begin_transaction(&self.pool).await?;
         Self::lock_org(&mut tx, org).await?;
         sqlx::query("UPDATE email_intake SET state=CASE WHEN dispatch_attempts>=3 THEN 'held' ELSE 'ready' END,lease_id=NULL,lease_until=NULL,reason='handoff_lease_expired' WHERE org_id=$1 AND state='running' AND lease_id IS NOT NULL AND lease_until<=now()")
             .bind(org).execute(&mut *tx).await?;
         let (active,same):(i64,bool)=sqlx::query_as("SELECT count(*),coalesce(bool_or(inbox_id=$2),false) FROM email_intake WHERE org_id=$1 AND state='running'").bind(org).bind(inbox).fetch_one(&mut *tx).await?;
         if active >= 4 || same {
-            tx.commit().await?;
+            everruns_durable::commit_transaction(tx).await?;
             return Ok(None);
         }
         let id:Option<Uuid>=sqlx::query_scalar("SELECT m.id FROM email_intake m JOIN email_inboxes i ON i.id=m.inbox_id WHERE m.org_id=$1 AND m.inbox_id=$2 AND m.state='ready' AND m.available_at<=now() AND i.enabled ORDER BY m.received_at,m.id LIMIT 1 FOR UPDATE OF m")
             .bind(org).bind(inbox).fetch_optional(&mut *tx).await?;
         let Some(id) = id else {
-            tx.commit().await?;
+            everruns_durable::commit_transaction(tx).await?;
             return Ok(None);
         };
         if !reserve(&mut tx, org, "execution", 120, 3600).await? {
-            tx.commit().await?;
+            everruns_durable::commit_transaction(tx).await?;
             return Ok(None);
         }
         let lease = Uuid::now_v7();
         sqlx::query("UPDATE email_intake SET state='running',dispatch_attempts=dispatch_attempts+1,lease_id=$2,lease_until=now()+interval '2 minutes',updated_at=now() WHERE id=$1").bind(id).bind(lease).execute(&mut *tx).await?;
-        tx.commit().await?;
+        everruns_durable::commit_transaction(tx).await?;
         Ok(Some((id, lease)))
     }
     /// Triage cannot approve a send: inspect is a hold awaiting content/policy

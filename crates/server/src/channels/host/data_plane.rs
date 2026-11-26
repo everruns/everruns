@@ -111,9 +111,7 @@ impl DpSession {
         )
         .await
         .map_err(|error| other(error.context("the attachments were not copied to the session")))?;
-        let id = stable_id
-            .map(MessageId::from_uuid)
-            .unwrap_or_else(MessageId::new);
+        let id = stable_id.map(MessageId::from_uuid).unwrap_or_default();
         let reply = self
             .plane
             .session_command(

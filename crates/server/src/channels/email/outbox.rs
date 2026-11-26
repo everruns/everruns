@@ -25,7 +25,7 @@ async fn send_with_client(
     id: Uuid,
     client: channelkit_agentmail::AgentMail,
 ) -> anyhow::Result<&'static str> {
-    let mut tx = db.pool().begin().await?;
+    let mut tx = everruns_durable::begin_transaction(db.pool()).await?;
     sqlx::query("SELECT org_id FROM organizations WHERE org_id=$1 FOR UPDATE")
         .bind(org)
         .fetch_one(&mut *tx)
@@ -34,7 +34,7 @@ async fn send_with_client(
         .bind(org).bind(inbox).bind(id).fetch_optional(&mut *tx).await?;
     let (body, reply_to, state) = row.ok_or_else(|| anyhow::anyhow!("outbox item unavailable"))?;
     if state == "sent" {
-        tx.commit().await?;
+        everruns_durable::commit_transaction(tx).await?;
         return Ok("sent");
     }
     anyhow::ensure!(
@@ -45,14 +45,14 @@ async fn send_with_client(
     message.validate()?;
     if !super::queue::reserve(&mut tx, org, "send", 120, 3600).await? {
         sqlx::query("UPDATE email_outbox SET available_at=date_trunc('hour',now())+interval '1 hour' WHERE id=$1").bind(id).execute(&mut *tx).await?;
-        tx.commit().await?;
+        everruns_durable::commit_transaction(tx).await?;
         return Ok("held");
     }
     sqlx::query("UPDATE email_outbox SET state='sending',updated_at=now() WHERE id=$1")
         .bind(id)
         .execute(&mut *tx)
         .await?;
-    tx.commit().await?;
+    everruns_durable::commit_transaction(tx).await?;
     let (state, receipt, delay) = match client
         .send(&message, Some(&reply_to), &id.to_string())
         .await

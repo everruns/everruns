@@ -76,7 +76,9 @@ uses the same admission path. A 1,000-message burst becomes database rows, not
 leases, per-org fixed-window budgets and per-inbox execution serialization bound
 work. Limits are owned by [queue](../../crates/server/src/channels/email/queue.rs)
 and [worker](../../crates/server/src/channels/email/worker.rs), not process-local
-counters. Capacity exhaustion returns retryable refusal before acknowledgement.
+counters. Begin and commit use the shared cancellation-safe database boundary,
+so a cancelled waiter cannot return a connection with an untracked transaction.
+Capacity exhaustion returns retryable refusal before acknowledgement.
 
 Completed/ignored/failed bodies expire after 30 days when there is no unsent or
 uncertain reply. Receipt identities remain another 90 days, preserving deduplication
