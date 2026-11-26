@@ -103,7 +103,7 @@ service implements only the plain operations. Wire types:
 
 ### Control plane endpoint
 
-`POST {api}/injected/{name}/mcp`, outside the user-auth stack. It is off (404)
+`POST {api}/v1/injected/{name}/mcp`, outside the user-auth stack. It is off (404)
 until `INJECTED_CAPABILITIES_JWKS` and `INJECTED_CAPABILITIES_ISSUERS` name the
 trusted data planes. Every authentication failure is the same 401. Source:
 `crates/server/src/injected/`.
@@ -111,8 +111,9 @@ trusted data planes. Every authentication failure is the same 401. Source:
 The URLs it hands data planes (and the audiences it checks) use
 `INJECTED_CAPABILITIES_BASE_URL` when set, the address data planes reach it on
 (a cluster service, `127.0.0.1` locally), including the versioned API prefix
-(`/api/v1` by default). Without an override, the auth base URL gains `/v1`
-to match the mounted routes. A shard
+(`/api/v1` by default). An API root such as `/api` gains `/v1`; an explicitly
+versioned base keeps its version. Discovery and session-token audiences use
+the same normalized endpoint. A shard
 trusts its configured control plane's origin (`AGENTD_CONTROL_PLANE`) and skips
 the MCP client's private-address check only there.
 

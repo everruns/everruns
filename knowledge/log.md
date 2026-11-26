@@ -4,6 +4,8 @@
 
 - Raise the Bashkit dependency floor to 0.22.0 (resource bounds, `rm` preserve-root, empty-operand errors, file ownership in `Metadata`). See [Dependency Surface](project/dependency-surface.md).
 
+- [Email inbox channels](integrations/email.md): qualified real v2 fresh plus-address polling intake and backlog execution, scoped MCP reads, separate send approval and AgentMail threaded text/HTML readback. Recorded inbox-versus-session retention and the remaining live automatic-gate/provider-webhook qualification boundaries.
+
 ## 2026-11-25
 
 - Trace layout follows pane width beside Chat; narrow timelines use
@@ -26,6 +28,8 @@
 - [Python Code Mode](execution/python-code-mode.md): shared native/Bashkit/Monty eval arms, real approval-pause scoring, replay and fallback checks, and separately scoped hosted boundary evidence.
 
 - [Python Code Mode](execution/python-code-mode.md): optional Monty execution on Framework, Server and agentd; private snapshots and nested-effect records, kernel restrictions, public selection guidance and runtime qualification.
+
+- [Email inbox channels](integrations/email.md): AgentMail, plus addressing, durable batch intake, clean/full views, templates, runtime tool policy and immutable reply review. Qualification and source-only dependency rollout are tracked explicitly.
 
 - [Markdown Messages Rendering](ui/markdown-messages.md): Pele renders Mermaid diagrams across the shared UI renderer and Markdown file previews.
 

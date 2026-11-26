@@ -1,0 +1,71 @@
+export const messages: Record<string, string> = {
+  "Add inbox": "Postfach hinzufügen",
+  "Approve agent execution": "Agentenausführung genehmigen",
+  "Approve and send this reply": "Antwort genehmigen und senden",
+  "Automatically run the agent after admission checks":
+    "Agent nach Eingangsprüfung automatisch ausführen",
+  "Automatically send replies after output checks":
+    "Antworten nach Ausgabeprüfung automatisch senden",
+  "Clean view": "Bereinigte Ansicht",
+  "Connect an account for organization email inboxes.":
+    "Verbinden Sie ein Konto für die Postfächer der Organisation.",
+  "Could not load email data": "E-Mail-Daten konnten nicht geladen werden",
+  "Delivery not yet verified": "Zustellung noch nicht geprüft",
+  Email: "E-Mail",
+  "Email address": "E-Mail-Adresse",
+  "Email content is untrusted. Clean view may omit quoted content.":
+    "E-Mail-Inhalte sind nicht vertrauenswürdig. Die bereinigte Ansicht kann Zitate auslassen.",
+  "Email inbox": "E-Mail-Postfach",
+  "Email preview": "E-Mail-Vorschau",
+  "Full message": "Vollständige Nachricht",
+  Inbox: "Postfach",
+  Inboxes: "Postfächer",
+  "Manage inboxes": "Postfächer verwalten",
+  "Manage inboxes, provider accounts and email templates.":
+    "Verwalten Sie Postfächer, Anbieterkonten und E-Mail-Vorlagen.",
+  Name: "Name",
+  "Needs an inbox provider account": "Benötigt ein Postfach-Anbieterkonto",
+  "No incoming email yet": "Noch keine eingehenden E-Mails",
+  "No subject": "Kein Betreff",
+  "One inbox connects to one agent. Each correspondent has a separate conversation.":
+    "Ein Postfach ist mit einem Agenten verbunden. Jeder Absender hat eine eigene Unterhaltung.",
+  "Organization admin access required": "Administratorzugriff auf die Organisation erforderlich",
+  "Outgoing replies": "Ausgehende Antworten",
+  "People email the agent. It reads selected messages and replies in the same thread.":
+    "Personen schreiben dem Agenten per E-Mail. Er liest ausgewählte Nachrichten und antwortet im selben Verlauf.",
+  Preview: "Vorschau",
+  "Sample variables": "Beispielvariablen",
+  "Save template": "Vorlage speichern",
+  "Select account": "Konto auswählen",
+  "Select inbox": "Postfach auswählen",
+  Subject: "Betreff",
+  "Template name": "Vorlagenname",
+  Templates: "Vorlagen",
+  "Uncertain messages and replies remain held for review.":
+    "Unklare Nachrichten und Antworten werden zur Prüfung zurückgehalten.",
+  "Webhook URL": "Webhook-URL",
+  "Webhook signing secret": "Webhook-Signaturgeheimnis",
+  "What should this inbox answer?": "Welche Anfragen soll dieses Postfach beantworten?",
+  "Reply template": "Antwortvorlage",
+  "Automatic text and HTML": "Automatischer Text und HTML",
+  "Dismiss message": "Nachricht verwerfen",
+  "Reject reply": "Antwort ablehnen",
+  Waiting: "Wartend",
+  Reviewing: "Wird geprüft",
+  Ready: "Bereit",
+  Running: "Läuft",
+  Completed: "Abgeschlossen",
+  Ignored: "Ignoriert",
+  "Needs review": "Prüfung erforderlich",
+  Deferred: "Zurückgestellt",
+  Failed: "Fehlgeschlagen",
+  Sending: "Wird gesendet",
+  Sent: "Gesendet",
+  "Delivery uncertain": "Zustellung ungewiss",
+  "Approve execution to let the agent handle this message.":
+    "Genehmigen Sie die Ausführung, damit der Agent diese Nachricht bearbeiten kann.",
+  "Sender authentication or provider checks require review.":
+    "Absenderauthentifizierung oder Anbieterprüfungen erfordern eine Überprüfung.",
+  "Automatic checks could not approve this message.":
+    "Automatische Prüfungen konnten diese Nachricht nicht freigeben.",
+};

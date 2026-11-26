@@ -73,6 +73,7 @@ impl From<&str> for ChannelStatus {
 #[schema(example = "webhook")]
 #[serde(rename_all = "lowercase")]
 pub enum ChannelType {
+    Email,
     Slack,
     #[serde(rename = "ag_ui")]
     AgUi,
@@ -120,6 +121,7 @@ impl ChannelType {
         match self {
             // Messaging: keyed off the inbound message.
             ChannelType::Slack => &SessionBinding::MESSAGE_KEYED,
+            ChannelType::Email => &[SessionBinding::Thread],
             // Nothing is listening on a thread; the exposure owns the session.
             ChannelType::Schedule | ChannelType::Webhook | ChannelType::A2a => {
                 &SessionBinding::INVOCATION_KEYED
@@ -144,6 +146,7 @@ impl ChannelType {
 impl std::fmt::Display for ChannelType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            ChannelType::Email => write!(f, "email"),
             ChannelType::Slack => write!(f, "slack"),
             ChannelType::AgUi => write!(f, "ag_ui"),
             ChannelType::Schedule => write!(f, "schedule"),
@@ -162,6 +165,7 @@ impl std::fmt::Display for ChannelType {
 impl ChannelType {
     pub fn from_str_opt(s: &str) -> Option<Self> {
         match s {
+            "email" => Some(ChannelType::Email),
             "slack" => Some(ChannelType::Slack),
             "ag_ui" => Some(ChannelType::AgUi),
             "schedule" => Some(ChannelType::Schedule),

@@ -127,6 +127,8 @@ pub enum SessionSource {
     Api,
     /// Slack channel ingress.
     Slack,
+    /// Email inbox ingress.
+    Email,
     /// AG-UI channel ingress.
     AgUi,
     /// FCP channel ingress.
@@ -154,6 +156,7 @@ impl SessionSource {
         SessionSource::Playground,
         SessionSource::Api,
         SessionSource::Slack,
+        SessionSource::Email,
         SessionSource::AgUi,
         SessionSource::Fcp,
         SessionSource::Schedule,
@@ -171,6 +174,7 @@ impl SessionSource {
             SessionSource::Playground => "playground",
             SessionSource::Api => "api",
             SessionSource::Slack => "slack",
+            SessionSource::Email => "email",
             SessionSource::AgUi => "ag_ui",
             SessionSource::Fcp => "fcp",
             SessionSource::Schedule => "schedule",
@@ -191,7 +195,10 @@ impl SessionSource {
     /// schedule started it. Such sessions get the agent's `unattended`
     /// completion check.
     pub fn is_unattended(self) -> bool {
-        matches!(self, SessionSource::Schedule | SessionSource::Webhook)
+        matches!(
+            self,
+            SessionSource::Schedule | SessionSource::Webhook | SessionSource::Email
+        )
     }
 
     /// Whether a client may declare this source on `POST /v1/platform/sessions`.

@@ -8,6 +8,7 @@
 
 pub mod a2a;
 pub mod ag_ui;
+pub mod email;
 pub mod fcp;
 pub mod host;
 pub mod poppy;

@@ -67,6 +67,8 @@ members = [
 ]
 
 exclude = [
+    "vendor/email-libraries/channelkit",
+    "vendor/email-libraries/channelkit-agentmail",
     "vendor/sqlx-sqlite",
     # Independently resolved, source-only hosting reference.
     "crates/durable-object",

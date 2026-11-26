@@ -28,6 +28,7 @@ enum Call {
 
 #[derive(Default)]
 struct Recorder {
+    aggregate: bool,
     calls: Mutex<Vec<Call>>,
     stream: bool,
     surface: bool,
@@ -58,6 +59,9 @@ impl Recorder {
 
 #[async_trait]
 impl ChannelDeliveryAdapter for Recorder {
+    fn aggregate_replies(&self) -> bool {
+        self.aggregate
+    }
     fn platform(&self) -> &str {
         if self.slack { "slack" } else { "test" }
     }
@@ -1168,4 +1172,50 @@ async fn no_acknowledgement_without_the_option_or_a_platform_message() {
     scheduled.observe(&sent("Daily report.", None)).await;
     scheduled.observe(&event(TURN_COMPLETED, json!({}))).await;
     assert!(reacted(&recorder).is_empty());
+}
+
+#[tokio::test]
+async fn aggregate_email_waits_for_success_and_uses_guarded_final_text() {
+    let recorder = Arc::new(Recorder {
+        aggregate: true,
+        stream: true,
+        ..Default::default()
+    });
+    let mut d = delivery(&recorder, DeliveryOptions::default());
+    d.observe(&delta("m1", "unreviewed")).await;
+    d.observe(&completed("m1", "first")).await;
+    d.observe(&completed("m1", "first")).await;
+    d.observe(&completed("m2", "second")).await;
+    d.observe(&event(
+        OUTPUT_MESSAGE_REPLACED,
+        json!({"message_id":"m1","replacement":"safe"}),
+    ))
+    .await;
+    assert!(recorder.calls().is_empty());
+    d.observe(&event(TURN_COMPLETED, json!({}))).await;
+    d.observe(&event(TURN_COMPLETED, json!({}))).await;
+    assert_eq!(recorder.calls(), vec![Call::Post("safe\n\nsecond".into())]);
+}
+#[tokio::test]
+async fn aggregate_email_suppresses_failed_cancelled_empty_and_oversized_turns() {
+    for terminal in [TURN_FAILED, TURN_CANCELLED] {
+        let recorder = Arc::new(Recorder {
+            aggregate: true,
+            ..Default::default()
+        });
+        let mut d = delivery(&recorder, DeliveryOptions::default());
+        d.observe(&completed("m1", "partial answer")).await;
+        d.observe(&event(terminal, json!({}))).await;
+        assert!(recorder.calls().is_empty());
+    }
+    for text in [String::new(), "x".repeat(131_073)] {
+        let recorder = Arc::new(Recorder {
+            aggregate: true,
+            ..Default::default()
+        });
+        let mut d = delivery(&recorder, DeliveryOptions::default());
+        d.observe(&completed("m1", &text)).await;
+        d.observe(&event(TURN_COMPLETED, json!({}))).await;
+        assert!(recorder.calls().is_empty());
+    }
 }

@@ -4,7 +4,7 @@ import {
   PluginsIcon,
   SkillsIcon,
 } from "@/components/icons/facet-icons";
-import { Globe } from "lucide-react";
+import { Globe, Mail } from "lucide-react";
 import { capabilityIconMap, type IconComponent } from "@/lib/capability-icons";
 
 export interface RegistryNavigationItem {
@@ -27,6 +27,13 @@ export const registryDomainIcons = {
 // The org MCP catalog is not a register: it is an admin registry under
 // Settings > Organization (knowledge/integrations/user-mcp-servers.md, step 8).
 export const registryNavigationByHref = {
+  "/email": {
+    name: "Email",
+    description: "Manage inboxes, provider accounts and email templates.",
+    href: "/email",
+    icon: Mail,
+    keywords: ["email", "inbox", "agentmail", "mail", "templates"],
+  },
   "/models": {
     name: "Models",
     description: "Choose models, configure providers and set defaults.",

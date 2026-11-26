@@ -1,0 +1,4 @@
+https://github.com/everruns/channelkit
+Base revision: b2586510f69e85787c43f5a22bc13063734bebea
+Includes the coordinated unreleased email implementation from this change.
+Manifest workspace fields expanded; documentation paths made package-local.

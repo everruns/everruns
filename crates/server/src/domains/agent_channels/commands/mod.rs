@@ -66,6 +66,68 @@ pub(super) fn decrypted_config(ctx: &Ctx, row: IngressChannelRow) -> Result<Valu
     Ok(config)
 }
 
+// An organization inbox grants use of an organization credential. Agent
+// ownership alone cannot grant that authority. This shares the command's
+// transaction, including its audit record and the channel write.
+async fn bind_email(ctx: &Ctx, row: &IngressChannelRow) -> Result<(), CommandError> {
+    if row.channel_type != "email" {
+        return Ok(());
+    }
+    if !ctx
+        .caller
+        .role
+        .has_permission(everruns_core::OrgRole::Admin)
+        || ctx.acting_for_session.is_some()
+    {
+        return Err(CommandError::forbidden(
+            "Only organization administrators can bind email inboxes",
+        ));
+    }
+    let config: crate::channels::email::EmailChannelConfig =
+        serde_json::from_value(decrypted_config(ctx, row.clone())?)
+            .map_err(|_| CommandError::bad_request("Invalid email configuration"))?;
+    let exists: bool =
+        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM email_inboxes WHERE org_id=$1 AND id=$2)")
+            .bind(ctx.org_id())
+            .bind(config.inbox_id)
+            .fetch_one(ctx.db.database().tx_pool())
+            .await
+            .map_err(anyhow::Error::from)?;
+    if !exists {
+        return Err(CommandError::bad_request(
+            "Select an inbox in this organization",
+        ));
+    }
+    if let Some(template) = config.reply_template_id {
+        let exists: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM email_templates WHERE org_id=$1 AND id=$2)",
+        )
+        .bind(ctx.org_id())
+        .bind(template)
+        .fetch_one(ctx.db.database().tx_pool())
+        .await
+        .map_err(anyhow::Error::from)?;
+        if !exists {
+            return Err(CommandError::bad_request(
+                "Select a reply template in this organization",
+            ));
+        }
+    }
+    sqlx::query(
+        "DELETE FROM email_channel_bindings WHERE org_id=$1 AND channel_id=$2 AND inbox_id<>$3",
+    )
+    .bind(ctx.org_id())
+    .bind(row.channel_id)
+    .bind(config.inbox_id)
+    .execute(ctx.db.database().tx_pool())
+    .await
+    .map_err(anyhow::Error::from)?;
+    sqlx::query("INSERT INTO email_channel_bindings (org_id,inbox_id,channel_id) VALUES ($1,$2,$3) ON CONFLICT (channel_id) DO NOTHING")
+        .bind(ctx.org_id()).bind(config.inbox_id).bind(row.channel_id).execute(ctx.db.database().tx_pool()).await
+        .map_err(|_| CommandError::bad_request("This inbox is already bound to another channel"))?;
+    Ok(())
+}
+
 // THREAT[TM-AUTHZ-022]: package imports preflight this same live-channel gate
 // before mutating the agent, so a denied ingress update cannot partially apply.
 fn prepare_updated_config(
@@ -246,6 +308,7 @@ impl Command for CreateAgentChannel {
                 },
             )
             .await?;
+        bind_email(ctx, &row).await?;
         if self.req.channel_type == ChannelType::Slack {
             super::slack_reactions::ensure_on_first_slack_channel(ctx, &agent, &config).await?;
         }
@@ -361,6 +424,7 @@ impl Command for UpdateAgentChannelCmd {
             )
             .await?
             .ok_or_else(|| CommandError::not_found("Channel"))?;
+        bind_email(ctx, &row).await?;
         if row.channel_type == "slack" {
             let service = crate::domains::health_issues::service::SlackHealthService::new(
                 ctx.db.clone(),

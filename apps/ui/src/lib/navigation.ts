@@ -218,6 +218,7 @@ export const defaultBlocksNavigation: NavigationItem[] = [
   },
   registryItem("/models"),
   registryItem("/web-search"),
+  registryItem("/email"),
   // One page with tabs, like Models: the fleet (what is running), the
   // templates that configure it, and the provider accounts it runs on.
   {

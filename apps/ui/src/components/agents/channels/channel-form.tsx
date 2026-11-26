@@ -85,7 +85,10 @@ import {
 } from "./work-chat-fields";
 import { FoldedSettings, FormSection } from "./form-section";
 
+import { EmailFields, type EmailConfig } from "./email-fields";
+
 export const CHANNEL_FORM_KINDS: ChannelType[] = [
+  "email",
   "schedule",
   "api",
   "work_chat",
@@ -104,6 +107,7 @@ const DEFAULT_FCP_RESPONSE_TIMEOUT_SECONDS = 120;
 
 export type ChannelFormState = {
   kind: ChannelType;
+  email: EmailConfig;
   chatInterface: "single_with_threads" | "multi_chat";
   chatMembership: WorkChatMembership;
   chatViewPlacement: "none" | "panel" | "page";
@@ -183,6 +187,7 @@ export function getDefaultChannelFormState(
 ): ChannelFormState {
   const base: ChannelFormState = {
     kind,
+    email: { inbox_id: "", purpose: "", auto_dispatch: false, auto_reply: false },
     enabled: channel?.enabled ?? true,
     slackConnection: SocketMode.defaultSlackConnection(),
     slackAppToken: "",
@@ -247,6 +252,7 @@ export function getDefaultChannelFormState(
   };
 
   if (!channel) return base;
+  if (channel.channel_type === "email") return { ...base, email: { ...base.email, ...(channel.channel_config as EmailConfig) } };
 
   if (channel.channel_type === "schedule") {
     const config = channel.channel_config as ScheduleChannelConfig;
@@ -408,6 +414,7 @@ export function getDefaultChannelFormState(
 
 export function buildChannelConfig(state: ChannelFormState) {
   switch (state.kind) {
+    case "email": return state.email;
     case "schedule":
       return {
         cron_expression: state.scheduleCronExpression,
@@ -551,6 +558,7 @@ export function buildChannelConfig(state: ChannelFormState) {
 
 export function isChannelFormValid(state: ChannelFormState): boolean {
   if (!CHANNEL_FORM_KINDS.includes(state.kind)) return false;
+  if (state.kind === "email") return !!state.email.inbox_id && !!state.email.purpose.trim();
   if (state.kind === "schedule") {
     return isSupportedCronExpression(state.scheduleCronExpression) && !!state.channelMessage.trim();
   }
@@ -1258,6 +1266,7 @@ export function ChannelForm({
           </FormSection>
         </>
       )}
+      {state.kind === "email" && <EmailFields value={state.email} onChange={email => onChange({ ...state, email })} />}
       {state.kind === "work_chat" && <WorkChatSection state={state} onChange={onChange} />}
       {state.kind === "api" && (
         <FormSection

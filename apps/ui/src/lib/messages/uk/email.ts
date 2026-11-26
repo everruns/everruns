@@ -1,0 +1,71 @@
+export const messages: Record<string, string> = {
+  "Add inbox": "Додати скриньку",
+  "Approve agent execution": "Дозволити запуск агента",
+  "Approve and send this reply": "Схвалити й надіслати відповідь",
+  "Automatically run the agent after admission checks":
+    "Автоматично запускати агента після перевірок допуску",
+  "Automatically send replies after output checks":
+    "Автоматично надсилати відповіді після перевірок",
+  "Clean view": "Очищений вигляд",
+  "Connect an account for organization email inboxes.":
+    "Підключіть обліковий запис для поштових скриньок організації.",
+  "Could not load email data": "Не вдалося завантажити пошту",
+  "Delivery not yet verified": "Доставку ще не перевірено",
+  Email: "Електронна пошта",
+  "Email address": "Адреса електронної пошти",
+  "Email content is untrusted. Clean view may omit quoted content.":
+    "Вміст листа не є довіреним. Очищений перегляд може приховувати цитати.",
+  "Email inbox": "Поштова скринька",
+  "Email preview": "Попередній перегляд листа",
+  "Full message": "Повний лист",
+  Inbox: "Скринька",
+  Inboxes: "Скриньки",
+  "Manage inboxes": "Керувати скриньками",
+  "Manage inboxes, provider accounts and email templates.":
+    "Керуйте скриньками, обліковими записами провайдерів і шаблонами листів.",
+  Name: "Назва",
+  "Needs an inbox provider account": "Потрібен обліковий запис поштового провайдера",
+  "No incoming email yet": "Вхідних листів ще немає",
+  "No subject": "Без теми",
+  "One inbox connects to one agent. Each correspondent has a separate conversation.":
+    "Одна скринька підключається до одного агента. Кожен дописувач має окрему розмову.",
+  "Organization admin access required": "Потрібен доступ адміністратора організації",
+  "Outgoing replies": "Вихідні відповіді",
+  "People email the agent. It reads selected messages and replies in the same thread.":
+    "Люди пишуть агенту електронною поштою. Він читає вибрані листи й відповідає в тому самому ланцюжку.",
+  Preview: "Попередній перегляд",
+  "Sample variables": "Приклади змінних",
+  "Save template": "Зберегти шаблон",
+  "Select account": "Виберіть обліковий запис",
+  "Select inbox": "Виберіть скриньку",
+  Subject: "Тема",
+  "Template name": "Назва шаблону",
+  Templates: "Шаблони",
+  "Uncertain messages and replies remain held for review.":
+    "Непевні листи й відповіді залишаються на перевірці.",
+  "Webhook URL": "URL вебхука",
+  "Webhook signing secret": "Секрет підпису вебхука",
+  "What should this inbox answer?": "На що має відповідати ця скринька?",
+  "Reply template": "Шаблон відповіді",
+  "Automatic text and HTML": "Автоматичний текст і HTML",
+  "Dismiss message": "Відхилити лист",
+  "Reject reply": "Відхилити відповідь",
+  Waiting: "Очікування",
+  Reviewing: "Перевірка",
+  Ready: "Готово",
+  Running: "Виконується",
+  Completed: "Завершено",
+  Ignored: "Проігноровано",
+  "Needs review": "Потрібна перевірка",
+  Deferred: "Відкладено",
+  Failed: "Помилка",
+  Sending: "Надсилання",
+  Sent: "Надіслано",
+  "Delivery uncertain": "Доставка невизначена",
+  "Approve execution to let the agent handle this message.":
+    "Схваліть виконання, щоб агент обробив це повідомлення.",
+  "Sender authentication or provider checks require review.":
+    "Автентифікація відправника або перевірки провайдера потребують перегляду.",
+  "Automatic checks could not approve this message.":
+    "Автоматичні перевірки не змогли схвалити це повідомлення.",
+};
