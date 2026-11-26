@@ -32,6 +32,7 @@ use everruns_contracts::CapabilityError;
 #[cfg(feature = "ui-capabilities")]
 pub mod a2ui;
 pub mod agent_instructions;
+pub mod agent_memory;
 pub mod ask_user;
 pub mod attach_skill;
 pub mod auto_tool_search;
@@ -130,6 +131,7 @@ mod test_fixtures;
 
 #[cfg(feature = "ui-capabilities")]
 pub use a2ui::{A2UI_CAPABILITY_ID, A2UiCapability};
+pub use agent_memory::{AGENT_MEMORY_CAPABILITY_ID, AgentMemoryCapability, MemoryEngine};
 pub use agent_instructions::{
     AGENT_INSTRUCTIONS_CAPABILITY_ID, AGENTS_MD_PATH, AgentInstructionsCapability,
     AgentInstructionsConfig, DEFAULT_AGENT_INSTRUCTIONS_FILE, MAX_AGENT_INSTRUCTIONS_FILES,
@@ -337,6 +339,7 @@ fn capabilities_with_ask_user(ask_user: AskUserCapability) -> Vec<Arc<dyn Capabi
         Arc::new(StatelessTodoListCapability),
         Arc::new(BtwCapability),
         Arc::new(dreaming::DreamingCapability),
+        Arc::new(AgentMemoryCapability),
         Arc::new(BudgetingCapability),
         Arc::new(SelfBudgetCapability),
         Arc::new(CompactionCapability),
