@@ -55,8 +55,11 @@ before/after under the constraints in [Build Artifact Size](build-artifact-size.
 
 ## Bashkit runtime dependency
 
-The workspace and standalone shell evals use published Bashkit 0.21.0 or
-newer in the same compatible release series. This keeps Wasmtime's security
+The workspace and standalone shell evals use published Bashkit 0.22.0 or
+newer in the same compatible release series. Since 0.22.0 `bashkit::Metadata`
+carries `uid` and `gid`; the session filesystem adapter fills them from
+`Metadata::default()`, the sandbox user and group (1000), so `test -O` and
+`find -user` treat session files as owned by the shell user. This keeps Wasmtime's security
 fixes through 48.0.8 and the Windows CPython COFF embedding fix together. The corrected
 component preserves 64 KiB runtime alignment without requiring an
 unsupported Windows over-aligned static. Python stays enabled in the hosted

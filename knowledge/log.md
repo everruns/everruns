@@ -1,5 +1,9 @@
 # Everruns Knowledge Update Log
 
+## 2026-11-26
+
+- Raise the Bashkit dependency floor to 0.22.0 (resource bounds, `rm` preserve-root, empty-operand errors, file ownership in `Metadata`). See [Dependency Surface](project/dependency-surface.md).
+
 ## 2026-11-25
 
 - [MCP Events](integrations/mcp-events.md): final SEP-3415 discovery, routing, errors, delivery-local 410, independent message IDs, cached callback consent, omitted-cursor parity, and isolated conformance evidence.

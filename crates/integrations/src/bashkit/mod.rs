@@ -1013,13 +1013,7 @@ impl FileSystem for SessionFileSystemAdapter {
         // Handle /workspace itself
         if path.to_string_lossy() == "/workspace" {
             let now = SystemTime::now();
-            return Ok(Metadata {
-                file_type: FileType::Directory,
-                size: 0,
-                mode: 0o755,
-                modified: now,
-                created: now,
-            });
+            return Ok(listing_cache::session_metadata(FileType::Directory, 0, now));
         }
 
         if let Some(metadata) = self.listed_metadata(path) {
@@ -1040,16 +1034,12 @@ impl FileSystem for SessionFileSystemAdapter {
                     FileType::File
                 };
 
-                // Use 0o755 so files are executable by default in the virtual filesystem.
-                // The session filesystem doesn't track Unix permissions, and scripts
-                // stored in /workspace need to be directly executable.
-                Ok(Metadata {
+                // 0o755 and sandbox ownership: see `listing_cache::session_metadata`.
+                Ok(listing_cache::session_metadata(
                     file_type,
-                    size: file.size_bytes as u64,
-                    mode: 0o755,
-                    modified: now,
-                    created: now,
-                })
+                    file.size_bytes as u64,
+                    now,
+                ))
             }
             Ok(None) => {
                 // No row: the path can still be an implicit directory (a virtual mount,
@@ -1059,13 +1049,7 @@ impl FileSystem for SessionFileSystemAdapter {
                 // `Ok(vec![])` rather than an error for paths they do not know.
                 if self.directory_has_entries(&session_path).await {
                     let now = SystemTime::now();
-                    Ok(Metadata {
-                        file_type: FileType::Directory,
-                        size: 0,
-                        mode: 0o755,
-                        modified: now,
-                        created: now,
-                    })
+                    Ok(listing_cache::session_metadata(FileType::Directory, 0, now))
                 } else {
                     Err(bashkit::Error::Io(std::io::Error::new(
                         std::io::ErrorKind::NotFound,
