@@ -607,12 +607,11 @@ impl TestServer {
         // org opt-in seeded just below).
         feature_flags.voice = true;
         feature_flags.skills = true;
-        feature_flags.memory = true;
 
         // Org-effective flags are `system && org-opt-in`, so opt the default test org
         // into the experimental flags integration tests exercise.
         let org_flag_overrides: std::collections::HashMap<String, bool> =
-            ["evals", "skills", "memory", "observers", "voice"]
+            ["evals", "skills", "observers", "voice"]
                 .into_iter()
                 .map(|name| (name.to_string(), true))
                 .collect();

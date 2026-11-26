@@ -380,6 +380,66 @@ impl Database {
         Ok(row)
     }
 
+    /// The org's live memory stores: the org store, named memories, and
+    /// every agent, team and user memory (callers filter private ones).
+    pub async fn list_memory_stores(&self, org_id: i64) -> Result<Vec<MemoryRow>> {
+        let rows = sqlx::query_as::<_, MemoryRow>(sql!(
+            r#"
+            SELECT {MemoryRow}
+            FROM memories
+            WHERE org_id = $1
+              AND scope IN ('org', 'agent', 'team', 'user')
+              AND status = 'active'
+            ORDER BY scope, name, created_at
+            "#
+        ))
+        .bind(org_id)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows)
+    }
+
+    /// The names of the agents that own the org's agent and team memories,
+    /// by memory id.
+    pub async fn memory_owner_agent_names(&self, org_id: i64) -> Result<Vec<(Uuid, String)>> {
+        Ok(sqlx::query_as::<_, (Uuid, String)>(
+            r#"
+            SELECT m.id, a.name
+            FROM memories m
+            JOIN agents a ON a.id = m.owner_agent_id
+            WHERE m.org_id = $1 AND m.scope IN ('agent', 'team') AND m.status = 'active'
+            "#,
+        )
+        .bind(org_id)
+        .fetch_all(&self.pool)
+        .await?)
+    }
+
+    /// Kept versions of a memory's files, newest first; one file's when
+    /// `path` is given.
+    pub async fn list_memory_file_versions(
+        &self,
+        memory_id: Uuid,
+        path: Option<&str>,
+        limit: i64,
+    ) -> Result<Vec<MemoryFileVersionRow>> {
+        let rows = sqlx::query_as::<_, MemoryFileVersionRow>(sql!(
+            r#"
+            SELECT {MemoryFileVersionRow}
+            FROM memory_file_versions
+            WHERE memory_id = $1 AND ($2::text IS NULL OR path = $2)
+            ORDER BY created_at DESC, id DESC
+            LIMIT $3
+            "#
+        ))
+        .bind(memory_id)
+        .bind(path)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows)
+    }
+
     pub async fn list_all_memory_files(&self, memory_id: Uuid) -> Result<Vec<MemoryFileRow>> {
         let rows = sqlx::query_as::<_, MemoryFileRow>(sql!(
             r#"

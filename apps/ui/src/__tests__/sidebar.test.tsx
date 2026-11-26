@@ -422,7 +422,6 @@ describe("Sidebar", () => {
     Object.assign(mockFeatureFlags, {
       evals: false,
       skills: false,
-      memory: false,
       observers: false,
     });
 
@@ -430,7 +429,8 @@ describe("Sidebar", () => {
 
     expect(screen.queryByText("Evals")).not.toBeInTheDocument();
     expect(screen.queryByText("Skills")).not.toBeInTheDocument();
-    expect(screen.queryByText("Memory")).not.toBeInTheDocument();
+    // Memory needs no flag since memory v2.
+    expect(screen.getByRole("link", { name: "Memory" })).toHaveAttribute("href", "/memory");
     expect(screen.getByRole("link", { name: "Knowledge" })).toHaveAttribute("href", "/knowledge");
     expect(screen.queryByText("Quality")).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Approvals" })).not.toBeInTheDocument();

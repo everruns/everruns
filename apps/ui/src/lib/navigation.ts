@@ -202,12 +202,10 @@ export const defaultBlocksNavigation: NavigationItem[] = [
   },
   {
     name: "Memory",
-    description: "Browse the persistent memory available to agents.",
+    description: "See what agents remember: decisions, rules, facts and blocked items.",
     href: "/memory",
     icon: MemoryIcon,
-    keywords: ["workspace", "files", "storage"],
-    flag: "memory",
-    experimental: true,
+    keywords: ["remember", "decisions", "rules", "facts", "blocked", "team", "files"],
   },
   {
     name: "Virtual Users",

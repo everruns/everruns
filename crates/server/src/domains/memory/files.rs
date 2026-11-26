@@ -39,6 +39,9 @@ pub enum MemoryFsError {
     Readonly,
     #[error("invalid path: {0}")]
     InvalidPath(String),
+    /// A memory entry file that would not parse.
+    #[error("{0}")]
+    InvalidEntry(String),
     #[error("invalid pattern: {0}")]
     InvalidPattern(String),
     #[error("not found")]
@@ -91,6 +94,22 @@ impl MemoryFileService {
         // A room's files change only through the room, which versions each
         // change and records who made it; the Memory API would bypass both.
         if memory.scope == "room" {
+            return Err(MemoryFsError::MemoryNotFound);
+        }
+        Ok(memory)
+    }
+
+    /// `resolve_memory` for a person: another person's private memory
+    /// reports as missing, whatever the caller's org role
+    /// (THREAT[TM-TENANT-013]).
+    pub async fn resolve_visible_memory(
+        &self,
+        org_id: i64,
+        public_id: &str,
+        viewer: Option<Uuid>,
+    ) -> Result<MemoryRow, MemoryFsError> {
+        let memory = self.resolve_memory(org_id, public_id).await?;
+        if !super::entries::visible_to(&memory, viewer) {
             return Err(MemoryFsError::MemoryNotFound);
         }
         Ok(memory)
@@ -179,7 +198,10 @@ impl MemoryFileService {
         let content_bytes = if input.is_directory {
             None
         } else {
-            Some(input.content.unwrap_or_default())
+            let content = input.content.unwrap_or_default();
+            super::entries::check_entry_content(memory, &path, &content)
+                .map_err(MemoryFsError::InvalidEntry)?;
+            Some(content)
         };
         let row = self
             .db
@@ -207,6 +229,8 @@ impl MemoryFileService {
             return Err(MemoryFsError::Readonly);
         }
         let normalized = normalize_path(path)?;
+        super::entries::check_entry_content(memory, &normalized, &content)
+            .map_err(MemoryFsError::InvalidEntry)?;
         let row = self
             .db
             .update_memory_file(

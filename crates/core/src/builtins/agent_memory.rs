@@ -509,6 +509,12 @@ impl Capability for AgentMemoryCapability {
         AGENT_MEMORY_CAPABILITY_ID
     }
 
+    /// `memory` was the v1 capability that copied named memories into the
+    /// workspace; its attachments were converted to this one.
+    fn aliases(&self) -> Vec<&'static str> {
+        vec!["memory"]
+    }
+
     fn name(&self) -> &str {
         "Memory"
     }
@@ -629,10 +635,9 @@ fn engine_or_error<'a>(
     context: &'a ToolContext,
     config: &'a AgentMemoryConfig,
 ) -> Result<MemoryEngine<'a>, ToolExecutionResult> {
-    let fs = context
-        .file_store
-        .as_deref()
-        .ok_or_else(|| ToolExecutionResult::tool_error("memory is not available in this session"))?;
+    let fs = context.file_store.as_deref().ok_or_else(|| {
+        ToolExecutionResult::tool_error("memory is not available in this session")
+    })?;
     Ok(MemoryEngine::new(fs, context.session_id, config))
 }
 
@@ -727,7 +732,11 @@ impl Tool for RememberTool {
         ToolExecutionResult::tool_error("remember needs a session")
     }
 
-    async fn execute_with_context(&self, arguments: Value, context: &ToolContext) -> ToolExecutionResult {
+    async fn execute_with_context(
+        &self,
+        arguments: Value,
+        context: &ToolContext,
+    ) -> ToolExecutionResult {
         let engine = match engine_or_error(context, &self.0) {
             Ok(engine) => engine,
             Err(error) => return error,
@@ -745,7 +754,9 @@ impl Tool for RememberTool {
         let occurred_at = match str_arg(&arguments, "occurred_at") {
             Some(raw) => match chrono::DateTime::parse_from_rfc3339(raw) {
                 Ok(at) => Some(at.with_timezone(&Utc)),
-                Err(_) => return ToolExecutionResult::tool_error("occurred_at is an RFC 3339 time"),
+                Err(_) => {
+                    return ToolExecutionResult::tool_error("occurred_at is an RFC 3339 time");
+                }
             },
             None => None,
         };
@@ -759,7 +770,9 @@ impl Tool for RememberTool {
         let entry = NewMemoryEntry {
             kind,
             subject: str_arg(&arguments, "subject").map(str::to_string),
-            statement: str_arg(&arguments, "statement").unwrap_or_default().to_string(),
+            statement: str_arg(&arguments, "statement")
+                .unwrap_or_default()
+                .to_string(),
             quote: str_arg(&arguments, "quote").map(str::to_string),
             source,
             occurred_at,
@@ -801,14 +814,20 @@ impl Tool for RecallTool {
     }
 
     fn hints(&self) -> ToolHints {
-        ToolHints::default().with_readonly(true).with_idempotent(true)
+        ToolHints::default()
+            .with_readonly(true)
+            .with_idempotent(true)
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
         ToolExecutionResult::tool_error("recall needs a session")
     }
 
-    async fn execute_with_context(&self, arguments: Value, context: &ToolContext) -> ToolExecutionResult {
+    async fn execute_with_context(
+        &self,
+        arguments: Value,
+        context: &ToolContext,
+    ) -> ToolExecutionResult {
         let engine = match engine_or_error(context, &self.0) {
             Ok(engine) => engine,
             Err(error) => return error,
@@ -907,7 +926,11 @@ impl Tool for ForgetTool {
         ToolExecutionResult::tool_error("forget needs a session")
     }
 
-    async fn execute_with_context(&self, arguments: Value, context: &ToolContext) -> ToolExecutionResult {
+    async fn execute_with_context(
+        &self,
+        arguments: Value,
+        context: &ToolContext,
+    ) -> ToolExecutionResult {
         let engine = match engine_or_error(context, &self.0) {
             Ok(engine) => engine,
             Err(error) => return error,
@@ -949,7 +972,11 @@ impl Tool for ResolveTool {
         ToolExecutionResult::tool_error("resolve needs a session")
     }
 
-    async fn execute_with_context(&self, arguments: Value, context: &ToolContext) -> ToolExecutionResult {
+    async fn execute_with_context(
+        &self,
+        arguments: Value,
+        context: &ToolContext,
+    ) -> ToolExecutionResult {
         let engine = match engine_or_error(context, &self.0) {
             Ok(engine) => engine,
             Err(error) => return error,
@@ -991,7 +1018,11 @@ impl Tool for AcceptTool {
         ToolExecutionResult::tool_error("accept needs a session")
     }
 
-    async fn execute_with_context(&self, arguments: Value, context: &ToolContext) -> ToolExecutionResult {
+    async fn execute_with_context(
+        &self,
+        arguments: Value,
+        context: &ToolContext,
+    ) -> ToolExecutionResult {
         let engine = match engine_or_error(context, &self.0) {
             Ok(engine) => engine,
             Err(error) => return error,

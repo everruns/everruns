@@ -485,10 +485,6 @@ pub(super) async fn start_maintenance(
         )),
         crate::background::monitoring_timeline::sampler_job(deps.background_db.clone()),
         crate::background::monitoring_timeline::backfill_job(deps.background_db.clone()),
-        crate::domains::memory::source_sync::memory_source_sync_job(
-            deps.background_db.clone(),
-            deps.connection_resolver.clone(),
-        ),
         // Unified file collections reuse the GitHub resolver and embeddings drivers.
         crate::domains::knowledge::worker::job(crate::domains::knowledge::KnowledgeService {
             db: deps.background_db.clone(),

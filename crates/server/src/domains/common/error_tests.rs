@@ -5,7 +5,7 @@ fn command_metadata_declares_feature_gated_surfaces() {
     for (name, category, expected) in [
         ("list_evals", "evals", Some("evals")),
         ("list_skills", "skills", Some("skills")),
-        ("list_memories", "memories", Some("memory")),
+        ("list_memories", "memories", None),
         ("list_knowledge", "knowledge", None),
         ("list_plugins", "plugins", None),
         ("create_observer", "observers", Some("observers")),

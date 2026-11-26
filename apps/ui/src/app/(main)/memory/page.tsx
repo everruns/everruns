@@ -1,30 +1,23 @@
 "use client";
 
-import { useLocale as useFormattingLocale, useUiTranslations } from "@/providers/locale-provider";
+// Memory (knowledge/runtime-resources/memory.md): every store agents use,
+// grouped by who shares it. A store is a folder of Markdown files; typed
+// entries (decisions, rules, facts, preferences, blocked items, notes) are
+// files in kind folders. Named memories are created here and attached to
+// agents in the Memory capability; agent, team and private memories appear
+// on first use.
 
+import { useLocale as useFormattingLocale, useUiTranslations } from "@/providers/locale-provider";
 import { useOrg } from "@/providers/org-provider";
 import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
-
 import { MemoryIcon } from "@/components/icons/facet-icons";
-import { EntityStatus } from "@/components/ui/entity-status";
 import { useMemo, useState } from "react";
-import {
-  AlertCircle,
-  Archive,
-  FolderOpen,
-  GitBranch,
-  HardDrive,
-  Pencil,
-  Plus,
-  RefreshCw,
-} from "lucide-react";
-import { GithubIcon as Github } from "@/components/icons/github-icon";
+import { Plus } from "lucide-react";
 import { QueryStateWrapper } from "@/components/query-state-wrapper";
-import { ArchiveMemoryDialog } from "@/components/memory/archive-memory-dialog";
 import { MemoryFormDialog } from "@/components/memory/memory-form-dialog";
 import { Badge } from "@/components/ui/badge";
-import { Button, LinkButton } from "@/components/ui/button";
-import { EntityCard, EntityCardFooter, EntityCardDescription } from "@/components/ui/entity-card";
+import { Button } from "@/components/ui/button";
+import { EntityCard, EntityCardDescription } from "@/components/ui/entity-card";
 import { SearchInput } from "@/components/ui/search-input";
 import {
   PageContainer,
@@ -36,51 +29,56 @@ import {
   PageMain,
   IconTile,
 } from "@/components/layout";
-import {
-  useArchiveMemory,
-  useCreateMemory,
-  usePageTitle,
-  useSyncMemory,
-  useUpdateMemory,
-  useMemories,
-} from "@/hooks";
-import type { CreateMemoryRequest, UpdateMemoryRequest, Memory } from "@/lib/api/types";
-import { getEntityNameClassName, isArchivedStatus, isReadOnlyStatus } from "@/lib/entity-lifecycle";
+import { useCreateMemory, useMemoryStores, usePageTitle } from "@/hooks";
+import type { CreateMemoryRequest } from "@/lib/api/types";
+import type { MemoryStoreView } from "@/lib/api/memory";
 import { formatRelativeTime } from "@/lib/formatting";
+import {
+  memoryStoreGroup,
+  memoryStoreScopeLabel,
+  memoryStoreTitle,
+  type MemoryStoreGroup,
+} from "@/components/memory/memory-store-labels";
 
-type StatusTab = "active" | "archived";
+type GroupTab = "all" | MemoryStoreGroup;
 
 export default function MemoryPage() {
   const ui = useUiTranslations();
   usePageTitle(ui("Memory"));
   const { currentOrg } = useOrg();
   const canManage = currentOrg?.role === "owner" || currentOrg?.role === "admin";
-  const [statusTab, setStatusTab] = useState<StatusTab>("active");
+  const [tab, setTab] = useState<GroupTab>("all");
   const [search, setSearch] = useState("");
-  useChatPageFilters({ status: statusTab, search: search });
+  useChatPageFilters({ filter: tab, search });
   const [createOpen, setCreateOpen] = useState(false);
-  const [editingMemory, setEditingMemory] = useState<Memory | null>(null);
-  const [archivingMemory, setArchivingMemory] = useState<Memory | null>(null);
-  const showArchived = statusTab === "archived";
-  const { data: memory, isLoading, error } = useMemories({ includeArchived: showArchived, search });
+  const { data: stores, isLoading, error } = useMemoryStores();
   const createMemory = useCreateMemory();
-  const updateMemory = useUpdateMemory();
-  const syncMemory = useSyncMemory();
-  const archiveMemory = useArchiveMemory();
 
-  const list = useMemo(() => memory ?? [], [memory]);
+  const filtered = useMemo(() => {
+    const needle = search.trim().toLowerCase();
+    return (stores ?? []).filter((store) => {
+      if (tab !== "all" && memoryStoreGroup(store) !== tab) return false;
+      if (!needle) return true;
+      return [memoryStoreTitle(store), store.store, store.description ?? "", store.about]
+        .join(" ")
+        .toLowerCase()
+        .includes(needle);
+    });
+  }, [stores, tab, search]);
 
-  // When showing archived, the API includes both active and archived; narrow to
-  // the selected tab so the count and grid stay consistent with the filter.
-  const filteredMemory = useMemo(() => {
-    if (!showArchived) return list;
-    return list.filter((m) => isArchivedStatus(m.status));
-  }, [list, showArchived]);
-
-  const statusItems = [
-    { value: "active" as const, label: ui("Active") },
-    { value: "archived" as const, label: ui("Archived") },
+  const tabs = [
+    { value: "all" as const, label: ui("All") },
+    { value: "shared" as const, label: ui("Shared") },
+    { value: "agents" as const, label: ui("Agents") },
+    { value: "yours" as const, label: ui("Yours") },
   ];
+
+  const newMemory = canManage && (
+    <Button variant="accent" onClick={() => setCreateOpen(true)}>
+      <Plus className="size-4" />
+      {ui("New named memory")}
+    </Button>
+  );
 
   return (
     <PageContainer>
@@ -89,13 +87,10 @@ export default function MemoryPage() {
       <PageMasthead
         icon={<MemoryIcon />}
         title={ui("Memory")}
-        description={ui("Knowledge stores that agents can read: manual notes or synced from Git.")}
-        actions={
-          <Button variant="accent" onClick={() => setCreateOpen(true)}>
-            <Plus className="size-4" />
-            {ui("New Memory")}
-          </Button>
-        }
+        description={ui(
+          "What agents remember between sessions: decisions, rules, facts, preferences and blocked items, kept as Markdown files with every change.",
+        )}
+        actions={newMemory}
       />
 
       <PageControlStrip className="flex flex-wrap items-center gap-3">
@@ -108,9 +103,9 @@ export default function MemoryPage() {
         />
         <div className="flex-1" />
         <SectionTabs
-          value={statusTab}
-          onValueChange={(v) => setStatusTab(v as StatusTab)}
-          items={statusItems}
+          value={tab}
+          onValueChange={(value) => setTab(value as GroupTab)}
+          items={tabs}
         />
       </PageControlStrip>
 
@@ -118,35 +113,28 @@ export default function MemoryPage() {
         <QueryStateWrapper
           isLoading={isLoading}
           error={error}
-          data={filteredMemory}
+          data={filtered}
           errorMessagePrefix="Failed to load memory"
           skeletonCount={6}
           emptyState={
             <EmptyState
               icon={<MemoryIcon />}
-              title={search.trim() ? ui("No memory found") : ui("No memory")}
-              action={
-                !search.trim() && (
-                  <Button variant="accent" onClick={() => setCreateOpen(true)}>
-                    <Plus className="size-4" />
-                    {ui("New Memory")}
-                  </Button>
-                )
+              title={search.trim() ? ui("No memory found") : ui("No memory yet")}
+              description={
+                search.trim()
+                  ? undefined
+                  : ui(
+                      "Agents with the Memory capability create their memory the first time they run. Named memories are shared by the agents you attach them to.",
+                    )
               }
+              action={!search.trim() && newMemory}
             />
           }
         >
           {(items) => (
             <div className="grid gap-4 xl:grid-cols-2">
-              {items.map((memory) => (
-                <MemoryCard
-                  key={memory.id}
-                  memory={memory}
-                  onEdit={setEditingMemory}
-                  onArchive={setArchivingMemory}
-                  onSync={(candidate) => syncMemory.mutate(candidate.id)}
-                  isSyncing={syncMemory.isPending}
-                />
+              {items.map((store) => (
+                <MemoryStoreCard key={store.id} store={store} />
               ))}
             </div>
           )}
@@ -163,165 +151,50 @@ export default function MemoryPage() {
           await createMemory.mutateAsync(request as CreateMemoryRequest);
         }}
       />
-      <MemoryFormDialog
-        writable={canManage && !!editingMemory && !isReadOnlyStatus(editingMemory.status)}
-        mode="edit"
-        open={!!editingMemory}
-        memory={editingMemory}
-        isPending={updateMemory.isPending}
-        onOpenChange={(open) => !open && setEditingMemory(null)}
-        onSubmit={async (request) => {
-          await updateMemory.mutateAsync({
-            memoryId: editingMemory!.id,
-            data: request as UpdateMemoryRequest,
-          });
-        }}
-      />
-      <ArchiveMemoryDialog
-        open={!!archivingMemory}
-        memory={archivingMemory}
-        isPending={archiveMemory.isPending}
-        onOpenChange={(open) => !open && setArchivingMemory(null)}
-        onArchive={() => archiveMemory.mutateAsync(archivingMemory!.id)}
-      />
     </PageContainer>
   );
 }
 
-function MemoryCard({
-  memory,
-  onEdit,
-  onArchive,
-  onSync,
-  isSyncing,
-}: {
-  memory: Memory;
-  onEdit: (memory: Memory) => void;
-  onArchive: (memory: Memory) => void;
-  onSync: (memory: Memory) => void;
-  isSyncing: boolean;
-}) {
+function MemoryStoreCard({ store }: { store: MemoryStoreView }) {
   const { displayLocale } = useFormattingLocale();
   const ui = useUiTranslations();
-  const isReadOnly = isReadOnlyStatus(memory.status);
-  const canSync = memory.source_type !== "manual" && memory.status === "active";
-
   return (
     <EntityCard
       icon={<IconTile size="md" icon={<MemoryIcon />} />}
-      title={memory.name}
-      href={`/memory/${memory.id}`}
-      titleClassName={getEntityNameClassName(memory.status)}
+      title={memoryStoreTitle(store)}
+      href={`/memory/${store.id}`}
+      subtitle={<span className="font-mono text-xs">{store.mount_path}</span>}
       headerActions={
         <div className="flex flex-col items-end gap-1">
-          <EntityStatus status={memory.status} />
-          {memory.is_readonly && <Badge variant="secondary">{ui("Read-only")}</Badge>}
+          <Badge variant="secondary">{ui(memoryStoreScopeLabel(store))}</Badge>
+          {store.blocked_count > 0 && (
+            <Badge variant="accent">
+              {store.blocked_count} {ui("blocked")}
+            </Badge>
+          )}
+          {store.proposal_count > 0 && (
+            <Badge variant="outline">
+              {store.proposal_count} {ui("to review")}
+            </Badge>
+          )}
         </div>
-      }
-      footer={
-        <EntityCardFooter
-          className="mt-4"
-          actions={
-            <div className="flex items-center gap-2">
-              {canSync && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => onSync(memory)}
-                  disabled={
-                    isSyncing ||
-                    memory.sync_status === "pending" ||
-                    memory.sync_status === "syncing"
-                  }
-                >
-                  <RefreshCw className="h-4 w-4" />
-                  {ui("Sync")}
-                </Button>
-              )}
-              <LinkButton variant="outline" size="sm" href={`/memory/${memory.id}`}>
-                <FolderOpen className="h-4 w-4" />
-                {ui("Open")}
-              </LinkButton>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => onEdit(memory)}
-                disabled={isReadOnly}
-              >
-                <Pencil className="h-4 w-4" />
-                {ui("Edit")}
-              </Button>
-              {!isReadOnly && (
-                <Button variant="outline" size="sm" onClick={() => onArchive(memory)}>
-                  <Archive className="h-4 w-4" />
-                  {ui("Archive")}
-                </Button>
-              )}
-            </div>
-          }
-        />
       }
     >
-      <EntityCardDescription>{memory.description || ui("No description")}</EntityCardDescription>
-      <div className="grid grid-cols-2 gap-3 text-xs text-muted-foreground">
+      <EntityCardDescription>{store.description || ui(store.about)}</EntityCardDescription>
+      <div className="grid grid-cols-3 gap-3 text-xs text-muted-foreground">
         <div>
-          <div className="font-medium text-foreground">{ui("Source")}</div>
-          <div className="flex items-center gap-1">
-            {memory.source_type === "github" ? (
-              <Github className="h-3.5 w-3.5" />
-            ) : memory.source_type === "git" ? (
-              <GitBranch className="h-3.5 w-3.5" />
-            ) : (
-              <HardDrive className="h-3.5 w-3.5" />
-            )}
-            <span>{memory.source_type === "manual" ? ui("Manual") : memory.source_type}</span>
-          </div>
+          <div className="font-medium text-foreground">{ui("Entries")}</div>
+          <div>{store.entry_count}</div>
         </div>
         <div>
-          <div className="font-medium text-foreground">{ui("Sync")}</div>
-          <div>{formatSyncStatus(memory)}</div>
+          <div className="font-medium text-foreground">{ui("Files")}</div>
+          <div>{store.file_count}</div>
         </div>
         <div>
-          <div className="font-medium text-foreground">{ui("Updated")}</div>
-          <div>{formatRelativeTime(memory.updated_at, displayLocale)}</div>
+          <div className="font-medium text-foreground">{ui("Changed")}</div>
+          <div>{formatRelativeTime(store.last_changed_at, displayLocale)}</div>
         </div>
       </div>
-      {memory.last_sync_error && (
-        <div className="mt-4 flex gap-2 text-xs text-destructive">
-          <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-          <span className="line-clamp-2">{memory.last_sync_error}</span>
-        </div>
-      )}
     </EntityCard>
   );
-}
-
-function formatSyncStatus(memory: Memory) {
-  if (memory.source_type === "manual") {
-    return "Manual";
-  }
-  const interval = formatSyncInterval(memory);
-  if (memory.last_synced_at) {
-    return `${memory.sync_status} · ${formatRelativeTime(memory.last_synced_at)} · ${interval}`;
-  }
-  return `${memory.sync_status} · ${interval}`;
-}
-
-function formatSyncInterval(memory: Memory) {
-  const interval =
-    memory.source.provider === "github" || memory.source.provider === "git"
-      ? memory.source.sync_interval_secs
-      : null;
-  if (!interval) {
-    return "Manual only";
-  }
-  if (interval % 86400 === 0) {
-    const days = interval / 86400;
-    return days === 1 ? "Daily" : `Every ${days} days`;
-  }
-  if (interval % 3600 === 0) {
-    const hours = interval / 3600;
-    return hours === 1 ? "Hourly" : `Every ${hours} hours`;
-  }
-  return `Every ${Math.round(interval / 60)} minutes`;
 }

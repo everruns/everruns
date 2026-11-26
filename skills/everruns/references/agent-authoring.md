@@ -78,6 +78,27 @@ For an update, carry the manager-context revision you read and a concrete
 where available, preview its effective harness and capability composition.
 Configuration saved successfully is not evidence that the behavior works.
 
+## Memory
+
+Conversation and Worker include the **Memory** capability (`agent_memory`):
+stores under `/memory` the agent writes with `remember` and searches with
+`recall`. Configure it only to change a default: each store is a switch
+(`off`, `read`, `read_write`) and named memories are attached by name. For a
+coordinator that starts threads or spawned agents, keep `team` read-write so
+the workers share its decisions and can resolve blocked items. For agents that
+work on the same area without a coordinator, create a named memory
+(`everruns memories create --name <name>`) and attach it to each one:
+
+```json
+{"ref": "agent_memory", "config": {"attach": [{"memory": "everruns-maintenance", "mode": "read_write"}]}}
+```
+
+Tell the agent in its instructions which decisions to record and where, such as
+"record a person's decision on a PR in team memory with their words as the
+quote". Never store a person's private context in team, org or named memory.
+Read what it remembered with `everruns memories stores` and
+`everruns memories entries <memory_id>`.
+
 ## Deploying to a channel
 
 A channel (Slack, a webhook, public chat, an API key) is how people reach the

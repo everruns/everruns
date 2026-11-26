@@ -78,10 +78,6 @@ impl SessionService {
             collect_capabilities_with_configs(&resolved_configs, &self.capability_registry, &ctx)
                 .await
                 .mounts;
-        mounts.extend(
-            self.collect_workspace_memory_mounts(org_id, &resolved_configs)
-                .await?,
-        );
         // `skill:{uuid}` refs have no registry entry, so dependency resolution
         // drops them from `resolved_configs` — resolve them from org data
         // against the raw config list instead (same pattern as declarative and
@@ -156,64 +152,6 @@ impl SessionService {
         let merged = merge_initial_files(&merged, session_initial_files);
 
         Ok(merged)
-    }
-
-    pub(crate) async fn collect_workspace_memory_mounts(
-        &self,
-        org_id: i64,
-        capability_configs: &[AgentCapabilityConfig],
-    ) -> Result<Vec<MountPoint>> {
-        let Some(config) = capability_configs
-            .iter()
-            .find(|config| config.capability_id() == MEMORY_CAPABILITY_ID)
-        else {
-            return Ok(vec![]);
-        };
-        let memory_config: MemoryConfig = serde_json::from_value(config.config_value().clone())
-            .map_err(|error| {
-                BadRequestError::new(format!("Invalid workspace memory config: {error}"))
-            })?;
-        let mut mounts = Vec::with_capacity(memory_config.mounts.len());
-
-        for mount in memory_config.mounts {
-            let memory_id = MemoryId::parse(&mount.memory)
-                .map_err(|_| BadRequestError::new("Invalid workspace memory ID"))?;
-            let memory = self
-                .db
-                .get_memory(org_id, memory_id)
-                .await?
-                .filter(|memory| memory.status == "active")
-                .ok_or_else(|| ResourceNotFoundError::new("Memory"))?;
-            if memory.scope != "org" {
-                return Err(BadRequestError::new(
-                    "Scoped memories are server-managed and cannot be mounted explicitly",
-                )
-                .into());
-            }
-
-            if memory.is_readonly && mount.mode == MemoryMountAccess::ReadWrite {
-                return Err(BadRequestError::new(format!(
-                    "Memory {} is read-only and cannot be mounted readwrite",
-                    mount.memory
-                ))
-                .into());
-            }
-
-            let access = if memory.is_readonly || mount.mode == MemoryMountAccess::ReadOnly {
-                MountAccess::ReadOnly
-            } else {
-                MountAccess::ReadWrite
-            };
-            let files = self.db.list_all_memory_files(memory.id).await?;
-            mounts.push(MountPoint::new(
-                mount.path,
-                access,
-                MountSource::directory(memory_files_to_mount_entries(files)),
-                MEMORY_CAPABILITY_ID,
-            ));
-        }
-
-        Ok(mounts)
     }
 
     /// Mount registry skills referenced as `skill:{uuid}` capability refs.

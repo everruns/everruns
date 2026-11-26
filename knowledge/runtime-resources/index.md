@@ -39,8 +39,7 @@
 * [Open Knowledge Format (OKF) Adoption](okf-adoption.md) - Open Knowledge Format (OKF) import/export adoption for Knowledge Bases.
 * [Knowledge Indexes Specification](knowledge-indexes.md) - Retired undeployed index design; superseded by Unified Knowledge.
 * [Citations Specification](citations.md) - Claim-level source provenance as composable citation capabilities.
-* [Memory Specification](memory.md) - Org-scoped named Memories (mountable into Workspaces).
-* [Memory Model](memory-model.md) - How the per-session Workspace and durable org Memory tiers relate, shipped and planned surfaces.
+* [Memory Specification](memory.md) - Agent memory v2: stores under /memory, typed Markdown entries, the memory card, kept versions.
 * [Infinity Context](infinity-context.md) - Unlimited conversation length via context management.
 * [Anthropic Infinity Context Compaction](anthropic-infinity-context-compaction.md) - Append-only Anthropic message history through server-side threshold compaction.
 * [Compaction](compaction.md) - Context compaction capability.

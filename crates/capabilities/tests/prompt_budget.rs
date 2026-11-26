@@ -12,11 +12,9 @@
 // always fine.
 
 use everruns_capabilities::capabilities::SessionSandboxCapability;
-use everruns_capabilities::capabilities::{
-    DataKnowledgeCapability, MemoryCapability, SubagentCapability,
-};
+use everruns_capabilities::capabilities::{DataKnowledgeCapability, SubagentCapability};
 use everruns_contracts::typed_id::SessionId;
-use everruns_core::builtins::{InfinityContextCapability, SkillsCapability};
+use everruns_core::builtins::{AgentMemoryCapability, InfinityContextCapability, SkillsCapability};
 use everruns_core::capabilities::{Capability, SystemPromptContext};
 
 async fn assert_contribution_under(cap: &dyn Capability, max_bytes: usize) {
@@ -46,17 +44,10 @@ async fn skills_static_prompt_within_budget() {
 }
 
 #[tokio::test]
-async fn memory_prompt_is_empty() {
-    // The mounts-based Memory capability surfaces data through the
-    // filesystem, not the system prompt; keep its prompt cost at zero.
-    let ctx = SystemPromptContext::without_file_store(SessionId::new());
-    assert!(
-        MemoryCapability
-            .system_prompt_contribution(&ctx)
-            .await
-            .is_none(),
-        "memory is expected to contribute no prompt"
-    );
+async fn memory_prompt_within_budget() {
+    // Static guidance only; what memory holds rides in the memory card, a
+    // conversation context update outside the cached prompt.
+    assert_contribution_under(&AgentMemoryCapability, 600).await;
 }
 
 #[tokio::test]

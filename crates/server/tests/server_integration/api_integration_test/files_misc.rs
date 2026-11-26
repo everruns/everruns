@@ -88,14 +88,15 @@ async fn test_capability_discovery_respects_active_and_retired_rollout_flags() {
         .await
         .assert_status(StatusCode::OK)
         .json();
-    for id in ["skills", "memory"] {
+    for id in ["skills"] {
         assert!(
             capability_by_id(&discovery, id).is_none(),
             "{id} should stay out of discovery while its flag is off"
         );
     }
 
-    for id in ["knowledge", "dreaming"] {
+    // Memory v2 retired the `memory` flag: `agent_memory` stays discoverable.
+    for id in ["agent_memory", "knowledge", "dreaming"] {
         let capability = capability_by_id(&discovery, id)
             .unwrap_or_else(|| panic!("{id} stays discoverable despite its retired flag override"));
         assert_eq!(capability["feature_flag"], Value::Null, "{id}");
@@ -118,7 +119,7 @@ async fn test_capability_discovery_respects_active_and_retired_rollout_flags() {
     assert_eq!(skills["feature_flag"], "skills");
 
     for (id, flag) in [
-        ("memory", json!("memory")),
+        ("agent_memory", Value::Null),
         ("knowledge", Value::Null),
         ("dreaming", Value::Null),
     ] {

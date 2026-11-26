@@ -94,7 +94,10 @@ fn validation_rejects_empty_long_and_bad_sources() {
 
 #[test]
 fn slugs_and_entry_paths() {
-    assert_eq!(slug("everruns#5528 @a2ui/web_core"), "everruns-5528-a2ui-web-core");
+    assert_eq!(
+        slug("everruns#5528 @a2ui/web_core"),
+        "everruns-5528-a2ui-web-core"
+    );
     assert_eq!(slug("!!!"), "entry");
     assert!(slug(&"ab ".repeat(100)).len() <= MAX_SLUG_CHARS);
 
@@ -108,7 +111,10 @@ fn slugs_and_entry_paths() {
         "/proposals/decisions/everruns-5528.md"
     );
     let note = new(MemoryEntryKind::Note, Some("merges"));
-    assert_eq!(entry_path(&note, at(), false), "/notes/2026-11-26-merges.md");
+    assert_eq!(
+        entry_path(&note, at(), false),
+        "/notes/2026-11-26-merges.md"
+    );
     let loose = new(MemoryEntryKind::Note, None);
     assert_eq!(
         entry_path(&loose, at(), false),
@@ -183,11 +189,31 @@ fn bad_entry_files_say_what_is_wrong() {
     let cases = [
         ("/decisions/x.md", "no header\n", "starts with"),
         ("/decisions/x.md", "---\nsubject: x\nbody\n", "closing"),
-        ("/decisions/x.md", "---\nsubject: x\ncolour: red\n---\nb\n", "unknown header"),
-        ("/decisions/x.md", "---\nkind: rule\nsubject: x\n---\nb\n", "lives in /rules/"),
-        ("/decisions/x.md", "---\nsubject: x\noccurred_at: soon\n---\nb\n", "not a date"),
-        ("/decisions/x.md", "---\nsubject: x\nstatus: done\n---\nb\n", "status"),
-        ("/decisions/x.md", "---\nsubject: x\nstatus: resolved\n---\nb\n", "only a blocked"),
+        (
+            "/decisions/x.md",
+            "---\nsubject: x\ncolour: red\n---\nb\n",
+            "unknown header",
+        ),
+        (
+            "/decisions/x.md",
+            "---\nkind: rule\nsubject: x\n---\nb\n",
+            "lives in /rules/",
+        ),
+        (
+            "/decisions/x.md",
+            "---\nsubject: x\noccurred_at: soon\n---\nb\n",
+            "not a date",
+        ),
+        (
+            "/decisions/x.md",
+            "---\nsubject: x\nstatus: done\n---\nb\n",
+            "status",
+        ),
+        (
+            "/decisions/x.md",
+            "---\nsubject: x\nstatus: resolved\n---\nb\n",
+            "only a blocked",
+        ),
         ("/decisions/x.md", "---\n---\nb\n", "subject"),
         ("/notes.md", "---\n---\nb\n", "not an entry path"),
     ];
@@ -283,9 +309,15 @@ fn card_lists_blocked_first_and_stays_in_budget() {
             store: MemoryStoreKey::scope(MemoryScope::Org),
             writable: false,
             files_mounted: false,
-                description: None,
+            description: None,
             entries: (0..200)
-                .map(|i| entry(MemoryEntryKind::Rule, Some(&format!("r{i}")), &"x".repeat(250)))
+                .map(|i| {
+                    entry(
+                        MemoryEntryKind::Rule,
+                        Some(&format!("r{i}")),
+                        &"x".repeat(250),
+                    )
+                })
                 .collect(),
             more_entries: 5,
             files: vec![],
@@ -304,7 +336,10 @@ fn store_keys_parse_scopes_and_names() {
         MemoryStoreKey::parse("team").unwrap(),
         MemoryStoreKey::scope(MemoryScope::Team)
     );
-    assert_eq!(MemoryStoreKey::scope(MemoryScope::Team).mount_path(), "/memory/team");
+    assert_eq!(
+        MemoryStoreKey::scope(MemoryScope::Team).mount_path(),
+        "/memory/team"
+    );
     assert_eq!(
         MemoryStoreKey::parse("parent").unwrap(),
         MemoryStoreKey::scope(MemoryScope::Parent)
@@ -348,11 +383,26 @@ fn config_switches_each_store() {
     .unwrap();
     let named = MemoryStoreKey::named("everruns-maintenance");
     assert_eq!(config.access(&named), MemoryAccess::ReadWrite);
-    assert_eq!(config.access(&MemoryStoreKey::named("other")), MemoryAccess::Off);
-    assert_eq!(config.access(&MemoryStoreKey::named("docs")), MemoryAccess::Read);
-    let labels: Vec<_> = config.stores().into_iter().map(|(s, _)| s.label()).collect();
-    assert_eq!(labels, ["agent", "team", "org", "everruns-maintenance", "docs"]);
+    assert_eq!(
+        config.access(&MemoryStoreKey::named("other")),
+        MemoryAccess::Off
+    );
+    assert_eq!(
+        config.access(&MemoryStoreKey::named("docs")),
+        MemoryAccess::Read
+    );
+    let labels: Vec<_> = config
+        .stores()
+        .into_iter()
+        .map(|(s, _)| s.label())
+        .collect();
+    assert_eq!(
+        labels,
+        ["agent", "team", "org", "everruns-maintenance", "docs"]
+    );
 
-    assert!(AgentMemoryConfig::from_value(&serde_json::json!({"attach": [{"memory": "org"}]})).is_err());
+    assert!(
+        AgentMemoryConfig::from_value(&serde_json::json!({"attach": [{"memory": "org"}]})).is_err()
+    );
     assert!(AgentMemoryConfig::from_value(&serde_json::json!({"agent": "sometimes"})).is_err());
 }

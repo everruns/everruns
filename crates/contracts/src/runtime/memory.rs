@@ -138,9 +138,8 @@ impl MemoryScope {
 }
 
 /// Words that cannot name a named memory, because they name a scope.
-pub const RESERVED_STORE_NAMES: &[&str] = &[
-    "agent", "user", "org", "team", "parent", "named", "shared",
-];
+pub const RESERVED_STORE_NAMES: &[&str] =
+    &["agent", "user", "org", "team", "parent", "named", "shared"];
 /// Longest memory name.
 pub const MAX_STORE_NAME_CHARS: usize = 63;
 
@@ -422,7 +421,9 @@ impl MemoryEntryKind {
     /// What the card tells the model the kind is for.
     pub fn describe(self) -> &'static str {
         match self {
-            Self::Decision => "what someone with the authority decided; one per subject, a newer one replaces it",
+            Self::Decision => {
+                "what someone with the authority decided; one per subject, a newer one replaces it"
+            }
             Self::Rule => "a standing always/never/before/after",
             Self::Fact => "something true about the world: a name, a setting, how a system works",
             Self::Preference => "how someone likes things done",
@@ -665,7 +666,11 @@ impl MemoryCard {
                 String::new()
             };
             let about = match &store.description {
-                Some(description) => format!("{} ({})", store.store.scope.describe(), one_line(description)),
+                Some(description) => format!(
+                    "{} ({})",
+                    store.store.scope.describe(),
+                    one_line(description)
+                ),
                 None => store.store.scope.describe().to_string(),
             };
             out.push_str(&format!(
@@ -766,7 +771,6 @@ impl MemoryError {
 }
 
 pub type MemoryResult<T> = std::result::Result<T, MemoryError>;
-
 
 // ---------------------------------------------------------------------------
 // Pure rules shared by every store
@@ -870,7 +874,10 @@ pub fn query_terms(text: &str) -> Vec<String> {
     let mut terms: Vec<String> = Vec::new();
     for word in text
         .split(|c: char| !(c.is_alphanumeric() || c == '_' || c == '#' || c == '.' || c == '-'))
-        .map(|w| w.trim_matches(|c: char| c == '.' || c == '-').to_lowercase())
+        .map(|w| {
+            w.trim_matches(|c: char| c == '.' || c == '-')
+                .to_lowercase()
+        })
     {
         if word.is_empty() || STOP.contains(&word.as_str()) || terms.contains(&word) {
             continue;
@@ -943,7 +950,6 @@ pub fn card_order(entries: &mut [MemoryEntry]) {
             .then(b.occurred_at.cmp(&a.occurred_at))
     });
 }
-
 
 // ---------------------------------------------------------------------------
 // The entry file format
@@ -1044,7 +1050,14 @@ pub fn render_entry_file(entry: &MemoryEntry) -> String {
     field("subject", entry.subject.clone());
     field(
         "status",
-        Some(if entry.resolved_at.is_some() { "resolved" } else { "open" }.into()),
+        Some(
+            if entry.resolved_at.is_some() {
+                "resolved"
+            } else {
+                "open"
+            }
+            .into(),
+        ),
     );
     field("occurred_at", Some(entry.occurred_at.to_rfc3339()));
     field("recorded_at", Some(entry.recorded_at.to_rfc3339()));
@@ -1121,9 +1134,8 @@ pub fn parse_entry_file(
         }
     }
     let kind = match fields.get("kind") {
-        Some(raw) => MemoryEntryKind::parse(raw).ok_or_else(|| {
-            MemoryError::Invalid(format!("{path}: unknown kind `{raw}`"))
-        })?,
+        Some(raw) => MemoryEntryKind::parse(raw)
+            .ok_or_else(|| MemoryError::Invalid(format!("{path}: unknown kind `{raw}`")))?,
         None => folder_kind,
     };
     if kind != folder_kind {
@@ -1137,9 +1149,11 @@ pub fn parse_entry_file(
     let date = |key: &str| -> MemoryResult<Option<DateTime<Utc>>> {
         fields
             .get(key)
-            .map(|raw| parse_date(raw).ok_or_else(|| {
-                MemoryError::Invalid(format!("{path}: `{key}` is not a date: {raw}"))
-            }))
+            .map(|raw| {
+                parse_date(raw).ok_or_else(|| {
+                    MemoryError::Invalid(format!("{path}: `{key}` is not a date: {raw}"))
+                })
+            })
             .transpose()
     };
     let occurred_at = date("occurred_at")?;
@@ -1153,7 +1167,10 @@ pub fn parse_entry_file(
                     "{path}: only a blocked item can be resolved"
                 )));
             }
-            resolved_at = resolved_at.or(recorded_at).or(occurred_at).or(Some(Utc::now()));
+            resolved_at = resolved_at
+                .or(recorded_at)
+                .or(occurred_at)
+                .or(Some(Utc::now()));
         }
         Some(other) => {
             return Err(MemoryError::Invalid(format!(
@@ -1170,7 +1187,11 @@ pub fn parse_entry_file(
     let quote = (quote_start < lines.len()).then(|| {
         lines[quote_start..]
             .iter()
-            .map(|line| line.trim_start_matches('>').strip_prefix(' ').unwrap_or(line.trim_start_matches('>')))
+            .map(|line| {
+                line.trim_start_matches('>')
+                    .strip_prefix(' ')
+                    .unwrap_or(line.trim_start_matches('>'))
+            })
             .collect::<Vec<_>>()
             .join("\n")
     });

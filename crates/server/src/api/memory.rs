@@ -7,7 +7,9 @@ pub use crate::domains::memory::types::{
     CreateMemoryRequest, ListMemoriesQuery, MemoryResponse, UpdateMemoryRequest,
 };
 use crate::domains::memory::{
-    CreateMemory, DeleteMemory, GetMemory, ListMemories, SyncMemoryNow, UpdateMemoryCmd,
+    CreateMemory, DeleteMemory, GetMemory, ListMemories, ListMemoryEntries, ListMemoryStores,
+    MemoryEntriesView, MemoryFileHistory, MemoryFileVersion, MemoryStoreView, SyncMemoryNow,
+    UpdateMemoryCmd,
 };
 use axum::{
     Json, Router,
@@ -31,6 +33,15 @@ pub fn routes(state: ApiState) -> Router {
         .route(
             "/v1/platform/memories/{memory_id}/sync",
             post(sync_memory_now),
+        )
+        .route("/v1/platform/memory/stores", get(list_memory_stores))
+        .route(
+            "/v1/platform/memories/{memory_id}/entries",
+            get(list_memory_entries),
+        )
+        .route(
+            "/v1/platform/memories/{memory_id}/history",
+            get(memory_file_history),
         )
         .with_state(state)
 }
@@ -161,4 +172,79 @@ pub async fn delete_memory(
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
     DeleteMemory { memory_id }.run(&state.ctx(&org)).await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+#[utoipa::path(
+    description = "List the memory stores agents use: the organization's, named memories, team and agent memories, and your own private memory.",
+    get,
+    path = "/v1/platform/memory/stores",
+    responses(
+        (status = 200, description = "Memory stores", body = ListResponse<MemoryStoreView>)
+    ),
+    tag = "memory"
+)]
+pub async fn list_memory_stores(
+    org: ResolvedOrg,
+    State(state): State<ApiState>,
+) -> ApiResult<ListResponse<MemoryStoreView>> {
+    let stores = ListMemoryStores {}.run(&state.ctx(&org)).await?;
+    Ok(Json(ListResponse::new(stores)))
+}
+
+#[utoipa::path(
+    description = "List a memory's typed entries, newest first, and any entry files that do not parse.",
+    get,
+    path = "/v1/platform/memories/{memory_id}/entries",
+    params(("memory_id" = String, Path, description = "Memory ID")),
+    responses(
+        (status = 200, description = "Entries", body = MemoryEntriesView),
+        (status = 400, description = "The memory holds no typed entries", body = ErrorResponse),
+        (status = 404, description = "Memory not found", body = ErrorResponse)
+    ),
+    tag = "memory"
+)]
+pub async fn list_memory_entries(
+    org: ResolvedOrg,
+    State(state): State<ApiState>,
+    Path(memory_id): Path<String>,
+) -> ApiResult<MemoryEntriesView> {
+    Ok(Json(
+        ListMemoryEntries { memory_id }
+            .run(&state.ctx(&org))
+            .await?,
+    ))
+}
+
+/// Query for a memory's file history.
+#[derive(Debug, serde::Deserialize, utoipa::IntoParams)]
+pub struct MemoryHistoryQuery {
+    /// One file's path (`/decisions/merges.md`); omit for every file.
+    #[serde(default)]
+    pub path: Option<String>,
+}
+
+#[utoipa::path(
+    description = "List the kept versions of a memory's files, newest first; every write and delete is kept.",
+    get,
+    path = "/v1/platform/memories/{memory_id}/history",
+    params(("memory_id" = String, Path, description = "Memory ID"), MemoryHistoryQuery),
+    responses(
+        (status = 200, description = "Versions", body = ListResponse<MemoryFileVersion>),
+        (status = 404, description = "Memory not found", body = ErrorResponse)
+    ),
+    tag = "memory"
+)]
+pub async fn memory_file_history(
+    org: ResolvedOrg,
+    State(state): State<ApiState>,
+    Path(memory_id): Path<String>,
+    Query(query): Query<MemoryHistoryQuery>,
+) -> ApiResult<ListResponse<MemoryFileVersion>> {
+    let versions = MemoryFileHistory {
+        memory_id,
+        path: query.path,
+    }
+    .run(&state.ctx(&org))
+    .await?;
+    Ok(Json(ListResponse::new(versions)))
 }

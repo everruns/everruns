@@ -57,7 +57,11 @@ async fn remember_replaces_same_subject_and_recall_finds_it() {
     let team = MemoryStoreKey::scope(MemoryScope::Team);
 
     let first = engine
-        .remember(&team, decision("everruns#5528", "Deny @a2ui/web_core"), false)
+        .remember(
+            &team,
+            decision("everruns#5528", "Deny @a2ui/web_core"),
+            false,
+        )
         .await
         .unwrap();
     assert!(first.replaced.is_none());
@@ -66,7 +70,11 @@ async fn remember_replaces_same_subject_and_recall_finds_it() {
         "/memory/team/decisions/everruns-5528.md"
     );
     let second = engine
-        .remember(&team, decision("Everruns#5528", "Allowlist @a2ui/web_core"), false)
+        .remember(
+            &team,
+            decision("Everruns#5528", "Allowlist @a2ui/web_core"),
+            false,
+        )
         .await
         .unwrap();
     assert_eq!(second.replaced.unwrap().statement, "Deny @a2ui/web_core");
@@ -102,16 +110,27 @@ async fn read_only_and_missing_stores_refuse_writes() {
     let config = AgentMemoryConfig::default();
     let engine = MemoryEngine::new(&fs, session, &config);
     let org = engine
-        .remember(&MemoryStoreKey::scope(MemoryScope::Org), decision("x", "y"), false)
+        .remember(
+            &MemoryStoreKey::scope(MemoryScope::Org),
+            decision("x", "y"),
+            false,
+        )
         .await
         .unwrap_err();
     assert!(matches!(org, MemoryError::ReadOnly(_)), "{org}");
     let team = engine
-        .remember(&MemoryStoreKey::scope(MemoryScope::Team), decision("x", "y"), false)
+        .remember(
+            &MemoryStoreKey::scope(MemoryScope::Team),
+            decision("x", "y"),
+            false,
+        )
         .await
         .unwrap_err();
     assert!(matches!(team, MemoryError::Unavailable(_)), "{team}");
-    let forget = engine.forget("/memory/org/decisions/x.md").await.unwrap_err();
+    let forget = engine
+        .forget("/memory/org/decisions/x.md")
+        .await
+        .unwrap_err();
     assert!(matches!(forget, MemoryError::ReadOnly(_)));
 }
 
@@ -136,9 +155,14 @@ async fn blocked_items_resolve_and_leave_the_card() {
         )
         .await
         .unwrap();
-    fs.write_file(session, "/memory/team/runbook.md", "# Runbook\nsteps", "text")
-        .await
-        .unwrap();
+    fs.write_file(
+        session,
+        "/memory/team/runbook.md",
+        "# Runbook\nsteps",
+        "text",
+    )
+    .await
+    .unwrap();
 
     let card = engine.card().await.render().unwrap();
     assert!(card.contains("## team memory (read-write, files at /memory/team)"));
@@ -151,9 +175,17 @@ async fn blocked_items_resolve_and_leave_the_card() {
         .remember(&team, decision("merges", "squash"), false)
         .await
         .unwrap();
-    assert!(engine.resolve("/memory/team/decisions/merges.md", None).await.is_err());
+    assert!(
+        engine
+            .resolve("/memory/team/decisions/merges.md", None)
+            .await
+            .is_err()
+    );
 
-    let resolved = engine.resolve(&path, Some("allowlisted".into())).await.unwrap();
+    let resolved = engine
+        .resolve(&path, Some("allowlisted".into()))
+        .await
+        .unwrap();
     assert!(resolved.resolved_at.is_some());
     let card = engine.card().await.render().unwrap();
     assert!(!card.contains("blocked [everruns#5528]"));
@@ -200,19 +232,36 @@ async fn proposals_wait_until_accepted() {
             .unwrap()
             .is_none()
     );
-    assert!(engine.card().await.render().unwrap().contains("squash only"));
+    assert!(
+        engine
+            .card()
+            .await
+            .render()
+            .unwrap()
+            .contains("squash only")
+    );
     assert!(engine.accept(&accepted.entry.session_path()).await.is_err());
 }
 
 #[tokio::test]
 async fn recall_searches_free_files_and_skips_broken_entries() {
     let (fs, session) = session_with(&["agent"]).await;
-    fs.write_file(session, "/memory/agent/notes.md", "a\nthe deploy key rotates monthly\nb", "text")
-        .await
-        .unwrap();
-    fs.write_file(session, "/memory/agent/decisions/broken.md", "no header deploy", "text")
-        .await
-        .unwrap();
+    fs.write_file(
+        session,
+        "/memory/agent/notes.md",
+        "a\nthe deploy key rotates monthly\nb",
+        "text",
+    )
+    .await
+    .unwrap();
+    fs.write_file(
+        session,
+        "/memory/agent/decisions/broken.md",
+        "no header deploy",
+        "text",
+    )
+    .await
+    .unwrap();
     let config = AgentMemoryConfig::default();
     let engine = MemoryEngine::new(&fs, session, &config);
     let hits = engine
@@ -250,7 +299,10 @@ async fn tools_and_card_run_through_the_capability() {
         .await;
     assert!(!result.is_error(), "{result:?}");
     let bad = remember
-        .execute_with_context(json!({"kind": "decision", "statement": "no subject"}), &context)
+        .execute_with_context(
+            json!({"kind": "decision", "statement": "no subject"}),
+            &context,
+        )
         .await;
     assert!(bad.is_error());
 
@@ -275,5 +327,9 @@ async fn tools_and_card_run_through_the_capability() {
             .await
             .is_none()
     );
-    assert!(AgentMemoryCapability.validate_config(&json!({"team": "maybe"})).is_err());
+    assert!(
+        AgentMemoryCapability
+            .validate_config(&json!({"team": "maybe"}))
+            .is_err()
+    );
 }

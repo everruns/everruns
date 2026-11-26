@@ -29,10 +29,9 @@ that users manage through a dedicated UI and that agents can search through a
 
 Knowledge Bases sit alongside one adjacent primitive:
 
-* **Memory** (`knowledge/runtime-resources/memory.md`), org-scoped, named stores mountable into
-  session workspaces. Files-only today; emphasizes file fidelity and direct
-  file edits. Knowledge Bases may fold into Memory as a `structured` surface
-  later, see open questions in `knowledge/runtime-resources/memory.md`.
+* **Memory** (`knowledge/runtime-resources/memory.md`), what agents learned and were told:
+  stores under `/memory` holding typed Markdown entries and free-form files.
+  Memory is not Knowledge; it is not indexed for document search.
 
 Knowledge Bases fill the curation-first slot: small, structured, human-edited
 entries that an agent should consult **before** generating output, with stable

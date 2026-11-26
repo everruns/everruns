@@ -131,12 +131,12 @@ mod test_fixtures;
 
 #[cfg(feature = "ui-capabilities")]
 pub use a2ui::{A2UI_CAPABILITY_ID, A2UiCapability};
-pub use agent_memory::{AGENT_MEMORY_CAPABILITY_ID, AgentMemoryCapability, MemoryEngine};
 pub use agent_instructions::{
     AGENT_INSTRUCTIONS_CAPABILITY_ID, AGENTS_MD_PATH, AgentInstructionsCapability,
     AgentInstructionsConfig, DEFAULT_AGENT_INSTRUCTIONS_FILE, MAX_AGENT_INSTRUCTIONS_FILES,
     MAX_AGENTS_MD_SIZE, format_agents_md_content, format_instruction_file_content,
 };
+pub use agent_memory::{AGENT_MEMORY_CAPABILITY_ID, AgentMemoryCapability, MemoryEngine};
 pub use attach_skill::AttachSkillCapability;
 pub use auto_tool_search::{AUTO_TOOL_SEARCH_CAPABILITY_ID, AutoToolSearchCapability};
 pub use btw::{BTW_CAPABILITY_ID, BtwCapability};

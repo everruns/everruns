@@ -1,21 +1,14 @@
 use super::types::{
-    CreateMemoryRequest, CreateMemoryRow, CreateMemorySourceRequest, GitHubMemorySourceRequest,
-    GitMemorySourceRequest, ListMemoriesQuery, MemoryResponse, UpdateMemory, UpdateMemoryRequest,
-    memory_response,
+    CreateMemoryRequest, CreateMemoryRow, CreateMemorySourceRequest, ListMemoriesQuery,
+    MemoryResponse, UpdateMemory, UpdateMemoryRequest, memory_response,
 };
 use super::{MEMORY_MANAGE, MEMORY_VIEW};
 use crate::domains::common::*;
-use crate::domains::git_sources::normalize_github_repository;
 use crate::storage::UpdateField;
 use everruns_contracts::typed_id::MemoryId;
-use everruns_contracts::url_validation::validate_safe_url;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use utoipa::ToSchema;
-
-const DEFAULT_GIT_BRANCH: &str = "main";
-const MIN_SYNC_INTERVAL_SECS: u32 = 300;
-const MAX_SYNC_INTERVAL_SECS: u32 = 7 * 24 * 60 * 60;
 
 fn validate_name(name: &str) -> Result<String, CommandError> {
     let trimmed = name.trim();
@@ -30,141 +23,16 @@ fn validate_name(name: &str) -> Result<String, CommandError> {
     Ok(trimmed.to_string())
 }
 
-fn validate_optional_ref(
-    value: Option<String>,
-    field: &str,
-) -> Result<Option<String>, CommandError> {
-    let Some(value) = value else {
-        return Ok(None);
-    };
-    let trimmed = value.trim();
-    if trimmed.is_empty() {
-        return Ok(None);
-    }
-    if trimmed.len() > 255 || trimmed.contains('\0') {
-        return Err(CommandError::bad_request(format!(
-            "{field} must be a non-empty ref at most 255 characters"
-        )));
-    }
-    Ok(Some(trimmed.to_string()))
-}
-
-fn normalize_root_folder(value: Option<String>) -> Result<Option<String>, CommandError> {
-    let Some(value) = value else {
-        return Ok(None);
-    };
-    let trimmed = value.trim().trim_matches('/');
-    if trimmed.is_empty() || trimmed == "." {
-        return Ok(None);
-    }
-    if trimmed.contains('\0')
-        || trimmed.contains("//")
-        || trimmed
-            .split('/')
-            .any(|segment| segment == ".." || segment.is_empty())
-    {
-        return Err(CommandError::bad_request(
-            "root_folder must be a relative path without empty segments or '..'",
-        ));
-    }
-    Ok(Some(trimmed.to_string()))
-}
-
-fn validate_sync_interval(value: Option<u32>) -> Result<Option<u32>, CommandError> {
-    let Some(value) = value else {
-        return Ok(None);
-    };
-    if value == 0 {
-        return Ok(None);
-    }
-    if !(MIN_SYNC_INTERVAL_SECS..=MAX_SYNC_INTERVAL_SECS).contains(&value) {
-        return Err(CommandError::bad_request(format!(
-            "sync_interval_secs must be between {MIN_SYNC_INTERVAL_SECS} and {MAX_SYNC_INTERVAL_SECS}"
-        )));
-    }
-    Ok(Some(value))
-}
-
-fn validate_git_url(url: &str) -> Result<String, CommandError> {
-    let trimmed = url.trim();
-    if trimmed.is_empty() || trimmed.len() > 2048 || trimmed.contains(char::is_whitespace) {
-        return Err(CommandError::bad_request(
-            "Git URL must be a non-empty URL without whitespace",
-        ));
-    }
-    if trimmed.contains('?') || trimmed.contains('#') {
-        return Err(CommandError::bad_request(
-            "Git URL must not include query strings or fragments",
-        ));
-    }
-    if let Ok(parsed) = url::Url::parse(trimmed) {
-        if parsed.scheme() != "https" {
-            return Err(CommandError::bad_request("Git URL must use https scheme"));
-        }
-        if parsed.password().is_some() || !parsed.username().is_empty() {
-            return Err(CommandError::bad_request(
-                "Git URL must not include inline credentials",
-            ));
-        }
-        if validate_safe_url(trimmed).is_err() {
-            return Err(CommandError::bad_request(
-                "Git URL must target a public non-local host",
-            ));
-        }
-        return Ok(trimmed.to_string());
-    }
-    Err(CommandError::bad_request(
-        "Git URL must be an absolute https URL",
-    ))
-}
-
-fn github_source_config(request: GitHubMemorySourceRequest) -> Result<Value, CommandError> {
-    let repository =
-        normalize_github_repository(&request.repository).map_err(CommandError::bad_request)?;
-    let branch = validate_optional_ref(request.branch, "branch")?
-        .unwrap_or_else(|| DEFAULT_GIT_BRANCH.to_string());
-    let root_folder = normalize_root_folder(request.root_folder)?;
-    let sync_interval_secs = validate_sync_interval(request.sync_interval_secs)?;
-    Ok(json!({
-        "provider": "github",
-        "repository": repository,
-        "branch": branch,
-        "root_folder": root_folder,
-        "sync_interval_secs": sync_interval_secs,
-    }))
-}
-
-fn git_source_config(request: GitMemorySourceRequest) -> Result<Value, CommandError> {
-    let url = validate_git_url(&request.url)?;
-    let branch = validate_optional_ref(request.branch, "branch")?
-        .unwrap_or_else(|| DEFAULT_GIT_BRANCH.to_string());
-    let root_folder = normalize_root_folder(request.root_folder)?;
-    let sync_interval_secs = validate_sync_interval(request.sync_interval_secs)?;
-    Ok(json!({
-        "provider": "git",
-        "url": url,
-        "branch": branch,
-        "root_folder": root_folder,
-        "sync_interval_secs": sync_interval_secs,
-    }))
-}
-
+/// Memory v2 retired source-backed memories: synced documents belong in
+/// Knowledge, and memory is what agents and people write. Existing GitHub and
+/// Git memories were archived by the `memory_v2` migration.
 fn create_memory_source(
     source: Option<CreateMemorySourceRequest>,
 ) -> Result<(String, Value, bool, String), CommandError> {
     match source {
         None => Ok(("manual".to_string(), json!({}), false, "idle".to_string())),
-        Some(CreateMemorySourceRequest::Github(request)) => Ok((
-            "github".to_string(),
-            github_source_config(request)?,
-            true,
-            "pending".to_string(),
-        )),
-        Some(CreateMemorySourceRequest::Git(request)) => Ok((
-            "git".to_string(),
-            git_source_config(request)?,
-            true,
-            "pending".to_string(),
+        Some(_) => Err(CommandError::bad_request(
+            "source-backed memories were retired; sync documents into Knowledge instead",
         )),
     }
 }
@@ -254,7 +122,7 @@ impl From<CreateMemoryRequest> for CreateMemory {
     method = "POST",
     path = "/v1/platform/memories",
     policy = MEMORY_MANAGE,
-    cli = CliRoute::new(&["memories"], "create").with_examples(&[CliExample::new("Sync a docs repository into a workspace memory", "everruns memories create --name design-docs --description 'Living design documents' --source '{\"type\":\"github\",\"repository\":\"acme/design-docs\",\"branch\":\"main\",\"root_folder\":\"docs/\"}' --reason 'Give agents the design docs'",)]),
+    cli = CliRoute::new(&["memories"], "create").with_examples(&[CliExample::new("Create a named memory a coordinator and its workers share", "everruns memories create --name everruns-maintenance --description 'Decisions and rules for repository maintenance' --reason 'Housekeeping and Developer share decisions'",)]),
 )]
 impl Command for CreateMemory {
     type Output = MemoryResponse;
@@ -265,6 +133,9 @@ impl Command for CreateMemory {
 
     async fn execute(self, ctx: &Ctx) -> Result<MemoryResponse, CommandError> {
         let name = validate_name(&self.name)?;
+        // A named memory is attached by name and mounted at /memory/<name>.
+        everruns_contracts::runtime::memory::validate_store_name(&name)
+            .map_err(|error| CommandError::bad_request(error.to_string()))?;
         let (source_type, source_config, is_readonly, sync_status) =
             create_memory_source(self.source)?;
         let input = CreateMemoryRow {
@@ -355,7 +226,12 @@ impl Command for UpdateMemoryCmd {
             .request
             .name
             .as_deref()
-            .map(validate_name)
+            .map(|name| {
+                let name = validate_name(name)?;
+                everruns_contracts::runtime::memory::validate_store_name(&name)
+                    .map_err(|error| CommandError::bad_request(error.to_string()))?;
+                Ok::<_, CommandError>(name)
+            })
             .transpose()?;
         let source_update = self
             .request
@@ -494,11 +370,9 @@ impl Command for DeleteMemory {
 
 #[cfg(test)]
 mod tests {
-    use super::super::types::MemorySourceResponse;
     use super::*;
     use crate::domains::common::Ctx;
     use crate::storage::StorageBackend;
-    use chrono::{Duration, Utc};
     use everruns_core::{Caller, DEFAULT_ORG_ID, OrgRole};
     use std::sync::Arc;
 
@@ -539,7 +413,7 @@ mod tests {
         let ctx = ctx_for_org(DEFAULT_ORG_ID);
 
         let created = CreateMemory {
-            name: "Team Memory".into(),
+            name: "team-memory".into(),
             description: Some("Shared working files".into()),
             source: None,
         }
@@ -548,7 +422,7 @@ mod tests {
         .expect("create memory");
 
         assert!(created.id.to_string().starts_with("mem_"));
-        assert_eq!(created.name, "Team Memory");
+        assert_eq!(created.name, "team-memory");
         assert_eq!(created.status, "active");
         assert_eq!(created.source_type, "manual");
         assert!(!created.is_readonly);
@@ -567,7 +441,7 @@ mod tests {
         let updated = UpdateMemoryCmd {
             memory_id: created.id.to_string(),
             request: UpdateMemoryRequest {
-                name: Some("Team Files".into()),
+                name: Some("team-files".into()),
                 description: UpdateField::Set("Shared files".into()),
                 source: None,
             },
@@ -575,7 +449,7 @@ mod tests {
         .run(&ctx)
         .await
         .expect("update memory");
-        assert_eq!(updated.name, "Team Files");
+        assert_eq!(updated.name, "team-files");
         assert_eq!(updated.description.as_deref(), Some("Shared files"));
 
         let cleared = UpdateMemoryCmd {
@@ -589,7 +463,7 @@ mod tests {
         .run(&ctx)
         .await
         .expect("clear memory description");
-        assert_eq!(cleared.name, "Team Files");
+        assert_eq!(cleared.name, "team-files");
         assert_eq!(cleared.description, None);
 
         DeleteMemory {
@@ -626,7 +500,7 @@ mod tests {
         let org_two = ctx_with_db(2, db);
 
         let created = CreateMemory {
-            name: "Private".into(),
+            name: "private".into(),
             description: None,
             source: None,
         }
@@ -653,7 +527,7 @@ mod tests {
     async fn duplicate_active_memory_names_conflict() {
         let ctx = ctx_for_org(DEFAULT_ORG_ID);
         CreateMemory {
-            name: "Research".into(),
+            name: "research".into(),
             description: None,
             source: None,
         }
@@ -679,377 +553,33 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn github_memory_is_readonly_and_pending_sync() {
-        let ctx = ctx_for_org(DEFAULT_ORG_ID);
-
-        let created = CreateMemory {
-            name: "Repo Docs".into(),
+    async fn source_backed_and_unnamed_memories_are_refused() {
+        let ctx = ctx_for_org(1);
+        let source = CreateMemory {
+            name: "design-docs".to_string(),
             description: None,
             source: Some(CreateMemorySourceRequest::Github(
-                GitHubMemorySourceRequest {
-                    repository: "https://github.com/everruns/everruns.git".into(),
-                    branch: Some("docs".into()),
-                    root_folder: Some("/specs/".into()),
-                    sync_interval_secs: Some(3600),
-                },
-            )),
-        }
-        .run(&ctx)
-        .await
-        .expect("create github memory");
-
-        assert_eq!(created.source_type, "github");
-        assert!(created.is_readonly);
-        assert_eq!(created.sync_status, "pending");
-        match created.source {
-            MemorySourceResponse::Github(source) => {
-                assert_eq!(source.repository, "everruns/everruns");
-                assert_eq!(source.branch, "docs");
-                assert_eq!(source.root_folder.as_deref(), Some("specs"));
-                assert_eq!(source.sync_interval_secs, Some(3600));
-            }
-            other => panic!("expected github source, got {other:?}"),
-        }
-    }
-
-    #[tokio::test]
-    async fn update_source_backed_memory_requeues_sync() {
-        let db = Arc::new(StorageBackend::test_database());
-        let ctx = ctx_with_db(DEFAULT_ORG_ID, db.clone());
-
-        let created = CreateMemory {
-            name: "Repo Docs".into(),
-            description: None,
-            source: Some(CreateMemorySourceRequest::Github(
-                GitHubMemorySourceRequest {
-                    repository: "everruns/everruns".into(),
-                    branch: Some("main".into()),
+                super::super::types::GitHubMemorySourceRequest {
+                    repository: "acme/design-docs".to_string(),
+                    branch: None,
                     root_folder: None,
                     sync_interval_secs: None,
                 },
             )),
         }
-        .run(&ctx)
+        .execute(&ctx)
         .await
-        .expect("create github memory");
-        let claimed = db
-            .claim_next_memory_sync()
-            .await
-            .expect("claim sync")
-            .expect("syncable memory");
-        db.complete_memory_sync(claimed.id, claimed.updated_at, Vec::new())
-            .await
-            .expect("complete sync");
+        .expect_err("sources are retired");
+        assert!(source.to_string().contains("retired"), "{source}");
 
-        let updated = UpdateMemoryCmd {
-            memory_id: created.id.to_string(),
-            request: UpdateMemoryRequest {
-                name: None,
-                description: UpdateField::Unchanged,
-                source: Some(CreateMemorySourceRequest::Git(GitMemorySourceRequest {
-                    url: "https://example.com/org/repo.git".into(),
-                    branch: Some("release".into()),
-                    root_folder: Some("docs".into()),
-                    sync_interval_secs: Some(900),
-                })),
-            },
-        }
-        .run(&ctx)
-        .await
-        .expect("update source");
-
-        assert_eq!(updated.source_type, "git");
-        assert_eq!(updated.sync_status, "pending");
-        assert_eq!(updated.last_synced_at, None);
-        match updated.source {
-            MemorySourceResponse::Git(source) => {
-                assert_eq!(source.branch, "release");
-                assert_eq!(source.root_folder.as_deref(), Some("docs"));
-                assert_eq!(source.sync_interval_secs, Some(900));
-            }
-            other => panic!("expected git source, got {other:?}"),
-        }
-    }
-
-    #[tokio::test]
-    async fn sync_memory_now_requeues_source_volume() {
-        let db = Arc::new(StorageBackend::test_database());
-        let ctx = ctx_with_db(DEFAULT_ORG_ID, db.clone());
-
-        let manual = CreateMemory {
-            name: "Manual".into(),
+        let bad_name = CreateMemory {
+            name: "Design Docs".to_string(),
             description: None,
             source: None,
         }
-        .run(&ctx)
+        .execute(&ctx)
         .await
-        .expect("create manual memory");
-        let manual_err = SyncMemoryNow {
-            memory_id: manual.id.to_string(),
-        }
-        .run(&ctx)
-        .await
-        .expect_err("manual memory cannot sync");
-        assert!(matches!(
-            manual_err,
-            CommandError {
-                kind: CommandErrorKind::BadRequest(_),
-                ..
-            }
-        ));
-
-        let created = CreateMemory {
-            name: "Repo".into(),
-            description: None,
-            source: Some(CreateMemorySourceRequest::Git(GitMemorySourceRequest {
-                url: "https://example.com/org/repo.git".into(),
-                branch: None,
-                root_folder: None,
-                sync_interval_secs: None,
-            })),
-        }
-        .run(&ctx)
-        .await
-        .expect("create git memory");
-        let claimed = db
-            .claim_next_memory_sync()
-            .await
-            .expect("claim sync")
-            .expect("syncable memory");
-        db.complete_memory_sync(claimed.id, claimed.updated_at, Vec::new())
-            .await
-            .expect("complete sync");
-
-        let queued = SyncMemoryNow {
-            memory_id: created.id.to_string(),
-        }
-        .run(&ctx)
-        .await
-        .expect("queue sync");
-        assert_eq!(queued.sync_status, "pending");
-        assert_eq!(queued.last_sync_error, None);
-    }
-
-    #[tokio::test]
-    async fn due_sync_interval_claims_source_volume() {
-        let db = Arc::new(StorageBackend::test_database());
-        let ctx = ctx_with_db(DEFAULT_ORG_ID, db.clone());
-
-        let created = CreateMemory {
-            name: "Scheduled Repo".into(),
-            description: None,
-            source: Some(CreateMemorySourceRequest::Git(GitMemorySourceRequest {
-                url: "https://example.com/org/repo.git".into(),
-                branch: None,
-                root_folder: None,
-                sync_interval_secs: Some(300),
-            })),
-        }
-        .run(&ctx)
-        .await
-        .expect("create git memory");
-        db.update_memory(
-            DEFAULT_ORG_ID,
-            created.internal_id,
-            UpdateMemory {
-                sync_status: Some("synced".to_string()),
-                last_synced_at: Some(Some(Utc::now() - Duration::seconds(301))),
-                ..Default::default()
-            },
-        )
-        .await
-        .expect("mark old sync");
-
-        let claimed = db
-            .claim_next_memory_sync()
-            .await
-            .expect("claim scheduled sync")
-            .expect("due memory should be claimed");
-        assert_eq!(claimed.id, created.internal_id);
-        assert_eq!(claimed.sync_status, "syncing");
-    }
-
-    #[tokio::test]
-    async fn git_memory_rejects_secret_bearing_urls() {
-        let ctx = ctx_for_org(DEFAULT_ORG_ID);
-
-        for url in [
-            "https://token@example.com/org/repo.git",
-            "https://example.com/org/repo.git?token=secret",
-            "https://example.com/org/repo.git#token=secret",
-            "git@example.com:org/repo.git?token=secret",
-        ] {
-            let err = CreateMemory {
-                name: format!("Unsafe Repo {url}"),
-                description: None,
-                source: Some(CreateMemorySourceRequest::Git(GitMemorySourceRequest {
-                    url: url.into(),
-                    branch: None,
-                    root_folder: None,
-                    sync_interval_secs: None,
-                })),
-            }
-            .run(&ctx)
-            .await
-            .expect_err("secret-bearing URL should fail");
-
-            assert!(matches!(
-                err,
-                CommandError {
-                    kind: CommandErrorKind::BadRequest(_),
-                    ..
-                }
-            ));
-        }
-    }
-
-    #[tokio::test]
-    async fn git_memory_rejects_non_public_hosts_and_non_https_schemes() {
-        let ctx = ctx_for_org(DEFAULT_ORG_ID);
-
-        for url in [
-            "https://127.0.0.1/repo.git",
-            "https://10.0.0.5/repo.git",
-            "https://169.254.169.254/repo.git",
-            "https://localhost/repo.git",
-            "ssh://git@example.com/org/repo.git",
-            "git://example.com/org/repo.git",
-            "git@example.com:org/repo.git",
-        ] {
-            let err = CreateMemory {
-                name: format!("Unsafe Host Repo {url}"),
-                description: None,
-                source: Some(CreateMemorySourceRequest::Git(GitMemorySourceRequest {
-                    url: url.into(),
-                    branch: None,
-                    root_folder: None,
-                    sync_interval_secs: None,
-                })),
-            }
-            .run(&ctx)
-            .await
-            .expect_err("unsafe git URL should fail");
-
-            assert!(matches!(
-                err,
-                CommandError {
-                    kind: CommandErrorKind::BadRequest(_),
-                    ..
-                }
-            ));
-        }
-    }
-
-    // ---- TM-AUTHZ-011: the sync owner follows the source ----
-
-    fn ctx_with_user(db: Arc<StorageBackend>, user_id: uuid::Uuid) -> Ctx {
-        Ctx::minimal_for_test(
-            Caller {
-                org_id: DEFAULT_ORG_ID,
-                org_public_id: everruns_core::organization::org_public_id_from_internal(
-                    DEFAULT_ORG_ID,
-                ),
-                user_id: Some(user_id),
-                role: OrgRole::Owner,
-                is_platform_user: false,
-                is_internal: false,
-                read_only: false,
-            },
-            db,
-            None,
-        )
-    }
-
-    fn git_source(url: &str) -> CreateMemorySourceRequest {
-        CreateMemorySourceRequest::Git(GitMemorySourceRequest {
-            url: url.into(),
-            branch: None,
-            root_folder: None,
-            sync_interval_secs: None,
-        })
-    }
-
-    async fn sync_owner(ctx: &Ctx, memory_id: &str) -> Option<uuid::Uuid> {
-        ctx.db
-            .get_memory_by_public_id(DEFAULT_ORG_ID, memory_id)
-            .await
-            .expect("get memory")
-            .expect("memory row")
-            .resolved_owner_user_id
-    }
-
-    #[tokio::test]
-    async fn source_update_rebinds_sync_owner_to_caller() {
-        let db = Arc::new(StorageBackend::test_database());
-        let creator_id = uuid::Uuid::new_v4();
-        let updater_id = uuid::Uuid::new_v4();
-        let creator = ctx_with_user(db.clone(), creator_id);
-        let updater = ctx_with_user(db, updater_id);
-
-        let created = CreateMemory {
-            name: "Private Repo".into(),
-            description: None,
-            source: Some(git_source("https://example.com/owner/private.git")),
-        }
-        .run(&creator)
-        .await
-        .expect("create git memory");
-        assert_eq!(
-            sync_owner(&creator, &created.id.to_string()).await,
-            Some(creator_id)
-        );
-
-        UpdateMemoryCmd {
-            memory_id: created.id.to_string(),
-            request: UpdateMemoryRequest {
-                name: None,
-                description: UpdateField::Unchanged,
-                source: Some(git_source("https://example.com/owner/other.git")),
-            },
-        }
-        .run(&updater)
-        .await
-        .expect("update source");
-
-        assert_eq!(
-            sync_owner(&updater, &created.id.to_string()).await,
-            Some(updater_id),
-            "a new source must sync with the editor's connection, not the creator's"
-        );
-    }
-
-    #[tokio::test]
-    async fn metadata_update_preserves_sync_owner() {
-        let db = Arc::new(StorageBackend::test_database());
-        let creator_id = uuid::Uuid::new_v4();
-        let updater_id = uuid::Uuid::new_v4();
-        let creator = ctx_with_user(db.clone(), creator_id);
-        let updater = ctx_with_user(db, updater_id);
-
-        let created = CreateMemory {
-            name: "Stable Repo".into(),
-            description: None,
-            source: Some(git_source("https://example.com/owner/stable.git")),
-        }
-        .run(&creator)
-        .await
-        .expect("create git memory");
-
-        UpdateMemoryCmd {
-            memory_id: created.id.to_string(),
-            request: UpdateMemoryRequest {
-                name: Some("Stable Repo v2".into()),
-                description: UpdateField::Set("renamed".into()),
-                source: None,
-            },
-        }
-        .run(&updater)
-        .await
-        .expect("update metadata");
-
-        assert_eq!(
-            sync_owner(&updater, &created.id.to_string()).await,
-            Some(creator_id)
-        );
+        .expect_err("a named memory has a store name");
+        assert!(bad_name.to_string().contains("not a memory"), "{bad_name}");
     }
 }
