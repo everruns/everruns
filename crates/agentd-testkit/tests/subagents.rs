@@ -111,7 +111,23 @@ async fn a_subagent_on_another_shard_answers_its_parent() {
         )
         .await;
     assert_eq!(added["has_secret"], false, "{added}");
-    let listed = fleet.get(&configs).await;
+    // Listings may hit a follower before it applies the committed add. Wait
+    // for this exact config; an acknowledged config that never appears fails.
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let listed = loop {
+        let listed = fleet.get(&configs).await;
+        if listed
+            .as_array()
+            .is_some_and(|rows| rows.iter().any(|config| config["id"] == added["id"]))
+        {
+            break listed;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "committed push config did not become visible: {listed}"
+        );
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    };
     assert_eq!(listed[0]["id"], added["id"], "{listed}");
     assert_eq!(
         listed[0]["event_filter"],
