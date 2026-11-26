@@ -497,6 +497,29 @@ async fn a_shard_short_of_memory_sheds_new_work_and_finishes_admitted_turns() {
     fleet.turns(&session, 2).await;
 }
 
+/// A turn the shard started before it ran short of memory still finishes
+/// when its executor dies mid-turn: resuming it is not new work, and only
+/// finishing it frees what it holds (R9 soak, 2026-11-26: after node kills,
+/// 2,700 turns stayed "running" under pressure for 50 minutes).
+#[tokio::test(flavor = "multi_thread")]
+async fn a_shard_short_of_memory_resumes_a_started_turn_whose_executor_died() {
+    let mut fleet = Fleet::start().await;
+    fleet.executor(1);
+    let session = fleet.create_in("slow", 1).await;
+    fleet.say(&session, "go").await;
+    fleet
+        .until("the turn starts", || async {
+            types(&fleet.events(&session).await).contains(&"turn.started")
+        })
+        .await;
+    fleet.kill_executor(1);
+    // Past every level: at Emergency the shard starts no new turns.
+    fleet.restart_with_memory_limit(1, 1, 1 << 20);
+    fleet.leader(1).await;
+    fleet.executor(2);
+    fleet.turns(&session, 1).await;
+}
+
 /// A shard short of memory starts no turns past its `pressure_turns` floor,
 /// even for input it admitted before: an executor pool would otherwise pile
 /// into it (EKS run 44355318472). The input waits and runs once memory frees.

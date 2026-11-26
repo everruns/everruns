@@ -1262,7 +1262,10 @@ impl Node {
                     return; // the group's cap; the next tick looks again
                 }
             }
-            if self.holds_turns(&state) {
+            // Decision: a started turn whose epoch expired is admitted work;
+            // only finishing it frees memory (R9 soak 2026-11-26: held back,
+            // 2,700 turns stuck "running" for 50 minutes).
+            if self.holds_turns(&state) && a.open.is_none() {
                 if matches!(self.cfg.executors, ExecutorMode::Pull { .. }) {
                     self.dispatch.queue(session);
                 }
