@@ -196,3 +196,38 @@ kernel isolation.
 Recorded synthetic traces and provenance are in
 [`results/monty-2026-11-25/`](results/monty-2026-11-25/). The report retains initial
 failures and labels corrected grading and fresh retests separately.
+
+## Hosted approval recovery
+
+`hosted_recovery.py` qualifies the persisted continuation against a dedicated
+Server/worker or agentd deployment. Provision the same model with
+`python_code_mode`, `session_file_system`, `session_sql_database` and
+`tool_approval` in normal mode, with an explicit `delete_file=ask` rule.
+Do not set `EVERRUNS_MONTY_STATE_DIR` on these hosted executors: this test must use
+the platform journal, not a shared Framework file-journal fallback.
+
+The runner seeds a synthetic file, asks Python to insert one SQL receipt and
+then request deletion approval. While parked, a trusted operator fault command
+replaces the executor/host. After recovery it approves or rejects the exact
+pending action, requires a saved resume, then reads the real SQL receipt count
+and workspace file state. Grading checks the exact submitted program and joins
+the SQL result to the exact count query. A repeated source program, direct effect fallback,
+duplicate receipt, premature deletion or unchanged executor fails qualification.
+Run both decisions. For a Raft test, replace the active leader as well as the
+executor and report the changed leader identities.
+
+```bash
+python3 hosted_recovery.py --placement server \
+  --sessions-url http://127.0.0.1:27101/api/v1/platform/sessions \
+  --agent agent_... --decision allow \
+  --fault-command '/path/to/replace-test-host' \
+  --runtime-qualification 'hardened Linux qualification reference' \
+  --output results/server-recovery-allow.json
+```
+
+The fault command is trusted operator configuration, never model-provided code.
+It receives `MONTY_RECOVERY_SESSION_ID`, must wait for readiness and emit JSON
+with `old_executor_pid`, `new_executor_pid`, `old_executor_exited: true`, and,
+when testing elections, `leader_before` and `leader_after`. Keep API credentials
+in `EVERRUNS_EVAL_API_KEY`; use dedicated local/test infrastructure. The runner
+does not stop a deployment automatically or weaken production isolation.

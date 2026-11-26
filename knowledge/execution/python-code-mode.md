@@ -61,7 +61,11 @@ Saved suspension counts and active-time budgets carry across resume; wall time
 waiting for a person is excluded. Bounds apply independently to source, output,
 JSON conversions, protocol frames, interpreter memory and snapshots.
 
-Server uses its private durable result store. agentd's
+Server uses its private durable result store. Separate workers reach it through
+an [internal session-scoped command](../../crates/server/src/domains/code_execution.rs),
+which verifies organization ownership and the code namespace, rejects forced
+settlements, and excludes snapshots from public commands and change history.
+This binding does not change outer tool replay semantics. agentd's
 [code journal](../../crates/agentd/src/session_code_journal.rs) is session-owned
 replicated state and has a storage quota; it follows session moves and snapshots
 without entering the public feed. Framework can use a private file journal or
@@ -94,6 +98,10 @@ The [MCP scale study](../../evals/mcp-scale/README.md) also has a Monty arm, pre
 its actual native-schema visibility. Model quality, runtime correctness and hosted
 qualification are distinct evidence: interpreter-only results cannot qualify the
 Linux launcher, and Framework results cannot qualify Server/agentd failover.
+The [hosted recovery runner](../../evals/shell-code-mode/hosted_recovery.py)
+requires a real pending approval, process replacement and authoritative effect
+read-back. Hosted qualification disables the file-journal fallback; cluster
+qualification also replaces the Raft leader before answering the approval.
 
 Public guidance: [capability](../../docs/capabilities/python-code-mode.md),
 [Framework example](../../docs/framework/python-code-mode.md), and

@@ -707,6 +707,15 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
         None
     }
 
+    /// Session-scoped private code journal; does not enable outer tool replay.
+    fn code_execution_store(
+        &self,
+        _org_id: i64,
+        _session_id: SessionId,
+    ) -> Option<Arc<dyn crate::core::durability::DurableToolResultStore>> {
+        self.durable_tool_result_store()
+    }
+
     /// Per-turn durable tool result store for act-activity idempotency (EVE-530).
     /// Default: `None` (no durable idempotency — suitable for dev/test environments).
     fn durable_tool_result_store(

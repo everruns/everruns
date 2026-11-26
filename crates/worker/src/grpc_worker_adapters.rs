@@ -646,6 +646,19 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         Arc::new(GrpcAdapter::new_org_scoped(self.client.clone(), org_id))
     }
 
+    fn code_execution_store(
+        &self,
+        org_id: i64,
+        session_id: SessionId,
+    ) -> Option<Arc<dyn crate::core::durability::DurableToolResultStore>> {
+        Some(Arc::new(
+            everruns_internal_protocol::commands::code_execution::CommandCodeExecutionStore {
+                transport: Arc::new(GrpcAdapter::new_org_scoped(self.client.clone(), org_id)),
+                session: session_id,
+            },
+        ))
+    }
+
     // These three stores need checkpoint encryption on the control plane;
     // without it they are absent, as on the in-process worker (EVE-1261).
     fn native_async_store(

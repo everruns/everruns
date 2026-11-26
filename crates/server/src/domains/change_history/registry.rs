@@ -801,6 +801,9 @@ pub fn declared(name: &str) -> Change {
         "worker_invalidate_mcp_connection" => {
             Change::Exempt("drops a grant the remote server rejected; credential state")
         }
+        "worker_code_execution" => Change::Exempt(
+            "private interpreter snapshots and effect records must not enter public history",
+        ),
         "worker_dreaming_state" => Change::Exempt(
             "private runtime maintenance and reservations; payload-free activity is recorded separately",
         ),

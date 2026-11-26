@@ -65,4 +65,4 @@ jobs:
         run: cargo test --locked
 
       - name: Check hosted evidence grading
-        run: python3 -m unittest test_hosted_smoke.py
+        run: python3 -m unittest discover -p 'test_hosted*.py'

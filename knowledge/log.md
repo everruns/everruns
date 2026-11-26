@@ -2,6 +2,7 @@
 
 ## 2026-11-25
 
+- [Python Code Mode](execution/python-code-mode.md): separate Server workers use the private session-scoped journal transport; hosted qualification requires executor replacement, approval recovery, effect read-back and cluster leader movement without file fallback.
 - [MCP Events](integrations/mcp-events.md): final SEP-3415 discovery, routing, errors, delivery-local 410, independent message IDs, cached callback consent, omitted-cursor parity, and isolated conformance evidence.
 - Added the Applications publication, audience, resource ownership, browser and Kubernetes contracts.
 - Removed the retired App aggregate and its compatibility routes. Agent exposure and channel invocation now document structural attribution, stable channel identities, and the coordinated schema cutover.

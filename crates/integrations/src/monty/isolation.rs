@@ -193,7 +193,7 @@ unsafe fn seccomp() -> io::Result<()> {
         statement(0x06, 0x7fff_0000),
         deny(),
     ]);
-    let mut denied = vec![
+    let denied = [
         libc::SYS_socket,
         libc::SYS_socketpair,
         libc::SYS_connect,
@@ -229,9 +229,11 @@ unsafe fn seccomp() -> io::Result<()> {
         libc::SYS_keyctl,
         libc::SYS_add_key,
         libc::SYS_request_key,
+        #[cfg(target_arch = "x86_64")]
+        libc::SYS_fork,
+        #[cfg(target_arch = "x86_64")]
+        libc::SYS_vfork,
     ];
-    #[cfg(target_arch = "x86_64")]
-    denied.extend([libc::SYS_fork, libc::SYS_vfork]);
     for syscall in denied {
         filter.push(equal(syscall as u32, 0, 1));
         filter.push(statement(0x06, 0x0005_0000 | libc::EPERM as u32));

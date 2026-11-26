@@ -215,3 +215,8 @@ also includes Monty. Scores require actual tool execution through the selected
 interface; a correct answer produced by bypassing Python does not pass its arm.
 Reports distinguish model quality, interpreter tests and hosted qualification.
 Historical Shell Code Mode results are not Monty results.
+The study also includes an operator-controlled hosted recovery runner: it parks
+a program for approval, replaces the executor (and optionally the agentd Raft
+leader), and verifies the saved continuation and real side effects after either
+decision. Run it against dedicated test infrastructure with the platform journal
+enabled and the Framework file fallback disabled.

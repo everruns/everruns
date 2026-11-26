@@ -22,6 +22,7 @@ use serde_json::Value;
 
 use crate::proto;
 
+pub mod code_execution;
 mod connections;
 pub mod dreaming;
 pub mod knowledge;
