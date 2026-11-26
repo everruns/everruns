@@ -766,7 +766,7 @@ jobs:
           CARGO_TARGET_DIR: ${{ github.workspace }}/target
         run: |
           install -d -m 0700 "$EVERRUNS_MONTY_STATE_DIR"
-          cargo test --locked --manifest-path evals/shell-code-mode/Cargo.toml monty_approval_eval -- --ignored
+          cargo test --locked --manifest-path evals/shell-code-mode/Cargo.toml --features monty-runtime-tests monty_approval_eval -- --nocapture
 
   environment-capability-isolation:
     name: Environment Capability Isolation Guard

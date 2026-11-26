@@ -137,11 +137,11 @@ help/rejection friction remains shell-specific; it is not a cross-language
 quality score. Historical runs used the previous shell-specific recovery prompt;
 new comparisons use the same interface-neutral request in every arm.
 
-The ignored `monty_approval_eval_uses_the_engine_pause_and_saved_continuation`
+The feature-gated `monty_approval_eval_uses_the_engine_pause_and_saved_continuation`
 test drives this exact evaluator with a scripted model and the real runtime:
 
 ```bash
-cargo test --locked monty_approval_eval -- --ignored
+cargo test --locked --features monty-runtime-tests monty_approval_eval -- --nocapture
 ```
 
 The required Monty CI job runs it with the hardened worker. Ordinary study CI

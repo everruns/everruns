@@ -17,6 +17,10 @@ publish = false
 name = "shell_code_mode"
 path = "src/main.rs"
 
+[features]
+# Deployment qualification supplies the pinned isolated worker and private journal.
+monty-runtime-tests = []
+
 [dependencies]
 mira-eval = "0.4"
 # `bashkit` registers both the shell and the Shell Code Mode capability, so the
