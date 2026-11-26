@@ -8,6 +8,7 @@ use everruns_contracts::tool_types::{ToolCall, ToolDefinition};
 
 pub(super) struct EmailReplyPolicy;
 
+// THREAT[TM-EMAIL-002]: untrusted mail cannot widen the channel tool authority.
 fn permitted(name: &str, arguments: &serde_json::Value) -> bool {
     // Use the transport's canonical parser: MCP tool names separate server
     // and tool with a double underscore, not a hand-written prefix.

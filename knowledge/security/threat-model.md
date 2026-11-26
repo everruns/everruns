@@ -2048,6 +2048,26 @@ A `poppy` channel serves the Personal Agent Protocol (draft 0.1) at `/v1/channel
 | TM-POPPY-008 | A sandbox or the model obtains signing keys or Session Tokens | High | The protocol runs in the control plane behind the `worker_poppy_call` internal command (session-scoped, `SESSION_MANAGE`). The deployment key, DPoP keys and Session Tokens are encrypted at rest and never cross to a worker; the tool sees only the company's answer. `domains/poppy_agent/` | MITIGATED |
 | TM-POPPY-009 | SSRF through a model-chosen company domain | High | The domain must be a DNS name over HTTPS; discovery follows at most three HTTPS redirects, and every request goes through the egress boundary with DNS pinning and the org's allowlist. Authenticated calls never follow redirects. `domains/poppy_agent/protocol.rs` | MITIGATED |
 
+## 31. Email inbox channels (TM-EMAIL)
+
+Inbound mail is untrusted external content, including authenticated mail. Domain
+alignment and provider signatures do not authenticate an Everruns user or authorize
+cross-channel actions. See [email inbox channels](../integrations/email.md).
+
+| ID | Threat | Mitigation and evidence |
+|---|---|---|
+| TM-EMAIL-001 | Forged intake, tenant crossing or plus-tag identity confusion | Signed, timestamped raw-body verification scoped to the inbox; organization-scoped administration and session-scoped reads; plus aliases share base-inbox quotas. Provider signatures authenticate delivery only. |
+| TM-EMAIL-002 | Prompt injection causes tools, attachments or cross-channel disclosure | Host-installed email tool policy checks final calls, including nested/client calls; only scoped reads and attachment-free replies/no_reply pass. Independent admission/output gates fail closed. A model verdict is not a security guarantee; preloaded agent context must suit external recipients. |
+| TM-EMAIL-003 | Email bursts exhaust storage, model budgets or workers | Persist before acknowledgement, deduplicate receipts, enforce organization storage/rate quotas, and claim bounded batches under renewable leases. One thousand received messages do not launch one thousand turns. |
+| TM-EMAIL-004 | Duplicate, mutated or misdirected outbound mail | Immutable rendered text/HTML, sender-specific thread binding, explicit sole recipient, separate send approval and fenced outbox. Unknown acceptance holds for reconciliation without blind retries. |
+| TM-EMAIL-005 | Active HTML or cleaned-away instructions alter trust decisions | Sanitized escaped templates, bounded Markkit clean/full views, no remote body fetches, and full normalized content for admission. Cleanup is presentation, never authentication or an injection defense. |
+
+Contract/database tests in [email tests](../../crates/server/src/channels/email/tests.rs)
+and the [runtime policy](../../crates/core/src/host/host/email_policy.rs) cover these
+boundaries. Live qualification currently proves polling and separate operator
+approvals; autonomous Jev decisions and provider-origin webhook delivery remain
+separate live gates. Unknown-send recovery has no operator UI yet.
+
 ## Vulnerability Summary
 
 ### Open Threats (Require Action)

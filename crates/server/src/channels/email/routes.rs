@@ -355,6 +355,7 @@ async fn webhook(
             req = req.header(name, v);
         }
     }
+    // THREAT[TM-EMAIL-001]: authenticate raw delivery before durable intake.
     let event = channelkit_agentmail::verify_received(
         &req,
         &secret,
