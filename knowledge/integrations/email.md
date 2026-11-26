@@ -10,6 +10,8 @@ tags: [email, channels, security, agentmail]
 One agent may publish Slack and email channels. Provider accounts and inboxes are
 organization resources, while one inbox binds to one agent channel. Provider
 credentials are encrypted organization connections, separate from AgentID.
+Provider callbacks address durable inbox intake independently of agent binding;
+admin operations remain in the platform API namespace.
 Channelkit owns AgentMail wire operations; Markkit owns deterministic body views;
 Everruns owns identities, durable waiting, quotas, gates and delivery authority.
 See [channels](channels.md), [injected capabilities](../execution/injected-capabilities.md),
