@@ -1,4 +1,6 @@
 mod accounting;
+#[path = "../../common/code_mode.rs"]
+mod code_mode;
 #[path = "../../common/everruns_usage.rs"]
 mod event_usage;
 mod fixture;
@@ -15,7 +17,7 @@ use serde_json::json;
 const DATASET: &str = include_str!("../dataset.jsonl");
 const SIZES: [&str; 4] = ["50", "600", "2000", "10000"];
 const SERVER_COUNTS: [&str; 2] = ["1", "10"];
-const SURFACES: [&str; 3] = ["native", "cli", "hybrid"];
+const SURFACES: [&str; 4] = ["native", "cli", "hybrid", "monty"];
 
 fn targets() -> Vec<Target> {
     let spec = std::env::var("EVERRUNS_EVAL_TARGETS").unwrap_or_default();
@@ -51,7 +53,7 @@ fn positive_env(name: &str, fallback: usize) -> usize {
 fn mcp_scale() -> Eval {
     let dataset = Dataset::from_jsonl_str(DATASET).expect("embedded MCP dataset must parse");
     Eval::new("mcp_scale")
-        .describe("MCP catalog discovery, server disambiguation, and state-verified operations across native, CLI, and hybrid surfaces")
+        .describe("MCP catalog discovery, server disambiguation, and state-verified operations across native, CLI, hybrid, and Monty surfaces")
         .dataset(dataset)
         .targets(targets())
         .trials(positive_env("EVERRUNS_EVAL_TRIALS", 3))
@@ -60,6 +62,7 @@ fn mcp_scale() -> Eval {
         .axis("surface", SURFACES)
         .subject(subject::McpScaleSubject)
         .scorer(succeeded())
+        .scorer(code_mode::surface_used())
         .scorer(scorers::tool_evidence())
         .scorer(scorers::state_verified())
         .build()

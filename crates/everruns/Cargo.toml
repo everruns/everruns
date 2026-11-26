@@ -129,6 +129,7 @@ duckduckgo = ["everruns-core/direct-egress", "dep:everruns-integrations", "everr
 # The provider-neutral `web_search` capability (free search, Brave from
 # `BRAVE_SEARCH_API_KEY`). Configure it with `everruns::WebSearch`.
 web-search = ["everruns-core/direct-egress", "dep:everruns-integrations", "everruns-integrations/web-search"]
+monty = ["dep:everruns-integrations", "everruns-integrations/monty"]
 lua = ["everruns-core/direct-egress", "dep:everruns-integrations", "everruns-integrations/lua"]
 # The `image_generation` capability: stills, animated GIFs and SVGs from GPT
 # Image, Muse Image or Gemini, with provider keys from the environment
@@ -525,3 +526,7 @@ required-features = ["openai", "channels"]
 [[example]]
 name = "spawn_agents"
 required-features = ["openai", "local"]
+
+[[example]]
+name = "python_code_mode"
+required-features = ["monty", "openai"]

@@ -1,11 +1,11 @@
-//! Neutral contracts for durable tool results and stream recovery.
+//! Neutral durable tool, code execution and stream recovery contracts.
 
 use crate::error::Result;
 use crate::typed_id::{MessageId, SessionId};
 use async_trait::async_trait;
 
 /// Result of a claim attempt on the per-tool-call idempotency store.
-#[derive(Debug)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub enum ToolCallClaimResult {
     /// First claim for this (turn_id, tool_call_id); caller should execute the tool.
     /// `claim_token` must be passed to `settle_tool_call` to verify ownership.
@@ -30,7 +30,7 @@ pub enum ToolCallClaimResult {
 }
 
 /// Read-only status of a tool call in durable storage (EVE-533).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum DurableToolCallStatus {
     /// Tool completed successfully or with an error; result is stored.
     Settled { result_json: serde_json::Value },
@@ -88,6 +88,23 @@ pub trait DurableToolResultStore: Send + Sync + 'static {
     ) -> Result<Option<DurableToolCallStatus>>;
 }
 
+/// Turn-scoped, trusted journal access for nested code execution.
+///
+/// Never expose records through session KV, workspace files or model output.
+/// The engine supplies the namespace; a continuation cannot select another
+/// session, organization or turn. Hosts must persist this store to recover
+/// across process restarts.
+#[derive(Clone)]
+pub struct CodeExecutionJournal {
+    pub store: std::sync::Arc<dyn DurableToolResultStore>,
+    pub namespace: String,
+}
+
+/// Host-private store supplied without enabling outer tool replay semantics.
+/// The engine binds it to the active session and input before tools can use it.
+#[derive(Clone)]
+pub struct CodeExecutionStore(pub std::sync::Arc<dyn DurableToolResultStore>);
+
 // ============================================================================
 // PartialStreamStore — partial-stream recovery for Reason activity (EVE-532)
 // ============================================================================
@@ -96,7 +113,7 @@ pub trait DurableToolResultStore: Send + Sync + 'static {
 #[derive(Debug, Clone)]
 pub struct PartialStreamState {
     /// Prepared Astra effort recovered from the matching stream-start event.
-    pub reasoning_state: Option<everruns_contracts::reasoning_updates::ReasoningState>,
+    pub reasoning_state: Option<crate::reasoning_updates::ReasoningState>,
     /// Stable public id from the latest `output.message.started` event.
     pub message_id: MessageId,
 

@@ -1,2 +1,3 @@
 /target
-/results
+/results/*
+!/results/monty-2026-11-25/

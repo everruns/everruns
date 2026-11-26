@@ -124,3 +124,10 @@ mutable-history paths are not execution inputs.
 - [Host API](https://docs.rs/everruns-core/latest/everruns_core/host/)
 - [Focused crate catalog](framework-crates.md)
 - [Domain-language glossary](framework-glossary.md)
+
+## Execution choices
+
+Use [execution-options.md](execution-options.md) when selecting native tools,
+Bashkit, Monty Python Code Mode or a full session sandbox. Bashkit already
+provides Python; choose Monty for its Python tool interface and durable
+program continuations, not for language availability.

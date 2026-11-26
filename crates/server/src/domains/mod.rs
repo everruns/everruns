@@ -15,6 +15,7 @@ pub mod audit_logs;
 pub mod budgets;
 pub mod capabilities;
 pub mod change_history;
+mod code_execution;
 pub mod connected_clients;
 pub mod credentials;
 pub mod data_plane;

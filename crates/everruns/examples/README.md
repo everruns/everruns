@@ -52,3 +52,11 @@ See [Batch Model Requests](https://everruns.com/docs/framework/batch-model-reque
 ## Application services
 
 See the [service guides](https://everruns.com/docs/framework/service-integrations/) for `mcp_oauth`, `slack_actions`, `service_data`, `service_credentials`, `service_triggers` and `service_evaluation`. Each source file lists its required features, secrets and run command. All use real provider calls.
+
+## Python Code Mode
+
+[`python_code_mode.rs`](python_code_mode.rs) runs a real Framework agent using
+Monty and authorized workspace tools. Enable `monty,openai`, provision the pinned
+worker and private state directory, then run `cargo run -p everruns --features
+monty,openai --example python_code_mode`. See the public Python Code Mode docs
+for installation, Linux isolation, approval/resume and coexistence with Bashkit.

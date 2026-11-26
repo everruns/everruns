@@ -265,6 +265,26 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn weather_case_accepts_country_qualification_but_not_a_different_city() {
+        let s = mira::Dataset::from_jsonl_str(crate::DATASET)
+            .unwrap()
+            .samples
+            .remove(0);
+        for (city, pass) in [
+            ("Lisbon", true),
+            ("Lisbon, Portugal", true),
+            ("Porto", false),
+            ("Lisbon, Ohio", false),
+        ] {
+            let t = with_calls(json!([{"tool":"weather_forecast","input":{"city":city,"days":3}}]));
+            assert_eq!(expected_calls().score(&s, &t).await.pass, pass, "{city}");
+        }
+        let wrong_days =
+            with_calls(json!([{"tool":"weather_forecast","input":{"city":"Lisbon","days":7}}]));
+        assert!(!expected_calls().score(&s, &wrong_days).await.pass);
+    }
+
+    #[tokio::test]
     async fn forbidden_calls_catches_the_similar_tool() {
         let s = sample(json!({"forbid_calls": ["mcp_tickets__search_tickets"]}));
         let wrong = with_calls(json!([{"tool": "mcp_tickets__search_tickets", "input": {}}]));

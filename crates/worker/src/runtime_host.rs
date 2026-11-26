@@ -650,6 +650,11 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
             resolved_capabilities,
         } = request;
         let mut extensions = ToolContextExtensions::default();
+        if let Some(store) = self.adapters.code_execution_store(org_id, session_id) {
+            extensions.insert(Arc::new(
+                everruns_contracts::runtime::durability::CodeExecutionStore(store),
+            ));
+        }
         let platform_store = self.adapters.platform_store(org_id, session_id);
         // Shell-surface platform harnesses omit the forwarding tools, so install
         // their catalog directly. Never expose it to a shell-only harness: the

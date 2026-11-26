@@ -31,6 +31,9 @@ impl WorkerServiceImpl {
         // The file adapter sends base64 for binary artifacts. Keep ordinary
         // commands at 1 MiB and leave storage quotas to the file service.
         let max_params_bytes = match req.name.as_str() {
+            // A 1 MiB interpreter snapshot expands in base64; still bounded
+            // independently at the private command boundary.
+            "worker_code_execution" => 2 * 1024 * 1024 + 4096,
             "create_workspace_file" | "update_workspace_file"
                 if req.acting_for_session_id.is_some() && req.platform_session_id.is_none() =>
             {

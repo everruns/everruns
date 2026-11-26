@@ -54,6 +54,17 @@ const MAX_RESOURCES: usize = 256;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum RecordOp {
+    /// Private code checkpoints/effects. Never mirrored to the public feed.
+    CodeClaim {
+        key: String,
+        fingerprint: String,
+        token: uuid::Uuid,
+    },
+    CodeSettle {
+        key: String,
+        token: uuid::Uuid,
+        value: Value,
+    },
     RegisterResource {
         entry: RegisterSessionResource,
     },
@@ -109,9 +120,22 @@ pub enum RecordOp {
     },
 }
 
+/// Private immutable claim/result pair, included in Raft snapshots only.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CodeRecord {
+    fingerprint: String,
+    token: uuid::Uuid,
+    value: Option<Value>,
+}
+
+#[path = "session_code_journal.rs"]
+mod code_journal;
+
 /// The records part of a session's platform state.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Records {
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub code_execution: BTreeMap<String, CodeRecord>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub resources: BTreeMap<String, SessionResourceEntry>,
     /// By [`lease_key`].
@@ -123,7 +147,10 @@ pub struct Records {
 
 impl Records {
     pub fn is_empty(&self) -> bool {
-        self.resources.is_empty() && self.leases.is_empty() && self.dreaming.is_empty()
+        self.resources.is_empty()
+            && self.leases.is_empty()
+            && self.dreaming.is_empty()
+            && self.code_execution.is_empty()
     }
 
     /// The leases due for cleanup at `now` (see [`RecordOp::ClaimLease`]).
@@ -189,6 +216,65 @@ pub(crate) fn apply(
     let now = at(now_ms);
     let records = &mut state.platform.records;
     let response = match op {
+        RecordOp::CodeClaim {
+            key,
+            fingerprint,
+            token,
+        } => {
+            use everruns_contracts::runtime::durability::ToolCallClaimResult as Claim;
+            if key.len() > 512 || fingerprint.len() > 128 {
+                return rejected("invalid code journal key");
+            }
+            let claim = if let Some(record) = records.code_execution.get(&key) {
+                if record.fingerprint != fingerprint {
+                    Claim::DeterminismViolation {
+                        stored_fingerprint: record.fingerprint.clone(),
+                        current_fingerprint: fingerprint,
+                    }
+                } else if let Some(result_json) = &record.value {
+                    Claim::AlreadySettled {
+                        result_json: result_json.clone(),
+                        args_fingerprint: fingerprint,
+                    }
+                } else {
+                    Claim::AlreadyRunning {
+                        args_fingerprint: fingerprint,
+                    }
+                }
+            } else {
+                if records.code_execution.len() >= 4096 {
+                    return rejected("code journal record limit exceeded");
+                }
+                records.code_execution.insert(
+                    key,
+                    CodeRecord {
+                        fingerprint,
+                        token,
+                        value: None,
+                    },
+                );
+                Claim::Claimed { claim_token: token }
+            };
+            json!(claim)
+        }
+        RecordOp::CodeSettle { key, token, value } => {
+            let used: usize = records
+                .code_execution
+                .values()
+                .filter_map(|r| r.value.as_ref())
+                .map(|v| v.to_string().len())
+                .sum();
+            if used.saturating_add(value.to_string().len()) > 64 * 1024 * 1024 {
+                return rejected("private code journal exceeds 64 MiB per session");
+            }
+            match records.code_execution.get_mut(&key) {
+                Some(record) if record.token == token && record.value.is_none() => {
+                    record.value = Some(value);
+                    json!(true)
+                }
+                _ => json!(false),
+            }
+        }
         RecordOp::RegisterResource { entry } => {
             if entry.session_id != session {
                 return rejected("a resource of another session");
@@ -690,7 +776,20 @@ pub(crate) fn attach(
 ) -> everruns_core::host::HostBackends {
     let records = Arc::new(records);
     backends.extensions.stores.session_resources = Some(records.clone());
-    backends.extensions.stores.leased_resources = Some(records);
+    backends.extensions.stores.leased_resources = Some(records.clone());
+    let inner = backends.tool_context_extensions_factory.take();
+    backends.tool_context_extensions_factory = Some(Arc::new(move |org, session| {
+        let mut extensions = inner
+            .as_ref()
+            .map(|factory| factory(org, session))
+            .unwrap_or_default();
+        if session == records.session {
+            extensions.insert(Arc::new(
+                everruns_contracts::runtime::durability::CodeExecutionStore(records.clone()),
+            ));
+        }
+        extensions
+    }));
     backends
 }
 

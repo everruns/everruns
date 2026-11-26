@@ -1,13 +1,11 @@
 //! Mira eval study: **tools in shell**.
 //!
-//! Measures whether a model finds and calls a tool it cannot see, through the
-//! shell's `tools --help` and `tools search`, and how many calls that costs.
-//! Each case runs an in-process Framework agent with `bashkit_shell` and
-//! `shell_code_mode` over a small fake registry (see `registry.rs`), so a run
-//! needs one model key and nothing else.
+//! Compares native, Bashkit Shell Code Mode and Monty Python Code Mode on
+//! identical synthetic tasks, including real Engine approval decisions. Only
+//! fixture operations are fake; execution, policy and continuations are shipped code.
 //!
 //! ```bash
-//! EVERRUNS_EVAL_TARGETS=openrouter/openai/gpt-5.5 \
+//! EVERRUNS_EVAL_TARGETS=openrouter/openai/gpt-6.2-sol \
 //!   doppler run --command './target/debug/shell_code_mode --run'
 //! mira --bin shell_code_mode run
 //! ```
@@ -15,6 +13,9 @@
 // The friction classifier is the platform-capability study's, included by
 // path so both studies count help reads, rejections and real calls the same
 // way. It depends on serde_json and regex only, not on a Mira version.
+mod approval;
+#[path = "../../common/code_mode.rs"]
+mod code_mode;
 #[path = "../../platform-capability/src/friction.rs"]
 mod friction;
 mod registry;
@@ -40,7 +41,7 @@ fn targets() -> Vec<Target> {
     if spec.trim().is_empty() {
         return vec![Target::cloud(
             "openrouter",
-            "openai/gpt-5.5",
+            "openai/gpt-6.2-sol",
             "OPENROUTER_API_KEY",
         )];
     }
@@ -70,12 +71,15 @@ fn trials() -> usize {
 fn shell_code_mode() -> Eval {
     let dataset = Dataset::from_jsonl_str(DATASET).expect("embedded dataset.jsonl must parse");
     Eval::new("shell_code_mode")
-        .describe("Find and call hidden tools through the shell's `tools` command")
+        .describe("Compare native, shell and Python tool orchestration")
         .dataset(dataset)
         .targets(targets())
         .trials(trials())
+        .axis("surface", ["native", "cli", "monty"])
         .subject(ShellCodeModeSubject)
         .scorer(succeeded())
+        .scorer(code_mode::surface_used())
+        .scorer(approval::approval_verified())
         .scorer(expected_calls())
         .scorer(forbidden_calls())
         .scorer(tool_budget())
@@ -136,6 +140,21 @@ async fn main() -> std::io::Result<()> {
         report.total()
     );
 
+    if let Some(path) = value_of("--runs-report") {
+        use std::io::Write;
+        let mut file = std::fs::File::create(path)?;
+        for outcome in &report.outcomes {
+            serde_json::to_writer(
+                &mut file,
+                &serde_json::json!({
+                    "eval":outcome.eval,"sample":outcome.sample_id,"target":outcome.target,"params":outcome.params,
+                    "trial":outcome.trial.index,"passed":outcome.passed,"transcript":outcome.transcript,
+                    "scores":outcome.scores.iter().map(|s| serde_json::json!({"name":s.scorer,"passed":s.pass,"na":s.na,"value":s.value,"reason":s.reason})).collect::<Vec<_>>()
+                }),
+            )?;
+            writeln!(file)?;
+        }
+    }
     let runs: Vec<FrictionRun> = report.outcomes.iter().map(friction_run).collect();
     print!("{}", friction::summary_table(&runs));
     if let Some(path) = value_of("--friction-report")
@@ -146,6 +165,10 @@ async fn main() -> std::io::Result<()> {
         println!("friction report: {path}");
     }
 
+    if report.outcomes.is_empty() {
+        eprintln!("no eval cases ran; check target credentials and filters");
+        std::process::exit(2);
+    }
     if report.all_passed() {
         Ok(())
     } else {
@@ -156,7 +179,11 @@ async fn main() -> std::io::Result<()> {
 fn friction_run(outcome: &mira::CaseOutcome) -> FrictionRun {
     FrictionRun {
         case: outcome.sample_id.clone(),
-        target: outcome.target.clone(),
+        target: format!(
+            "{} {:?}",
+            outcome.target,
+            outcome.transcript.metadata.get("surface")
+        ),
         trial: outcome.trial.index,
         passed: outcome.passed,
         tool_calls: outcome.transcript.tool_calls_count,
@@ -176,11 +203,12 @@ mod tests {
     fn dataset_is_well_formed_and_names_real_tools() {
         let ds = Dataset::from_jsonl_str(DATASET).expect("dataset.jsonl parses");
         assert!(
-            (4..=6).contains(&ds.samples.len()),
+            (8..=10).contains(&ds.samples.len()),
             "a focused slice: {}",
             ds.samples.len()
         );
-        let names = registry::names();
+        let mut names = registry::names();
+        names.extend(["reserve_change", "apply_change", "read_change"]);
         let mut seen = std::collections::BTreeSet::new();
         for s in &ds.samples {
             assert!(seen.insert(s.id.clone()), "duplicate id {}", s.id);

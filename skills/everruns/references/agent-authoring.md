@@ -109,3 +109,10 @@ and active.
 If interrupted after a write, query the stored state before retrying. Summarize
 the final behavior and unresolved requirements, with the returned agent or
 session link when available.
+
+## Execution choices
+
+Use [execution-options.md](execution-options.md) when selecting native tools,
+Bashkit, Monty Python Code Mode or a full session sandbox. Bashkit already
+provides Python; choose Monty for its Python tool interface and durable
+program continuations, not for language availability.

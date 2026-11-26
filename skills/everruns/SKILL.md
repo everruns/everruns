@@ -46,6 +46,7 @@ the task needs before acting, and nothing else.
 | Let an agent start other agents: one-off calls, followed threads, a coordinator | [agents-starting-agents.md](references/agents-starting-agents.md) |
 | Hand a task to an existing agent and bring back the result | [run-agent.md](references/run-agent.md) |
 | Find out why a session failed, stalled, or answered badly | [debug-session.md](references/debug-session.md) |
+| Choose Bashkit, Monty Python Code Mode, native tools or session sandboxes | [execution-options.md](references/execution-options.md) |
 | Build regression evals, compare models, score live traffic | [evaluate-agent.md](references/evaluate-agent.md) |
 | Put an agent on Slack, the web, A2A, webhooks, or a schedule | [ship-agent.md](references/ship-agent.md) |
 | Check spending, health, or who changed what | [operate.md](references/operate.md) |

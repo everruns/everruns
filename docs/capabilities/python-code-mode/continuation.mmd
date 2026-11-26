@@ -1,0 +1,9 @@
+flowchart LR
+  accTitle: Durable approval continuation
+  accDescr: At a Python tool call, save the private checkpoint, check authorization, claim and execute the effect, then record its result before resuming. Approval pauses return a token and recheck policy on resume. Unknown outcomes stop for reconciliation.
+  C[Checkpoint: suspend before effect and save private program state] --> G[Authorize: current permissions and exact arguments]
+  G --> E[Execute: claim effect first]
+  E --> R[Record: save result and resume Python]
+  G -->|needs approval| W[Pause turn: return resume token]
+  W -->|person answers; agent resumes; recheck policy| G
+  E -->|outcome unknown| U[Stop for reconciliation: do not repeat the effect]

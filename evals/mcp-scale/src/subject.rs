@@ -16,6 +16,10 @@ static RUN_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 impl Subject for McpScaleSubject {
     async fn run(&self, sample: &Sample, cx: &RunCx) -> Transcript {
         let started = Instant::now();
+        let surface = cx.param("surface").unwrap_or("native");
+        if let Err(error) = crate::code_mode::preflight(surface).await {
+            return Transcript::infra_error(error);
+        }
         let provider = match provider(&cx.target) {
             Ok(provider) => provider,
             Err(error) => return Transcript::infra_error(error),
@@ -30,7 +34,6 @@ impl Subject for McpScaleSubject {
             .param("servers")
             .and_then(|v| v.parse::<usize>().ok())
             .unwrap_or(1);
-        let surface = cx.param("surface").unwrap_or("native");
         let (session, state_paths) =
             match build_session(sample, &cx.target, provider, size, servers, surface) {
                 Ok(session) => session,
@@ -40,6 +43,7 @@ impl Subject for McpScaleSubject {
             };
         let mut transcript = run_turns(&session, sample).await;
         finish(&mut transcript, size, &state_paths);
+        crate::code_mode::finish(&mut transcript, surface);
         transcript.timing.duration_ms = started.elapsed().as_millis() as u64;
         for path in state_paths {
             let _ = std::fs::remove_file(&path);
@@ -59,7 +63,7 @@ pub fn build_session(
     servers: usize,
     surface: &str,
 ) -> Result<(Session, Vec<std::path::PathBuf>), String> {
-    if !["native", "cli", "hybrid"].contains(&surface) {
+    if !["native", "cli", "hybrid", "monty"].contains(&surface) {
         return Err(format!("unknown surface: {surface}"));
     }
     let executable = std::env::current_exe().map_err(|error| error.to_string())?;
@@ -76,7 +80,10 @@ pub fn build_session(
     let mut state_paths = Vec::new();
     let mut builder = Agent::builder()
         .name(format!("mcp-scale-{}-{surface}-{size}", sample.id))
-        .instructions(INSTRUCTIONS)
+        .instructions(format!(
+            "{INSTRUCTIONS} {}",
+            crate::code_mode::instruction(surface)
+        ))
         .provider(provider)
         .model(target.model.clone())
         .max_iterations(MAX_ITERATIONS);
@@ -89,14 +96,7 @@ pub fn build_session(
             "max_result_bytes": 32768
         })));
     }
-    if surface != "native" {
-        builder = builder.capability("bashkit_shell").capability(
-            CapabilityRef::new("shell_code_mode").config(json!({
-                "mode": surface,
-                "rate_unlabeled_tools": false
-            })),
-        );
-    }
+    builder = crate::code_mode::configure(builder, surface)?;
 
     let server_count = servers.max(1);
     for index in 0..server_count {

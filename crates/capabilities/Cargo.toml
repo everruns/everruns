@@ -39,6 +39,7 @@ environment-capabilities = [
     "everruns-integrations/openrouter",
     "everruns-core/builtins",
 ]
+monty = ["everruns-integrations/monty"]
 lua = ["everruns-integrations/lua"]
 # Hosted product composition is opt-in so library hosts do not compile every
 # integration. Server and worker share this registry and its feature gates.

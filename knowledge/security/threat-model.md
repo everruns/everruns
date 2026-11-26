@@ -2239,3 +2239,18 @@ See [Native Extraction Services](../operations/extractions-service.md).
 
 See [Framework application boundaries](../framework/application-api.md) and the
 [acceptance tests](../../crates/everruns/tests/service_parity.rs).
+
+## Monty Python Code Mode
+
+See [Python Code Mode](../execution/python-code-mode.md) for the boundary and
+qualification contract. These controls apply to the hardened Linux launcher;
+a custom launcher must establish its own equivalent kernel boundary.
+
+| ID | Threat | Severity | Mitigation | Status |
+|---|---|---|---|---|
+| TM-MONTY-001 | Interpreter escape reaches host files, sockets or processes | Critical | Disposable worker, empty environment, no host mounts, Landlock allow rules, seccomp deny rules and kernel limits; launcher fails closed on unsupported kernels. | MITIGATED |
+| TM-MONTY-002 | Nested call bypasses authorization or network controls | Critical | Current turn allowlist, shared eligibility, pre/post policies, schema validation after transforms, no retargeting, disabled egress when absent, existing credential-aware network tools. | MITIGATED |
+| TM-MONTY-003 | Approval resume repeats a completed or uncertain side effect | Critical | Private checkpoint before dispatch, unique nested claim, settled result before resume; unknown outcomes stop for reconciliation. | MITIGATED |
+| TM-MONTY-004 | Agent injects, crosses tenants with or downgrades a snapshot | Critical | Host-private stores only; session/input namespace; Server worker commands verify org/session ownership and reject forced settlement; version check; no snapshot bytes in model inputs, KV, workspace, change history or public feed. | MITIGATED |
+| TM-MONTY-005 | Resource exhaustion through source, output, cyclic values or repeated suspensions | High | Independent source, JSON, depth, output, snapshot, memory, time and suspension limits; saved budgets survive resume; failed/cancelled workers are discarded. | MITIGATED |
+| TM-MONTY-006 | Composition enables more privileged fallback or hides unreachable tools | High | No automatic fallback; native schemas retained; Python is a direct execution entry point for shell/Lua routing; Bashkit runtime selection unchanged. | MITIGATED |

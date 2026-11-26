@@ -763,7 +763,7 @@ pub struct HostedToolCallData {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct ToolNestedCallData {
-    /// The `bash` tool call the script ran in.
+    /// The execution tool call (`bash` or `python`) the script ran in.
     pub parent_tool_call_id: String,
 
     /// This call's id: unique within the parent call.

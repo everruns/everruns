@@ -34124,7 +34124,7 @@ export interface components {
       error?: string | null;
       /** @description The call's input, shortened for display. */
       input_preview: string;
-      /** @description The `bash` tool call the script ran in. */
+      /** @description The execution tool call (`bash` or `python`) the script ran in. */
       parent_tool_call_id: string;
       /**
        * @description `completed`, `failed`, `needs_approval` (the script stopped here and a

@@ -165,3 +165,11 @@ the value on a secure page, so it never passes through the MCP client.
 - [File System](/capabilities/file-system/), file operations on the same workspace
 - [Spawn agents](/capabilities/spawn-agents/), background and parallel execution
 - [Capabilities Overview](/capabilities/)
+
+## Python execution choices
+
+Everruns enables Bashkit's CPython WASM runtime for `python` and `python3`.
+[Monty Python Code Mode](/capabilities/python-code-mode/) is a separate optional
+`python` tool, with a direct Python tool interface and durable program
+continuations. It does not replace these executables or enable Bashkit's
+optional in-process Monty fork. See [execution options](/framework/execution-options/).
