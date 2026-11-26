@@ -3,6 +3,15 @@
 // by the API and is not the channel id. Never accept an upstream URL, org, or
 // channel id from a browser. Reserve the broker name from publication.
 export const HOST_LABEL = /^[abcdefghijkmnpqrstuvwxyz23456789]{10}$/;
+export const APPLICATION_LABEL = /^[a-z][a-z0-9-]{1,46}[a-z0-9]$/;
+export function publicationLabel(label: string) {
+  return label !== "login" && (HOST_LABEL.test(label) || APPLICATION_LABEL.test(label));
+}
+export function runtimePath(target: string) {
+  if (/^application_[0-9a-f]{32}$/.test(target)) return `/v1/applications/${target}`;
+  if (/^appchan_[0-9a-f]{32}$/.test(target)) return `/v1/channels/${target}`;
+  throw new Error("Invalid publication target");
+}
 
 /** The single DNS label of a hosted chat. A channel id is not a label. */
 export function hostLabel(host: string, domain: string): string | null {
@@ -10,7 +19,7 @@ export function hostLabel(host: string, domain: string): string | null {
   const name = host.toLowerCase();
   if (!name.endsWith(suffix)) return null;
   const label = name.slice(0, -suffix.length);
-  return HOST_LABEL.test(label) ? label : null;
+  return publicationLabel(label) ? label : null;
 }
 
 const resolved = new Map<string, { id: string; at: number }>();
@@ -21,16 +30,20 @@ export async function channelForHost(host: string): Promise<string> {
   if (!label) throw new Error("Unknown chat host");
   const cached = resolved.get(label);
   if (cached && Date.now() - cached.at < 60_000) return cached.id;
-  const response = await fetch(`${settings().upstream}/v1/work-chat/hosts/${label}`, {
-    cache: "no-store",
-    redirect: "error",
-    signal: AbortSignal.timeout(10000),
-  });
+  const response = await fetch(
+    `${settings().upstream}${HOST_LABEL.test(label) ? "/v1/work-chat/hosts/" : "/v1/application-hosts/"}${label}`,
+    {
+      cache: "no-store",
+      redirect: "error",
+      signal: AbortSignal.timeout(10000),
+    },
+  );
   if (!response.ok) throw new Error("Unknown chat host");
   const body = await response.json();
-  const id = body?.channel_id;
-  if (typeof id !== "string" || !/^appchan_[0-9a-f]{32}$/.test(id))
+  const id = body?.application_id ?? body?.channel_id;
+  if (typeof id !== "string" || !/^(?:appchan|application)_[0-9a-f]{32}$/.test(id))
     throw new Error("Unknown chat host");
+  if (resolved.size > 1000) resolved.clear();
   resolved.set(label, { id, at: Date.now() });
   return id;
 }
@@ -83,10 +96,13 @@ export function chatLogo(value: unknown): string | undefined {
 }
 
 export async function bootstrap(channel: string) {
-  const response = await fetch(`${settings().upstream}/v1/channels/${channel}/chat/config`, {
-    cache: "no-store",
-    signal: AbortSignal.timeout(10000),
-  });
+  const response = await fetch(
+    `${settings().upstream}${runtimePath(channel)}/${channel.startsWith("application_") ? "config" : "chat/config"}`,
+    {
+      cache: "no-store",
+      signal: AbortSignal.timeout(10000),
+    },
+  );
   if (!response.ok) throw new Error("Chat unavailable");
   const config = await response.json();
   if (config && typeof config === "object") {

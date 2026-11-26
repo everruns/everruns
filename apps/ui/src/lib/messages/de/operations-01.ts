@@ -38,10 +38,6 @@ export const messages: Readonly<Record<string, string>> = {
   Answers: "Antworten",
   "Anyone with this link can view this run read-only.":
     "Jeder mit diesem Link kann diesen Lauf schreibgeschützt ansehen.",
-  App: "App",
-  "App ID": "App-ID",
-  "app_01933b5a...": "app_01933b5a...",
-  "app:": "App:",
   "Avg Duration": "Durchschnittliche Dauer",
   "Avg exec:": "Durchschn. Exec:",
   "Avg Latency": "Durchschnittliche Latenz",

@@ -531,7 +531,7 @@ async fn conversation_round_trip_with_retries_and_close() {
     .unwrap();
     assert_eq!(source, "a2a");
     assert!(on_channel);
-    for prefix in ["app_channel_type:poppy", "poppy_channel:", "poppy_caller:"] {
+    for prefix in ["channel_type:poppy", "poppy_channel:", "poppy_caller:"] {
         assert!(
             tags.iter().any(|tag| tag.starts_with(prefix)),
             "{prefix} missing from {tags:?}"

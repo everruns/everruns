@@ -37,10 +37,7 @@ test("cookie requests require the exact origin, including a sibling channel", ()
 
 test("only this channel's circle avatar becomes a same-origin logo", () => {
   const id = "01933b5a000070008000000000000001";
-  assert.equal(
-    chatLogo(`/v1/avatars/avatar_${id}/circle-64.png`),
-    `/api/chat/logo/avatar_${id}`,
-  );
+  assert.equal(chatLogo(`/v1/avatars/avatar_${id}/circle-64.png`), `/api/chat/logo/avatar_${id}`);
   for (const value of [
     null,
     `/v1/avatars/avatar_${id}/square-64.png`,
@@ -59,4 +56,25 @@ test("preserved Host selects the channel behind a proxy listener", () => {
   });
   assert.equal(hostOf(request), host);
   assert.equal(safeMutation(request), true);
+});
+
+test("Application stable names stay within one hostname and never select the broker", async () => {
+  const { runtimePath } = await import("./config");
+  assert.equal(hostLabel("content-studio.apps.example.com", "apps.example.com"), "content-studio");
+  for (const label of [
+    "login",
+    "two.labels",
+    "-studio",
+    "studio-",
+    "studio/path",
+    "ab",
+    "a".repeat(49),
+  ]) {
+    assert.equal(hostLabel(`${label}.apps.example.com`, "apps.example.com"), null);
+  }
+  assert.equal(
+    runtimePath("application_01933b5a000070008000000000000001"),
+    "/v1/applications/application_01933b5a000070008000000000000001",
+  );
+  assert.throws(() => runtimePath("application_../../platform/users"));
 });

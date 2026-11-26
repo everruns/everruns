@@ -51,6 +51,8 @@ const KINDS: readonly MessageOriginKind[] = [
 const LEGACY_SOURCES: Record<string, [MessageOriginKind, string]> = {
   schedule: ["schedule", "schedule_id"],
   agent_trigger: ["agent_trigger", "agent_trigger_id"],
+  channel_schedule: ["channel_schedule", "channel_id"],
+  channel_webhook: ["webhook", "channel_id"],
   app_schedule: ["channel_schedule", "app_channel_id"],
   app_webhook: ["webhook", "app_channel_id"],
 };

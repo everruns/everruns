@@ -18,8 +18,8 @@ and others) and triggers now belong to the agent.
 ![Agent Integrations tab with channel rows, publish switches and the switch for all channels](./agent-integrations-channels@2x.png)
 
 **In the UI:** an agent's **Integrations** tab lists its endpoints and triggers,
-each with its own publish switch and real endpoint URL, plus a switch to suspend
-all of the agent's exposures at once. A new **Exposures** page lists every endpoint
+each with a publish switch and endpoint URL, plus an agent-wide suspend switch.
+The **Exposures** page lists every endpoint
 and trigger in the organization, flags anonymous live ones, and can suspend or
 resume an agent. App management pages are gone.
 
@@ -29,3 +29,9 @@ write and command surfaces are removed; existing App records are frozen and
 ingress URLs keep working.
 
 See [Channels](/features/channels/) and [Agent triggers](/features/agent-triggers/). [#3698](https://github.com/everruns/everruns/pull/3698), [#3624](https://github.com/everruns/everruns/pull/3624), [#3627](https://github.com/everruns/everruns/pull/3627), [#3621](https://github.com/everruns/everruns/pull/3621)
+
+## Update 2026-11-25
+
+The frozen App records and compatibility ingress routes have now been removed.
+Existing channels retain their IDs and credentials; update integrations to their
+canonical channel URLs. See the [upgrade notice](/changelog/2026-11-25-retired-apps-removed/).

@@ -1,7 +1,9 @@
+import { messages as applications } from "./en-GB/applications";
 import { messages as qualityMonitoring } from "./en-GB/quality-monitoring";
 import { messages as extractions } from "./en-GB/extractions";
 // British English overrides; identifiers and authored values stay unchanged.
 export const messages: Readonly<Record<string, string>> = {
+  ...applications,
   Team: "Team",
   Recoverable: "Recoverable",
   "Instance unavailable": "Instance unavailable",

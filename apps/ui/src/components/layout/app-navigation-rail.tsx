@@ -34,6 +34,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Sidebar } from "./sidebar";
 import { SidebarUserMenu } from "./sidebar-user-menu";
+import { SidebarApplications } from "./sidebar-applications";
 import { OverviewCountBadge } from "./sidebar-navigation";
 import packageJson from "../../../package.json";
 
@@ -134,6 +135,7 @@ export function AppNavigationRail({
             <Search className="size-4" />
           </button>
         </RailHint>
+        <SidebarApplications compact />
         {primary.map((section, index) => (
           <div
             key={section.id ?? section.label ?? index}

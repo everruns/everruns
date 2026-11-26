@@ -736,7 +736,8 @@ pub mod memory {
             mut params: Value,
         ) -> Result<Value> {
             let org = HostedService::org(session)?;
-            params["session_id"] = Value::String(session.session_id.to_string());
+            params["session_id"] =
+                Value::String(SessionId::from_uuid(session.session_id).to_string());
             params["op"] = Value::String(op.to_string());
             match self.calls.answer(org, MEMORY_FILE, params).await? {
                 Answer::Value(answer) => match answer.get("error").and_then(Value::as_str) {

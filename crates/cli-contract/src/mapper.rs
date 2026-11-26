@@ -101,6 +101,14 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
     ),
     ("agents view", "Configure the view published by an agent."),
     (
+        "applications",
+        "Published workspaces with Chats, Rooms, shared Memory and one audience.",
+    ),
+    (
+        "applications resources",
+        "Create and attach resources to an Application.",
+    ),
+    (
         "budgets",
         "Usage policies: limits on what sessions, agents, people and the organization use.",
     ),

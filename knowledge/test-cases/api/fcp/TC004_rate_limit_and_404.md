@@ -16,53 +16,53 @@ Verify two isolation invariants of the FCP endpoint:
 
 1. The per-app rate limit returns `429` with a `Retry-After` header and an
    actionable Markdown body.
-2. Requests for non-existent apps, unpublished apps, apps without an FCP
+2. Requests for non-existent apps, unpublished agent channels, apps without an FCP
    channel, and apps with a disabled FCP channel all return an identical
    sanitized `404` body — the caller cannot distinguish operator state.
 
 ## Preconditions
 
 - API server running (`just start-dev`)
-- Three apps in different states:
-  - `RL_APP_ID` — published, FCP enabled with `rate_limit_per_minute: 1`
-  - `DRAFT_APP_ID` — created but never published
-  - `WEBHOOK_APP_ID` — published with a webhook channel only (no FCP)
+- Three agent channels in different states:
+  - `RL_CHANNEL_ID` — published, FCP enabled with `rate_limit_per_minute: 1`
+  - `DRAFT_CHANNEL_ID` — created but never published
+  - `WEBHOOK_CHANNEL_ID` — published with another channel type (no FCP)
 
 ## Test Data
 
 | Field                                | Value |
 | ------------------------------------ | ----- |
-| `rate_limit_per_minute` (`RL_APP_ID`)| `1`   |
+| `rate_limit_per_minute` (`RL_CHANNEL_ID`)| `1`   |
 
 ## Steps
 
-1. Burn the single allowed request on `RL_APP_ID`:
+1. Burn the single allowed request on `RL_CHANNEL_ID`:
    ```bash
-   curl -i -X POST "http://localhost:9300/api/v1/apps/$RL_APP_ID/fcp" \
+   curl -i -X POST "http://localhost:9300/api/v1/channels/$RL_CHANNEL_ID/fcp" \
      -H 'Content-Type: text/plain' --data 'first'
    ```
 
 2. Issue a second request that must be rate-limited:
    ```bash
-   curl -i -X POST "http://localhost:9300/api/v1/apps/$RL_APP_ID/fcp" \
+   curl -i -X POST "http://localhost:9300/api/v1/channels/$RL_CHANNEL_ID/fcp" \
      -H 'Content-Type: text/plain' --data 'second'
    ```
 
 3. Hit a completely unknown app id:
    ```bash
-   curl -i "http://localhost:9300/api/v1/apps/app_does_not_exist/fcp"
+   curl -i "http://localhost:9300/api/v1/channels/appchan_does_not_exist/fcp"
    ```
    Save body to `/tmp/fcp_404_unknown.md`.
 
 4. Hit the draft app's FCP endpoint:
    ```bash
-   curl -i "http://localhost:9300/api/v1/apps/$DRAFT_APP_ID/fcp"
+   curl -i "http://localhost:9300/api/v1/channels/$DRAFT_CHANNEL_ID/fcp"
    ```
    Save body to `/tmp/fcp_404_draft.md`.
 
 5. Hit the webhook-only app's FCP endpoint:
    ```bash
-   curl -i "http://localhost:9300/api/v1/apps/$WEBHOOK_APP_ID/fcp"
+   curl -i "http://localhost:9300/api/v1/channels/$WEBHOOK_CHANNEL_ID/fcp"
    ```
    Save body to `/tmp/fcp_404_no_channel.md`.
 
@@ -83,16 +83,16 @@ Verify two isolation invariants of the FCP endpoint:
 ```bash
 # Step 2
 curl -s -o /tmp/fcp_429.md -D /tmp/fcp_429.h -w '%{http_code}\n' \
-  -X POST "http://localhost:9300/api/v1/apps/$RL_APP_ID/fcp" \
+  -X POST "http://localhost:9300/api/v1/channels/$RL_CHANNEL_ID/fcp" \
   -H 'Content-Type: text/plain' --data 'second' | grep -q '^429$'
 grep -i '^retry-after: 60' /tmp/fcp_429.h
 grep -q 'Rate limit' /tmp/fcp_429.md
 grep -q '1 requests per minute' /tmp/fcp_429.md
 
 # Steps 3-5: 404 bodies must be identical
-curl -s "http://localhost:9300/api/v1/apps/app_does_not_exist/fcp" >/tmp/a
-curl -s "http://localhost:9300/api/v1/apps/$DRAFT_APP_ID/fcp"  >/tmp/b
-curl -s "http://localhost:9300/api/v1/apps/$WEBHOOK_APP_ID/fcp" >/tmp/c
+curl -s "http://localhost:9300/api/v1/channels/appchan_does_not_exist/fcp" >/tmp/a
+curl -s "http://localhost:9300/api/v1/channels/$DRAFT_CHANNEL_ID/fcp"  >/tmp/b
+curl -s "http://localhost:9300/api/v1/channels/$WEBHOOK_CHANNEL_ID/fcp" >/tmp/c
 diff -q /tmp/a /tmp/b
 diff -q /tmp/a /tmp/c
 

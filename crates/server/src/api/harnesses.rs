@@ -94,16 +94,10 @@ async fn add_harness_counts(
             .await
             .log_internal_error_json("count harness sessions")
     };
-    let app_count = async {
-        db.count_apps_for_harness(org_id, harness.id)
-            .await
-            .log_internal_error_json("count harness apps")
-    };
-    let (session_count, app_count) = tokio::try_join!(session_count, app_count)?;
+    let session_count = session_count.await?;
 
     Ok(ResourceWithCounts {
         session_count,
-        app_count,
         inner: harness,
     })
 }
@@ -122,20 +116,13 @@ async fn add_harnesses_counts(
             .await
             .log_internal_error_json("count harness sessions")
     };
-    let app_counts = async {
-        db.count_apps_for_harnesses(org_id, &harness_ids)
-            .await
-            .log_internal_error_json("count harness apps")
-    };
-    let (session_counts, app_counts) = tokio::try_join!(session_counts, app_counts)?;
+    let session_counts = session_counts.await?;
     let session_counts = session_counts.into_iter().collect::<HashMap<_, _>>();
-    let app_counts = app_counts.into_iter().collect::<HashMap<_, _>>();
 
     Ok(harnesses
         .into_iter()
         .map(|harness| ResourceWithCounts {
             session_count: session_counts.get(&harness.id).copied().unwrap_or(0) as u64,
-            app_count: app_counts.get(&harness.id).copied().unwrap_or(0) as u64,
             inner: harness,
         })
         .collect())

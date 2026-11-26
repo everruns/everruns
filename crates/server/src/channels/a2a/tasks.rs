@@ -3,7 +3,7 @@
 //
 // THREAT[TM-A2A-012]: both read sessions, so both are fenced to the calling
 // channel exactly like `tasks/get`. `ListTasks` filters on the channel's own
-// routing tags (`app:` + `app_channel:`), the same pair
+// routing tags (`ingress:` + `channel:`), the same pair
 // `session_belongs_to_a2a_channel` checks, so a key never lists another
 // channel's tasks; a `contextId` from elsewhere lists nothing.
 //
@@ -197,8 +197,8 @@ async fn list_page(
         }
         None => {
             let mut tags = vec![
-                format!("app:{}", auth.app_public_id),
-                format!("app_channel:{}", auth.channel_public_id),
+                format!("ingress:{}", auth.ingress_public_id),
+                format!("channel:{}", auth.channel_public_id),
             ];
             // TM-A2A-019: a verified caller lists only its own tasks.
             tags.extend(auth.caller_tag.clone());

@@ -3654,6 +3654,285 @@
     ]
   },
   {
+    "wire_name": "create_application",
+    "path": [
+      "applications"
+    ],
+    "verb": "create",
+    "description": "Create an Application with a permanently reserved stable name.",
+    "method": "POST",
+    "http_path": "/v1/platform/applications",
+    "args": [
+      {
+        "field": "config",
+        "long": "config",
+        "kind": "json",
+        "required": false,
+        "help": "Audience admission and optional workspace features."
+      },
+      {
+        "field": "description",
+        "long": "description",
+        "kind": "string",
+        "required": false,
+        "help": "Overview text for participants, up to 2000 characters."
+      },
+      {
+        "field": "name",
+        "long": "name",
+        "kind": "string",
+        "required": true,
+        "help": "Display name, between 1 and 120 characters after trimming."
+      },
+      {
+        "field": "resources",
+        "long": "resources",
+        "kind": "json",
+        "required": false,
+        "help": "Ordered resource bindings; at most 50, with unique paths and IDs."
+      },
+      {
+        "field": "slug",
+        "long": "slug",
+        "kind": "string",
+        "required": true,
+        "help": "Permanent hostname label, globally unique and reserved after archival."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Reserve a workspace name for organization users",
+        "command": "everruns applications create --name 'Content Studio' --slug content-studio --config '{\"membership\":\"org_users\"}' --reason 'Create the editorial workspace'"
+      }
+    ]
+  },
+  {
+    "wire_name": "get_application",
+    "path": [
+      "applications"
+    ],
+    "verb": "get",
+    "description": "Get an Application's configuration and resources.",
+    "method": "GET",
+    "http_path": "/v1/platform/applications/{application_id}",
+    "args": [
+      {
+        "field": "application_id",
+        "long": "application-id",
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed identifier with 'application' prefix"
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Read the current resource bindings and version",
+        "command": "everruns applications get --application-id application_01a213c3f773718e9d2b8c895eee5d36"
+      }
+    ]
+  },
+  {
+    "wire_name": "list_applications",
+    "path": [
+      "applications"
+    ],
+    "verb": "list",
+    "description": "List Applications in the current organization.",
+    "method": "GET",
+    "http_path": "/v1/platform/applications",
+    "args": [
+      {
+        "field": "include_archived",
+        "long": "include-archived",
+        "kind": "boolean",
+        "required": false,
+        "help": "Include archived Applications so their owners can restore them as drafts."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Find active and archived workspaces",
+        "command": "everruns applications list --include-archived"
+      }
+    ]
+  },
+  {
+    "wire_name": "create_application_resource",
+    "path": [
+      "applications",
+      "resources"
+    ],
+    "verb": "create",
+    "description": "Create and attach a Chat, Room or Memory atomically to an Application.",
+    "method": "POST",
+    "http_path": "/v1/platform/applications/{application_id}/resources",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": false,
+        "help": "Existing Agent to use for a new Chat; required only for Chat resources."
+      },
+      {
+        "field": "application_id",
+        "long": "application-id",
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed identifier with 'application' prefix"
+      },
+      {
+        "field": "kind",
+        "long": "kind",
+        "kind": "string",
+        "required": true,
+        "help": "Existing runtime resource exposed through the Application.",
+        "choices": [
+          "chat",
+          "room",
+          "memory"
+        ]
+      },
+      {
+        "field": "name",
+        "long": "name",
+        "kind": "string",
+        "required": true,
+        "help": "Navigation label and initial name for a new Room or Memory."
+      },
+      {
+        "field": "slug",
+        "long": "slug",
+        "kind": "string",
+        "required": true,
+        "help": "Unique navigation path within the Application."
+      },
+      {
+        "field": "version",
+        "long": "version",
+        "kind": "integer",
+        "required": true,
+        "help": "Current Application version; creation and binding are one transaction."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Create a Chat using an existing Agent",
+        "command": "everruns applications resources create --application-id application_01a213c3f773718e9d2b8c895eee5d36 --version 1 --kind chat --name Writer --slug writer --agent-id agent_01a213c7b3cf76de8ec474d1c5b7fb27 --reason 'Add the writing assistant'"
+      }
+    ]
+  },
+  {
+    "wire_name": "set_application_status",
+    "path": [
+      "applications"
+    ],
+    "verb": "status",
+    "description": "Publish, unpublish or archive an Application. Archiving retains its stable name.",
+    "method": "POST",
+    "http_path": "/v1/platform/applications/{application_id}/status",
+    "args": [
+      {
+        "field": "application_id",
+        "long": "application-id",
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed identifier with 'application' prefix"
+      },
+      {
+        "field": "status",
+        "long": "status",
+        "kind": "string",
+        "required": true,
+        "choices": [
+          "draft",
+          "published",
+          "archived"
+        ]
+      },
+      {
+        "field": "version",
+        "long": "version",
+        "kind": "integer",
+        "required": true,
+        "help": "Current version from the latest read."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Publish the saved workspace and its audience",
+        "command": "everruns applications status --application-id application_01a213c3f773718e9d2b8c895eee5d36 --version 3 --status published --reason 'Open the workspace to its audience'"
+      }
+    ]
+  },
+  {
+    "wire_name": "update_application",
+    "path": [
+      "applications"
+    ],
+    "verb": "update",
+    "description": "Update an Application and its resource bindings, checking its version.",
+    "method": "PATCH",
+    "http_path": "/v1/platform/applications/{application_id}",
+    "args": [
+      {
+        "field": "application_id",
+        "long": "application-id",
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed identifier with 'application' prefix"
+      },
+      {
+        "field": "config",
+        "long": "config",
+        "kind": "json",
+        "required": false,
+        "help": "Audience admission and optional workspace features."
+      },
+      {
+        "field": "description",
+        "long": "description",
+        "kind": "string",
+        "required": false,
+        "help": "Overview text for participants, up to 2000 characters."
+      },
+      {
+        "field": "name",
+        "long": "name",
+        "kind": "string",
+        "required": true,
+        "help": "Display name, between 1 and 120 characters after trimming."
+      },
+      {
+        "field": "resources",
+        "long": "resources",
+        "kind": "json",
+        "required": false,
+        "help": "Ordered resource bindings; at most 50, with unique paths and IDs."
+      },
+      {
+        "field": "slug",
+        "long": "slug",
+        "kind": "string",
+        "required": true,
+        "help": "Permanent hostname label, globally unique and reserved after archival."
+      },
+      {
+        "field": "version",
+        "long": "version",
+        "kind": "integer",
+        "required": true,
+        "help": "Current version from the latest read; stale edits are rejected."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Rename an empty draft before attaching resources",
+        "command": "everruns applications update --application-id application_01a213c3f773718e9d2b8c895eee5d36 --version 1 --name 'Editorial Studio' --slug content-studio --reason 'Name the new draft'"
+      }
+    ]
+  },
+  {
     "wire_name": "check_budget",
     "path": [
       "budgets"
@@ -10840,7 +11119,7 @@
       "orgs"
     ],
     "verb": "resolve",
-    "description": "Resolve the owning organization for a prefixed entity id (agent, session, harness, app, skill, mcp server, identity, eval). Requires an authenticated user; returns NotFound when the caller is not a member of the owning org or the id does not resolve.",
+    "description": "Resolve the owning organization for a prefixed entity id (agent, session, harness, application, skill, mcp server, identity, eval). Requires an authenticated user; returns NotFound when the caller is not a member of the owning org or the id does not resolve.",
     "method": "GET",
     "http_path": "/v1/platform/resolve-org",
     "args": [

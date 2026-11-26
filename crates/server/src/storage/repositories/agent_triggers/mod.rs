@@ -10,7 +10,7 @@ use anyhow::Result;
 use everruns_server_macros::sql;
 use uuid::Uuid;
 
-const COLUMNS: &str = "id, org_id, agent_id, trigger_type, ingress_id, config, config_encrypted, enabled, durable_schedule_id, execution_harness_id, execution_owner_principal_id, execution_resolved_owner_user_id, execution_virtual_user_id, execution_app_id, legacy_alias_id, legacy_alias_name, status, created_at, updated_at, archived_at, deleted_at";
+const COLUMNS: &str = "id, org_id, agent_id, trigger_type, ingress_id, config, config_encrypted, enabled, durable_schedule_id, execution_harness_id, execution_owner_principal_id, execution_resolved_owner_user_id, execution_virtual_user_id, status, created_at, updated_at, archived_at, deleted_at";
 
 impl Database {
     // ============================================
@@ -23,8 +23,8 @@ impl Database {
     ) -> Result<AgentTriggerRow> {
         let row = sqlx::query_as::<_, AgentTriggerRow>(
             sql!(r#"
-            INSERT INTO agent_triggers (org_id, id, agent_id, trigger_type, ingress_id, config, config_encrypted, enabled, durable_schedule_id, execution_harness_id, execution_owner_principal_id, execution_resolved_owner_user_id, execution_virtual_user_id, execution_app_id, legacy_alias_id, legacy_alias_name, status)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, 'active')
+            INSERT INTO agent_triggers (org_id, id, agent_id, trigger_type, ingress_id, config, config_encrypted, enabled, durable_schedule_id, execution_harness_id, execution_owner_principal_id, execution_resolved_owner_user_id, execution_virtual_user_id, status)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'active')
             RETURNING {AgentTriggerRow}
             "#),
         )
@@ -41,9 +41,6 @@ impl Database {
         .bind(input.execution_owner_principal_id)
         .bind(input.execution_resolved_owner_user_id)
         .bind(input.execution_virtual_user_id)
-        .bind(input.execution_app_id)
-        .bind(&input.legacy_alias_id)
-        .bind(&input.legacy_alias_name)
         .fetch_one(&self.pool)
         .await?;
 

@@ -222,6 +222,8 @@ impl MessageOrigin {
                 let (kind, id_key) = match get("source").and_then(Value::as_str)? {
                     "schedule" => (MessageOriginKind::Schedule, "schedule_id"),
                     "agent_trigger" => (MessageOriginKind::AgentTrigger, "agent_trigger_id"),
+                    "channel_schedule" => (MessageOriginKind::ChannelSchedule, "channel_id"),
+                    "channel_webhook" => (MessageOriginKind::Webhook, "channel_id"),
                     "app_schedule" => (MessageOriginKind::ChannelSchedule, "app_channel_id"),
                     "app_webhook" => (MessageOriginKind::Webhook, "app_channel_id"),
                     _ => return None,
@@ -249,6 +251,7 @@ impl MessageOrigin {
             "source",
             "schedule_id",
             "agent_trigger_id",
+            "channel_id",
             "app_channel_id",
             SCHEDULE_RUN_METADATA_KEY,
         ]

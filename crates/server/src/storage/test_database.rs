@@ -14,6 +14,30 @@ use sqlx::{PgPool, postgres::PgPoolOptions};
 use super::StorageBackend;
 use super::repositories::Database;
 
+/// Replay a frozen channel-binding backfill against its historical columns,
+/// then restore the current schema before checking the channel host. These
+/// native-channel fixtures predate retirement but do not need an App row.
+#[cfg(test)]
+pub(crate) async fn apply_historical_channel_bindings(pool: &PgPool, migration: &'static str) {
+    let mut tx = everruns_durable::begin_transaction(pool).await.unwrap();
+    sqlx::raw_sql(
+        "ALTER TABLE agent_channels ADD COLUMN app_id UUID; \
+         ALTER TABLE sessions ADD COLUMN app_id UUID;",
+    )
+    .execute(&mut *tx)
+    .await
+    .unwrap();
+    sqlx::raw_sql(migration).execute(&mut *tx).await.unwrap();
+    sqlx::raw_sql(
+        "ALTER TABLE agent_channels DROP COLUMN app_id; \
+         ALTER TABLE sessions DROP COLUMN app_id;",
+    )
+    .execute(&mut *tx)
+    .await
+    .unwrap();
+    everruns_durable::commit_transaction(tx).await.unwrap();
+}
+
 /// Test fixtures can use a disposable, production-configured cluster without
 /// changing DEV_MODE's rule that it never uses an external database.
 enum TestCluster {
@@ -377,7 +401,7 @@ pub fn test_session_row(org_id: i64) -> super::CreateSessionRow {
         source: crate::domains::sessions::record::SessionSource::Api,
         workspace_id: None,
         org_id,
-        app_id: None,
+
         channel_id: None,
         trigger_id: None,
         harness_id: None,
@@ -491,30 +515,6 @@ impl StorageBackend {
         .await
         .expect("create test agent");
         id
-    }
-
-    /// Create a Slack app in `org_id` on the fixture harness and agent, for
-    /// tests that only need an app row to point at. Returns its internal id.
-    pub async fn create_test_app(&self, org_id: i64) -> uuid::Uuid {
-        self.create_app(
-            org_id,
-            super::CreateAppRow {
-                public_id: format!("app_{}", uuid::Uuid::now_v7().simple()),
-                name: "Test app".to_string(),
-                description: None,
-                harness_id: uuid::Uuid::nil(),
-                agent_id: Some(uuid::Uuid::nil()),
-                virtual_user_id: None,
-                owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
-                resolved_owner_user_id: None,
-                channel_type: Some("slack".to_string()),
-                channel_config: serde_json::json!({}),
-                channel_config_encrypted: None,
-            },
-        )
-        .await
-        .expect("create test app")
-        .id
     }
 
     /// Insert a service virtual user into `org_id`, for tests that name one.

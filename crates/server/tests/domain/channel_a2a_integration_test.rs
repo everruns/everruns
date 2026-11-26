@@ -34,7 +34,7 @@ use tokio::time::{Duration, sleep};
 ///
 /// Basestring is `v0:{ts_secs}:{channel_scope}:{body}` (Slack-derived but
 /// scope-bound — see `crates/server/src/channels/a2a/signing.rs` for the full
-/// rationale). `channel_scope` is the same `{app_id}:{channel_id}` value
+/// rationale). `channel_scope` is the same `{ingress_id}:{channel_id}` value
 /// the server uses to bind the signature to the target endpoint.
 fn a2a_sign(secret: &str, ts_secs: i64, channel_scope: &str, body: &[u8]) -> String {
     let mut mac = Hmac::<Sha256>::new_from_slice(secret.as_bytes()).unwrap();
@@ -50,11 +50,11 @@ fn a2a_now_secs() -> i64 {
         .as_secs() as i64
 }
 
-async fn create_app_with_a2a(server: &TestServer, name: &str, message: &str) -> (Value, String) {
-    create_app_with_a2a_mode(server, name, message, "shared_session").await
+async fn create_a2a_bundle(server: &TestServer, name: &str, message: &str) -> (Value, String) {
+    create_a2a_bundle_mode(server, name, message, "shared_session").await
 }
 
-async fn create_app_with_a2a_mode(
+async fn create_a2a_bundle_mode(
     server: &TestServer,
     name: &str,
     message: &str,
@@ -75,8 +75,8 @@ async fn create_app_with_a2a_mode(
 
     let api_key = format!("evr_app_{}", uuid::Uuid::new_v4().simple());
     let api_key_hash = hex::encode(Sha256::digest(api_key.as_bytes()));
-    let app = server
-        .seed_app_channel(
+    let bundle = server
+        .seed_channel_bundle(
             name,
             agent["id"].as_str().unwrap(),
             "a2a",
@@ -90,54 +90,11 @@ async fn create_app_with_a2a_mode(
             }),
         )
         .await;
-    (app, api_key)
+    (bundle, api_key)
 }
 
-async fn publish_app(server: &TestServer, app_id: &str) {
-    server.set_app_channels_live(app_id, true).await;
-}
-#[tokio::test]
-async fn a2a_legacy_alias_channel_mismatch_is_not_found() {
-    let server = TestServer::in_memory().await;
-    let (app_a, _) = create_app_with_a2a(&server, "a2a-mismatch-a", "{{a2a.text}}").await;
-    let (app_b, key_b) = create_app_with_a2a(&server, "a2a-mismatch-b", "{{a2a.text}}").await;
-    let app_a_id = app_a["id"].as_str().unwrap();
-    let app_b_id = app_b["id"].as_str().unwrap();
-    let channel_b_id = app_b["channels"][0]["id"].as_str().unwrap();
-    publish_app(&server, app_a_id).await;
-    publish_app(&server, app_b_id).await;
-
-    let body = serde_json::to_vec(&json!({
-        "jsonrpc": "2.0",
-        "id": "mismatch",
-        "method": "message/send",
-        "params": {
-            "message": {
-                "role": "user",
-                "parts": [{ "kind": "text", "text": "hi" }]
-            }
-        }
-    }))
-    .unwrap();
-    server
-        .request_raw(
-            Method::POST,
-            &format!("/v1/apps/{app_a_id}/a2a/{channel_b_id}"),
-            vec![
-                ("content-type", "application/json"),
-                ("authorization", &format!("Bearer {key_b}")),
-            ],
-            body,
-        )
-        .await
-        .assert_status(StatusCode::NOT_FOUND);
-
-    server
-        .get(&format!(
-            "/v1/apps/{app_a_id}/a2a/{channel_b_id}/.well-known/agent-card.json"
-        ))
-        .await
-        .assert_status(StatusCode::NOT_FOUND);
+async fn publish_channel(server: &TestServer, ingress_id: &str) {
+    server.set_bundle_live(ingress_id, true).await;
 }
 
 async fn list_user_message_texts(server: &TestServer, session_id: &str) -> Vec<String> {
@@ -163,7 +120,7 @@ async fn list_user_message_texts(server: &TestServer, session_id: &str) -> Vec<S
         .collect()
 }
 
-async fn wait_for_app_invocation_audit_log(
+async fn wait_for_channel_invocation_audit_log(
     server: &TestServer,
     channel_id: &str,
     session_id: &str,
@@ -174,13 +131,13 @@ async fn wait_for_app_invocation_audit_log(
             .list_audit_logs(AuditLogQuery {
                 org_id: DEFAULT_ORG_ID,
                 limit: 50,
-                action: Some("agent.app_invocation.started"),
+                action: Some("agent.channel_invocation.started"),
                 ..Default::default()
             })
             .await
             .expect("list audit logs");
         if let Some(row) = rows.into_iter().find(|row| {
-            row.target_type.as_deref() == Some("app_channel")
+            row.target_type.as_deref() == Some("channel")
                 && row.target_id.as_deref() == Some(channel_id)
                 && row.metadata.get("session_id").and_then(Value::as_str) == Some(session_id)
         }) {
@@ -189,7 +146,7 @@ async fn wait_for_app_invocation_audit_log(
         sleep(Duration::from_millis(25)).await;
     }
 
-    panic!("expected app invocation audit log for channel {channel_id} session {session_id}");
+    panic!("expected channel invocation audit log for channel {channel_id} session {session_id}");
 }
 
 #[derive(Default)]
@@ -292,8 +249,8 @@ impl SessionStorageStore for TestStorageStore {
 
 fn a2a_agent_card(endpoint: &str) -> Value {
     json!({
-        "name": "Local Everruns A2A app",
-        "description": "Local A2A app endpoint used by outbound delegation tests",
+        "name": "Local Everruns A2A bundle",
+        "description": "Local A2A bundle endpoint used by outbound delegation tests",
         "version": "0.1",
         "protocolVersion": "0.3.0",
         "preferredTransport": "JSONRPC",
@@ -320,7 +277,7 @@ async fn spawn_agent_card_server(card: Value) -> String {
         .await
         .expect("bind agent-card server");
     let addr = listener.local_addr().expect("agent-card server addr");
-    let app = Router::new().route(
+    let bundle = Router::new().route(
         "/.well-known/agent-card.json",
         get(move || {
             let card = card.clone();
@@ -328,21 +285,21 @@ async fn spawn_agent_card_server(card: Value) -> String {
         }),
     );
     tokio::spawn(async move {
-        axum::serve(listener, app)
+        axum::serve(listener, bundle)
             .await
             .expect("serve agent-card server");
     });
     format!("http://{addr}")
 }
 
-async fn create_published_served_a2a_app() -> (TestServer, String, String, String, String) {
+async fn create_published_served_a2a_channel() -> (TestServer, String, String, String, String) {
     let (server, base_url) = TestServer::serving_in_memory().await;
-    let (app, api_key) = create_app_with_a2a(&server, "a2a-outbound-local", "{{a2a.text}}").await;
-    let app_id = app["id"].as_str().unwrap().to_string();
-    let channel_id = app["channels"][0]["id"].as_str().unwrap().to_string();
-    publish_app(&server, &app_id).await;
-    let endpoint = format!("{base_url}/api/v1/apps/{app_id}/a2a/{channel_id}");
-    (server, endpoint, api_key, app_id, channel_id)
+    let (bundle, api_key) = create_a2a_bundle(&server, "a2a-outbound-local", "{{a2a.text}}").await;
+    let ingress_id = bundle["id"].as_str().unwrap().to_string();
+    let channel_id = bundle["channels"][0]["id"].as_str().unwrap().to_string();
+    publish_channel(&server, &ingress_id).await;
+    let endpoint = format!("{base_url}/api/v1/channels/{channel_id}/a2a");
+    (server, endpoint, api_key, ingress_id, channel_id)
 }
 
 fn outbound_delegation_config(
@@ -352,8 +309,8 @@ fn outbound_delegation_config(
 ) -> Value {
     let mut agent = json!({
         "id": "local_app",
-        "name": "Local App",
-        "description": "Local Everruns A2A app endpoint",
+        "name": "Local Channel",
+        "description": "Local Everruns A2A bundle endpoint",
         "headers": {
             "authorization": format!("Bearer {api_key}")
         },
@@ -426,10 +383,11 @@ async fn wait_for_remote_task_snapshot(storage: &TestStorageStore, run_id: &str)
 #[tokio::test]
 async fn a2a_message_send_creates_session_and_returns_submitted_task() {
     let server = TestServer::in_memory().await;
-    let (app, api_key) = create_app_with_a2a(&server, "a2a-shared", "from a2a: {{a2a.text}}").await;
-    let app_id = app["id"].as_str().unwrap();
-    let channel_id = app["channels"][0]["id"].as_str().unwrap();
-    publish_app(&server, app_id).await;
+    let (bundle, api_key) =
+        create_a2a_bundle(&server, "a2a-shared", "from a2a: {{a2a.text}}").await;
+    let ingress_id = bundle["id"].as_str().unwrap();
+    let channel_id = bundle["channels"][0]["id"].as_str().unwrap();
+    publish_channel(&server, ingress_id).await;
 
     let body = serde_json::to_vec(&json!({
         "jsonrpc": "2.0",
@@ -448,7 +406,7 @@ async fn a2a_message_send_creates_session_and_returns_submitted_task() {
     let response: Value = server
         .request_raw(
             Method::POST,
-            &format!("/v1/apps/{app_id}/a2a/{channel_id}"),
+            &format!("/v1/channels/{channel_id}/a2a"),
             vec![
                 ("content-type", "application/json"),
                 ("authorization", &format!("Bearer {api_key}")),
@@ -489,7 +447,7 @@ async fn a2a_message_send_creates_session_and_returns_submitted_task() {
     let response2: Value = server
         .request_raw(
             Method::POST,
-            &format!("/v1/apps/{app_id}/a2a/{channel_id}"),
+            &format!("/v1/channels/{channel_id}/a2a"),
             vec![
                 ("content-type", "application/json"),
                 ("authorization", &format!("Bearer {api_key}")),
@@ -513,12 +471,12 @@ async fn a2a_message_send_creates_session_and_returns_submitted_task() {
 }
 
 #[tokio::test]
-async fn a2a_message_send_emits_app_invocation_audit_log() {
+async fn a2a_message_send_emits_channel_invocation_audit_log() {
     let server = TestServer::in_memory().await;
-    let (app, api_key) = create_app_with_a2a(&server, "a2a-audit", "{{a2a.text}}").await;
-    let app_id = app["id"].as_str().unwrap();
-    let channel_id = app["channels"][0]["id"].as_str().unwrap();
-    publish_app(&server, app_id).await;
+    let (bundle, api_key) = create_a2a_bundle(&server, "a2a-audit", "{{a2a.text}}").await;
+    let ingress_id = bundle["id"].as_str().unwrap();
+    let channel_id = bundle["channels"][0]["id"].as_str().unwrap();
+    publish_channel(&server, ingress_id).await;
 
     let body = serde_json::to_vec(&json!({
         "jsonrpc": "2.0",
@@ -537,7 +495,7 @@ async fn a2a_message_send_emits_app_invocation_audit_log() {
     let response: Value = server
         .request_raw(
             Method::POST,
-            &format!("/v1/apps/{app_id}/a2a/{channel_id}"),
+            &format!("/v1/channels/{channel_id}/a2a"),
             vec![
                 ("content-type", "application/json"),
                 ("authorization", &format!("Bearer {api_key}")),
@@ -549,16 +507,16 @@ async fn a2a_message_send_emits_app_invocation_audit_log() {
         .json();
 
     let session_id = response["result"]["contextId"].as_str().unwrap();
-    let audit_log = wait_for_app_invocation_audit_log(&server, channel_id, session_id).await;
+    let audit_log = wait_for_channel_invocation_audit_log(&server, channel_id, session_id).await;
 
     assert_eq!(audit_log.domain, "agent");
-    assert_eq!(audit_log.action, "agent.app_invocation.started");
-    assert_eq!(audit_log.event_type, "agent.app_invocation.started");
+    assert_eq!(audit_log.action, "agent.channel_invocation.started");
+    assert_eq!(audit_log.event_type, "agent.channel_invocation.started");
     assert_eq!(audit_log.actor_id, None);
-    assert_eq!(audit_log.metadata["source"], "app_a2a");
-    assert_eq!(audit_log.metadata["app_id"], app_id);
-    assert_eq!(audit_log.metadata["app_channel_id"], channel_id);
-    assert_eq!(audit_log.metadata["app_channel_type"], "a2a");
+    assert_eq!(audit_log.metadata["source"], "channel_a2a");
+    assert_eq!(audit_log.metadata["ingress_id"], ingress_id);
+    assert_eq!(audit_log.metadata["channel_id"], channel_id);
+    assert_eq!(audit_log.metadata["channel_type"], "a2a");
     assert_eq!(audit_log.metadata["session_id"], session_id);
     assert_eq!(audit_log.metadata["created_session"], true);
 }
@@ -566,10 +524,10 @@ async fn a2a_message_send_emits_app_invocation_audit_log() {
 #[tokio::test]
 async fn a2a_rejects_missing_or_invalid_api_key() {
     let server = TestServer::in_memory().await;
-    let (app, api_key) = create_app_with_a2a(&server, "a2a-auth", "{{a2a.text}}").await;
-    let app_id = app["id"].as_str().unwrap();
-    let channel_id = app["channels"][0]["id"].as_str().unwrap();
-    publish_app(&server, app_id).await;
+    let (bundle, api_key) = create_a2a_bundle(&server, "a2a-auth", "{{a2a.text}}").await;
+    let ingress_id = bundle["id"].as_str().unwrap();
+    let channel_id = bundle["channels"][0]["id"].as_str().unwrap();
+    publish_channel(&server, ingress_id).await;
 
     let body = serde_json::to_vec(&json!({
         "jsonrpc": "2.0",
@@ -610,7 +568,7 @@ async fn a2a_rejects_missing_or_invalid_api_key() {
     server
         .request_raw(
             Method::POST,
-            &format!("/v1/apps/{app_id}/a2a/{channel_id}"),
+            &format!("/v1/channels/{channel_id}/a2a"),
             vec![
                 ("content-type", "application/json"),
                 ("authorization", &format!("Bearer {api_key}")),
@@ -624,10 +582,10 @@ async fn a2a_rejects_missing_or_invalid_api_key() {
 #[tokio::test]
 async fn a2a_rejects_unsupported_methods_and_empty_text() {
     let server = TestServer::in_memory().await;
-    let (app, api_key) = create_app_with_a2a(&server, "a2a-method", "{{a2a.text}}").await;
-    let app_id = app["id"].as_str().unwrap();
-    let channel_id = app["channels"][0]["id"].as_str().unwrap();
-    publish_app(&server, app_id).await;
+    let (bundle, api_key) = create_a2a_bundle(&server, "a2a-method", "{{a2a.text}}").await;
+    let ingress_id = bundle["id"].as_str().unwrap();
+    let channel_id = bundle["channels"][0]["id"].as_str().unwrap();
+    publish_channel(&server, ingress_id).await;
 
     // No extended card is configured: ExtendedAgentCardNotConfiguredError.
     let body = serde_json::to_vec(&json!({
@@ -640,7 +598,7 @@ async fn a2a_rejects_unsupported_methods_and_empty_text() {
     let response: Value = server
         .request_raw(
             Method::POST,
-            &format!("/v1/apps/{app_id}/a2a/{channel_id}"),
+            &format!("/v1/channels/{channel_id}/a2a"),
             vec![
                 ("content-type", "application/json"),
                 ("authorization", &format!("Bearer {api_key}")),
@@ -665,7 +623,7 @@ async fn a2a_rejects_unsupported_methods_and_empty_text() {
     let response: Value = server
         .request_raw(
             Method::POST,
-            &format!("/v1/apps/{app_id}/a2a/{channel_id}"),
+            &format!("/v1/channels/{channel_id}/a2a"),
             vec![
                 ("content-type", "application/json"),
                 ("authorization", &format!("Bearer {api_key}")),
@@ -694,7 +652,7 @@ async fn a2a_rejects_unsupported_methods_and_empty_text() {
     let response: Value = server
         .request_raw(
             Method::POST,
-            &format!("/v1/apps/{app_id}/a2a/{channel_id}"),
+            &format!("/v1/channels/{channel_id}/a2a"),
             vec![
                 ("content-type", "application/json"),
                 ("authorization", &format!("Bearer {api_key}")),
@@ -712,10 +670,10 @@ async fn a2a_rejects_unsupported_methods_and_empty_text() {
 #[tokio::test]
 async fn a2a_message_stream_rejects_shared_session_channels() {
     let server = TestServer::in_memory().await;
-    let (app, api_key) = create_app_with_a2a(&server, "a2a-stream", "{{a2a.text}}").await;
-    let app_id = app["id"].as_str().unwrap();
-    let channel_id = app["channels"][0]["id"].as_str().unwrap();
-    publish_app(&server, app_id).await;
+    let (bundle, api_key) = create_a2a_bundle(&server, "a2a-stream", "{{a2a.text}}").await;
+    let ingress_id = bundle["id"].as_str().unwrap();
+    let channel_id = bundle["channels"][0]["id"].as_str().unwrap();
+    publish_channel(&server, ingress_id).await;
 
     let body = serde_json::to_vec(&json!({
         "jsonrpc": "2.0",
@@ -729,7 +687,7 @@ async fn a2a_message_stream_rejects_shared_session_channels() {
     let response: Value = server
         .request_raw(
             Method::POST,
-            &format!("/v1/apps/{app_id}/a2a/{channel_id}"),
+            &format!("/v1/channels/{channel_id}/a2a"),
             vec![
                 ("content-type", "application/json"),
                 ("authorization", &format!("Bearer {api_key}")),
@@ -755,16 +713,16 @@ async fn a2a_message_stream_rejects_shared_session_channels() {
 #[tokio::test]
 async fn a2a_message_stream_dispatches_on_session_per_invocation_channels() {
     let server = TestServer::in_memory().await;
-    let (app, api_key) = create_app_with_a2a_mode(
+    let (bundle, api_key) = create_a2a_bundle_mode(
         &server,
         "a2a-stream-spi",
         "{{a2a.text}}",
         "session_per_invocation",
     )
     .await;
-    let app_id = app["id"].as_str().unwrap();
-    let channel_id = app["channels"][0]["id"].as_str().unwrap();
-    publish_app(&server, app_id).await;
+    let ingress_id = bundle["id"].as_str().unwrap();
+    let channel_id = bundle["channels"][0]["id"].as_str().unwrap();
+    publish_channel(&server, ingress_id).await;
 
     let body = serde_json::to_vec(&json!({
         "jsonrpc": "2.0",
@@ -782,7 +740,7 @@ async fn a2a_message_stream_dispatches_on_session_per_invocation_channels() {
     let response: Value = server
         .request_raw(
             Method::POST,
-            &format!("/v1/apps/{}/a2a/{}", app_id, channel_id),
+            &format!("/v1/channels/{}/a2a", channel_id),
             vec![
                 ("authorization", &format!("Bearer {api_key}")),
                 ("content-type", "application/json"),
@@ -811,10 +769,10 @@ async fn a2a_message_stream_dispatches_on_session_per_invocation_channels() {
 #[tokio::test]
 async fn a2a_tasks_get_returns_non_terminal_for_freshly_dispatched_task() {
     let server = TestServer::in_memory().await;
-    let (app, api_key) = create_app_with_a2a(&server, "a2a-tasks-get", "{{a2a.text}}").await;
-    let app_id = app["id"].as_str().unwrap();
-    let channel_id = app["channels"][0]["id"].as_str().unwrap();
-    publish_app(&server, app_id).await;
+    let (bundle, api_key) = create_a2a_bundle(&server, "a2a-tasks-get", "{{a2a.text}}").await;
+    let ingress_id = bundle["id"].as_str().unwrap();
+    let channel_id = bundle["channels"][0]["id"].as_str().unwrap();
+    publish_channel(&server, ingress_id).await;
 
     let send_body = serde_json::to_vec(&json!({
         "jsonrpc": "2.0",
@@ -831,7 +789,7 @@ async fn a2a_tasks_get_returns_non_terminal_for_freshly_dispatched_task() {
     let send_response: Value = server
         .request_raw(
             Method::POST,
-            &format!("/v1/apps/{app_id}/a2a/{channel_id}"),
+            &format!("/v1/channels/{channel_id}/a2a"),
             vec![
                 ("content-type", "application/json"),
                 ("authorization", &format!("Bearer {api_key}")),
@@ -857,7 +815,7 @@ async fn a2a_tasks_get_returns_non_terminal_for_freshly_dispatched_task() {
     let get_response: Value = server
         .request_raw(
             Method::POST,
-            &format!("/v1/apps/{app_id}/a2a/{channel_id}"),
+            &format!("/v1/channels/{channel_id}/a2a"),
             vec![
                 ("content-type", "application/json"),
                 ("authorization", &format!("Bearer {api_key}")),
@@ -890,7 +848,7 @@ async fn a2a_tasks_get_returns_non_terminal_for_freshly_dispatched_task() {
     let unknown_response: Value = server
         .request_raw(
             Method::POST,
-            &format!("/v1/apps/{app_id}/a2a/{channel_id}"),
+            &format!("/v1/channels/{channel_id}/a2a"),
             vec![
                 ("content-type", "application/json"),
                 ("authorization", &format!("Bearer {api_key}")),
@@ -913,7 +871,7 @@ async fn a2a_tasks_get_returns_non_terminal_for_freshly_dispatched_task() {
     let malformed_response: Value = server
         .request_raw(
             Method::POST,
-            &format!("/v1/apps/{app_id}/a2a/{channel_id}"),
+            &format!("/v1/channels/{channel_id}/a2a"),
             vec![
                 ("content-type", "application/json"),
                 ("authorization", &format!("Bearer {api_key}")),
@@ -929,7 +887,7 @@ async fn a2a_tasks_get_returns_non_terminal_for_freshly_dispatched_task() {
 /// Send a JSON-RPC request to an A2A channel and return the parsed envelope.
 async fn a2a_rpc(
     server: &TestServer,
-    app_id: &str,
+    _ingress_id: &str,
     channel_id: &str,
     api_key: &str,
     method: &str,
@@ -945,7 +903,7 @@ async fn a2a_rpc(
     server
         .request_raw(
             Method::POST,
-            &format!("/v1/apps/{app_id}/a2a/{channel_id}"),
+            &format!("/v1/channels/{channel_id}/a2a"),
             vec![
                 ("content-type", "application/json"),
                 ("authorization", &format!("Bearer {api_key}")),
@@ -1092,14 +1050,14 @@ async fn seed_non_schema_result_path(server: &TestServer, session_id: &str, resu
 #[tokio::test]
 async fn a2a_tasks_get_surfaces_structured_result_artifact() {
     let server = TestServer::in_memory().await;
-    let (app, api_key) = create_app_with_a2a(&server, "a2a-result-artifact", "{{a2a.text}}").await;
-    let app_id = app["id"].as_str().unwrap();
-    let channel_id = app["channels"][0]["id"].as_str().unwrap();
-    publish_app(&server, app_id).await;
+    let (bundle, api_key) = create_a2a_bundle(&server, "a2a-result-artifact", "{{a2a.text}}").await;
+    let ingress_id = bundle["id"].as_str().unwrap();
+    let channel_id = bundle["channels"][0]["id"].as_str().unwrap();
+    publish_channel(&server, ingress_id).await;
 
     let send = a2a_rpc(
         &server,
-        app_id,
+        ingress_id,
         channel_id,
         &api_key,
         "message/send",
@@ -1111,7 +1069,7 @@ async fn a2a_tasks_get_surfaces_structured_result_artifact() {
     // No structured result yet → no artifacts on the task.
     let before = a2a_rpc(
         &server,
-        app_id,
+        ingress_id,
         channel_id,
         &api_key,
         "tasks/get",
@@ -1128,7 +1086,7 @@ async fn a2a_tasks_get_surfaces_structured_result_artifact() {
 
     let after = a2a_rpc(
         &server,
-        app_id,
+        ingress_id,
         channel_id,
         &api_key,
         "tasks/get",
@@ -1148,15 +1106,15 @@ async fn a2a_tasks_get_surfaces_structured_result_artifact() {
 #[tokio::test]
 async fn a2a_tasks_get_ignores_non_schema_result_path_artifact() {
     let server = TestServer::in_memory().await;
-    let (app, api_key) =
-        create_app_with_a2a(&server, "a2a-non-schema-result", "{{a2a.text}}").await;
-    let app_id = app["id"].as_str().unwrap();
-    let channel_id = app["channels"][0]["id"].as_str().unwrap();
-    publish_app(&server, app_id).await;
+    let (bundle, api_key) =
+        create_a2a_bundle(&server, "a2a-non-schema-result", "{{a2a.text}}").await;
+    let ingress_id = bundle["id"].as_str().unwrap();
+    let channel_id = bundle["channels"][0]["id"].as_str().unwrap();
+    publish_channel(&server, ingress_id).await;
 
     let send = a2a_rpc(
         &server,
-        app_id,
+        ingress_id,
         channel_id,
         &api_key,
         "message/send",
@@ -1169,7 +1127,7 @@ async fn a2a_tasks_get_ignores_non_schema_result_path_artifact() {
 
     let resp = a2a_rpc(
         &server,
-        app_id,
+        ingress_id,
         channel_id,
         &api_key,
         "tasks/get",
@@ -1188,15 +1146,15 @@ async fn a2a_tasks_get_ignores_non_schema_result_path_artifact() {
 #[tokio::test]
 async fn a2a_tasks_get_structured_result_not_leaked_cross_channel() {
     let server = TestServer::in_memory().await;
-    let (app_a, key_a) = create_app_with_a2a(&server, "a2a-result-owner", "{{a2a.text}}").await;
+    let (app_a, key_a) = create_a2a_bundle(&server, "a2a-result-owner", "{{a2a.text}}").await;
     let app_a_id = app_a["id"].as_str().unwrap();
     let chan_a = app_a["channels"][0]["id"].as_str().unwrap();
-    publish_app(&server, app_a_id).await;
+    publish_channel(&server, app_a_id).await;
 
-    let (app_b, key_b) = create_app_with_a2a(&server, "a2a-result-snoop", "{{a2a.text}}").await;
+    let (app_b, key_b) = create_a2a_bundle(&server, "a2a-result-snoop", "{{a2a.text}}").await;
     let app_b_id = app_b["id"].as_str().unwrap();
     let chan_b = app_b["channels"][0]["id"].as_str().unwrap();
-    publish_app(&server, app_b_id).await;
+    publish_channel(&server, app_b_id).await;
 
     let send = a2a_rpc(
         &server,
@@ -1210,7 +1168,7 @@ async fn a2a_tasks_get_structured_result_not_leaked_cross_channel() {
     let task_id = send["result"]["id"].as_str().unwrap().to_string();
     seed_structured_result(&server, &task_id, json!({ "secret": "value" })).await;
 
-    // Channel B (a different app/channel in the same org) cannot read the task
+    // Channel B (a different channel/channel in the same org) cannot read the task
     // or its artifact.
     let snoop = a2a_rpc(
         &server,
@@ -1246,10 +1204,10 @@ async fn a2a_tasks_get_structured_result_not_leaked_cross_channel() {
 #[tokio::test]
 async fn a2a_tasks_cancel_terminates_task_once() {
     let server = TestServer::in_memory().await;
-    let (app, api_key) = create_app_with_a2a(&server, "a2a-tasks-cancel", "{{a2a.text}}").await;
-    let app_id = app["id"].as_str().unwrap();
-    let channel_id = app["channels"][0]["id"].as_str().unwrap();
-    publish_app(&server, app_id).await;
+    let (bundle, api_key) = create_a2a_bundle(&server, "a2a-tasks-cancel", "{{a2a.text}}").await;
+    let ingress_id = bundle["id"].as_str().unwrap();
+    let channel_id = bundle["channels"][0]["id"].as_str().unwrap();
+    publish_channel(&server, ingress_id).await;
 
     let send_body = serde_json::to_vec(&json!({
         "jsonrpc": "2.0",
@@ -1266,7 +1224,7 @@ async fn a2a_tasks_cancel_terminates_task_once() {
     let send_response: Value = server
         .request_raw(
             Method::POST,
-            &format!("/v1/apps/{app_id}/a2a/{channel_id}"),
+            &format!("/v1/channels/{channel_id}/a2a"),
             vec![
                 ("content-type", "application/json"),
                 ("authorization", &format!("Bearer {api_key}")),
@@ -1291,7 +1249,7 @@ async fn a2a_tasks_cancel_terminates_task_once() {
     let first: Value = server
         .request_raw(
             Method::POST,
-            &format!("/v1/apps/{app_id}/a2a/{channel_id}"),
+            &format!("/v1/channels/{channel_id}/a2a"),
             vec![
                 ("content-type", "application/json"),
                 ("authorization", &format!("Bearer {api_key}")),
@@ -1310,7 +1268,7 @@ async fn a2a_tasks_cancel_terminates_task_once() {
     let second: Value = server
         .request_raw(
             Method::POST,
-            &format!("/v1/apps/{app_id}/a2a/{channel_id}"),
+            &format!("/v1/channels/{channel_id}/a2a"),
             vec![
                 ("content-type", "application/json"),
                 ("authorization", &format!("Bearer {api_key}")),
@@ -1332,7 +1290,7 @@ async fn a2a_tasks_cancel_terminates_task_once() {
     let get_response: Value = server
         .request_raw(
             Method::POST,
-            &format!("/v1/apps/{app_id}/a2a/{channel_id}"),
+            &format!("/v1/channels/{channel_id}/a2a"),
             vec![
                 ("content-type", "application/json"),
                 ("authorization", &format!("Bearer {api_key}")),
@@ -1353,14 +1311,14 @@ async fn a2a_tasks_cancel_terminates_task_once() {
 #[tokio::test]
 async fn a2a_tasks_get_rejects_cross_channel_lookup() {
     let server = TestServer::in_memory().await;
-    let (app_a, key_a) = create_app_with_a2a(&server, "a2a-cross-a", "{{a2a.text}}").await;
-    let (app_b, key_b) = create_app_with_a2a(&server, "a2a-cross-b", "{{a2a.text}}").await;
+    let (app_a, key_a) = create_a2a_bundle(&server, "a2a-cross-a", "{{a2a.text}}").await;
+    let (app_b, key_b) = create_a2a_bundle(&server, "a2a-cross-b", "{{a2a.text}}").await;
     let a_id = app_a["id"].as_str().unwrap();
     let a_channel = app_a["channels"][0]["id"].as_str().unwrap();
     let b_id = app_b["id"].as_str().unwrap();
     let b_channel = app_b["channels"][0]["id"].as_str().unwrap();
-    publish_app(&server, a_id).await;
-    publish_app(&server, b_id).await;
+    publish_channel(&server, a_id).await;
+    publish_channel(&server, b_id).await;
 
     // Submit a task on channel A.
     let send_body = serde_json::to_vec(&json!({
@@ -1375,7 +1333,7 @@ async fn a2a_tasks_get_rejects_cross_channel_lookup() {
     let send_response: Value = server
         .request_raw(
             Method::POST,
-            &format!("/v1/apps/{a_id}/a2a/{a_channel}"),
+            &format!("/v1/channels/{a_channel}/a2a"),
             vec![
                 ("content-type", "application/json"),
                 ("authorization", &format!("Bearer {key_a}")),
@@ -1398,7 +1356,7 @@ async fn a2a_tasks_get_rejects_cross_channel_lookup() {
     let own: Value = server
         .request_raw(
             Method::POST,
-            &format!("/v1/apps/{a_id}/a2a/{a_channel}"),
+            &format!("/v1/channels/{a_channel}/a2a"),
             vec![
                 ("content-type", "application/json"),
                 ("authorization", &format!("Bearer {key_a}")),
@@ -1414,7 +1372,7 @@ async fn a2a_tasks_get_rejects_cross_channel_lookup() {
     let cross: Value = server
         .request_raw(
             Method::POST,
-            &format!("/v1/apps/{b_id}/a2a/{b_channel}"),
+            &format!("/v1/channels/{b_channel}/a2a"),
             vec![
                 ("content-type", "application/json"),
                 ("authorization", &format!("Bearer {key_b}")),
@@ -1437,7 +1395,7 @@ async fn a2a_tasks_get_rejects_cross_channel_lookup() {
     let cross_cancel: Value = server
         .request_raw(
             Method::POST,
-            &format!("/v1/apps/{b_id}/a2a/{b_channel}"),
+            &format!("/v1/channels/{b_channel}/a2a"),
             vec![
                 ("content-type", "application/json"),
                 ("authorization", &format!("Bearer {key_b}")),
@@ -1451,9 +1409,9 @@ async fn a2a_tasks_get_rejects_cross_channel_lookup() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn outbound_a2a_delegation_reaches_local_app_with_discovery_card() {
-    let (_server, endpoint, api_key, _app_id, _channel_id) =
-        create_published_served_a2a_app().await;
+async fn outbound_a2a_delegation_reaches_local_channel_with_discovery_card() {
+    let (_server, endpoint, api_key, _ingress_id, _channel_id) =
+        create_published_served_a2a_channel().await;
     let discovery_base_url = spawn_agent_card_server(a2a_agent_card(&endpoint)).await;
     let config = outbound_delegation_config(&endpoint, &api_key, Some(&discovery_base_url));
     let _dev_grade = crate::dev_grade::DevGradeGuard::set();
@@ -1490,9 +1448,9 @@ async fn outbound_a2a_delegation_reaches_local_app_with_discovery_card() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn outbound_a2a_delegation_reaches_local_app_with_inline_card() {
-    let (_server, endpoint, api_key, _app_id, _channel_id) =
-        create_published_served_a2a_app().await;
+async fn outbound_a2a_delegation_reaches_local_channel_with_inline_card() {
+    let (_server, endpoint, api_key, _ingress_id, _channel_id) =
+        create_published_served_a2a_channel().await;
     let config = outbound_delegation_config(&endpoint, &api_key, None);
     let _dev_grade = crate::dev_grade::DevGradeGuard::set();
     let (storage, spawn_result) = spawn_background_against_local_a2a(config).await;
@@ -1555,10 +1513,11 @@ async fn enable_a2a_signing(server: &TestServer, channel_id: &str, secret: &str)
 #[tokio::test]
 async fn a2a_signed_channel_accepts_valid_signature() {
     let server = TestServer::in_memory().await;
-    let (app, api_key) = create_app_with_a2a(&server, "a2a-signed", "from a2a: {{a2a.text}}").await;
-    let app_id = app["id"].as_str().unwrap();
-    let channel_id = app["channels"][0]["id"].as_str().unwrap();
-    publish_app(&server, app_id).await;
+    let (bundle, api_key) =
+        create_a2a_bundle(&server, "a2a-signed", "from a2a: {{a2a.text}}").await;
+    let ingress_id = bundle["id"].as_str().unwrap();
+    let channel_id = bundle["channels"][0]["id"].as_str().unwrap();
+    publish_channel(&server, ingress_id).await;
     enable_a2a_signing(&server, channel_id, A2A_SIGNING_SECRET).await;
 
     let body = serde_json::to_vec(&json!({
@@ -1574,7 +1533,7 @@ async fn a2a_signed_channel_accepts_valid_signature() {
     let sig = a2a_sign(
         A2A_SIGNING_SECRET,
         ts,
-        &format!("{app_id}:{channel_id}"),
+        &format!("{ingress_id}:{channel_id}"),
         &body,
     );
 
@@ -1597,11 +1556,11 @@ async fn a2a_signed_channel_accepts_valid_signature() {
 #[tokio::test]
 async fn a2a_signed_channel_rejects_missing_signature_headers() {
     let server = TestServer::in_memory().await;
-    let (app, api_key) =
-        create_app_with_a2a(&server, "a2a-signed-missing", "from a2a: {{a2a.text}}").await;
-    let app_id = app["id"].as_str().unwrap();
-    let channel_id = app["channels"][0]["id"].as_str().unwrap();
-    publish_app(&server, app_id).await;
+    let (bundle, api_key) =
+        create_a2a_bundle(&server, "a2a-signed-missing", "from a2a: {{a2a.text}}").await;
+    let ingress_id = bundle["id"].as_str().unwrap();
+    let channel_id = bundle["channels"][0]["id"].as_str().unwrap();
+    publish_channel(&server, ingress_id).await;
     enable_a2a_signing(&server, channel_id, A2A_SIGNING_SECRET).await;
 
     let body = serde_json::to_vec(&json!({
@@ -1619,7 +1578,7 @@ async fn a2a_signed_channel_rejects_missing_signature_headers() {
     server
         .request_raw(
             Method::POST,
-            &format!("/v1/apps/{app_id}/a2a/{channel_id}"),
+            &format!("/v1/channels/{channel_id}/a2a"),
             vec![
                 ("content-type", "application/json"),
                 ("authorization", &format!("Bearer {api_key}")),
@@ -1633,11 +1592,11 @@ async fn a2a_signed_channel_rejects_missing_signature_headers() {
 #[tokio::test]
 async fn a2a_signed_channel_rejects_bad_signature() {
     let server = TestServer::in_memory().await;
-    let (app, api_key) =
-        create_app_with_a2a(&server, "a2a-signed-badsig", "from a2a: {{a2a.text}}").await;
-    let app_id = app["id"].as_str().unwrap();
-    let channel_id = app["channels"][0]["id"].as_str().unwrap();
-    publish_app(&server, app_id).await;
+    let (bundle, api_key) =
+        create_a2a_bundle(&server, "a2a-signed-badsig", "from a2a: {{a2a.text}}").await;
+    let ingress_id = bundle["id"].as_str().unwrap();
+    let channel_id = bundle["channels"][0]["id"].as_str().unwrap();
+    publish_channel(&server, ingress_id).await;
     enable_a2a_signing(&server, channel_id, A2A_SIGNING_SECRET).await;
 
     let body = serde_json::to_vec(&json!({
@@ -1653,14 +1612,14 @@ async fn a2a_signed_channel_rejects_bad_signature() {
     let sig = a2a_sign(
         "not-the-secret",
         ts,
-        &format!("{app_id}:{channel_id}"),
+        &format!("{ingress_id}:{channel_id}"),
         &body,
     );
 
     server
         .request_raw(
             Method::POST,
-            &format!("/v1/apps/{app_id}/a2a/{channel_id}"),
+            &format!("/v1/channels/{channel_id}/a2a"),
             vec![
                 ("content-type", "application/json"),
                 ("authorization", &format!("Bearer {api_key}")),
@@ -1676,11 +1635,11 @@ async fn a2a_signed_channel_rejects_bad_signature() {
 #[tokio::test]
 async fn a2a_signed_channel_rejects_stale_timestamp() {
     let server = TestServer::in_memory().await;
-    let (app, api_key) =
-        create_app_with_a2a(&server, "a2a-signed-stale", "from a2a: {{a2a.text}}").await;
-    let app_id = app["id"].as_str().unwrap();
-    let channel_id = app["channels"][0]["id"].as_str().unwrap();
-    publish_app(&server, app_id).await;
+    let (bundle, api_key) =
+        create_a2a_bundle(&server, "a2a-signed-stale", "from a2a: {{a2a.text}}").await;
+    let ingress_id = bundle["id"].as_str().unwrap();
+    let channel_id = bundle["channels"][0]["id"].as_str().unwrap();
+    publish_channel(&server, ingress_id).await;
     enable_a2a_signing(&server, channel_id, A2A_SIGNING_SECRET).await;
 
     let body = serde_json::to_vec(&json!({
@@ -1698,14 +1657,14 @@ async fn a2a_signed_channel_rejects_stale_timestamp() {
     let sig = a2a_sign(
         A2A_SIGNING_SECRET,
         ts,
-        &format!("{app_id}:{channel_id}"),
+        &format!("{ingress_id}:{channel_id}"),
         &body,
     );
 
     server
         .request_raw(
             Method::POST,
-            &format!("/v1/apps/{app_id}/a2a/{channel_id}"),
+            &format!("/v1/channels/{channel_id}/a2a"),
             vec![
                 ("content-type", "application/json"),
                 ("authorization", &format!("Bearer {api_key}")),
@@ -1724,11 +1683,11 @@ async fn a2a_signed_channel_rejects_replay_within_window() {
     // window check is rejected because its (deterministic) signature is
     // already in the per-channel replay store.
     let server = TestServer::in_memory().await;
-    let (app, api_key) =
-        create_app_with_a2a(&server, "a2a-signed-replay", "from a2a: {{a2a.text}}").await;
-    let app_id = app["id"].as_str().unwrap();
-    let channel_id = app["channels"][0]["id"].as_str().unwrap();
-    publish_app(&server, app_id).await;
+    let (bundle, api_key) =
+        create_a2a_bundle(&server, "a2a-signed-replay", "from a2a: {{a2a.text}}").await;
+    let ingress_id = bundle["id"].as_str().unwrap();
+    let channel_id = bundle["channels"][0]["id"].as_str().unwrap();
+    publish_channel(&server, ingress_id).await;
     enable_a2a_signing(&server, channel_id, A2A_SIGNING_SECRET).await;
 
     let body = serde_json::to_vec(&json!({
@@ -1744,7 +1703,7 @@ async fn a2a_signed_channel_rejects_replay_within_window() {
     let sig = a2a_sign(
         A2A_SIGNING_SECRET,
         ts,
-        &format!("{app_id}:{channel_id}"),
+        &format!("{ingress_id}:{channel_id}"),
         &body,
     );
 
@@ -1752,7 +1711,7 @@ async fn a2a_signed_channel_rejects_replay_within_window() {
     server
         .request_raw(
             Method::POST,
-            &format!("/v1/apps/{app_id}/a2a/{channel_id}"),
+            &format!("/v1/channels/{channel_id}/a2a"),
             vec![
                 ("content-type", "application/json"),
                 ("authorization", &format!("Bearer {api_key}")),
@@ -1769,7 +1728,7 @@ async fn a2a_signed_channel_rejects_replay_within_window() {
     server
         .request_raw(
             Method::POST,
-            &format!("/v1/apps/{app_id}/a2a/{channel_id}"),
+            &format!("/v1/channels/{channel_id}/a2a"),
             vec![
                 ("content-type", "application/json"),
                 ("authorization", &format!("Bearer {api_key}")),
@@ -1785,11 +1744,11 @@ async fn a2a_signed_channel_rejects_replay_within_window() {
 #[tokio::test]
 async fn a2a_agent_card_advertises_signing_scheme_when_enabled() {
     let server = TestServer::in_memory().await;
-    let (app, _api_key) =
-        create_app_with_a2a(&server, "a2a-card-signed", "from a2a: {{a2a.text}}").await;
-    let app_id = app["id"].as_str().unwrap();
-    let channel_id = app["channels"][0]["id"].as_str().unwrap();
-    publish_app(&server, app_id).await;
+    let (bundle, _api_key) =
+        create_a2a_bundle(&server, "a2a-card-signed", "from a2a: {{a2a.text}}").await;
+    let ingress_id = bundle["id"].as_str().unwrap();
+    let channel_id = bundle["channels"][0]["id"].as_str().unwrap();
+    publish_channel(&server, ingress_id).await;
     enable_a2a_signing(&server, channel_id, A2A_SIGNING_SECRET).await;
 
     let card: Value = server
@@ -1832,17 +1791,13 @@ async fn a2a_channel_read_redacts_signing_secret_with_configured_flag() {
     // configuring it via PATCH, a subsequent GET surfaces only a
     // `signing_secret_configured: true` flag.
     let server = TestServer::in_memory().await;
-    let (app, _api_key) =
-        create_app_with_a2a(&server, "a2a-redact", "from a2a: {{a2a.text}}").await;
-    let app_id = app["id"].as_str().unwrap();
-    let channel_id = app["channels"][0]["id"].as_str().unwrap();
+    let (bundle, _api_key) =
+        create_a2a_bundle(&server, "a2a-redact", "from a2a: {{a2a.text}}").await;
+    let ingress_id = bundle["id"].as_str().unwrap();
+    let channel_id = bundle["channels"][0]["id"].as_str().unwrap();
     enable_a2a_signing(&server, channel_id, A2A_SIGNING_SECRET).await;
 
-    let app_after: Value = server
-        .get(&format!("/v1/platform/apps/{app_id}"))
-        .await
-        .assert_status(StatusCode::OK)
-        .json();
+    let app_after: Value = server.read_channel_bundle(ingress_id).await;
     let channel = app_after["channels"]
         .as_array()
         .unwrap()

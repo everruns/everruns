@@ -1,4 +1,6 @@
 "use client";
+
+import { apiPath } from "./api-path";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MessageContent } from "./message-content";
 import { FilePreview, downloadFile } from "./file-preview";
@@ -99,7 +101,7 @@ async function api<T>(
   body?: unknown,
   idempotencyKey?: string,
 ): Promise<T> {
-  const response = await fetch(`/api/${path}`, {
+  const response = await fetch(apiPath(`${path}`), {
     method,
     headers:
       body === undefined
@@ -271,7 +273,7 @@ function WorkChat({ config }: { config: Config }) {
   useEffect(() => {
     const timer = setInterval(async () => {
       try {
-        const response = await fetch("/api/chat/config", { cache: "no-store" });
+        const response = await fetch(apiPath("chat/config"), { cache: "no-store" });
         if (!response.ok) return;
         const next: Config = await response.json();
         if (
@@ -376,7 +378,7 @@ function WorkChat({ config }: { config: Config }) {
         try {
           controller = new AbortController();
           const response = await fetch(
-            `/api/sessions/${selected}/sse?after_sequence=${lastSequence.current}`,
+            apiPath(`sessions/${selected}/sse?after_sequence=${lastSequence.current}`),
             { signal: controller.signal },
           );
           if (stopped || generation.current !== epoch) {

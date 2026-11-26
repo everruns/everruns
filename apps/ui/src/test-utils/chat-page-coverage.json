@@ -5,6 +5,8 @@
     "agents/[agentId]/page.tsx",
     "agents/[agentId]/triggers/[triggerId]/page.tsx",
     "agents/new/page.tsx",
+    "applications/[applicationId]/page.tsx",
+    "applications/page.tsx",
     "capabilities/declarative/[declarativeId]/page.tsx",
     "capabilities/declarative/new/page.tsx",
     "durable/queues/page.tsx",

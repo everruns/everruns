@@ -103,6 +103,7 @@ pub struct TestServer {
     pub mcp_servers: Arc<McpServerSlot>,
     /// Serves personal agents' Poppy client documents without the network.
     pub poppy_documents: api::channel_auth::ChannelAuthVerifier,
+    pub application_verifier: api::channel_auth::ChannelAuthVerifier,
     /// The private database of this server; dropping the last
     /// handle drops the database.
     isolated_database: Arc<IsolatedDatabase>,
@@ -195,21 +196,17 @@ impl TestServer {
         .await
     }
 
-    pub async fn seed_app_channel(
+    pub async fn seed_channel_bundle(
         &self,
-        name: &str,
+        _name: &str,
         agent_public_id: &str,
         channel_type: &str,
         mut channel_config: Value,
     ) -> Value {
-        use everruns_contracts::typed_id::{AppId, HarnessId, PrincipalId};
         use everruns_core::DEFAULT_ORG_ID;
         use everruns_server::domains::agent_channels::queries::prepare_channel_storage;
         use everruns_server::records::AgentChannelId;
-        use everruns_server::storage::CreateLegacyAliasChannelRow;
-        use everruns_server::storage::{CreateAppRow, CreatePrincipalRow};
-        use uuid::Uuid;
-
+        use everruns_server::storage::CreateAgentChannelRow;
         if let Some(provider) = channel_config
             .get_mut("auth")
             .and_then(|auth| auth.get_mut("provider"))
@@ -217,169 +214,96 @@ impl TestServer {
             && provider.get("type").and_then(Value::as_str) == Some("http_basic")
             && let Some(password) = provider
                 .remove("password")
-                .and_then(|value| value.as_str().map(str::to_owned))
+                .and_then(|v| v.as_str().map(str::to_owned))
         {
             provider.insert(
-                "password_hash".to_string(),
+                "password_hash".into(),
                 Value::String(
-                    everruns_server::storage::password::hash_password(&password)
-                        .expect("hash endpoint password"),
+                    everruns_server::storage::password::hash_password(&password).unwrap(),
                 ),
             );
         }
-
         let agent = self
             .db
             .get_agent_by_public_id(DEFAULT_ORG_ID, agent_public_id)
             .await
-            .expect("get fixture agent")
-            .expect("fixture agent exists");
-        let principal_id = PrincipalId::new();
-        self.db
-            .create_principal(CreatePrincipalRow {
-                id: principal_id,
-                org_id: DEFAULT_ORG_ID,
-                kind: "system".to_string(),
-                subject_id: Some(Uuid::now_v7()),
-                parent_principal_id: None,
-                resolved_user_id: None,
-                metadata: serde_json::json!({}),
-            })
+            .unwrap()
+            .unwrap();
+        let owner = everruns_server::domains::users::PrincipalService::new(self.db.clone())
+            .ensure_system_principal(DEFAULT_ORG_ID, "channel-fixture")
             .await
-            .expect("create fixture owner");
-        let prepared = prepare_channel_storage(self.encryption.as_ref(), &channel_config)
-            .expect("prepare endpoint config");
-        let app_id = AppId::new();
-        let app = self
-            .db
-            .create_app(
+            .unwrap()
+            .id;
+        let prepared = prepare_channel_storage(self.encryption.as_ref(), &channel_config).unwrap();
+        let id = AgentChannelId::new().to_string();
+        self.db
+            .create_agent_channel(
                 DEFAULT_ORG_ID,
-                CreateAppRow {
-                    public_id: app_id.to_string(),
-                    name: name.to_string(),
-                    description: Some("legacy ingress fixture".to_string()),
-                    harness_id: self
-                        .seed_generic_harness_id
-                        .parse::<HarnessId>()
-                        .expect("generic harness ID")
-                        .uuid(),
-                    agent_id: Some(agent.id.uuid()),
-                    virtual_user_id: None,
-                    owner_principal_id: principal_id,
-                    resolved_owner_user_id: None,
-                    channel_type: Some(channel_type.to_string()),
-                    channel_config: prepared.channel_config.clone(),
-                    channel_config_encrypted: prepared.channel_config_encrypted.clone(),
-                },
-            )
-            .await
-            .expect("create fixture App");
-        self.db
-            .create_legacy_alias_channel(
-                app.id,
-                CreateLegacyAliasChannelRow {
-                    public_id: AgentChannelId::new().to_string(),
-                    channel_type: channel_type.to_string(),
+                CreateAgentChannelRow {
+                    agent_id: agent.id.uuid(),
+                    public_id: id.clone(),
+                    channel_type: channel_type.into(),
                     channel_config: prepared.channel_config,
                     channel_config_encrypted: prepared.channel_config_encrypted,
                     auth: prepared.auth,
                     auth_encrypted: prepared.auth_encrypted,
-                    durable_schedule_id: None,
                     enabled: true,
+                    status: "draft".into(),
+                    virtual_user_id: None,
+                    owner_principal_id: owner.uuid(),
+                    resolved_owner_user_id: None,
                 },
             )
             .await
-            .expect("create fixture endpoint");
-
-        self.get(&format!("/v1/platform/apps/{app_id}"))
-            .await
-            .assert_status(StatusCode::OK)
-            .json()
+            .unwrap();
+        let channel = self.set_channel_status(&id, "draft").await;
+        serde_json::json!({"id": id, "agent_id": agent_public_id, "channels": [channel]})
     }
 
-    pub async fn set_app_channels_live(&self, app_public_id: &str, live: bool) -> Value {
-        use everruns_core::DEFAULT_ORG_ID;
-        use everruns_server::storage::UpdateApp;
-        use everruns_server::storage::UpdateField;
-
-        let app = self
+    pub async fn read_channel_bundle(&self, id: &str) -> Value {
+        let row = self
             .db
-            .get_app_by_public_id(DEFAULT_ORG_ID, app_public_id)
+            .get_ingress_channel_by_public_id(id)
             .await
-            .expect("get fixture App")
-            .expect("fixture App exists");
-        self.db
-            .update_app(
-                DEFAULT_ORG_ID,
-                app.id,
-                UpdateApp {
-                    status: Some(if live { "published" } else { "draft" }.to_string()),
-                    published_at: if live {
-                        UpdateField::Set(chrono::Utc::now())
-                    } else {
-                        UpdateField::Unchanged
-                    },
-                    ..Default::default()
-                },
-            )
-            .await
-            .expect("update fixture App")
-            .expect("fixture App exists");
-        self.db
-            .set_app_channel_publish(app.id, live)
-            .await
-            .expect("update fixture endpoint status");
-        self.get(&format!("/v1/platform/apps/{app_public_id}"))
+            .unwrap()
+            .unwrap();
+        let channel: Value = self
+            .get(&format!(
+                "/v1/platform/agents/{}/channels/{id}",
+                row.agent_public_id
+            ))
             .await
             .assert_status(StatusCode::OK)
-            .json()
+            .json();
+        serde_json::json!({"id":id, "agent_id":row.agent_public_id,"channels":[channel]})
     }
 
-    pub async fn seed_channel_for_app(
+    pub async fn set_bundle_live(&self, channel_id: &str, live: bool) -> Value {
+        let channel = self
+            .set_channel_status(channel_id, if live { "live" } else { "draft" })
+            .await;
+        serde_json::json!({"id": channel_id, "agent_id": self.db.get_ingress_channel_by_public_id(channel_id).await.unwrap().unwrap().agent_public_id, "channels": [channel]})
+    }
+
+    pub async fn seed_sibling_channel(
         &self,
-        app_public_id: &str,
+        channel_id: &str,
         channel_type: &str,
         channel_config: Value,
     ) -> Value {
-        use everruns_core::DEFAULT_ORG_ID;
-        use everruns_server::domains::agent_channels::queries::prepare_channel_storage;
-        use everruns_server::records::AgentChannelId;
-        use everruns_server::storage::CreateLegacyAliasChannelRow;
-
-        let app = self
+        let row = self
             .db
-            .get_app_by_public_id(DEFAULT_ORG_ID, app_public_id)
+            .get_ingress_channel_by_public_id(channel_id)
             .await
-            .expect("get fixture App")
-            .expect("fixture App exists");
-        let prepared = prepare_channel_storage(self.encryption.as_ref(), &channel_config)
-            .expect("prepare endpoint config");
-        let endpoint = self
-            .db
-            .create_legacy_alias_channel(
-                app.id,
-                CreateLegacyAliasChannelRow {
-                    public_id: AgentChannelId::new().to_string(),
-                    channel_type: channel_type.to_string(),
-                    channel_config: prepared.channel_config,
-                    channel_config_encrypted: prepared.channel_config_encrypted,
-                    auth: prepared.auth,
-                    auth_encrypted: prepared.auth_encrypted,
-                    durable_schedule_id: None,
-                    enabled: true,
-                },
-            )
-            .await
-            .expect("create fixture endpoint");
-        self.get(&format!("/v1/platform/apps/{app_public_id}"))
-            .await
-            .assert_status(StatusCode::OK)
-            .json::<Value>()["channels"]
-            .as_array()
-            .expect("App channels")
-            .iter()
-            .find(|channel| channel["id"].as_str() == Some(endpoint.public_id.as_str()))
-            .expect("created endpoint")
+            .unwrap()
+            .unwrap();
+        self.seed_channel_bundle(
+            "channel",
+            &row.agent_public_id,
+            channel_type,
+            channel_config,
+        )
+        .await["channels"][0]
             .clone()
     }
 
@@ -951,17 +875,6 @@ impl TestServer {
             auth_state.clone(),
             everruns_server::platform::oss_connector_registry(),
         );
-        let apps_state = api::apps::AppState::new(
-            db.clone(),
-            encryption.clone(),
-            Some(durable_store.clone()),
-            capability_service.clone(),
-            auth_state.clone(),
-        )
-        .with_invocation_services(
-            messages_state.session_service.clone(),
-            messages_state.message_service.clone(),
-        );
         let agent_triggers_state = api::agent_triggers::AppState::new(
             db.clone(),
             encryption.clone(),
@@ -1053,7 +966,7 @@ impl TestServer {
             auth_state.clone(),
             &host_composition,
             &built_in_harnesses,
-            event_delivery.clone(),
+            event_service.clone(),
             encryption.clone(),
             Some(durable_store.clone()),
             capability_service.clone(),
@@ -1092,6 +1005,7 @@ impl TestServer {
             &built_in_harnesses,
         );
 
+        let application_verifier = api::channel_auth::ChannelAuthVerifier::new();
         // Build API routes
         let mut api_routes = Router::new()
             .merge(api::health_issues::routes(api_state.clone()))
@@ -1104,12 +1018,16 @@ impl TestServer {
             .merge(api::virtual_user_connections::routes(
                 virtual_user_connections_state,
             ))
-            .merge(api::apps::routes(apps_state))
             .merge(api::agent_channels::routes(agent_triggers_state.clone()))
             .merge(api::agent_triggers::routes(agent_triggers_state))
             .merge(api::harnesses::routes(harnesses_state))
             .merge(api::sessions::routes(sessions_state))
             .merge(api::rooms::routes_from(&api_state, &messages_state))
+            .merge(api::applications::routes(api::applications::AppState {
+                rooms:api::rooms::AppState{db:api_state.db.clone(),encryption:api_state.encryption.clone(),capability_service:api_state.capability_service.clone(),auth:api_state.auth.clone(),session_service:messages_state.session_service.clone(),message_service:messages_state.message_service.clone(),relevance:None},
+                auth:auth_state.clone(),verifier:application_verifier.clone(),
+                oidc:Some(serde_json::from_value(serde_json::json!({"mode":"oidc","provider":{"type":"oidc","issuer":"https://application-identity.example.com"},"requirements":{"audiences":["application-tests"]}})).unwrap()),
+            }))
             .merge(api::session_trace::routes(api_state.clone()))
             .merge(everruns_server::channels::voice::routes(voice_state))
             .merge(api::messages::routes(messages_state))
@@ -1261,6 +1179,7 @@ impl TestServer {
 
         Self {
             router,
+            application_verifier,
             db,
             encryption,
             pool,
@@ -1488,4 +1407,12 @@ impl TestServer {
 pub enum TestMode {
     Postgres,
     InMemory,
+}
+
+#[derive(serde::Deserialize)]
+pub struct ChannelBundle {
+    pub agent_id: Option<everruns_contracts::typed_id::AgentId>,
+    #[serde(rename = "id")]
+    pub public_id: everruns_contracts::typed_id::AgentChannelId,
+    pub channels: Vec<everruns_server::domains::agent_channels::record::AgentChannel>,
 }

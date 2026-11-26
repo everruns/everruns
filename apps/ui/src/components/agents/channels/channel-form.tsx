@@ -26,8 +26,8 @@ import {
   SlackConversationSettings,
   SlackAgentPaneSettings,
   SlackPrivateApprovalSettings,
-} from "@/components/apps/slack-conversation-settings";
-import { CronInput, isSupportedCronExpression } from "@/components/apps/cron-label";
+} from "@/components/agents/channels/slack-conversation-settings";
+import { CronInput, isSupportedCronExpression } from "@/components/schedules/cron-label";
 import {
   DEFAULT_AG_UI_GENERIC_TOOL_TEXT,
   DEFAULT_AG_UI_SESSION_EXPIRATION_SECONDS,

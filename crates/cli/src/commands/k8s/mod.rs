@@ -149,6 +149,26 @@ pub struct UpArgs {
     #[arg(long)]
     pub ingress_class: Option<String>,
 
+    /// Enable published Applications at <name>.<domain> (requires wildcard DNS and TLS)
+    #[arg(long)]
+    pub applications_domain: Option<String>,
+
+    /// HTTPS OIDC issuer for Application sign-in (for example https://id.everruns.com)
+    #[arg(long)]
+    pub applications_oidc_issuer: Option<String>,
+
+    /// OIDC client registered with https://login.<domain>/auth/callback
+    #[arg(long)]
+    pub applications_oidc_client_id: Option<String>,
+
+    /// Existing Secret with CHAT_DATABASE_URL, CHAT_OIDC_CLIENT_SECRET and CHAT_SESSION_KEY (64 hex characters)
+    #[arg(long)]
+    pub applications_secret: Option<String>,
+
+    /// Existing Secret containing the wildcard TLS certificate for the Application domain
+    #[arg(long)]
+    pub applications_tls_secret: Option<String>,
+
     /// Chart to install: a local path such as charts/everruns, or an OCI reference
     #[arg(long)]
     pub chart: Option<String>,
@@ -479,6 +499,11 @@ async fn up(args: UpArgs) -> Result<()> {
         answers.public_url = ask_public_url(asker)?;
     }
     answers.ingress_class = args.ingress_class.clone();
+    answers.applications_domain = args.applications_domain.clone();
+    answers.applications_oidc_issuer = args.applications_oidc_issuer.clone();
+    answers.applications_oidc_client_id = args.applications_oidc_client_id.clone();
+    answers.applications_secret = args.applications_secret.clone();
+    answers.applications_tls_secret = args.applications_tls_secret.clone();
     if auth.shares_default_keys() {
         let provider = match args.provider {
             Some(p) => Some(p),

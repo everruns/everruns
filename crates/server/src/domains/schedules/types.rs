@@ -180,7 +180,7 @@ pub struct ScheduleResponse {
     /// IANA timezone name used to interpret `cron_expression` (e.g. `UTC`, `America/New_York`).
     #[schema(example = "UTC")]
     pub timezone: String,
-    /// What the schedule invokes when it fires (a session, an agent, an app channel, etc.).
+    /// What the schedule invokes when it fires (a session, an agent, a channel, etc.).
     pub target: ScheduleTargetResponse,
     /// When `false`, the schedule is paused — kept in storage but never fires until re-enabled.
     #[schema(example = true)]

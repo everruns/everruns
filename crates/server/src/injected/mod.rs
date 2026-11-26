@@ -17,7 +17,7 @@
 //   by default.
 // - The audience a token must carry is this server's own URL for the
 //   capability, built from configuration (`INJECTED_CAPABILITIES_BASE_URL`,
-//   else the auth base URL), never from request headers. Data planes often
+//   else the auth base URL plus `/v1`), never from request headers. Data planes often
 //   reach the control plane on an internal address, so the URL it hands
 //   them can be that one.
 // - The data plane this control plane links to (`EVERRUNS_DP_KEY`) is
@@ -55,7 +55,7 @@ const MAX_BODY_BYTES: usize = 1024 * 1024;
 
 pub const JWKS_ENV: &str = "INJECTED_CAPABILITIES_JWKS";
 pub const ISSUERS_ENV: &str = "INJECTED_CAPABILITIES_ISSUERS";
-/// The base URL data planes reach this server at (API prefix included),
+/// The versioned API base URL data planes reach this server at (e.g. `/api/v1`),
 /// when not the public one: a cluster service or `127.0.0.1`. Data planes
 /// trust it as their control plane (`AGENTD_CONTROL_PLANE`).
 pub const BASE_URL_ENV: &str = "INJECTED_CAPABILITIES_BASE_URL";
@@ -188,7 +188,8 @@ pub fn from_env(db: Arc<crate::storage::StorageBackend>, base_url: &str) -> Inje
     let configured = std::env::var(BASE_URL_ENV)
         .ok()
         .filter(|url| !url.trim().is_empty());
-    let base_url = configured.as_deref().unwrap_or(base_url);
+    let base_url = resolve_base_url(configured.as_deref(), base_url);
+    let base_url = base_url.as_str();
     let verifier = trusted_from_env();
     let configs: Arc<dyn knowledge_base::SessionCapabilityConfig> = Arc::new(
         knowledge_base::StorageSessionCapabilityConfig::new(db.clone()),
@@ -227,6 +228,15 @@ pub fn from_env(db: Arc<crate::storage::StorageBackend>, base_url: &str) -> Inje
             calls.clone(),
         )))
         .register(Arc::new(hosted::credentials::service(base_url, calls)))
+}
+
+// Auth's base ends at API_PREFIX, while injected routes sit below /v1.
+// Explicit internal addresses include the version, just like MCP definitions.
+fn resolve_base_url(configured: Option<&str>, auth_base_url: &str) -> String {
+    configured.map_or_else(
+        || format!("{}/v1", auth_base_url.trim_end_matches('/')),
+        |url| url.trim_end_matches('/').to_owned(),
+    )
 }
 
 /// What this control plane hands its data planes: the definitions it

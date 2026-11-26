@@ -293,7 +293,7 @@ service WorkerService {
     // Session operations
 
     // Messaging operations
-    rpc InvokeScheduledAppChannel(InvokeScheduledAppChannelRequest) returns (InvokeScheduledAppChannelResponse);
+    rpc InvokeScheduledChannel(InvokeScheduledChannelRequest) returns (InvokeScheduledChannelResponse);
     rpc InvokeAgentTrigger(InvokeAgentTriggerRequest) returns (InvokeAgentTriggerResponse);
 
     // Turn management
@@ -1819,13 +1819,13 @@ message InvokeUserMcpStoreResponse {
 
 // === Messaging operations ===
 
-message InvokeScheduledAppChannelRequest {
+message InvokeScheduledChannelRequest {
     int64 org_id = 1;
-    string app_id = 2;
+    reserved 2;
     string channel_id = 3;
 }
 
-message InvokeScheduledAppChannelResponse {
+message InvokeScheduledChannelResponse {
     string session_id = 1;
     bool created_session = 2;
 }

@@ -26,12 +26,6 @@ pub enum Permission {
     OrgAgentsManage,
     /// Delete and other dangerous agent operations
     OrgAgentsDangerous,
-    /// View apps (read-only)
-    OrgAppsView,
-    /// CRUD on apps
-    OrgAppsManage,
-    /// Dangerous app operations
-    OrgAppsDangerous,
     /// View MCP servers (read-only)
     OrgMcpServersView,
     /// CRUD on MCP servers
@@ -52,6 +46,8 @@ pub enum Permission {
     OrgVirtualUsersView,
     /// CRUD on virtual users
     OrgVirtualUsersManage,
+    /// Delete and other dangerous virtual-user operations
+    OrgVirtualUsersDangerous,
     /// View metadata for credentials the caller owns or manages.
     OrgCredentialsView,
     /// Provision and manage authorized scoped credential bindings.
@@ -93,9 +89,7 @@ impl Permission {
             Permission::OrgHarnessesDangerous => "org:harnesses:dangerous",
             Permission::OrgAgentsManage => "org:agents:manage",
             Permission::OrgAgentsDangerous => "org:agents:dangerous",
-            Permission::OrgAppsView => "org:apps:view",
-            Permission::OrgAppsManage => "org:apps:manage",
-            Permission::OrgAppsDangerous => "org:apps:dangerous",
+            Permission::OrgVirtualUsersDangerous => "org:virtual-users:dangerous",
             Permission::OrgMcpServersView => "org:mcp-servers:view",
             Permission::OrgMcpServersManage => "org:mcp-servers:manage",
             Permission::OrgMcpServersDangerous => "org:mcp-servers:dangerous",
@@ -130,9 +124,7 @@ impl Permission {
         Permission::OrgHarnessesDangerous,
         Permission::OrgAgentsManage,
         Permission::OrgAgentsDangerous,
-        Permission::OrgAppsView,
-        Permission::OrgAppsManage,
-        Permission::OrgAppsDangerous,
+        Permission::OrgVirtualUsersDangerous,
         Permission::OrgMcpServersView,
         Permission::OrgMcpServersManage,
         Permission::OrgMcpServersDangerous,
@@ -177,9 +169,7 @@ const OWNER_PERMISSIONS: &[Permission] = &[
     Permission::OrgHarnessesDangerous,
     Permission::OrgAgentsManage,
     Permission::OrgAgentsDangerous,
-    Permission::OrgAppsView,
-    Permission::OrgAppsManage,
-    Permission::OrgAppsDangerous,
+    Permission::OrgVirtualUsersDangerous,
     Permission::OrgMcpServersView,
     Permission::OrgMcpServersManage,
     Permission::OrgMcpServersDangerous,
@@ -212,9 +202,7 @@ const ADMIN_PERMISSIONS: &[Permission] = &[
     Permission::OrgHarnessesManage,
     Permission::OrgAgentsManage,
     // Per-domain VIEW+MANAGE previously gated by OrgAgentsManage (EVE-656).
-    // Admin had OrgAgentsManage, so it keeps equivalent access to all six domains.
-    Permission::OrgAppsView,
-    Permission::OrgAppsManage,
+    // Admin had OrgAgentsManage, so it keeps equivalent access to all five remaining domains.
     Permission::OrgMcpServersView,
     Permission::OrgMcpServersManage,
     Permission::OrgSkillsView,
@@ -245,9 +233,7 @@ const MEMBER_PERMISSIONS: &[Permission] = &[
     Permission::OrgHarnessesView,
     Permission::OrgAgentsManage,
     // Per-domain VIEW+MANAGE previously gated by OrgAgentsManage (EVE-656).
-    // Member had OrgAgentsManage, so it keeps equivalent access to all six domains.
-    Permission::OrgAppsView,
-    Permission::OrgAppsManage,
+    // Member had OrgAgentsManage, so it keeps equivalent access to all five remaining domains.
     Permission::OrgMcpServersView,
     Permission::OrgMcpServersManage,
     Permission::OrgSkillsView,
@@ -1010,11 +996,9 @@ mod tests {
                 false,
                 false,
             ),
-            (Permission::OrgAppsView, "org:apps:view", true, true),
-            (Permission::OrgAppsManage, "org:apps:manage", true, true),
             (
-                Permission::OrgAppsDangerous,
-                "org:apps:dangerous",
+                Permission::OrgVirtualUsersDangerous,
+                "org:virtual-users:dangerous",
                 false,
                 false,
             ),

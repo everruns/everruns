@@ -77,8 +77,8 @@ async fn legacy_endpoint(
     key
 }
 
-/// A session the retired handler started on `channel`: owned by the
-/// channel and carrying its App-era routing tags.
+/// A session the retired handler started on `channel`, after database
+/// migrations normalized its routing tags and before startup converts its key.
 async fn legacy_session(server: &TestServer, channel: &ApiChannel) -> String {
     let session: Value = server
         .post(
@@ -92,7 +92,7 @@ async fn legacy_session(server: &TestServer, channel: &ApiChannel) -> String {
     sqlx::query(
         "UPDATE sessions
          SET channel_id = (SELECT id FROM agent_channels WHERE public_id = $2),
-             tags = ARRAY['app:legacy', 'app_channel:' || $2, 'app_channel_type:api_endpoint']
+             tags = ARRAY['ingress:' || $2, 'channel:' || $2, 'channel_type:api_endpoint']
          WHERE id = $1",
     )
     .bind(id.parse::<SessionId>().unwrap().uuid())
@@ -360,10 +360,8 @@ async fn retired_api_endpoint_surfaces_point_to_the_agent_api() {
             "/v1/apps/app_x/api/appchan_y/sessions/session_z/cancel",
         ),
     ] {
-        let problem: Value = call(&server, method, path, Some("evr_app_key"), None)
+        call(&server, method, path, Some("evr_app_key"), None)
             .await
-            .assert_status(StatusCode::GONE)
-            .json();
-        assert_retired(&problem);
+            .assert_status(StatusCode::NOT_FOUND);
     }
 }

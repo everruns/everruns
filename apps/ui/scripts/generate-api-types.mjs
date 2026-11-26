@@ -41,11 +41,6 @@ const renamedLegacySchemas = new Map([
   ["CreateAgentEndpointRequest", "CreateAgentChannelRequest"],
   ["UpdateAgentEndpointRequest", "UpdateAgentChannelRequest"],
   ["TriggerAgentEndpointOutput", "TriggerAgentChannelOutput"],
-  ["AppChannel", "AgentChannel"],
-  ["AppEndpointAuthConfig", "ChannelAuthConfig"],
-  ["AppEndpointAuthMode", "ChannelAuthMode"],
-  ["AppEndpointAuthProviderConfig", "ChannelAuthProviderConfig"],
-  ["AppEndpointAuthRequirements", "ChannelAuthRequirements"],
 ]);
 const check = process.argv.includes("--check");
 

@@ -237,18 +237,18 @@ fn run_error(run: &TestRun) -> &AgUiRunErrorEvent {
     }
 }
 
-fn test_app() -> crate::api::channel_ingress::IngressContext {
+fn test_channel() -> crate::api::channel_ingress::IngressContext {
     crate::api::channel_ingress::IngressContext::for_test("Test App", None)
 }
 
 #[test]
-fn ag_ui_message_metadata_includes_system_app_id() {
-    let app = test_app();
-    let metadata = ag_ui_message_metadata(&app, "thread-1".to_string(), "run-1".to_string());
+fn ag_ui_message_metadata_includes_system_ingress_id() {
+    let ingress = test_channel();
+    let metadata = ag_ui_message_metadata(&ingress, "thread-1".to_string(), "run-1".to_string());
 
     assert_eq!(
-        metadata.get("_app_id"),
-        Some(&Value::String(app.public_id.to_string()))
+        metadata.get("_ingress_id"),
+        Some(&Value::String(ingress.public_id.to_string()))
     );
     assert_eq!(
         metadata.get("ag_ui_thread_id"),
@@ -257,15 +257,15 @@ fn ag_ui_message_metadata_includes_system_app_id() {
 }
 
 #[test]
-fn ag_ui_image_metadata_scopes_upload_to_app() {
-    let app = test_app();
-    let metadata = ag_ui_image_metadata(&app);
-    let app_public_id = app.public_id.to_string();
+fn ag_ui_image_metadata_scopes_upload_to_channel() {
+    let ingress = test_channel();
+    let metadata = ag_ui_image_metadata(&ingress);
+    let ingress_public_id = ingress.public_id.to_string();
 
-    assert!(is_ag_ui_app_image(&metadata, &app_public_id));
-    assert!(!is_ag_ui_app_image(
+    assert!(is_ag_ui_channel_image(&metadata, &ingress_public_id));
+    assert!(!is_ag_ui_channel_image(
         &serde_json::json!({"source": "ag_ui"}),
-        &app_public_id
+        &ingress_public_id
     ));
 }
 

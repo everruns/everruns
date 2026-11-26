@@ -146,10 +146,8 @@ impl SessionService {
                 harness_uuid,
                 agent_internal_id,
                 agent_public_id,
-                // A fork is not an ingress arrival: it has no `app_id` today
-                // and gets no `channel_id` or `trigger_id` for the same
-                // reason. It keeps only the origin, below.
-                None,
+                // A fork is not an ingress arrival, so it gets no channel
+                // or trigger identity. It keeps only the origin, below.
                 None,
                 None,
                 None,

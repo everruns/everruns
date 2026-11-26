@@ -11,9 +11,7 @@ tags:
 ## Status
 
 A2A ingress is channel-owned. Canonical routes use the channel ID. Existing
-App-shaped routes, routing tags, API key material, and session attribution
-remain permanent compatibility contracts. App management, App key creation,
-and App key rotation are retired. Generic Agent channel APIs can manage
+Agent channel APIs manage
 existing A2A channel rows, but the current channel picker does not create
 new A2A credentials.
 
@@ -21,7 +19,7 @@ new A2A credentials.
 
 The A2A channel exposes an Everruns agent as an **Agent2Agent (A2A) protocol**
 endpoint so other agents can invoke it over JSON-RPC. It is a sibling of the
-`webhook` transport and injects a rendered user message into an channel-owned
+`webhook` transport and injects a rendered user message into a channel-owned
 session after channel liveness is established.
 
 The first cut implemented the **API key** authentication scheme from the A2A
@@ -36,7 +34,7 @@ agents without conflating it with bare HTTP webhook ingress.
 References:
 
 - A2A protocol: <https://a2aproject.github.io/A2A>
-- `knowledge/integrations/app-invocation-channels.md`, sibling invocation channels
+- `knowledge/integrations/channel-invocation.md`, sibling invocation channels
 - `knowledge/integrations/agent-exposure.md`, channel ownership and agent identity binding
 - `knowledge/integrations/slack-integration.md`, sibling messaging channel
 
@@ -69,29 +67,9 @@ than model-supplied).
 
 ## Model
 
-A new `ChannelType::A2a` (`"a2a"`) variant. Configuration:
-
-```rust
-pub struct A2aChannelConfig {
-    /// SHA-256 hex digest of the API key. Plaintext is never stored.
-    pub api_key_hash: String,
-    /// Public, non-secret display prefix (e.g. `evra2a_abc1...`) for the UI.
-    pub api_key_prefix: String,
-    /// Whether invocations reuse a stable session or create a new one.
-    pub session_mode: SessionBinding,
-    /// Message template rendered into the session on each invocation.
-    pub message: String,
-    /// Optional human-readable agent name surfaced in the Agent Card.
-    pub agent_card_name: Option<String>,
-    /// Optional human-readable description surfaced in the Agent Card.
-    pub agent_card_description: Option<String>,
-    /// Optional per-IP rate limit applied to this app's A2A endpoint, in
-    /// requests per minute. `None` or `Some(0)` disables the per-channel
-    /// limit; the global API limit still applies. Mirrors
-    /// `AgUiChannelConfig::rate_limit_per_minute`.
-    pub rate_limit_per_minute: Option<u32>,
-}
-```
+The native Agent channel owns transport configuration, invocation strategy and
+Agent Card presentation. The [channel record](../../crates/server/src/domains/agent_channels/record/)
+owns the exact configuration shape.
 
 Authentication is stored separately from transport config in
 `agent_channels.auth` or `auth_encrypted`.
@@ -111,10 +89,6 @@ API key generation:
 ### Inbound JSON-RPC
 
 Canonical: `POST /v1/channels/{channel_id}/a2a`.
-
-Permanent compatibility alias:
-`POST /v1/apps/{legacy_app_id}/a2a/{channel_id}`. It resolves the channel
-without reading `apps` or `app_channels`.
 
 - Content-Type: `application/json`
 - Auth: `Authorization: Bearer <api_key>` (the `apiKey` scheme in the Agent
@@ -554,7 +528,7 @@ Source: [`crates/server/src/channels/a2a/mod.rs`](../../crates/server/src/channe
 
 ### Agent Card
 
-`GET /v1/apps/{app_id}/a2a/{channel_id}/.well-known/agent-card.json`
+`GET /v1/channels/{channel_id}/a2a/.well-known/agent-card.json`
 
 Unauthenticated. Returns the published Agent Card so other agents can
 discover the endpoint. Only returned for **live**, enabled A2A channels;
@@ -615,8 +589,8 @@ cannot start two sessions. Every other mode, and every PACT caller, opens a
 session of its own. A message naming a task or context the channel owns
 continues that session; the A2A task and context ids are session ids.
 
-Sessions keep the app-channel tags (`app:{app_id}`, `app_channel:{channel_id}`,
-`app_channel_type:a2a`), which task reads still check (TM-A2A-012), plus a
+Sessions keep the channel tags (`ingress:{channel_id}`, `channel:{channel_id}`,
+`channel_type:a2a`), which task reads still check (TM-A2A-012), plus a
 PACT caller's tag. Tags no longer route: the binding does.
 
 The host streams the turn to a blocking send or a `message/stream`. A turn
@@ -626,7 +600,7 @@ parked `ask_user` question is the caller's and ends the wait.
 
 Template context:
 
-- `app.id`, `app.name`
+- `agent.id`, `agent.name`
 - `channel.id`, `channel.type` (`"a2a"`)
 - `invocation.source` (`"a2a"`), `invocation.triggered_at`
 - `payload`, the A2A `params` object verbatim
@@ -644,12 +618,12 @@ After a request resolves a session and sends the rendered user message,
 the server emits one audit log entry, the same one webhook and schedule
 channels emit:
 
-- domain/action: `agent` / `agent.app_invocation.started`
-- target: `app_channel:{channel_id}`
+- domain/action: `agent` / `agent.channel_invocation.started`
+- target: `channel:{channel_id}`
 - actor: none, because the caller is an external API-key holder rather than an
   Everruns user
-- metadata: `source = "app_a2a"`, `app_id`, `app_channel_id`,
-  `app_channel_type = "a2a"`, `session_id`, `created_session`, and the app
+- metadata: `source = "channel_a2a"`, `ingress_id`, `channel_id`,
+  `channel_type = "a2a"`, `session_id`, `created_session`, and the channel
   owner principal id; `virtual_user_id` is also present when the invocation
   uses an explicit runtime account
 
@@ -665,7 +639,7 @@ channels emit:
 ## Surfaces
 
 A2A invocation uses the canonical `/v1/channels/{channel_id}/a2a` routes and their
-permanent App-shaped aliases. Channel configuration uses the Agent channel
+channel-scoped ingress routes. Channel configuration uses the Agent channel
 HTTP APIs and matching command catalog. There is no App management API or Apps
 UI. The current channel picker does not offer A2A because no replacement
 credential-generation flow exists.
@@ -738,7 +712,7 @@ able to drain an app's quota or LLM budget while it is unattended.
   The same primitive backs the AG-UI channel; namespace strings (`agui`
   vs `a2a`) keep Valkey keys disjoint and separate `ChannelRateLimiter`
   instances keep in-memory buckets disjoint.
-- Scope: A2A passes `app_id:channel_id` (not just `app_id`) so an app that
+- Scope: A2A passes `channel_id:channel_id` (not just `app_id`) so an app that
   exposes multiple A2A channels with different `rate_limit_per_minute`
   settings keeps independent buckets. Sharing an `app_id`-only key would
   let an attacker alternate between channels with different limits to
@@ -769,7 +743,7 @@ Headers (sent by the client):
 - `X-Everruns-A2A-Timestamp`, unix-second timestamp of the request.
 - `X-Everruns-A2A-Signature`, `v0={hex}`, where `{hex}` is
   `HMAC-SHA256(signing_secret, "v0:{timestamp}:{channel_scope}:{raw_body}")`.
-  `channel_scope` is the literal string `{app_id}:{channel_id}` (the same
+  `channel_scope` is the literal string `{channel_id}:{channel_id}` (the same
   values that appear in the request path). Including the scope inside the
   signed basestring binds the signature to its target channel and
   prevents cross-channel replay when operators share the same
@@ -786,7 +760,7 @@ check covers:
   replay).
 - **Signature**: constant-time HMAC-SHA256 comparison.
 - **Replay dedup**: the verified signature itself is recorded as a
-  single-use nonce (scoped per `app_id:channel_id`) with a 5-minute TTL.
+  single-use nonce (scoped per `channel_id:channel_id`) with a 5-minute TTL.
   Because the signature is deterministic over
   `(timestamp, channel_scope, body, secret)`, two requests with
   byte-identical bodies sent in the same unix second to the same channel

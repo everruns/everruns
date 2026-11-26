@@ -19,7 +19,7 @@ that cookie resumes the same session.
 ## Preconditions
 
 - API server running (`just start-dev`)
-- A published app with an enabled `fcp` channel (`anonymous: true`)
+- A published agent channel with an enabled `fcp` channel (`anonymous: true`)
 - The app's agent uses a configured LLM provider (`llmsim` is fine)
 
 ## Test Data
@@ -33,11 +33,11 @@ that cookie resumes the same session.
 
 ## Steps
 
-1. From TC001, capture `APP_ID` of a published FCP app.
+1. From TC001, capture `CHANNEL_ID` of a published FCP channel.
 
 2. POST the first message:
    ```bash
-   curl -i -X POST "http://localhost:9300/api/v1/apps/$APP_ID/fcp" \
+   curl -i -X POST "http://localhost:9300/api/v1/channels/$CHANNEL_ID/fcp" \
      -H "Content-Type: text/plain" \
      --data 'Hello, FCP!'
    ```
@@ -45,7 +45,7 @@ that cookie resumes the same session.
 
 3. POST a follow-up message with the cookie:
    ```bash
-   curl -i -X POST "http://localhost:9300/api/v1/apps/$APP_ID/fcp" \
+   curl -i -X POST "http://localhost:9300/api/v1/channels/$CHANNEL_ID/fcp" \
      -H "Content-Type: text/plain" \
      -H "Cookie: $COOKIE" \
      --data 'Continue please'
@@ -54,7 +54,7 @@ that cookie resumes the same session.
 4. Inspect the sessions list to confirm only one FCP session was created:
    ```bash
    curl -s "http://localhost:9300/api/v1/platform/sessions" \
-     | jq -r '.data[] | select(.tags[] | contains("fcp:app:'"$APP_ID"'")) | .id' | wc -l
+     | jq -r '.data[] | select(.tags[] | contains("channel:'"$CHANNEL_ID"'")) | .id' | wc -l
    ```
 
 ## Expected Result
@@ -67,13 +67,13 @@ that cookie resumes the same session.
 | POST #1 body is non-empty Markdown                                     | ✓                                         |
 | POST #1 body contains no internal vocabulary (`tokio`, `openai`, etc.) | ✓                                         |
 | POST #2 HTTP status                                                    | `200` or `504`                            |
-| Sessions tagged `fcp:app:$APP_ID`                                      | exactly `1`                               |
+| Sessions tagged `channel:$CHANNEL_ID`                                      | exactly `1`                               |
 
 ## Validation Commands
 
 ```bash
 # Capture cookie
-COOKIE=$(curl -s -i -X POST "http://localhost:9300/api/v1/apps/$APP_ID/fcp" \
+COOKIE=$(curl -s -i -X POST "http://localhost:9300/api/v1/channels/$CHANNEL_ID/fcp" \
   -H 'Content-Type: text/plain' --data 'Hello' \
   | awk -F': ' '/^set-cookie:/{print $2}' | head -1 | tr -d '\r')
 
@@ -81,10 +81,10 @@ COOKIE=$(curl -s -i -X POST "http://localhost:9300/api/v1/apps/$APP_ID/fcp" \
 echo "$COOKIE" | grep -E '^fcp_session=[0-9a-f-]{36};' >/dev/null
 
 # Assert second POST reuses the same session
-curl -s -X POST "http://localhost:9300/api/v1/apps/$APP_ID/fcp" \
+curl -s -X POST "http://localhost:9300/api/v1/channels/$CHANNEL_ID/fcp" \
   -H 'Content-Type: text/plain' -H "Cookie: $COOKIE" --data 'Continue' >/dev/null
 
 session_count=$(curl -s "http://localhost:9300/api/v1/platform/sessions" \
-  | jq -r --arg id "$APP_ID" '[.data[] | select(.tags[] | contains("fcp:app:\($id)"))] | length')
+  | jq -r --arg id "$CHANNEL_ID" '[.data[] | select(.tags[] | contains("channel:\($id)"))] | length')
 [ "$session_count" = "1" ]
 ```

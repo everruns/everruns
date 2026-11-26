@@ -72,3 +72,5 @@
 * [Extractions](extractions/) - Typed field forms, pending requests and organization isolation.
 
 * [mcp_apps/](mcp_apps/) - Embedded workspace lifecycle and recovery.
+
+* [Applications](applications/) - Authoring, publication, shared resources and audience isolation.

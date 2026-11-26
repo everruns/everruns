@@ -74,7 +74,7 @@ import {
 import { AgentKeysCard } from "@/components/agents/channels/agent-keys-card";
 import { CallerDailyLimitField } from "@/components/agents/channels/api-fields";
 import { WorkChatAddress, WorkChatHeaderLink } from "@/components/agents/channels/work-chat-link";
-import { CronLabel } from "@/components/apps/cron-label";
+import { CronLabel } from "@/components/schedules/cron-label";
 import {
   BackLink,
   PageBreadcrumb,

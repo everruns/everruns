@@ -27,7 +27,7 @@ pub(super) fn test_session_input(agent_id: Option<AgentId>) -> CreateSessionRow 
         source: crate::domains::sessions::record::SessionSource::Api,
         workspace_id: None,
         org_id: DEFAULT_ORG_ID,
-        app_id: None,
+
         channel_id: None,
         trigger_id: None,
         harness_id: None,
@@ -261,9 +261,6 @@ pub(super) fn schedule_trigger_input(agent_id: AgentId) -> CreateAgentTriggerRow
         execution_owner_principal_id: None,
         execution_resolved_owner_user_id: None,
         execution_virtual_user_id: None,
-        execution_app_id: None,
-        legacy_alias_id: None,
-        legacy_alias_name: None,
     }
 }
 

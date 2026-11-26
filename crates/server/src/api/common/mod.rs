@@ -678,8 +678,6 @@ pub struct WithUrls<T: Serialize> {
 pub struct ResourceWithCounts<T: Serialize> {
     /// Number of sessions using this resource.
     pub session_count: u64,
-    /// Number of non-deleted apps using this resource.
-    pub app_count: u64,
     /// The resource itself (fields are flattened into the parent object).
     #[serde(flatten)]
     pub inner: T,
@@ -847,56 +845,6 @@ impl ResourceUrlable for crate::domains::harnesses::record::Harness {
     }
     fn allowed_actions(&self, api_base: &str) -> Vec<AllowedAction> {
         harness_allowed_actions(&self.id.to_string(), &self.status, api_base)
-    }
-}
-
-/// Hypermedia actions for an archival `App`.
-///
-/// Apps are retired (agent-exposure). Only the read endpoint survives, so `self`
-/// is the only action that resolves — advertising `update`, `runs`, `publish`,
-/// `unpublish` or `delete` here would hand a client four routes that no longer
-/// exist. Endpoint management lives under the owning agent.
-pub fn app_allowed_actions(id: &str, api_base: &str) -> Vec<AllowedAction> {
-    vec![
-        AllowedAction::new("self")
-            .with_method("GET")
-            .with_operation_id("get_app")
-            .with_href(format!("{api_base}/v1/platform/apps/{id}"))
-            .with_hint("Fetch this archival App record. Read-only and deprecated."),
-    ]
-}
-
-/// UI destination for an archival `App` record.
-///
-/// The `/apps` pages were deleted with the App surface, so a link there would
-/// 404. Send a reader to the agent that owns its endpoints now, or to the
-/// cross-agent exposures view when the row predates agent assignment.
-pub fn archival_app_ui_path(agent_id: Option<&str>) -> String {
-    match agent_id {
-        Some(agent_id) => format!("agents/{agent_id}?tab=integrations"),
-        None => "exposures".to_string(),
-    }
-}
-
-impl ResourceUrlable for crate::domains::apps::record::App {
-    fn api_path() -> &'static str {
-        "v1/platform/apps"
-    }
-    /// Unused: `ui_url_path` is overridden, because the `/apps` pages were
-    /// deleted with the App surface and a link there would 404.
-    fn ui_path() -> &'static str {
-        "exposures"
-    }
-    fn resource_id(&self) -> String {
-        self.public_id.to_string()
-    }
-    /// An archival App record has no page of its own. See
-    /// [`archival_app_ui_path`].
-    fn ui_url_path(&self) -> String {
-        archival_app_ui_path(self.agent_id.as_ref().map(|id| id.to_string()).as_deref())
-    }
-    fn allowed_actions(&self, api_base: &str) -> Vec<AllowedAction> {
-        app_allowed_actions(&self.public_id.to_string(), api_base)
     }
 }
 

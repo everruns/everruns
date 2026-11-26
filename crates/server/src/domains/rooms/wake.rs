@@ -527,6 +527,9 @@ async fn wake_one(
         external_actor: None,
         client_message_id: None,
     };
+    // Existing v2 orgs may predate Room event delivery. Install the posting
+    // subscription before admitting the turn, including after an upgrade.
+    crate::domains::data_plane::event_tap::sync(db, room.org_id).await?;
     let origin =
         everruns_core::message::MessageOrigin::new(everruns_core::message::MessageOriginKind::Room)
             .with_source_id(room.id.to_string())

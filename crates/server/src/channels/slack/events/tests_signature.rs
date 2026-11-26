@@ -292,7 +292,7 @@ fn test_external_actor_display_label_fallback_to_id() {
 // Trivial derive-only serde round-trips removed; covered by the derive + handler tests.
 
 #[test]
-fn slack_message_metadata_includes_system_app_id() {
+fn slack_message_metadata_includes_system_ingress_id() {
     let app = test_app();
     let event = test_event("C123", Some("1234.5678"), None);
 
@@ -303,11 +303,11 @@ fn slack_message_metadata_includes_system_app_id() {
         Some(&serde_json::json!("1234.5678"))
     );
     assert_eq!(
-        metadata.get("_app_id"),
+        metadata.get("_ingress_id"),
         Some(&serde_json::Value::String(app.public_id.to_string()))
     );
     assert_eq!(
-        metadata.get("_app_channel_id"),
+        metadata.get("_channel_id"),
         Some(&serde_json::Value::String(
             app.channels[0].public_id.to_string()
         ))

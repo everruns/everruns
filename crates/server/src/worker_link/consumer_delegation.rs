@@ -251,12 +251,11 @@ pub(crate) async fn dispatch(
                 json!({"harness_id":target.harness_id,"agent_id":target.public_id,"title":params["title"],"goal":params["goal"],"parent_session_id":current,"tags":root.tags}),
             ).map_err(|e|CommandError::bad_request(e.to_string()))?;
             let child = sessions
-                .create_from_app(
+                .create_from_channel(
                     &everruns_core::Caller::internal(org),
                     target.harness_id.uuid(),
                     Some(target.internal_id),
                     Some(target.public_id),
-                    root.app_id,
                     channel,
                     None,
                     owner,

@@ -57,6 +57,7 @@ import { usePolicies } from "@/hooks/use-policies";
 import { useAuth } from "@/providers/auth-provider";
 import { useFeatureFlags } from "@/providers/feature-flags-provider";
 import { SidebarNavigation } from "./sidebar-navigation";
+import { SidebarApplications } from "./sidebar-applications";
 import { SidebarChatThreads } from "./sidebar-chat-threads";
 import { SidebarOrganizationMenu } from "./sidebar-organization-menu";
 import { SidebarUserMenu } from "./sidebar-user-menu";
@@ -158,6 +159,8 @@ export function Sidebar({
           </kbd>
         </button>
       </div>
+
+      <SidebarApplications />
 
       <SidebarNavigation
         sections={allSections}

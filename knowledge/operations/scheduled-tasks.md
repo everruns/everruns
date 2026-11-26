@@ -12,7 +12,7 @@ tags:
 
 Scheduled tasks extend the durable execution engine with cron-based scheduling capabilities. Users can define recurring tasks that automatically trigger workflows or activities at specified intervals. This feature integrates smoothly with existing durable infrastructure, sharing the same reliability guarantees, observability, and management APIs.
 
-See `knowledge/operations/localization.md` for how schedule timezone interacts with session and user timezone defaults during execution. Consumers of this durable scheduler include App schedule channels (`knowledge/integrations/app-invocation-channels.md`) and agent triggers (`knowledge/runtime-resources/agent-triggers.md`).
+See `knowledge/operations/localization.md` for how schedule timezone interacts with session and user timezone defaults during execution. Consumers of this durable scheduler include App schedule channels (`knowledge/integrations/channel-invocation.md`) and agent triggers (`knowledge/runtime-resources/agent-triggers.md`).
 
 ## Goals
 
@@ -64,7 +64,7 @@ See `crates/server/migrations/legacy/002_durable_execution.sql` for the full sch
 
 App `schedule` channels are one consumer of the durable scheduler. The scheduler stores them in the same `durable_schedules` table, but their lifecycle is owned by the app domain rather than the generic schedules API.
 
-See [app-invocation-channels.md](../integrations/app-invocation-channels.md) for the product-level behavior and ownership rules.
+See [channel-invocation.md](../integrations/channel-invocation.md) for the product-level behavior and ownership rules.
 
 ### ScheduleExecution
 
@@ -123,7 +123,7 @@ For the complete request/response schemas (`CreateScheduleRequest`, `ScheduleTar
 
 The `DurableScheduler` component polls for due schedules on a configurable interval. For each due schedule it: checks `max_concurrent`, creates an execution record, triggers the target (workflow or activity), and updates the execution status. See `crates/durable/src/scheduler/mod.rs` for implementation.
 
-App-owned schedule bindings still execute through the same scheduler machinery, but the app-specific activity contract is specified in [app-invocation-channels.md](../integrations/app-invocation-channels.md).
+App-owned schedule bindings still execute through the same scheduler machinery, but the app-specific activity contract is specified in [channel-invocation.md](../integrations/channel-invocation.md).
 
 ### System Schedules
 

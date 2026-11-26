@@ -21,9 +21,8 @@
 //! busy source cannot grow the table without limit.
 
 use super::commands::{
-    AgentTriggerInvocationResult, WebhookCompatibilityContext, dispatch_trigger_message,
-    emit_agent_trigger_audit_event, find_or_create_trigger_session,
-    resolve_trigger_execution_context,
+    AgentTriggerInvocationResult, dispatch_trigger_message, emit_agent_trigger_audit_event,
+    find_or_create_trigger_session, resolve_trigger_execution_context,
 };
 use crate::domains::agent_channels::invocation::{render_message_template, template_lookup};
 use crate::domains::agent_triggers::record::{TriggerDeliveryStatus, TriggerEventFilter};
@@ -73,7 +72,6 @@ pub struct TriggerEventRoute<'a> {
     pub session_mode: SessionBinding,
     pub filter: Option<&'a TriggerEventFilter>,
     pub session_source: crate::domains::sessions::record::SessionSource,
-    pub webhook_compat: Option<&'a WebhookCompatibilityContext>,
     /// Saved script the event runs instead of asking the model.
     pub script: Option<&'a everruns_contracts::runtime::saved_scripts::ScriptRun>,
     /// A channel conversation the run speaks in instead of a session of the
@@ -262,7 +260,6 @@ async fn run(
             session_mode: route.session_mode,
             subject: event.subject.as_deref(),
             source: route.session_source,
-            webhook: route.webhook_compat,
         },
     )
     .await?;
@@ -513,7 +510,6 @@ pub(super) struct TriggerSessionRoute<'a> {
     /// Event subject; with `per_thread` it keys one session per subject.
     pub(super) subject: Option<&'a str>,
     pub(super) source: crate::domains::sessions::record::SessionSource,
-    pub(super) webhook: Option<&'a WebhookCompatibilityContext>,
 }
 
 /// Session tag for one event subject. Hashed so arbitrary source text (repo

@@ -8,10 +8,10 @@ use super::support::*;
 use crate::worker_link::grpc_service::*;
 
 impl WorkerServiceImpl {
-    pub(crate) async fn handle_invoke_scheduled_app_channel(
+    pub(crate) async fn handle_invoke_scheduled_channel(
         &self,
-        request: Request<InvokeScheduledAppChannelRequest>,
-    ) -> Result<Response<InvokeScheduledAppChannelResponse>, Status> {
+        request: Request<InvokeScheduledChannelRequest>,
+    ) -> Result<Response<InvokeScheduledChannelResponse>, Status> {
         let req = request.into_inner();
         let runner = self
             .runner
@@ -23,19 +23,18 @@ impl WorkerServiceImpl {
             self.event_service.event_delivery().clone(),
         );
 
-        let result = crate::domains::agent_channels::invoke_scheduled_legacy_alias_channel(
+        let result = crate::domains::agent_channels::invoke_scheduled_agent_channel(
             &self.db,
             self.encryption.as_ref(),
             &self.session_service,
             &message_service,
             req.org_id,
-            &req.app_id,
             &req.channel_id,
         )
         .await
         .map_err(command_error_to_status)?;
 
-        Ok(Response::new(InvokeScheduledAppChannelResponse {
+        Ok(Response::new(InvokeScheduledChannelResponse {
             session_id: result.session_id.to_string(),
             created_session: result.created_session,
         }))

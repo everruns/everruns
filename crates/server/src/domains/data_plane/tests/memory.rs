@@ -51,7 +51,10 @@ async fn a_shard_reaches_only_its_sessions_own_memory() {
     let session = session_with_user_memory(&cp).await;
     assert_eq!(
         memory::mounts(&cp, session).await.unwrap(),
-        vec!["/memory/user".to_string()]
+        vec![
+            "/memory/user".to_string(),
+            "/application/memory".to_string()
+        ]
     );
     let ctx = internal_ctx(&cp, ORG);
     let call = |op: &str, path: &str, extra: Value| {
@@ -133,12 +136,50 @@ async fn a_shard_reaches_only_its_sessions_own_memory() {
         "{unknown}"
     );
 
-    // A session with no Memory has no mounts, so its shard never calls.
+    // The reserved routing mount alone confers no access.
     let plain = cp
         .db
         .create_session(crate::storage::test_database::test_session_row(ORG))
         .await
         .unwrap()
         .id;
-    assert!(memory::mounts(&cp, plain).await.unwrap().is_empty());
+    assert_eq!(
+        memory::mounts(&cp, plain).await.unwrap(),
+        vec!["/application/memory"]
+    );
+    let refused = memory::answer(
+        &ctx,
+        &json!({"session_id":plain,"op":"read","path":"/application/memory/handbook/notes.md"}),
+    )
+    .await;
+    assert!(
+        refused["error"]
+            .as_str()
+            .unwrap()
+            .contains("not in this session's Memory")
+    );
+}
+
+#[tokio::test]
+async fn room_routes_exist_before_the_wake_binds_its_session() {
+    let (cp, _, _) = control_plane().await;
+    let mut row = crate::storage::test_database::test_session_row(ORG);
+    row.source = "room".into();
+    let session = cp.db.create_session(row).await.unwrap().id;
+    assert_eq!(
+        memory::mounts(&cp, session).await.unwrap(),
+        vec!["/application/memory", "/room"]
+    );
+    let ctx = internal_ctx(&cp, ORG);
+    let refused = memory::answer(
+        &ctx,
+        &json!({"session_id":session,"op":"read","path":"/room/notes.md"}),
+    )
+    .await;
+    assert!(
+        refused["error"]
+            .as_str()
+            .unwrap()
+            .contains("not in this session's Memory")
+    );
 }

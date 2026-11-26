@@ -601,12 +601,6 @@ impl Command for DeleteHarness {
             .await
             .map_err(|err| CommandError::conflict(err.to_string()))?;
         q::ensure_not_org_default_harness(&ctx.db, ctx.org_id(), harness_id).await?;
-        crate::domains::apps::queries::ensure_no_app_references_to_harness(
-            &ctx.db,
-            ctx.org_id(),
-            harness_id.uuid(),
-        )
-        .await?;
 
         let deleted = ctx.db.delete_harness(ctx.org_id(), harness_id).await?;
 
@@ -659,12 +653,6 @@ impl Command for DestroyHarness {
             .await
             .map_err(|err| CommandError::conflict(err.to_string()))?;
         q::ensure_not_org_default_harness(&ctx.db, ctx.org_id(), harness_id).await?;
-        crate::domains::apps::queries::ensure_no_app_references_to_harness(
-            &ctx.db,
-            ctx.org_id(),
-            harness_id.uuid(),
-        )
-        .await?;
 
         let existing = ctx
             .db

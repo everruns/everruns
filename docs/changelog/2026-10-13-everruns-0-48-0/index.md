@@ -19,7 +19,7 @@ release: "0.48.0"
 
 ## Upgrade notes
 
-- `api_endpoint` channels convert to Agent API channels at startup with the same keys. Old request shapes return `400 api_endpoint_retired` and `/v1/apps/{app}/api/{channel}` routes return `410`; move clients to `/v1/channels/{channel_id}` ([#4527](https://github.com/everruns/everruns/pull/4527)).
+- `api_endpoint` channels convert to Agent API channels at startup with the same keys. Old request shapes return `400 api_endpoint_retired` and `/v1/apps/{app}/api/{channel}` routes are now removed (`404`) following the [retired Apps cleanup](/changelog/2026-11-25-retired-apps-removed/); move clients to `/v1/channels/{channel_id}` ([#4527](https://github.com/everruns/everruns/pull/4527)).
 - Agents must give a reason for every change by default; an organization can turn the **Require reasons from agents** flag off to let such changes through with a warning ([#4552](https://github.com/everruns/everruns/pull/4552)).
 
 ## In the changelog

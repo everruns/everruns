@@ -30,8 +30,6 @@ function targetLabel(target?: EvalTarget, agentMap?: Map<string, string>): strin
       const agentName = target.agent_id ? agentMap?.get(target.agent_id) : undefined;
       return agentName ?? target.agent_id ?? undefined;
     }
-    case "app":
-      return `App: ${target.app_id}`;
     default:
       return undefined;
   }

@@ -16,19 +16,6 @@ export async function listBudgets(params?: {
   return response.data;
 }
 
-export async function listAppBudgets(
-  appId: string,
-  options: { includeChannels?: boolean } = {},
-): Promise<Budget[]> {
-  const params = new URLSearchParams();
-  if (options.includeChannels === false) params.set("include_channels", "false");
-  const qs = params.toString();
-  const response = await api.get<Budget[]>(
-    `/v1/platform/apps/${appId}/budgets${qs ? `?${qs}` : ""}`,
-  );
-  return response.data;
-}
-
 export async function createBudget(input: CreateBudgetRequest): Promise<Budget> {
   const response = await api.post<Budget>("/v1/platform/budgets", input);
   return response.data;

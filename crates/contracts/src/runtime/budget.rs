@@ -57,16 +57,9 @@ pub enum BudgetSubjectType {
     Agent,
     User,
     Organization,
-    /// Bound to a single agent trigger — the ingress a session arrived
-    /// through when a trigger started it (EVE-1138). Successor to the
-    /// `AppChannel` subject: migration 138 moved App webhooks onto
-    /// `agent_triggers` and deleted the endpoint rows their budgets had been
-    /// keyed on, leaving those caps with no structural subject until
-    /// migration 153 re-keyed them onto the trigger's own id.
+    /// Bound to a single agent trigger: the ingress that started a session.
     AgentTrigger,
-    /// Bound to a single agent channel — the exposure a session arrived
-    /// through (EVE-1004). Successor to `AppChannel` for every ingress except
-    /// the webhook triggers migration 138 moved off endpoints.
+    /// Bound to a single agent channel: the exposure a session arrived through.
     #[serde(alias = "agent_endpoint")]
     AgentChannel,
     /// Bound to one session schedule (`sched_` id): the turns its fires

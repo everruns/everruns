@@ -157,7 +157,7 @@ impl Database {
         limit: i64,
     ) -> Result<Vec<EventRow>> {
         let pattern = serde_json::json!({
-            "message": { "metadata": { "_app_channel_id": endpoint_public_id } }
+            "message": { "metadata": { "_channel_id": endpoint_public_id } }
         });
         Ok(sqlx::query_as::<_, EventRow>(sql!(
             r#"

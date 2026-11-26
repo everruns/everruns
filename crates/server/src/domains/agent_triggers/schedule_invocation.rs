@@ -60,7 +60,6 @@ pub(super) async fn dispatch_schedule(
             session_mode: config.session_mode,
             filter: None,
             session_source: crate::domains::sessions::record::SessionSource::Schedule,
-            webhook_compat: None,
             script: config.script.as_ref(),
             channel: config.target.as_ref().map(|target| events::ChannelRun {
                 target,

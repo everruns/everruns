@@ -149,6 +149,15 @@ mod tests {
     use super::*;
     use crate::kernel_imports::contracts::driver_registry::DriverRegistry;
 
+    struct RoomPosts;
+    #[async_trait::async_trait]
+    impl everruns_core::EventListener for RoomPosts {
+        fn name(&self) -> &'static str {
+            "room_posts"
+        }
+        async fn on_event(&self, _event: &everruns_core::Event) {}
+    }
+
     fn state_with_provider_services() -> AppState {
         let db = Arc::new(StorageBackend::test_database());
         let auth = AuthState::builtin(crate::auth::AuthConfig::default(), db.clone());
@@ -166,7 +175,11 @@ mod tests {
             auth,
             &host,
             &[],
-            crate::live_updates::event_delivery::EventDelivery::in_memory(),
+            Arc::new(EventService::with_listeners(
+                db.clone(),
+                crate::live_updates::event_delivery::EventDelivery::in_memory(),
+                vec![Arc::new(RoomPosts)],
+            )),
             None,
             None,
             Arc::new(CapabilityService::new(db, None)),
@@ -187,6 +200,18 @@ mod tests {
             "model sync service missing"
         );
         assert!(ctx.model_service.is_some(), "model service missing");
+    }
+
+    #[tokio::test]
+    async fn rest_data_plane_context_retains_registered_event_listeners() {
+        let state = state_with_provider_services();
+        let api = crate::api::state::ApiState::from_mcp(&state);
+        assert_eq!(api.event_listeners().len(), 1);
+        assert_eq!(api.event_listeners()[0].name(), "room_posts");
+        assert!(Arc::ptr_eq(
+            &api.event_listeners()[0],
+            &state.event_service.listeners()[0]
+        ));
     }
 
     /// Provider commands dispatched over MCP (and the generic command adapter,

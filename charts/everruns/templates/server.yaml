@@ -97,6 +97,11 @@ spec:
             - { name: metrics, containerPort: {{ .Values.metrics.port }} }
             {{- end }}
           env:
+            {{- if .Values.applications.enabled }}
+            - { name: CHAT_DOMAIN, value: {{ .Values.applications.domain | quote }} }
+            - { name: CHAT_OIDC_ISSUER, value: {{ .Values.applications.oidcIssuer | quote }} }
+            - { name: CHAT_OIDC_CLIENT_ID, value: {{ .Values.applications.oidcClientId | quote }} }
+            {{- end }}
             - name: DATABASE_URL
               valueFrom: { secretKeyRef: { name: {{ $db.name }}, key: {{ $db.key }} } }
             {{- include "everruns.natsEnv" . | nindent 12 }}

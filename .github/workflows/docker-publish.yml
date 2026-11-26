@@ -34,6 +34,8 @@ on:
       - 'docker/**'
       - 'apps/ui/Dockerfile'
       - 'apps/ui/.dockerignore'
+      - 'apps/chat-ui/Dockerfile'
+      - 'apps/chat-ui/Dockerfile.dockerignore'
       - '.dockerignore'
       - '.github/workflows/docker-publish.yml'
       - '.github/workflows/sandbox-images.yml'
@@ -446,3 +448,57 @@ jobs:
           labels: ${{ steps.meta-ui.outputs.labels }}
           cache-from: type=gha,scope=docker-ui
           cache-to: type=gha,mode=max,scope=docker-ui
+
+  build-chat-ui-image:
+    name: Build Applications Image
+    needs: resolve-source
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || (((github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'ci:skip-docker') && !contains(github.event.pull_request.labels.*.name, 'ci:skip-docker'))
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ needs.resolve-source.outputs.ref }}
+
+      - name: Set up QEMU
+        if: github.event_name != 'pull_request'
+        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (chat-ui)
+        id: meta-chat-ui
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
+        with:
+          images: ${{ env.IMAGE_BASE }}/everruns-chat-ui
+          labels: |
+            org.opencontainers.image.revision=${{ needs.resolve-source.outputs.sha }}
+          tags: |
+            type=ref,event=tag
+            type=raw,value=${{ needs.resolve-source.outputs.tag }},enable=${{ needs.resolve-source.outputs.is_release == 'true' }}
+            type=raw,value=latest,enable=${{ needs.resolve-source.outputs.is_latest == 'true' }}
+            type=raw,value=${{ needs.resolve-source.outputs.sha_short }}
+            type=raw,value=${{ needs.resolve-source.outputs.sha }}
+
+      - name: Build and push Applications
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        with:
+          context: .
+          file: apps/chat-ui/Dockerfile
+          platforms: ${{ needs.resolve-source.outputs.platforms }}
+          push: true
+          tags: ${{ steps.meta-chat-ui.outputs.tags }}
+          labels: ${{ steps.meta-chat-ui.outputs.labels }}
+          cache-from: type=gha,scope=docker-chat-ui
+          cache-to: type=gha,mode=max,scope=docker-chat-ui

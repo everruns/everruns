@@ -143,9 +143,6 @@ async fn targeted_trigger(slack: &Slack, key: &str) -> TriggerId {
             execution_owner_principal_id: None,
             execution_resolved_owner_user_id: None,
             execution_virtual_user_id: None,
-            execution_app_id: None,
-            legacy_alias_id: None,
-            legacy_alias_name: None,
         })
         .await
         .unwrap();

@@ -139,34 +139,7 @@ pub(crate) async fn resolve_slack_channel(
     ),
     (StatusCode, Json<ErrorResponse>),
 > {
-    let (app, channel) = match target {
-        SlackTarget::LegacyApp(app_id) => {
-            match crate::api::channel_ingress::resolve_legacy_channel(
-                &state.db,
-                state.encryption.as_ref(),
-                &app_id,
-                ChannelType::Slack,
-            )
-            .await
-            .map_err(|error| {
-                tracing::error!(app_id, %error, "Failed to lookup Slack alias");
-                ErrorResponse::new("Internal server error")
-                    .into_response(StatusCode::INTERNAL_SERVER_ERROR)
-            })? {
-                crate::api::channel_ingress::LegacyChannelMatch::One(endpoint) => *endpoint,
-                crate::api::channel_ingress::LegacyChannelMatch::NotFound => {
-                    return Err(
-                        ErrorResponse::new("App not found").into_response(StatusCode::NOT_FOUND)
-                    );
-                }
-                crate::api::channel_ingress::LegacyChannelMatch::Ambiguous => {
-                    return Err(ErrorResponse::new(
-                        "Multiple enabled Slack channels; use an endpoint-scoped /v1/channels/{channel_id}/slack/... URL",
-                    )
-                    .into_response(StatusCode::CONFLICT));
-                }
-            }
-        }
+    let (ingress, channel) = match target {
         SlackTarget::Channel(channel_id) => crate::api::channel_ingress::resolve_channel(
             &state.db,
             state.encryption.as_ref(),
@@ -178,39 +151,24 @@ pub(crate) async fn resolve_slack_channel(
             ErrorResponse::new("Internal server error")
                 .into_response(StatusCode::INTERNAL_SERVER_ERROR)
         })?
-        .ok_or_else(|| ErrorResponse::new("App not found").into_response(StatusCode::NOT_FOUND))?,
+        .ok_or_else(|| {
+            ErrorResponse::new("Channel not found").into_response(StatusCode::NOT_FOUND)
+        })?,
     };
     if channel.channel_type != ChannelType::Slack {
-        return Err(ErrorResponse::new("App not found").into_response(StatusCode::NOT_FOUND));
+        return Err(ErrorResponse::new("Channel not found").into_response(StatusCode::NOT_FOUND));
     }
-    if let Err(reason) = crate::api::channel_ingress::channel_liveness(&app, &channel) {
+    if let Err(reason) = crate::api::channel_ingress::channel_liveness(&ingress, &channel) {
         tracing::debug!(
-            app_id = %app.public_id,
+            ingress_id = %ingress.public_id,
             channel_id = %channel.public_id,
             reason = reason.as_str(),
             "Slack ingress rejected: endpoint not live"
         );
-        return Err(ErrorResponse::new("App not found").into_response(StatusCode::NOT_FOUND));
+        return Err(ErrorResponse::new("Channel not found").into_response(StatusCode::NOT_FOUND));
     }
 
-    Ok((app, channel))
-}
-
-/// POST /v1/apps/{app_id}/slack/events — Slack Events API webhook
-///
-/// This endpoint handles:
-/// 1. URL verification challenges (Slack sends these when setting up the webhook)
-/// 2. Event callbacks (messages, mentions, etc.)
-///
-/// Security: Verified via Slack signing secret (HMAC-SHA256), not API key auth.
-pub(crate) async fn handle_slack_event_legacy(
-    State(state): State<SlackState>,
-    Path(app_id): Path<String>,
-    req_id: Option<Extension<RequestId>>,
-    headers: HeaderMap,
-    body: Bytes,
-) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<ErrorResponse>)> {
-    handle_slack_event(state, SlackTarget::LegacyApp(app_id), req_id, headers, body).await
+    Ok((ingress, channel))
 }
 
 pub(crate) async fn handle_slack_event_channel(
@@ -238,21 +196,21 @@ pub(crate) async fn handle_slack_event(
     body: Bytes,
 ) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<ErrorResponse>)> {
     let request_id = req_id.map(|Extension(r)| r.0);
-    let (app, slack_channel) = resolve_slack_channel(&state, target).await?;
-    let app_id = app.public_id.to_string();
+    let (ingress, slack_channel) = resolve_slack_channel(&state, target).await?;
+    let ingress_id = ingress.public_id.to_string();
     let internal_error = || {
         ErrorResponse::new("Invalid Slack channel configuration")
             .into_response(StatusCode::INTERNAL_SERVER_ERROR)
     };
     let slack_config: SlackChannelConfig =
         serde_json::from_value(slack_channel.channel_config.clone()).map_err(|e| {
-            tracing::error!(app_id = %app_id, error = %e, "Invalid Slack channel config");
+            tracing::error!(ingress_id = %ingress_id, error = %e, "Invalid Slack channel config");
             internal_error()
         })?;
     // THREAT[TM-SLACK-001]: verified here too, so a forged request is refused
     // with a 401 rather than acknowledged; the driver verifies again.
     verify_slack_signature(&headers, &body, &slack_config.signing_secret).map_err(|e| {
-        tracing::warn!(app_id = %app_id, error = %e, "Slack signature verification failed");
+        tracing::warn!(ingress_id = %ingress_id, error = %e, "Slack signature verification failed");
         ErrorResponse::new("Invalid signature").into_response(StatusCode::UNAUTHORIZED)
     })?;
     let envelope_type = serde_json::from_slice::<serde_json::Value>(&body)
@@ -267,11 +225,11 @@ pub(crate) async fn handle_slack_event(
         state.channels.as_ref().and_then(|channels| {
             channels.resolver.channel_for(ServerChannelScope {
                 request_id,
-                ..ServerChannelScope::new(app.clone(), slack_channel.clone())
+                ..ServerChannelScope::new(ingress.clone(), slack_channel.clone())
             })
         }),
     ) else {
-        tracing::error!(app_id = %app_id, "Slack channel has no host to run on");
+        tracing::error!(ingress_id = %ingress_id, "Slack channel has no host to run on");
         return Err(internal_error());
     };
     let request = ChannelRequest {
@@ -292,7 +250,7 @@ pub(crate) async fn handle_slack_event(
             .try_handle(&resolved, &request)
             .await
             .map_err(|error| {
-                tracing::warn!(app_id = %app_id, %error, "Slack request failed");
+                tracing::warn!(ingress_id = %ingress_id, %error, "Slack request failed");
                 <(StatusCode, Json<ErrorResponse>)>::from(
                     crate::channels::host::channel_command_error(error),
                 )
@@ -310,7 +268,7 @@ pub(crate) async fn handle_slack_event(
     // a non-200 would bring a redelivery storm for nothing a retry fixes.
     tokio::spawn(async move {
         if let Err(error) = channels.host.try_handle(&resolved, &request).await {
-            tracing::warn!(app_id = %app_id, %error, "Failed to handle Slack event");
+            tracing::warn!(ingress_id = %ingress_id, %error, "Failed to handle Slack event");
         }
     });
     Ok((StatusCode::OK, Json(ack_json())))
@@ -349,17 +307,17 @@ pub(crate) fn is_supported_slack_message_subtype(subtype: Option<&str>) -> bool 
 }
 
 pub(crate) fn slack_message_metadata(
-    app: &crate::api::channel_ingress::IngressContext,
+    ingress: &crate::api::channel_ingress::IngressContext,
     slack_channel: &crate::api::channel_ingress::IngressChannel,
     event: &SlackEvent,
 ) -> HashMap<String, serde_json::Value> {
     [
         (
-            "_app_id".to_string(),
-            serde_json::Value::String(app.public_id.to_string()),
+            "_ingress_id".to_string(),
+            serde_json::Value::String(ingress.public_id.to_string()),
         ),
         (
-            "_app_channel_id".to_string(),
+            "_channel_id".to_string(),
             serde_json::Value::String(slack_channel.public_id.to_string()),
         ),
         (

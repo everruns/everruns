@@ -13,7 +13,7 @@
 //
 // Design Decision: EvalTarget is the session setup contract.
 // Resolution order: EvalRun.target → EvalCase.target → Eval.target → org default harness.
-// EvalTarget::Session mirrors CreateSessionRequest params; EvalTarget::App references a deployed app.
+// EvalTarget selects session creation parameters or externally executed results.
 // EvalCaseResult stores both a live reference and a frozen snapshot for reproducibility.
 //
 // See knowledge/evaluation/evals.md for full specification.
@@ -24,8 +24,7 @@ use std::collections::BTreeMap;
 use uuid::Uuid;
 
 use everruns_contracts::typed_id::{
-    AgentId, AppId, EvalCaseId, EvalDatasetId, EvalId, EvalResultId, EvalRunId, HarnessId,
-    SessionId,
+    AgentId, EvalCaseId, EvalDatasetId, EvalId, EvalResultId, EvalRunId, HarnessId, SessionId,
 };
 
 use utoipa::ToSchema;
@@ -49,7 +48,7 @@ pub struct ArtifactSpec {
 ///
 /// Two modes:
 /// - `Session`: mirrors `CreateSessionRequest` — full control over session creation parameters.
-/// - `App`: references a deployed app by ID.
+/// - `External`: labels imported results.
 ///
 /// Resolution order: EvalRun.target → EvalCase.target → Eval.target → org default harness.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, ToSchema)]
@@ -77,11 +76,6 @@ pub enum EvalTarget {
         /// Max LLM iterations per turn.
         #[serde(skip_serializing_if = "Option::is_none")]
         max_iterations: Option<usize>,
-    },
-    /// Reference to a deployed app.
-    App {
-        #[schema(value_type = String)]
-        app_id: AppId,
     },
     /// Label-only target for externally-executed runs (e.g. imported from Mira).
     ///

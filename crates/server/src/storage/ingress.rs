@@ -39,13 +39,11 @@ pub struct UpdateAgentChannelRow {
     pub enabled: Option<bool>,
     pub status: Option<String>,
 }
-/// Channel-owned values required to serve ingress without archival App reads.
+/// Channel and agent values required to serve ingress.
 #[derive(Debug, Clone, FromRow)]
 pub struct IngressChannelRow {
     pub channel_id: Uuid,
     pub channel_public_id: String,
-    pub legacy_app_id: Option<Uuid>,
-    pub legacy_alias_id: Option<String>,
     pub org_id: i64,
     pub agent_id: Uuid,
     pub agent_public_id: String,

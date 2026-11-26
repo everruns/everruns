@@ -274,13 +274,6 @@ async fn ensure_no_live_references(
     ctx: &Ctx,
     identity_id: VirtualUserId,
 ) -> Result<(), CommandError> {
-    crate::domains::apps::queries::ensure_no_app_references_to_virtual_user(
-        &ctx.db,
-        ctx.org_id(),
-        identity_id.uuid(),
-    )
-    .await?;
-
     if ctx
         .db
         .has_agent_with_identity(ctx.org_id(), identity_id)

@@ -51,7 +51,7 @@ pub(crate) fn session_input(owner_principal_id: PrincipalId, label: &str) -> Cre
         playground_user_id: None,
         source: everruns_server::domains::sessions::record::SessionSource::Api,
         org_id: DEFAULT_ORG_ID,
-        app_id: None,
+
         channel_id: None,
         trigger_id: None,
         harness_id: None,
@@ -325,9 +325,6 @@ async fn run_agent_trigger_conformance(
             execution_owner_principal_id: None,
             execution_resolved_owner_user_id: None,
             execution_virtual_user_id: None,
-            execution_app_id: None,
-            legacy_alias_id: None,
-            legacy_alias_name: None,
         })
         .await
         .expect("create agent trigger");

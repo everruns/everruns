@@ -218,3 +218,60 @@ async fn a_warehouse_org_gets_every_event_in_hourly_files() {
     let policy = event_tap::policy(&cp.db, ORG).await.unwrap();
     assert!(!policy.events.contains(&"*".to_string()), "{policy:?}");
 }
+
+#[tokio::test]
+async fn room_conversation_messages_reach_the_posting_listener() {
+    struct RoomPosts(std::sync::atomic::AtomicUsize);
+    #[async_trait::async_trait]
+    impl everruns_core::EventListener for RoomPosts {
+        fn name(&self) -> &'static str {
+            "room_posts"
+        }
+        async fn on_event(&self, event: &Event) {
+            assert_eq!(
+                event.event_type,
+                everruns_contracts::runtime::events::CONVERSATION_MESSAGE
+            );
+            self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        }
+    }
+    let (cp, _, _) = control_plane().await;
+    let session = cp
+        .db
+        .create_session(crate::storage::test_database::test_session_row(ORG))
+        .await
+        .unwrap()
+        .id;
+    let wanted = event_tap::wanted(&cp.db, ORG, &Default::default())
+        .await
+        .unwrap();
+    assert!(
+        wanted
+            .iter()
+            .any(|kind| kind == everruns_contracts::runtime::events::CONVERSATION_MESSAGE)
+    );
+    let event = Event::new(
+        session,
+        EventContext::turn(
+            TurnId::new(),
+            everruns_contracts::typed_id::MessageId::new(),
+        ),
+        everruns_contracts::runtime::events::ConversationMessageData {
+            message_id: everruns_contracts::typed_id::MessageId::new(),
+            text: "Editorial room is ready.".into(),
+            tool_call_id: "send-1".into(),
+            files: vec![],
+            delivery: None,
+        },
+    );
+    let listener = Arc::new(RoomPosts(Default::default()));
+    let event = serde_json::to_value(event).unwrap();
+    let listeners: Vec<Arc<dyn everruns_core::EventListener>> = vec![listener.clone()];
+    event_tap::deliver(&cp, &listeners, ORG, &session.to_string(), &event)
+        .await
+        .unwrap();
+    event_tap::deliver(&cp, &listeners, 3, &session.to_string(), &event)
+        .await
+        .unwrap();
+    assert_eq!(listener.0.load(std::sync::atomic::Ordering::SeqCst), 1);
+}

@@ -89,7 +89,6 @@ export default defineConfig({
     "/getting-started/architecture/": "/explanation/architecture/",
     "/features/skills-registry/": "/features/skills/",
     "/features/agent-instructions/": "/capabilities/agent-instructions/",
-    "/features/apps/": "/features/channels/",
     "/features/endpoints/": "/features/channels/",
     // Agent versions were retired: entity history and restore replace them.
     "/features/agent-versions/": "/features/change-history/",

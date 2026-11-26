@@ -560,7 +560,7 @@ mod tests {
                 playground_user_id: None,
                 source: crate::domains::sessions::record::SessionSource::Api,
                 org_id: DEFAULT_ORG_ID,
-                app_id: None,
+
                 channel_id: None,
                 trigger_id: None,
                 harness_id: Some(harness.id),
@@ -729,7 +729,7 @@ mod tests {
                 playground_user_id: None,
                 source: crate::domains::sessions::record::SessionSource::Api,
                 org_id: DEFAULT_ORG_ID,
-                app_id: None,
+
                 channel_id: None,
                 trigger_id: None,
                 harness_id: Some(harness.id),

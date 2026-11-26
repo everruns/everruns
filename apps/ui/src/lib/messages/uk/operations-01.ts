@@ -37,10 +37,6 @@ export const messages: Readonly<Record<string, string>> = {
   Answers: "Відповіді",
   "Anyone with this link can view this run read-only.":
     "Кожен, хто має це посилання, може переглядати цей запуск лише для читання.",
-  App: "Додаток",
-  "App ID": "Ідентифікатор програми",
-  "app_01933b5a...": "app_01933b5a...",
-  "app:": ":",
   "Avg Duration": "Середня тривалість",
   "Avg exec:": "Середнє виконання:",
   "Avg Latency": "Середня затримка",

@@ -926,17 +926,6 @@ impl ServerAppBuilder {
                 ))
                     as Arc<dyn WorkflowEventStore + Send + Sync>)
             };
-        let apps_state = api::apps::AppState::new(
-            db.clone(),
-            encryption.clone(),
-            scheduler_store.clone(),
-            capability_service.clone(),
-            auth_state.clone(),
-        )
-        .with_invocation_services(
-            messages_state.session_service.clone(),
-            messages_state.message_service.clone(),
-        );
         let rooms_state = api::rooms::AppState {
             db: db.clone(),
             encryption: encryption.clone(),
@@ -1027,7 +1016,7 @@ impl ServerAppBuilder {
             auth_state.clone(),
             host_composition.as_ref(),
             &built_in_harnesses,
-            event_delivery.clone(),
+            event_service.clone(),
             encryption.clone(),
             scheduler_store.clone(),
             capability_service.clone(),
@@ -1113,7 +1102,6 @@ impl ServerAppBuilder {
             .merge(api::virtual_user_connections::routes(
                 virtual_user_connections_state,
             ))
-            .merge(api::apps::routes(apps_state))
             .merge(api::agent_channels::routes(agent_triggers_state.clone()))
             .merge(api::external_agents::routes(agent_triggers_state.clone()))
             .merge(api::agent_triggers::routes(agent_triggers_state))
@@ -1121,6 +1109,12 @@ impl ServerAppBuilder {
             .merge(api::harness_examples::routes(harness_examples_state))
             .merge(api::harnesses::routes(harnesses_state))
             .merge(api::sessions::routes(sessions_state))
+            .merge(api::applications::routes(api::applications::AppState {
+                rooms: rooms_state.clone(),
+                auth: auth_state.clone(),
+                oidc: api::applications::deployment_oidc(),
+                verifier: self.channel_auth_verifier.clone().unwrap_or_default(),
+            }))
             .merge(api::rooms::routes(rooms_state))
             .merge(api::messages::routes(messages_state))
             .merge(crate::channels::voice::routes(voice_state))

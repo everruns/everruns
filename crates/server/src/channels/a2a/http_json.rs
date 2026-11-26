@@ -30,11 +30,11 @@ use serde_json::{Map, Value, json};
 use super::wire::{self, Binding, WireVersion};
 use super::{
     A2aHttpRequest, ChannelA2aState, JsonRpcRequest, MessageSendContext, authenticate_request,
-    channel_app_id, dispatch,
+    channel_ingress_id, dispatch,
 };
 
 /// Interface URLs that carry the binding: the canonical channel route and the
-/// serve-compatible alias. The legacy App route stays JSON-RPC only.
+/// serve-compatible alias.
 const BASES: [&str; 2] = ["/v1/channels/{channel_id}/a2a", "/v1/e/{channel_id}/a2a"];
 
 /// Media type of every HTTP+JSON body this binding returns (spec §11.1).
@@ -357,8 +357,8 @@ async fn run(state: ChannelA2aState, incoming: Incoming, op: Operation) -> Respo
         channel_id,
         request,
     } = incoming;
-    let app_id = match channel_app_id(&state, &channel_id).await {
-        Ok(app_id) => app_id,
+    let ingress_id = match channel_ingress_id(&state, &channel_id).await {
+        Ok(ingress_id) => ingress_id,
         Err(err) => return err.into_response(),
     };
     let peer_addr = request
@@ -366,7 +366,7 @@ async fn run(state: ChannelA2aState, incoming: Incoming, op: Operation) -> Respo
         .map(|Extension(ConnectInfo(addr))| addr);
     let auth = match authenticate_request(
         &state,
-        &app_id,
+        &ingress_id,
         &channel_id,
         &request.headers,
         peer_addr,
@@ -400,7 +400,6 @@ async fn run(state: ChannelA2aState, incoming: Incoming, op: Operation) -> Respo
     };
 
     let ctx = MessageSendContext {
-        app_id,
         channel_id,
         req_id: request.req_id,
         version: WireVersion::V1_0,

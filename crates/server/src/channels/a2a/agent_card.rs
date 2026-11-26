@@ -24,35 +24,10 @@ use serde_json::{Value, json};
 
 use super::{
     A2A_AGENT_VERSION, A2A_PROTOCOL_BINDING_HTTP_JSON, A2A_PROTOCOL_BINDING_JSONRPC,
-    ChannelA2aState, channel_app_id, internal_error, not_found,
+    ChannelA2aState, channel_ingress_id, internal_error, not_found,
 };
 use crate::api::common::ErrorResponse;
 use crate::channels::a2a::signing::A2A_SIGNATURE_HEADER;
-
-/// Get an A2A agent card (legacy app route)
-///
-/// GET /v1/apps/{app_id}/a2a/{channel_id}/.well-known/agent-card.json
-#[utoipa::path(
-    get,
-    path = "/v1/apps/{app_id}/a2a/{channel_id}/.well-known/agent-card.json",
-    params(
-        ("app_id" = String, Path, description = "App ID"),
-        ("channel_id" = String, Path, description = "A2A channel ID")
-    ),
-    responses(
-        (status = 200, description = "Agent Card JSON"),
-        (status = 404, description = "App or channel not found / unpublished / disabled", body = ErrorResponse),
-    ),
-    tag = "apps"
-)]
-pub async fn agent_card_legacy(
-    State(state): State<ChannelA2aState>,
-    OriginalUri(original_uri): OriginalUri,
-    Path((app_id, channel_id)): Path<(String, String)>,
-    headers: HeaderMap,
-) -> Result<Json<Value>, (StatusCode, Json<ErrorResponse>)> {
-    agent_card(state, original_uri, app_id, channel_id, headers).await
-}
 
 #[utoipa::path(
     description = "Get the public Agent Card for a published A2A endpoint.",
@@ -61,9 +36,9 @@ pub async fn agent_card_legacy(
     params(("channel_id" = String, Path, description = "A2A endpoint channel ID")),
     responses(
         (status = 200, description = "Agent Card JSON"),
-        (status = 404, description = "Endpoint not found, app not published, or channel disabled", body = ErrorResponse)
+        (status = 404, description = "Endpoint not found, ingress not published, or channel disabled", body = ErrorResponse)
     ),
-    tag = "apps"
+    tag = "agent-channels"
 )]
 pub async fn agent_card_channel(
     State(state): State<ChannelA2aState>,
@@ -71,18 +46,18 @@ pub async fn agent_card_channel(
     Path(channel_id): Path<String>,
     headers: HeaderMap,
 ) -> Result<Json<Value>, (StatusCode, Json<ErrorResponse>)> {
-    let app_id = channel_app_id(&state, &channel_id).await?;
-    agent_card(state, original_uri, app_id, channel_id, headers).await
+    let ingress_id = channel_ingress_id(&state, &channel_id).await?;
+    agent_card(state, original_uri, ingress_id, channel_id, headers).await
 }
 
 async fn agent_card(
     state: ChannelA2aState,
     original_uri: axum::http::Uri,
-    app_id: String,
+    _ingress_id: String,
     channel_id: String,
     headers: HeaderMap,
 ) -> Result<Json<Value>, (StatusCode, Json<ErrorResponse>)> {
-    let (app, channel) = crate::api::channel_ingress::resolve_channel(
+    let (ingress, channel) = crate::api::channel_ingress::resolve_channel(
         &state.db,
         state.encryption.as_ref(),
         &channel_id,
@@ -90,16 +65,13 @@ async fn agent_card(
     .await
     .map_err(internal_error)?
     .ok_or_else(not_found)?;
-    if !app.matches_legacy_app_id(&app_id) {
-        return Err(not_found());
-    }
     if channel.channel_type != crate::domains::agent_channels::record::ChannelType::A2a {
         return Err(not_found());
     }
     // The Agent Card is only served for a live endpoint: it advertises the
     // invocation URL and security scheme, so publishing it for a draft or
     // suspended endpoint would leak a surface that refuses traffic.
-    if crate::api::channel_ingress::channel_liveness(&app, &channel).is_err() {
+    if crate::api::channel_ingress::channel_liveness(&ingress, &channel).is_err() {
         return Err(not_found());
     }
     let config = channel.a2a_config().ok_or_else(not_found)?;
@@ -127,8 +99,8 @@ async fn agent_card(
     let icon_url = state
         .db
         .get_agent(
-            app.org_id,
-            everruns_contracts::typed_id::AgentId::from_uuid(app.agent_internal_id),
+            ingress.org_id,
+            everruns_contracts::typed_id::AgentId::from_uuid(ingress.agent_internal_id),
         )
         .await
         .map_err(internal_error)?
@@ -144,11 +116,11 @@ async fn agent_card(
     let name = config
         .agent_card_name
         .clone()
-        .unwrap_or_else(|| app.name.clone());
+        .unwrap_or_else(|| ingress.name.clone());
     let description = config
         .agent_card_description
         .clone()
-        .or_else(|| app.description.clone())
+        .or_else(|| ingress.description.clone())
         .unwrap_or_default();
 
     let (security_schemes, requirements) =
@@ -168,9 +140,8 @@ async fn agent_card(
             })
         })
         .collect();
-    // HTTP+JSON shares the interface URL (`http_json.rs`), A2A 1.0 only. The
-    // legacy App route never carried it.
-    if !endpoint_path.contains("/v1/platform/apps/") {
+    // HTTP+JSON shares the interface URL (`http_json.rs`), A2A 1.0 only.
+    {
         interfaces.push(json!({
             "url": endpoint,
             "protocolBinding": A2A_PROTOCOL_BINDING_HTTP_JSON,
@@ -196,7 +167,7 @@ async fn agent_card(
         "skills": [
             {
                 "id": "default",
-                "name": app.name,
+                "name": ingress.name,
                 "description": description,
                 "tags": ["everruns", "a2a"],
             }
@@ -419,7 +390,7 @@ mod tests {
                 ),
                 requirements: crate::domains::agent_channels::record::ChannelAuthRequirements {
                     audiences: vec![],
-                    scopes: vec!["app:invoke".to_string()],
+                    scopes: vec!["ingress:invoke".to_string()],
                     claims: serde_json::Map::new(),
                     subjects: vec![],
                     groups: vec![],
@@ -436,7 +407,10 @@ mod tests {
             schemes["oauth2Bearer"]["httpAuthSecurityScheme"]["scheme"],
             "bearer"
         );
-        assert_eq!(requirements, json!([{ "oauth2Bearer": ["app:invoke"] }]));
+        assert_eq!(
+            requirements,
+            json!([{ "oauth2Bearer": ["ingress:invoke"] }])
+        );
         serde_json::from_value::<std::collections::HashMap<String, a2a::SecurityScheme>>(schemes)
             .expect("securitySchemes should parse as linked A2A security schemes");
     }

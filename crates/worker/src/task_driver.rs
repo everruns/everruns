@@ -148,7 +148,7 @@ async fn run_activity<A: WorkerAdapters>(
         activity_types::INVOKE_SCHEDULED_CHANNEL => {
             let input: ScheduledChannelInput = input(task)?;
             adapters
-                .invoke_scheduled_channel(input.org_id, &input.app_id, &input.channel_id)
+                .invoke_scheduled_channel(input.org_id, &input.channel_id)
                 .await
                 .map_err(anyhow::Error::from)
         }

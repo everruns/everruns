@@ -69,7 +69,6 @@ async fn create_child_session(
 ) -> SessionRow {
     db.create_session(CreateSessionRow {
         org_id: parent.org_id,
-        app_id: parent.app_id,
         harness_id: parent.harness_id,
         agent_id,
         virtual_user_id: parent.virtual_user_id,
@@ -92,7 +91,6 @@ async fn create_child_session(
 async fn create_detached_session(db: &Arc<StorageBackend>, origin: &SessionRow) -> SessionRow {
     let input = CreateSessionRow {
         org_id: origin.org_id,
-        app_id: origin.app_id,
         harness_id: origin.harness_id,
         agent_id: origin.agent_id,
         virtual_user_id: origin.virtual_user_id,
@@ -126,43 +124,28 @@ async fn assert_channel_budget_exhausts_and_stops(channel_type: &str) {
         .await
         .unwrap();
     let channel_public_id = format!("appchan_{}", Uuid::new_v4().simple());
-    let app = db
-        .create_app(
-            1,
-            CreateAppRow {
-                public_id: format!("app_{}", Uuid::new_v4().simple()),
-                name: format!("{channel_type} budget test app"),
-                description: None,
-                harness_id: Uuid::nil(),
-                agent_id: Some(agent.id.uuid()),
-                virtual_user_id: None,
-                owner_principal_id: PrincipalId::from_seed(1),
-                resolved_owner_user_id: None,
-                channel_type: None,
-                channel_config: serde_json::json!({}),
-                channel_config_encrypted: None,
-            },
-        )
-        .await
-        .unwrap();
     let endpoint = db
-        .create_legacy_alias_channel(
-            app.id,
-            CreateLegacyAliasChannelRow {
+        .create_agent_channel(
+            1,
+            CreateAgentChannelRow {
+                agent_id: agent.id.uuid(),
+                status: "live".into(),
+                virtual_user_id: None,
+                owner_principal_id: PrincipalId::from_seed(1).uuid(),
+                resolved_owner_user_id: None,
                 public_id: channel_public_id.clone(),
                 channel_type: channel_type.into(),
                 channel_config: serde_json::json!({}),
                 channel_config_encrypted: None,
                 auth: None,
                 auth_encrypted: None,
-                durable_schedule_id: None,
                 enabled: true,
             },
         )
         .await
         .unwrap();
     assert!(
-        db.get_agent_channel_public_id(2, endpoint.id)
+        db.get_agent_channel_public_id(2, endpoint.channel_id)
             .await
             .unwrap()
             .is_none()
@@ -173,7 +156,7 @@ async fn assert_channel_budget_exhausts_and_stops(channel_type: &str) {
         Some(agent.id),
         None,
         vec![format!("{channel_type}:endpoint:{channel_public_id}")],
-        Some(endpoint.id),
+        Some(endpoint.channel_id),
     )
     .await;
     let budget = db

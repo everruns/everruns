@@ -185,6 +185,28 @@ pub(crate) async fn read_work_chat_share(
     let result = async {
         let (context, channel) = resolve_api_channel(&state, &channel).await?;
         channel_liveness(&context, &channel).map_err(|_| not_found())?;
+        if state
+            .db
+            .application_for_channel(channel.internal_id)
+            .await
+            .map_err(internal_error)?
+            .is_some()
+        {
+            let checks = CallerChecks {
+                db: &state.db,
+                verifier: &state.auth_verifier,
+                runtime_auth: state.runtime_auth.as_ref(),
+            };
+            if !matches!(
+                resolve_caller(&checks, &context, &channel, &headers).await,
+                Ok(Ok(_))
+            ) {
+                return Err(error(
+                    StatusCode::UNAUTHORIZED,
+                    "Sign in to the Application to read this conversation",
+                ));
+            }
+        }
         let cfg = config(&channel)?;
         let peer = connect_info.map(|Extension(ConnectInfo(peer))| peer);
         if state

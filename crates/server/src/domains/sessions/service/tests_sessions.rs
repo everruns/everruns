@@ -417,7 +417,7 @@ async fn session_list_batch_hydration_preserves_response_fields() {
             source: crate::domains::sessions::record::SessionSource::Api,
             workspace_id: None,
             org_id: DEFAULT_ORG_ID,
-            app_id: None,
+
             channel_id: None,
             trigger_id: None,
             harness_id: Some(harness.id),
@@ -684,7 +684,6 @@ async fn app_backreference_is_only_set_by_app_session_create() {
     .await
     .unwrap();
 
-    let app_internal_id = db.create_test_app(1).await;
     // Build a real user principal to act as the App owner. This must be
     // distinct from the caller-derived default (the system principal that
     // `Caller::internal` resolves to) so the assertions below actually
@@ -721,12 +720,11 @@ async fn app_backreference_is_only_set_by_app_session_create() {
     );
 
     let app_session = session_service
-        .create_from_app(
+        .create_from_channel(
             &caller,
             harness.id.uuid(),
             None,
             None,
-            Some(app_internal_id),
             None,
             None,
             app_owner.id,
@@ -741,20 +739,19 @@ async fn app_backreference_is_only_set_by_app_session_create() {
         .await
         .unwrap()
         .expect("app session should be stored");
-    assert_eq!(stored_app_session.app_id, Some(app_internal_id));
     // The override actually took effect: stored session is owned by the
     // App's owner, NOT the caller-derived system principal.
     assert_eq!(
         stored_app_session.owner_principal_id, app_owner.id,
-        "create_from_app must persist the App's owner_principal_id",
+        "create_from_channel must persist the App's owner_principal_id",
     );
     assert_ne!(
         stored_app_session.owner_principal_id, caller_default_owner.id,
-        "create_from_app must override the caller-derived default principal",
+        "create_from_channel must override the caller-derived default principal",
     );
     assert_eq!(
         stored_app_session.resolved_owner_user_id, app_owner.resolved_user_id,
-        "create_from_app must persist the App's resolved_owner_user_id",
+        "create_from_channel must persist the App's resolved_owner_user_id",
     );
 
     let normal_session = session_service
@@ -773,7 +770,7 @@ async fn app_backreference_is_only_set_by_app_session_create() {
         .await
         .unwrap()
         .expect("normal session should be stored");
-    assert_eq!(stored_normal_session.app_id, None);
+    assert_eq!(stored_normal_session.channel_id, None);
 }
 
 #[tokio::test]

@@ -424,17 +424,15 @@ impl GrpcClient {
         Ok(response.into_inner().pruned.max(0) as usize)
     }
 
-    pub async fn invoke_scheduled_app_channel(
+    pub async fn invoke_scheduled_channel(
         &self,
         org_id: i64,
-        app_id: &str,
         channel_id: &str,
     ) -> Result<serde_json::Value> {
         let mut client = self.inner.client();
         let response = client
-            .invoke_scheduled_app_channel(proto::InvokeScheduledAppChannelRequest {
+            .invoke_scheduled_channel(proto::InvokeScheduledChannelRequest {
                 org_id,
-                app_id: app_id.to_string(),
                 channel_id: channel_id.to_string(),
             })
             .await

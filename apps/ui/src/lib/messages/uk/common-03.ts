@@ -278,8 +278,8 @@ export const messages: Readonly<Record<string, string>> = {
   "Execution pressure": "Тиск виконання",
   Executions: "Виконання",
   Exhausted: "Виснажений",
-  "Existing App channels keep working. New external integrations will use agent-owned endpoints as they become available.":
-    "Існуючі канали програми продовжують працювати. Нові зовнішні інтеграції використовуватимуть кінцеві точки, що належать агентам, щойно вони стануть доступними.",
+  "Publish agent channels to connect external integrations.":
+    "Публікуйте канали агента, щоб підключати зовнішні інтеграції.",
   "Expanded Thinking": "Розширене мислення",
   Experimental: "Експериментальний",
   Expired: "Термін дії минув",

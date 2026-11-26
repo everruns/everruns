@@ -67,8 +67,8 @@ impl ChannelDriver for WebhookDriver {
             .map(|(name, value)| (name.as_str(), value.as_str()))
             .collect();
         let template_context = json!({
-            "app": {
-                "id": context.public_id.to_string(),
+            "agent": {
+                "id": context.agent_id,
                 "name": context.name,
             },
             "channel": {
@@ -108,16 +108,19 @@ impl ChannelDriver for WebhookDriver {
                     .to_string(),
                 thread_ref: None,
                 routing_metadata: HashMap::new(),
-                // The App-era provenance every invocation message carried.
+                // Channel invocation metadata for display and routing.
                 message_metadata: serde_json::Map::from_iter([
-                    ("source".to_string(), json!("app_webhook")),
-                    ("_app_id".to_string(), json!(context.public_id.to_string())),
+                    ("source".to_string(), json!("channel_webhook")),
                     (
-                        "app_channel_id".to_string(),
+                        "_ingress_id".to_string(),
+                        json!(context.public_id.to_string()),
+                    ),
+                    (
+                        "channel_id".to_string(),
                         json!(channel.public_id.to_string()),
                     ),
                     (
-                        "app_channel_type".to_string(),
+                        "channel_type".to_string(),
                         json!(channel.channel_type.to_string()),
                     ),
                 ]),

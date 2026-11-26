@@ -11,7 +11,7 @@
 //   existing API-key-only behavior so existing deployments do not break.
 // Decision: Signature base string is Slack-derived but target-bound:
 //   `v0:{timestamp}:{channel_scope}:{body}` where `channel_scope` is
-//   `{app_id}:{channel_id}`. Slack signs only `v0:{timestamp}:{body}`; we
+//   `{ingress_id}:{channel_id}`. Slack signs only `v0:{timestamp}:{body}`; we
 //   add the channel scope because operators who reuse the same
 //   `signing_secret` across multiple A2A channels would otherwise be
 //   vulnerable to cross-channel replay (a captured request for channel A
@@ -110,7 +110,7 @@ impl SignatureCheckError {
 /// each segment separated by a literal colon and no whitespace. The HMAC
 /// digest is hex-encoded and prefixed `v0=`. `channel_scope` is the
 /// caller-supplied target identifier — for the A2A endpoint this is
-/// `{app_id}:{channel_id}` so the same `signing_secret` reused across
+/// `{ingress_id}:{channel_id}` so the same `signing_secret` reused across
 /// channels cannot let a captured request be replayed against a
 /// different channel target. The body slice must be the **raw request
 /// bytes** (not a re-serialized JSON value) so the signature matches

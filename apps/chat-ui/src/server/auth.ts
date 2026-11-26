@@ -1,7 +1,15 @@
 // THREAT[TM-AUTH-039]: browser-bound, one-use handoffs and host-only opaque sessions.
 import { createHash, createPublicKey, verify } from "node:crypto";
 import { cookies } from "next/headers";
-import { settings, channelOf, hostOf, hostLabel, bootstrap, HOST_LABEL } from "./config";
+import {
+  settings,
+  channelOf,
+  hostOf,
+  hostLabel,
+  bootstrap,
+  publicationLabel,
+  runtimePath,
+} from "./config";
 import { viewerFromIdToken, type Viewer } from "../profile";
 import { random, hash, save, read, remove, updateSession, admitLogin } from "./store";
 const SESSION = "__Host-everruns_chat",
@@ -15,6 +23,7 @@ type Flow = {
   verifier: string;
   nonce: string;
   selectedSession?: string;
+  returnTo?: string;
 };
 type Session = {
   recoveryId?: string;
@@ -143,7 +152,7 @@ export async function tokenFor(request: Request): Promise<string | null> {
   }
   // Exchange proves the provider binding and rechecks channel liveness/policy
   // on every request. A browser session never renews runtime authority itself.
-  const response = await fetch(`${settings().upstream}/v1/channels/${channel}/runtime-auth`, {
+  const response = await fetch(`${settings().upstream}${runtimePath(channel)}/runtime-auth`, {
     method: "POST",
     headers: { Authorization: `Bearer ${current.identity}` },
     cache: "no-store",
@@ -178,6 +187,11 @@ export async function authenticate(request: Request, action: string): Promise<Re
         verifier: random(),
         nonce: random(),
         selectedSession,
+        returnTo: /^\/(chats|rooms|memory)\/[a-z][a-z0-9-]{1,46}[a-z0-9]$/.test(
+          url.searchParams.get("returnTo") ?? "",
+        )
+          ? url.searchParams.get("returnTo")!
+          : undefined,
       } satisfies Flow,
       600,
     );
@@ -239,7 +253,7 @@ export async function authenticate(request: Request, action: string): Promise<Re
         },
         60,
       );
-      if (!HOST_LABEL.test(flow.host)) throw new Error("Invalid login destination");
+      if (!publicationLabel(flow.host)) throw new Error("Invalid login destination");
       return Response.redirect(
         `https://${flow.host}.${cfg.domain}/auth/complete?code=${encodeURIComponent(code)}`,
         303,
@@ -257,7 +271,7 @@ export async function authenticate(request: Request, action: string): Promise<Re
     const consumed = await read<Flow & Session>("handoff", code, true);
     if (!consumed) throw new Error("Login already used");
     await bootstrap(channel);
-    const admitted = await fetch(`${cfg.upstream}/v1/channels/${channel}/runtime-auth`, {
+    const admitted = await fetch(`${cfg.upstream}${runtimePath(channel)}/runtime-auth`, {
       method: "POST",
       headers: { Authorization: `Bearer ${consumed.identity}` },
       signal: AbortSignal.timeout(10000),
@@ -281,7 +295,10 @@ export async function authenticate(request: Request, action: string): Promise<Re
     const destination = consumed.selectedSession
       ? `?session=${encodeURIComponent(consumed.selectedSession)}`
       : "";
-    return Response.redirect(`https://${hostOf(request)}/${destination}`, 303);
+    return Response.redirect(
+      `https://${hostOf(request)}${consumed.returnTo ?? "/"}${destination}`,
+      303,
+    );
   }
   throw new Error("Unknown login route");
 }

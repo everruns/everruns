@@ -601,9 +601,6 @@ async fn execute_case_inner(
                 *max_iterations,
             )
         }
-        EvalTarget::App { .. } => {
-            return Err(anyhow::anyhow!("App targets are not supported in eval execution").into());
-        }
         EvalTarget::External { .. } => {
             return Err(anyhow::anyhow!(
                 "External targets are imported results and are not executable"

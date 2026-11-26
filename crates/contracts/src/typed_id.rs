@@ -519,13 +519,6 @@ impl IdMarker for LeasedResourceIdMarker {
     const PREFIX: &'static str = "resource";
 }
 
-/// Marker for App IDs
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct AppIdMarker;
-impl IdMarker for AppIdMarker {
-    const PREFIX: &'static str = "app";
-}
-
 /// Marker for agent channel IDs. The `appchan` prefix predates the App
 /// retirement and stays: it is persisted in rows, session tags, and URLs
 /// registered with third parties.
@@ -533,6 +526,13 @@ impl IdMarker for AppIdMarker {
 pub struct AgentChannelIdMarker;
 impl IdMarker for AgentChannelIdMarker {
     const PREFIX: &'static str = "appchan";
+}
+
+/// An organization-owned published Application.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct ApplicationIdMarker;
+impl IdMarker for ApplicationIdMarker {
+    const PREFIX: &'static str = "application";
 }
 
 /// Marker for Notification IDs
@@ -760,10 +760,9 @@ pub type ExecId = TypedId<ExecIdMarker>;
 pub type ScheduleId = TypedId<ScheduleIdMarker>;
 /// Leased resource ID
 pub type LeasedResourceId = TypedId<LeasedResourceIdMarker>;
-/// App ID
-pub type AppId = TypedId<AppIdMarker>;
 /// Agent channel ID (`appchan_` prefix)
 pub type AgentChannelId = TypedId<AgentChannelIdMarker>;
+pub type ApplicationId = TypedId<ApplicationIdMarker>;
 /// Notification ID
 pub type NotificationId = TypedId<NotificationIdMarker>;
 /// Room ID (`room_` prefix)

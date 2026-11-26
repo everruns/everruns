@@ -14,6 +14,7 @@ pub struct RuntimeAccount {
     pub id: VirtualUserId,
     pub management: Option<ResolvedOrg>,
     pub channel_id: Option<String>,
+    pub application_id: Option<everruns_contracts::typed_id::ApplicationId>,
 }
 impl RuntimeAccount {
     pub async fn from_token(auth: &AuthState, token: &str) -> Result<Self, AuthError> {
@@ -36,6 +37,47 @@ impl RuntimeAccount {
         if user.status != "active" || user.usage != "end_user" {
             return Err(AuthError::unauthorized("Runtime account unavailable"));
         }
+        // THREAT[TM-AUTHZ-029]: Publication/version/audience revocation applies on every call.
+        if let Some(application) = &claims.application {
+            let row = db
+                .application(claims.org_id, application.id)
+                .await
+                .map_err(|_| AuthError::internal("Application unavailable"))?
+                .ok_or_else(|| AuthError::unauthorized("Application unavailable"))?;
+            let config: crate::domains::applications::ApplicationConfig =
+                serde_json::from_value(row.config)
+                    .map_err(|_| AuthError::unauthorized("Application unavailable"))?;
+            if row.status != "published"
+                || row.version != application.version
+                || !crate::domains::agent_channels::work_chat::identity_admitted(
+                    db,
+                    claims.org_id,
+                    &config.audience(),
+                    &application.subject,
+                    application.email.as_deref(),
+                )
+                .await
+                .map_err(|_| AuthError::internal("Application audience unavailable"))?
+            {
+                return Err(AuthError::unauthorized("Application access revoked"));
+            }
+            if !db
+                .list_virtual_user_bindings(claims.org_id, id)
+                .await
+                .map_err(|_| AuthError::internal("Runtime identity unavailable"))?
+                .iter()
+                .any(|b| b.id == claims.binding_id)
+            {
+                return Err(AuthError::unauthorized("Runtime identity binding revoked"));
+            }
+            return Ok(Self {
+                org_id: claims.org_id,
+                id,
+                management: None,
+                channel_id: None,
+                application_id: Some(application.id),
+            });
+        }
         let channel = db
             .get_ingress_channel_by_public_id(&claims.channel_id)
             .await
@@ -48,6 +90,15 @@ impl RuntimeAccount {
             || channel.exposures_suspended
         {
             return Err(AuthError::unauthorized("Runtime channel unavailable"));
+        }
+        // Once attached, a Work Chat is governed only by its Application.
+        if db
+            .application_for_channel(channel.channel_id)
+            .await
+            .map_err(|_| AuthError::internal("Application unavailable"))?
+            .is_some()
+        {
+            return Err(AuthError::unauthorized("Application credential required"));
         }
         if !db
             .list_virtual_user_bindings(claims.org_id, id)
@@ -63,6 +114,7 @@ impl RuntimeAccount {
             id,
             management: None,
             channel_id: Some(claims.channel_id),
+            application_id: None,
         })
     }
     pub async fn connection_target(
@@ -92,9 +144,29 @@ impl RuntimeAccount {
         &self,
         db: &crate::storage::StorageBackend,
     ) -> anyhow::Result<Option<std::collections::HashSet<String>>> {
-        let Some(channel_id) = &self.channel_id else {
-            return Ok(None);
-        };
+        if let Some(application) = self.application_id {
+            let mut allowed = std::collections::HashSet::new();
+            for resource in db.application_resources(application.uuid()).await? {
+                if resource.kind == crate::domains::applications::ApplicationResourceKind::Chat {
+                    allowed.extend(
+                        self.channel_mcp_providers(db, &resource.resource_id)
+                            .await?,
+                    );
+                }
+            }
+            return Ok(Some(allowed));
+        }
+        match &self.channel_id {
+            Some(channel) => Ok(Some(self.channel_mcp_providers(db, channel).await?)),
+            None if self.management.is_some() => Ok(None),
+            None => Ok(Some(std::collections::HashSet::new())),
+        }
+    }
+    async fn channel_mcp_providers(
+        &self,
+        db: &crate::storage::StorageBackend,
+        channel_id: &str,
+    ) -> anyhow::Result<std::collections::HashSet<String>> {
         let channel = db
             .get_ingress_channel_by_public_id(channel_id)
             .await?
@@ -151,7 +223,7 @@ impl RuntimeAccount {
                 providers.insert(everruns_core::mcp_oauth_provider_id_for_uuid(id));
             }
         }
-        Ok(Some(providers))
+        Ok(providers)
     }
     pub async fn permits_provider(
         &self,
@@ -198,7 +270,10 @@ where
                             .ok()
                     })
                     .and_then(|p| serde_json::from_slice::<serde_json::Value>(&p).ok())
-                    .is_some_and(|p| p["token_type"] == "runtime_access"))
+                    .is_some_and(|p| {
+                        p["token_type"] == "runtime_access"
+                            || p["token_type"] == "application_access"
+                    }))
         {
             return Self::from_token(&auth, token).await;
         }
@@ -217,6 +292,7 @@ where
             id: user.id,
             management: Some(org),
             channel_id: None,
+            application_id: None,
         })
     }
 }

@@ -1283,7 +1283,7 @@ fn public_result_row(
     row: crate::storage::EvalCaseResultRow,
     case_name: Option<String>,
 ) -> PublicEvalCaseResult {
-    // Only expose label-only (External) targets. Session/App targets carry
+    // Only expose label-only (External) targets. Session targets carry
     // internal harness/agent/app ids and are dropped for the public view.
     let target = row
         .target_snapshot

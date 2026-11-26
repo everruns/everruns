@@ -39,7 +39,15 @@ fn walk(command: &Command, path: &str, lines: &mut Vec<String>) {
 fn leaf(command: &Command, path: &str) -> String {
     let mut parts: Vec<String> = command
         .get_arguments()
-        .filter(|arg| arg.get_id() != "help" && arg.get_id() != "version")
+        .filter(|arg| {
+            !matches!(
+                arg.get_action(),
+                clap::ArgAction::Help
+                    | clap::ArgAction::HelpShort
+                    | clap::ArgAction::HelpLong
+                    | clap::ArgAction::Version
+            )
+        })
         .map(argument)
         .collect();
     parts.sort();
@@ -120,6 +128,18 @@ mod tests {
     #[test]
     fn a_leaf_renders_its_spelling_shorts_and_requirement() {
         assert_eq!(tree(&command()), "widgets list\t--limit/-l --name!");
+    }
+
+    #[test]
+    fn a_resource_version_is_part_of_the_contract() {
+        let mut command = Command::new("root")
+            .disable_help_subcommand(true)
+            .subcommand(
+                Command::new("update")
+                    .arg(clap::Arg::new("version").long("version").required(true)),
+            );
+        command.build();
+        assert_eq!(tree(&command), "update\t--version!");
     }
 
     #[test]

@@ -46,6 +46,11 @@ everruns k8s up [OPTIONS]
 | `--storage-class <STORAGE_CLASS>` | StorageClass for new volumes without a per-volume class, or auto to use the cluster default. |
 | `--public-url <PUBLIC_URL>` | Public address such as https://everruns.example.com. Enables direct Ingress by default. |
 | `--ingress-class <INGRESS_CLASS>` | Ingress class for the public address, such as nginx. |
+| `--applications-domain <APPLICATIONS_DOMAIN>` | Enable published Applications at <name>.<domain> (requires wildcard DNS and TLS) |
+| `--applications-oidc-issuer <APPLICATIONS_OIDC_ISSUER>` | HTTPS OIDC issuer for Application sign-in (for example https://id.everruns.com) |
+| `--applications-oidc-client-id <APPLICATIONS_OIDC_CLIENT_ID>` | OIDC client registered with https://login.<domain>/auth/callback. |
+| `--applications-secret <APPLICATIONS_SECRET>` | Existing Secret with CHAT_DATABASE_URL, CHAT_OIDC_CLIENT_SECRET and CHAT_SESSION_KEY (64 hex characters) |
+| `--applications-tls-secret <APPLICATIONS_TLS_SECRET>` | Existing Secret containing the wildcard TLS certificate for the Application domain. |
 | `--chart <CHART>` | Chart to install: a local path such as charts/everruns, or an OCI reference. |
 | `--chart-version <CHART_VERSION>` | Chart version for a new install (default: this CLI's version) |
 | `--image-tag <IMAGE_TAG>` | Image tag to run, such as v0.51.0 or latest (default: the chart's release) |

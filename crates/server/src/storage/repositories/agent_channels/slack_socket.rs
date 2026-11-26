@@ -18,8 +18,6 @@ impl Database {
             SELECT
                 ae.id AS channel_id,
                 ae.public_id AS channel_public_id,
-                ae.app_id AS legacy_app_id,
-                ae.legacy_alias_id,
                 agent.org_id,
                 ae.agent_id,
                 agent.public_id AS agent_public_id,

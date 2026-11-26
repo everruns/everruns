@@ -28,7 +28,7 @@ fn excluded_from_read_only_query(name: &str) -> bool {
 }
 
 fn exposed_to_scripting(meta: &crate::domains::common::CommandMeta) -> bool {
-    // Durable control-plane APIs are infrastructure internals. App schedule
+    // Durable control-plane APIs are infrastructure internals. Channel schedule
     // channels expose their own user-facing commands instead. Internal worker
     // commands are nobody's tool (`INTERNAL_COMMAND_PATH_PREFIX`).
     !meta.path.starts_with("/v1/platform/durable/")
