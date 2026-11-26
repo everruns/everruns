@@ -1843,7 +1843,9 @@ dependencies = [
 
 [[package]]
 name = "channelkit"
-version = "0.1.0-alpha.6"
+version = "0.1.0-alpha.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "395776205ce607b2dd4446e3d73a8ea06b433bbccae57306de1aef02c801fbfc"
 dependencies = [
  "async-trait",
  "futures-util",
@@ -1861,7 +1863,9 @@ dependencies = [
 
 [[package]]
 name = "channelkit-agentmail"
-version = "0.1.0-alpha.6"
+version = "0.1.0-alpha.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "05926df80b2b6b513f1f2d9211992fc320c38379423f68e75f56e68415f5ab2a"
 dependencies = [
  "base64 0.23.1",
  "channelkit",
@@ -3652,16 +3656,6 @@ name = "encode_unicode"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "34aa73646ffb006b8f5147f3dc182bd4bcb190227ce861fc4a4844bf8e3cb2c0"
-
-[[package]]
-name = "encodify"
-version = "1.0.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ab7f638cb35e10aa08efd439d11ddcbeef7d52dd987c4956a6ff2cc1061020f3"
-dependencies = [
- "memchr",
- "simdutf8",
-]
 
 [[package]]
 name = "encoding_rs"
@@ -5619,17 +5613,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "hashify"
-version = "0.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "04a037b1848eada162d6534c206770180e6bfc0eaa97292250c3e7179d8b1f73"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 3.0.10",
-]
-
-[[package]]
 name = "hashlink"
 version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6985,18 +6968,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dae608c151f68243f2b000364e1f7b186d9c29845f7d2d85bd31b9ad77ad552b"
 
 [[package]]
-name = "mail-parser"
-version = "1.0.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2e57f7caaeb0071026b4be388c81e9c253853d9ed072a3061d425ef1c1b1b569"
-dependencies = [
- "encodify",
- "hashify",
- "memchr",
- "simdutf8",
-]
-
-[[package]]
 name = "maplit"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7004,15 +6975,14 @@ checksum = "3e2e65a1a2e43cfcb47a895c4c8b10d1f4a61097f9f254f183aee60cad9c651d"
 
 [[package]]
 name = "markkit"
-version = "0.3.2"
+version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "84a5b3bee658a059a1aaffd17e1e21ad6291d123802f8344ab460eb65ac00bf9"
+checksum = "d43fbeaef65c334d10c1ccabdffe0c0fdfe14759bdbd56048331016278a06da5"
 dependencies = [
  "calamine",
  "cfb",
  "ego-tree",
  "html5ever",
- "mail-parser",
  "quick-xml 0.42.0",
  "scraper",
  "serde",

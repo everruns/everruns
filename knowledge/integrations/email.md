@@ -127,9 +127,8 @@ provider transport timing is not a processing latency guarantee. These runs use
 explicit approvals, not autonomous Jev admission/output decisions, and do not
 qualify a provider-origin webhook deployment.
 
-Markkit resolves from the published `0.3.2` crate. Channelkit publication is pending.
-Temporary MIT source
-snapshots under [vendor](../../vendor/email-libraries/README.md) keep this checkout
-buildable; remove them after qualified upstream releases. This checkout supports
-local self-hosted qualification without publishing those crates. Cloud rollout
-and upstream registry releases remain separate work.
+Markkit resolves from published `0.3.3` with `email-body`, avoiding the unused MIME
+parser and preserving Rust 1.96 compatibility. Channelkit core and AgentMail resolve
+from published `0.1.0-alpha.7`. Exact registry versions replace the temporary source
+snapshots; the checkout no longer depends on sibling repositories. Cloud rollout
+remains separate from this core integration.

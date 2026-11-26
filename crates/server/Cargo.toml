@@ -115,9 +115,9 @@ urlencoding = "2"
 git2.workspace = true
 tempfile.workspace = true
 mime_guess = "2"
-markkit = { version = "=0.3.2", default-features = false, features = ["html", "docx", "spreadsheet", "email"] }
-channelkit = { path = "../../vendor/email-libraries/channelkit" }
-channelkit-agentmail = { path = "../../vendor/email-libraries/channelkit-agentmail" }
+markkit = { version = "=0.3.3", default-features = false, features = ["html", "docx", "spreadsheet", "email-body"] }
+channelkit = "=0.1.0-alpha.7"
+channelkit-agentmail = "=0.1.0-alpha.7"
 ammonia = "4"
 tokio-tungstenite.workspace = true
 futures-util.workspace = true
