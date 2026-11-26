@@ -82205,7 +82205,7 @@
           },
           "parent_tool_call_id": {
             "type": "string",
-            "description": "The `bash` tool call the script ran in."
+            "description": "The execution tool call (`bash` or `python`) the script ran in."
           },
           "status": {
             "type": "string",
