@@ -100,6 +100,8 @@ pub const EVENTS: SessionCommand = read("events", "event rows in a range, by typ
 pub const LOG: SessionCommand = read("log", "the committed log in public form (an export)");
 /// The session's trace rows.
 pub const TRACE: SessionCommand = read("trace", "the session's trace rows");
+/// Schedule history, including stopped and deleted schedules.
+pub const SCHEDULES: SessionCommand = read("schedules", "the session's schedule history");
 /// The session's storage values.
 pub const STORAGE_READ: SessionCommand = read("storage", "the session's storage values");
 /// The session's sealed secrets' names and revisions.
@@ -108,6 +110,8 @@ pub const SECRETS: SessionCommand = read("secrets", "the session's sealed secret
 pub const SANDBOX: SessionCommand = read("sandbox", "the pinned sandbox's state");
 /// What the session's model calls, turns and image tools spent, unpriced
 /// (`runtime::session_spend::SpendInputs`).
+/// Narrow model usage and origin rows for the Cost view.
+pub const COST: SessionCommand = read("cost", "the session's narrow cost and origin rows");
 pub const SPEND: SessionCommand = read(
     "spend",
     "the session's model calls, turn outcomes and image results",
@@ -127,10 +131,12 @@ pub const SESSION_COMMANDS: &[SessionCommand] = &[
     EVENTS,
     LOG,
     TRACE,
+    SCHEDULES,
     STORAGE_READ,
     SECRETS,
     SANDBOX,
     SPEND,
+    COST,
 ];
 
 /// The declared command (`Kind::Command`) or read named `name`.

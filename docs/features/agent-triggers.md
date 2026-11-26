@@ -199,3 +199,22 @@ Activity scheduling persists the queued task, execution record and next-trigger
 time atomically. These guarantees concern dispatch, not exactly-once side effects
 inside tools or external services; tools still need their own idempotency keys.
 Server and worker must both be upgraded with the associated database migration.
+
+## Investigate a trigger
+
+Use `everruns agents triggers runs list` with `--agent-id`, `--trigger-id`,
+`--from`, `--to`, `--limit` and the previous page's last ID as `--before`.
+Delivery history uses `everruns agents triggers deliveries list` with the same
+filters. Histories identify authenticated manual requesters and resulting sessions
+when recorded; input-message links locate the specific turn in a shared session.
+Delivery records are retained for 90 days. Earlier pruned history and unrecorded
+actors remain unavailable.
+
+Platform Chat can use these same reads. It can also read a session's follow-up
+schedules with `everruns sessions schedules list --session-id <id>` and inspect
+one with `everruns sessions schedules get --session-id <id> --schedule-id <id>`.
+
+Disabling a trigger tears down its durable execution history. Use delivery
+history to investigate retained events across disabling and re-enabling. Older
+`schedule` delivery labels that could also have been manual fires are reported
+as `unknown`.

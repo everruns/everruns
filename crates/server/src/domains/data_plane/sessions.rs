@@ -308,8 +308,16 @@ impl TriggerRun<'_> {
     /// `false` for a session the platform's workers run, which takes the
     /// message the ordinary way.
     pub async fn admit(&self, cp: &ControlPlane) -> Result<bool, CommandError> {
+        Ok(self.admit_message(cp).await?.is_some())
+    }
+
+    /// The admitted input's identity, for causal links in trigger history.
+    pub async fn admit_message(
+        &self,
+        cp: &ControlPlane,
+    ) -> Result<Option<MessageId>, CommandError> {
         if !runs_on_data_plane(cp, self.org_id, self.session).await? {
-            return Ok(false);
+            return Ok(None);
         }
         let message = match &self.key {
             Some(key) => MessageId::from_uuid(uuid::Uuid::new_v5(
@@ -336,6 +344,6 @@ impl TriggerRun<'_> {
             )
             .await
             .map_err(|error| error.context("the data plane did not take the message"))?;
-        Ok(true)
+        Ok(Some(message))
     }
 }

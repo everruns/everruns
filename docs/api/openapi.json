@@ -10584,6 +10584,42 @@
             }
           },
           {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
             "name": "limit",
             "in": "query",
             "description": "Maximum rows to return (1-200, default 50).",
@@ -10636,7 +10672,7 @@
           "agent-triggers"
         ],
         "summary": "List agent trigger runs",
-        "description": "List the ten most recent durable execution outcomes for an agent trigger.",
+        "description": "List paginated durable execution outcomes for an agent trigger.",
         "operationId": "list_agent_trigger_runs",
         "parameters": [
           {
@@ -10655,6 +10691,55 @@
             "required": true,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum rows to return (1-200, default 50).",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
             }
           }
         ],
@@ -12742,9 +12827,46 @@
         "tags": [
           "budgets"
         ],
-        "summary": "Summarize what usage cost the organization",
+        "summary": "Summarize organization costs over a window, with combined agent/session/source/starter filters and an optional joint group_by breakdown",
+        "description": "Summarize organization costs over a window, with combined agent/session/source/starter filters and an optional joint group_by breakdown. Includes unpriced counts and reports truncated joint groups.",
         "operationId": "get_cost_summary",
         "parameters": [
+          {
+            "name": "session_id",
+            "in": "query",
+            "description": "Restrict usage to this session.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "description": "Exact source key from by_source (for example a provider/model).",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "started_by",
+            "in": "query",
+            "description": "person, unattended, or unknown for historical records.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "group_by",
+            "in": "query",
+            "description": "Comma-separated joint dimensions: agent,session,source,started_by,basis,user,day.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
           {
             "name": "from",
             "in": "query",
@@ -18706,6 +18828,19 @@
             "required": true,
             "schema": {
               "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "episode_id",
+            "in": "query",
+            "description": "Select frozen opening evidence from this episode.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
               "format": "uuid"
             }
           }
@@ -31435,6 +31570,26 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "description": "Inclusive model-call and tool-start time. Omitted means lifetime.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "Exclusive model-call and tool-start time. Omitted means no upper bound.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
           }
         ],
         "responses": {
@@ -42301,12 +42456,31 @@
             "type": "string",
             "description": "Delivery identifier."
           },
+          "input_message_id": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/messageId",
+                "description": "Input that caused the turn, when known. Join it to the session trace."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "reason": {
             "type": [
               "string",
               "null"
             ],
             "description": "Why the event was filtered or failed."
+          },
+          "requested_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "Authenticated manual requester; absent for automatic or historical deliveries."
           },
           "session_id": {
             "type": [
@@ -42317,7 +42491,7 @@
           },
           "source": {
             "type": "string",
-            "description": "Where the event came from (`schedule`, `webhook`, ...)."
+            "description": "Where the event came from (`schedule`, `webhook`, ...), or `unknown`\nwhen a legacy schedule label could also have been a manual fire."
           },
           "status": {
             "$ref": "#/components/schemas/TriggerDeliveryStatus",
@@ -42341,6 +42515,15 @@
           "scheduled_at"
         ],
         "properties": {
+          "attempts": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Number of task attempts observed; absent when unavailable.",
+            "minimum": 0
+          },
           "completed_at": {
             "type": [
               "string",
@@ -42348,6 +42531,9 @@
             ],
             "format": "date-time",
             "description": "Time the execution completed, when terminal."
+          },
+          "configuration": {
+            "description": "Non-secret trigger kind, cron, timezone and session mode at dispatch."
           },
           "error": {
             "type": [
@@ -42360,14 +42546,53 @@
             "type": "string",
             "description": "Durable execution identifier."
           },
+          "input_message_id": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/messageId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "requested_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "Authenticated user who fired it, when recorded."
+          },
           "scheduled_at": {
             "type": "string",
             "format": "date-time",
             "description": "Time the execution was scheduled."
           },
+          "session_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What fired it: manual, schedule, or unknown for old records."
+          },
           "status": {
             "type": "string",
             "description": "Outcome of the run's task: completed, failed, skipped, cancelled, or queued, running or retrying while it is outstanding."
+          },
+          "trigger_revision": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Trigger configuration revision observed at dispatch."
           }
         }
       },
@@ -47066,6 +47291,8 @@
         "type": "object",
         "description": "Org cost over a window, grouped several ways.",
         "required": [
+          "breakdown",
+          "breakdown_truncated",
           "from",
           "to",
           "timezone",
@@ -47080,6 +47307,16 @@
           "runs_with_agents"
         ],
         "properties": {
+          "breakdown": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CostSummaryBreakdown"
+            },
+            "description": "Joint breakdown requested by group_by; at most 200 groups."
+          },
+          "breakdown_truncated": {
+            "type": "boolean"
+          },
           "by_agent": {
             "type": "array",
             "items": {
@@ -47113,7 +47350,7 @@
             "items": {
               "$ref": "#/components/schemas/CostSummaryLine"
             },
-            "description": "Totals by who started the work: `person`, or `unattended` (schedules\nand other runs nobody watches)."
+            "description": "Totals by recorded starter: `person`, `unattended` (including schedules\nand agent triggers), or `unknown` when attribution was not recorded."
           },
           "by_user": {
             "type": "array",
@@ -47152,6 +47389,31 @@
             "type": "integer",
             "format": "int64",
             "description": "Usage records over the window with no price."
+          }
+        }
+      },
+      "CostSummaryBreakdown": {
+        "type": "object",
+        "description": "One joint cost group. Null dimensions mean attribution was not recorded.",
+        "required": [
+          "dimensions",
+          "cost_usd",
+          "unpriced_records",
+          "records"
+        ],
+        "properties": {
+          "cost_usd": {
+            "type": "number",
+            "format": "double"
+          },
+          "dimensions": {},
+          "records": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "unpriced_records": {
+            "type": "integer",
+            "format": "int64"
           }
         }
       },
@@ -56492,6 +56754,7 @@
         "type": "object",
         "description": "An organization-scoped operational issue and its current recovery evidence.",
         "required": [
+          "episode_id",
           "id",
           "code",
           "status",
@@ -56538,6 +56801,11 @@
             "type": "string",
             "description": "Detector code: `slack.permissions` for a channel, `org.active_turn_limit` for the organization.",
             "example": "slack.permissions"
+          },
+          "episode_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Current episode, also carried by its notification."
           },
           "error_code": {
             "type": [
@@ -56612,6 +56880,17 @@
             ],
             "description": "Current user's announcement identifier, when one was issued.",
             "example": "notification_550e8400e29b41d4a716446655440001"
+          },
+          "opening_observation": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/HealthIssueObservation",
+                "description": "Frozen opening evidence. Absent for episodes predating evidence capture."
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "session_id": {
             "type": [
@@ -56690,6 +56969,25 @@
             "format": "int64",
             "description": "Number of issues matching the current filter.",
             "example": 1
+          }
+        }
+      },
+      "HealthIssueObservation": {
+        "type": "object",
+        "description": "Evidence frozen when a health issue episode first opened.",
+        "required": [
+          "episode_id",
+          "observed_at"
+        ],
+        "properties": {
+          "episode_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "evidence": {},
+          "observed_at": {
+            "type": "string",
+            "format": "date-time"
           }
         }
       },
@@ -78702,6 +79000,14 @@
             },
             "description": "Spend and tokens per cost category, in a fixed order: `uncached_input`,\n`cache_read`, `cache_write`, `output`."
           },
+          "from": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Selected inclusive start and exclusive end; null means lifetime/unbounded."
+          },
           "hours": {
             "type": "array",
             "items": {
@@ -78740,6 +79046,13 @@
               "$ref": "#/components/schemas/CostSource"
             },
             "description": "Turns and spend by what started them, largest spend first."
+          },
+          "to": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
           },
           "tools": {
             "$ref": "#/components/schemas/CostTools",
@@ -92013,6 +92326,12 @@
         "description": "Prefixed identifier with 'harness' prefix",
         "example": "harness_01933b5a000070008000000000000001",
         "pattern": "^harness_[0-9a-f]{32}$"
+      },
+      "messageId": {
+        "type": "string",
+        "description": "Prefixed identifier with 'message' prefix",
+        "example": "message_01933b5a000070008000000000000001",
+        "pattern": "^message_[0-9a-f]{32}$"
       },
       "modelId": {
         "type": "string",

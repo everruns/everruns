@@ -2,6 +2,8 @@
 // Routes nested under /v1/platform/sessions/{session_id}/schedules
 
 use crate::auth::{AuthState, ResolvedOrg};
+use crate::domains::common::{Command, Ctx};
+use crate::domains::session_schedules::reads::{GetSessionSchedule, ListSessionSchedules};
 use crate::domains::session_schedules::{ScheduleChange, SessionScheduleService};
 use crate::domains::sessions::{SESSION_MANAGE, SESSION_VIEW, SessionService};
 use crate::storage::StorageBackend;
@@ -119,11 +121,13 @@ pub async fn list_schedules(
     Path(session_id): Path<SessionId>,
 ) -> ApiResult<Vec<WithUrls<SessionSchedule>>> {
     authorize(&state, &org, &SESSION_VIEW)?;
-    let schedules = state
-        .schedule_service
-        .list(org.org_id, session_id)
-        .await
-        .log_internal_error_json("list schedules")?;
+    let ctx = Ctx::minimal(
+        Caller::from(&org),
+        state.db.clone(),
+        None,
+        state.auth.permission_resolver.clone(),
+    );
+    let schedules = ListSessionSchedules { session_id }.run(&ctx).await?;
 
     let urls = UrlBuilder::from_auth_config(&state.auth.config);
     Ok(Json(urls.wrap_vec(schedules)))
@@ -146,9 +150,18 @@ pub async fn get_schedule(
     Path((session_id, schedule_id)): Path<(SessionId, ScheduleId)>,
 ) -> ApiResult<WithUrls<SessionSchedule>> {
     authorize(&state, &org, &SESSION_VIEW)?;
-    let schedule =
-        get_schedule_in_session(&state, org.org_id, session_id, schedule_id, "get schedule")
-            .await?;
+    let ctx = Ctx::minimal(
+        Caller::from(&org),
+        state.db.clone(),
+        None,
+        state.auth.permission_resolver.clone(),
+    );
+    let schedule = GetSessionSchedule {
+        session_id,
+        schedule_id,
+    }
+    .run(&ctx)
+    .await?;
 
     let urls = UrlBuilder::from_auth_config(&state.auth.config);
     Ok(Json(urls.wrap(schedule)))

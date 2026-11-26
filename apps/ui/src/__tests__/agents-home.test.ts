@@ -58,6 +58,7 @@ function activity(overrides: Partial<AgentActivity> = {}): AgentActivity {
 
 function issue(overrides: Partial<HealthIssue> = {}): HealthIssue {
   return {
+    episode_id: "00000000-0000-7000-8000-000000000002",
     id: "issue_1",
     code: "slack.permissions",
     agent_id: "agent_a",

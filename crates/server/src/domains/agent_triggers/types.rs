@@ -17,6 +17,18 @@ pub use crate::storage::{AgentTriggerRow, CreateAgentTriggerRow, UpdateAgentTrig
 /// One recent durable execution of an agent schedule trigger.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct AgentTriggerRun {
+    /// Non-secret trigger kind, cron, timezone and session mode at dispatch.
+    pub configuration: Option<Value>,
+    pub input_message_id: Option<everruns_contracts::typed_id::MessageId>,
+    /// What fired it: manual, schedule, or unknown for old records.
+    pub source: Option<String>,
+    /// Authenticated user who fired it, when recorded.
+    pub requested_by: Option<uuid::Uuid>,
+    /// Number of task attempts observed; absent when unavailable.
+    pub attempts: Option<u32>,
+    pub session_id: Option<String>,
+    /// Trigger configuration revision observed at dispatch.
+    pub trigger_revision: Option<DateTime<Utc>>,
     /// Durable execution identifier.
     pub id: String,
     /// Outcome of the run's task: completed, failed, skipped, cancelled, or queued, running or retrying while it is outstanding.

@@ -6,6 +6,10 @@ use uuid::Uuid;
 /// An organization-scoped operational issue and its current recovery evidence.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct HealthIssue {
+    /// Current episode, also carried by its notification.
+    pub episode_id: Uuid,
+    /// Frozen opening evidence. Absent for episodes predating evidence capture.
+    pub opening_observation: Option<HealthIssueObservation>,
     /// Stable identifier of the canonical issue.
     #[schema(example = "550e8400-e29b-41d4-a716-446655440000")]
     pub id: Uuid,
@@ -182,4 +186,12 @@ pub struct HealthIssueList {
     /// Effective page size.
     #[schema(example = 20)]
     pub limit: i64,
+}
+
+/// Evidence frozen when a health issue episode first opened.
+#[derive(Debug, Serialize, ToSchema, sqlx::FromRow)]
+pub struct HealthIssueObservation {
+    pub episode_id: Uuid,
+    pub observed_at: DateTime<Utc>,
+    pub evidence: Option<serde_json::Value>,
 }

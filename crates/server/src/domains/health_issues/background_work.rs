@@ -601,6 +601,17 @@ pub(super) async fn sweep_spend_spikes_at(
                 "baseline_daily_usd": spike.baseline_daily_usd,
                 "window_end": spike.window_end,
                 "top_sessions": sessions,
+                "evaluation": {
+                    "version": 1,
+                    "from": spike.window_end - chrono::Duration::days(1),
+                    "to": spike.window_end,
+                    "baseline_from": spike.window_end - chrono::Duration::days(7),
+                    "baseline_to": spike.window_end - chrono::Duration::days(1),
+                    "baseline_days": 6,
+                    "floor_usd": SPIKE_FLOOR_USD,
+                    "factor": SPIKE_FACTOR,
+                    "classification": "positive org_unattended budget postings, by posting time",
+                },
             }),
             checked_at: window_end,
         };

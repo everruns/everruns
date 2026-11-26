@@ -65,7 +65,7 @@ pub async fn list_health_issues(
         .await?,
     ))
 }
-#[utoipa::path(get,path="/v1/platform/health-issues/{issue_id}",params(("issue_id"=Uuid,Path)),responses((status=200,body=HealthIssue),(status=404,body=ErrorResponse)),tag="health-issues")]
+#[utoipa::path(get,path="/v1/platform/health-issues/{issue_id}",params(("issue_id"=Uuid,Path), HealthIssueEpisodeQuery),responses((status=200,body=HealthIssue),(status=404,body=ErrorResponse)),tag="health-issues")]
 /// Get a health issue with evidence and recovery steps
 ///
 /// Get current issue evidence and recovery guidance in the current organization.
@@ -73,9 +73,15 @@ pub async fn get_health_issue(
     org: ResolvedOrg,
     State(state): State<ApiState>,
     Path(issue_id): Path<Uuid>,
+    Query(query): Query<HealthIssueEpisodeQuery>,
 ) -> ApiResult<HealthIssue> {
     Ok(Json(
-        GetHealthIssue { issue_id }.run(&state.ctx(&org)).await?,
+        GetHealthIssue {
+            episode_id: query.episode_id,
+            issue_id,
+        }
+        .run(&state.ctx(&org))
+        .await?,
     ))
 }
 #[utoipa::path(post,path="/v1/platform/health-issues/{issue_id}/check",params(("issue_id"=Uuid,Path)),responses((status=200,body=HealthIssue),(status=429,body=ErrorResponse)),tag="health-issues")]
@@ -119,4 +125,10 @@ pub async fn dismiss_health_issue(
             .run(&state.ctx(&org))
             .await?,
     ))
+}
+
+#[derive(Default, Deserialize, utoipa::IntoParams)]
+pub struct HealthIssueEpisodeQuery {
+    /// Select frozen opening evidence from this episode.
+    pub episode_id: Option<Uuid>,
 }

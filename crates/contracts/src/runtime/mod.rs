@@ -78,6 +78,7 @@ pub mod sandbox_egress;
 pub mod sandbox_workspace;
 pub mod saved_scripts;
 pub mod session;
+pub mod session_cost;
 pub mod session_file;
 pub mod session_files;
 pub mod session_path;

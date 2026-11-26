@@ -2666,7 +2666,7 @@ export interface paths {
     };
     /**
      * List agent trigger runs
-     * @description List the ten most recent durable execution outcomes for an agent trigger.
+     * @description List paginated durable execution outcomes for an agent trigger.
      */
     get: operations["list_agent_trigger_runs"];
     put?: never;
@@ -3206,7 +3206,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Summarize what usage cost the organization */
+    /**
+     * Summarize organization costs over a window, with combined agent/session/source/starter filters and an optional joint group_by breakdown
+     * @description Summarize organization costs over a window, with combined agent/session/source/starter filters and an optional joint group_by breakdown. Includes unpriced counts and reports truncated joint groups.
+     */
     get: operations["get_cost_summary"];
     put?: never;
     post?: never;
@@ -11991,11 +11994,20 @@ export interface components {
       event_type?: string | null;
       /** @description Delivery identifier. */
       id: string;
+      input_message_id?: components["schemas"]["messageId"] | null;
       /** @description Why the event was filtered or failed. */
       reason?: string | null;
+      /**
+       * Format: uuid
+       * @description Authenticated manual requester; absent for automatic or historical deliveries.
+       */
+      requested_by?: string | null;
       /** @description Session that handled the event. */
       session_id?: string | null;
-      /** @description Where the event came from (`schedule`, `webhook`, ...). */
+      /**
+       * @description Where the event came from (`schedule`, `webhook`, ...), or `unknown`
+       *     when a legacy schedule label could also have been a manual fire.
+       */
       source: string;
       /** @description Outcome. */
       status: components["schemas"]["TriggerDeliveryStatus"];
@@ -12005,21 +12017,42 @@ export interface components {
     /** @description One recent durable execution of an agent schedule trigger. */
     AgentTriggerRun: {
       /**
+       * Format: int32
+       * @description Number of task attempts observed; absent when unavailable.
+       */
+      attempts?: number | null;
+      /**
        * Format: date-time
        * @description Time the execution completed, when terminal.
        */
       completed_at?: string | null;
+      /** @description Non-secret trigger kind, cron, timezone and session mode at dispatch. */
+      configuration?: unknown;
       /** @description Failure message for an unsuccessful execution. */
       error?: string | null;
       /** @description Durable execution identifier. */
       id: string;
+      input_message_id?: components["schemas"]["messageId"] | null;
+      /**
+       * Format: uuid
+       * @description Authenticated user who fired it, when recorded.
+       */
+      requested_by?: string | null;
       /**
        * Format: date-time
        * @description Time the execution was scheduled.
        */
       scheduled_at: string;
+      session_id?: string | null;
+      /** @description What fired it: manual, schedule, or unknown for old records. */
+      source?: string | null;
       /** @description Outcome of the run's task: completed, failed, skipped, cancelled, or queued, running or retrying while it is outstanding. */
       status: string;
+      /**
+       * Format: date-time
+       * @description Trigger configuration revision observed at dispatch.
+       */
+      trigger_revision?: string | null;
     };
     /** @description A trigger: a run the agent starts itself (schedule, webhook, GitHub, MCP event). */
     AgentTriggerSummary: {
@@ -14573,6 +14606,9 @@ export interface components {
     };
     /** @description Org cost over a window, grouped several ways. */
     CostSummary: {
+      /** @description Joint breakdown requested by group_by; at most 200 groups. */
+      breakdown: components["schemas"]["CostSummaryBreakdown"][];
+      breakdown_truncated: boolean;
       /** @description Totals by agent. */
       by_agent: components["schemas"]["CostSummaryLine"][];
       /** @description Totals by where the amount came from. */
@@ -14582,8 +14618,8 @@ export interface components {
       /** @description Totals by what was used, such as a provider and model. */
       by_source: components["schemas"]["CostSummaryLine"][];
       /**
-       * @description Totals by who started the work: `person`, or `unattended` (schedules
-       *     and other runs nobody watches).
+       * @description Totals by recorded starter: `person`, `unattended` (including schedules
+       *     and agent triggers), or `unknown` when attribution was not recorded.
        */
       by_started_by: components["schemas"]["CostSummaryLine"][];
       /** @description Totals by the person the usage counts for. */
@@ -14615,6 +14651,16 @@ export interface components {
        * Format: int64
        * @description Usage records over the window with no price.
        */
+      unpriced_records: number;
+    };
+    /** @description One joint cost group. Null dimensions mean attribution was not recorded. */
+    CostSummaryBreakdown: {
+      /** Format: double */
+      cost_usd: number;
+      dimensions: unknown;
+      /** Format: int64 */
+      records: number;
+      /** Format: int64 */
       unpriced_records: number;
     };
     /** @description One line of the costs summary. */
@@ -19783,6 +19829,11 @@ export interface components {
        */
       code: string;
       /**
+       * Format: uuid
+       * @description Current episode, also carried by its notification.
+       */
+      episode_id: string;
+      /**
        * @description Sanitized provider or verification error code, when available.
        * @example missing_scope
        */
@@ -19833,6 +19884,7 @@ export interface components {
        * @example notification_550e8400e29b41d4a716446655440001
        */
       notification_id?: string | null;
+      opening_observation?: components["schemas"]["HealthIssueObservation"] | null;
       /**
        * @description Public identifier of the session the issue points at, when it has one.
        * @example session_550e8400e29b41d4a716446655440000
@@ -19891,6 +19943,14 @@ export interface components {
        * @example 1
        */
       total: number;
+    };
+    /** @description Evidence frozen when a health issue episode first opened. */
+    HealthIssueObservation: {
+      /** Format: uuid */
+      episode_id: string;
+      evidence?: unknown;
+      /** Format: date-time */
+      observed_at: string;
     };
     /** @description System health response */
     HealthResponse: {
@@ -32062,6 +32122,11 @@ export interface components {
        *     `cache_read`, `cache_write`, `output`.
        */
       categories: components["schemas"]["CostCategory"][];
+      /**
+       * Format: date-time
+       * @description Selected inclusive start and exclusive end; null means lifetime/unbounded.
+       */
+      from?: string | null;
       /** @description Spend per UTC hour that had model calls, oldest first. */
       hours: components["schemas"]["CostHour"][];
       /**
@@ -32081,6 +32146,8 @@ export interface components {
       session_id: string;
       /** @description Turns and spend by what started them, largest spend first. */
       sources: components["schemas"]["CostSource"][];
+      /** Format: date-time */
+      to?: string | null;
       /** @description Tool calls across the session. */
       tools: components["schemas"]["CostTools"];
       /**
@@ -39395,6 +39462,11 @@ export interface components {
      */
     harnessId: string;
     /**
+     * @description Prefixed identifier with 'message' prefix
+     * @example message_01933b5a000070008000000000000001
+     */
+    messageId: string;
+    /**
      * @description Prefixed identifier with 'model' prefix
      * @example model_01933b5a000070008000000000000001
      */
@@ -46249,6 +46321,9 @@ export interface operations {
   list_agent_trigger_deliveries: {
     parameters: {
       query?: {
+        from?: string | null;
+        to?: string | null;
+        before?: string | null;
         /** @description Maximum rows to return (1-200, default 50). */
         limit?: number | null;
       };
@@ -46285,7 +46360,13 @@ export interface operations {
   };
   list_agent_trigger_runs: {
     parameters: {
-      query?: never;
+      query?: {
+        from?: string | null;
+        to?: string | null;
+        before?: string | null;
+        /** @description Maximum rows to return (1-200, default 50). */
+        limit?: number | null;
+      };
       header?: never;
       path: {
         /** @description Agent ID (prefixed) */
@@ -47683,6 +47764,14 @@ export interface operations {
   get_cost_summary: {
     parameters: {
       query?: {
+        /** @description Restrict usage to this session. */
+        session_id?: string;
+        /** @description Exact source key from by_source (for example a provider/model). */
+        source?: string;
+        /** @description person, unattended, or unknown for historical records. */
+        started_by?: string;
+        /** @description Comma-separated joint dimensions: agent,session,source,started_by,basis,user,day. */
+        group_by?: string;
         /** @description Window start (inclusive). Default: the start of this month. */
         from?: string;
         /** @description Window end (exclusive). Default: now. */
@@ -51767,7 +51856,10 @@ export interface operations {
   };
   get_health_issue: {
     parameters: {
-      query?: never;
+      query?: {
+        /** @description Select frozen opening evidence from this episode. */
+        episode_id?: string | null;
+      };
       header?: never;
       path: {
         issue_id: string;
@@ -59736,7 +59828,12 @@ export interface operations {
   };
   get_session_cost: {
     parameters: {
-      query?: never;
+      query?: {
+        /** @description Inclusive model-call and tool-start time. Omitted means lifetime. */
+        from?: string;
+        /** @description Exclusive model-call and tool-start time. Omitted means no upper bound. */
+        to?: string;
+      };
       header?: never;
       path: {
         /** @description Prefixed public identifier */

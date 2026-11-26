@@ -10,6 +10,9 @@ use crate::domains::sandboxes::types::SandboxStateSpan;
 /// each turn, by tool, and by sandbox.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct SessionCost {
+    /// Selected inclusive start and exclusive end; null means lifetime/unbounded.
+    pub from: Option<DateTime<Utc>>,
+    pub to: Option<DateTime<Utc>>,
     /// Session's prefixed public identifier.
     #[schema(example = "session_01a1510c99c8714eabb22a463e7c1fa1")]
     pub session_id: String,

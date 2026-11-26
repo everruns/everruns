@@ -25,6 +25,7 @@ const ORG: i64 = 2;
 /// What the stub data plane saw.
 #[derive(Default)]
 struct Seen {
+    reads: std::collections::HashMap<String, Value>,
     enabled: Vec<dp::OrgEnable>,
     updates: Vec<(Instant, ConfigUpdate)>,
     applied: u64,
@@ -144,6 +145,12 @@ async fn stub() -> (String, Stub) {
             _ => json!(true),
         })
     }
+    async fn read(
+        State(seen): State<Stub>,
+        Path((_org, _session, read)): Path<(String, String, String)>,
+    ) -> Json<Value> {
+        Json(seen.lock().reads.get(&read).cloned().unwrap_or(Value::Null))
+    }
     let app = Router::new()
         .route(
             "/dp/v1/orgs/{org}/sessions/{session}/messages",
@@ -151,7 +158,7 @@ async fn stub() -> (String, Stub) {
         )
         .route(
             "/dp/v1/orgs/{org}/sessions/{session}/{command}",
-            axum::routing::post(command),
+            axum::routing::post(command).get(read),
         )
         .route("/dp/v1/orgs/{org}", put(enable))
         .route("/dp/v1/orgs/{org}/config/{epoch}/{version}", put(config))
@@ -1138,3 +1145,82 @@ mod sqldb;
 mod subagents;
 mod task_webhooks;
 mod user_mcp;
+
+#[tokio::test]
+async fn investigation_reads_use_the_shards_cost_and_schedule_authority() {
+    use crate::domains::common::{Command, Ctx};
+    use crate::domains::session_cost::GetSessionCost;
+    use crate::domains::session_schedules::{SessionScheduleService, reads::ListSessionSchedules};
+    let (cp, seen, _) = control_plane().await;
+    let harness = harness(&cp.db, ORG).await;
+    let mut row = crate::storage::test_database::test_session_row(ORG);
+    row.harness_id = Some(harness);
+    let id = cp.db.create_session(row).await.unwrap().id;
+    sessions::created(&cp, ORG, id, harness, None, &[], None)
+        .await
+        .unwrap();
+    let now = chrono::Utc::now();
+    let schedule = SessionScheduleService::new(cp.db.clone())
+        .create(
+            ORG,
+            id,
+            "legacy record".into(),
+            None,
+            Some(now + chrono::Duration::hours(1)),
+            "UTC".into(),
+        )
+        .await
+        .unwrap();
+    let mut shard_schedule = serde_json::to_value(&schedule).unwrap();
+    shard_schedule["description"] = json!("shard-owned follow-up");
+    seen.lock()
+        .reads
+        .insert("schedules".into(), json!([shard_schedule]));
+    seen.lock().reads.insert(
+        "cost".into(),
+        json!({"generations":[{
+        "turn_id":null,"created_at":now,"provider":"openrouter","model":"unknown-model",
+        "input_tokens":100,"output_tokens":10,"cache_read_tokens":0,"cache_creation_tokens":0,
+        "actual_cost_usd":2.5,"estimated_cost_usd":null
+    }],"origins":[]}),
+    );
+    seen.lock()
+        .reads
+        .insert("trace".into(), json!(dp::SessionTraceRows::default()));
+    let ctx = Ctx::minimal_for_test(everruns_core::Caller::internal(ORG), cp.db.clone(), None);
+    let listed = ListSessionSchedules { session_id: id }
+        .run(&ctx)
+        .await
+        .unwrap();
+    assert_eq!(listed[0].description, "shard-owned follow-up");
+    let cost = GetSessionCost {
+        session_id: id.to_string(),
+        from: Some(now),
+        to: Some(now + chrono::Duration::seconds(1)),
+    }
+    .run(&ctx)
+    .await
+    .unwrap();
+    assert_eq!(cost.total_usd, 2.5);
+    let excluded = GetSessionCost {
+        session_id: id.to_string(),
+        from: Some(now + chrono::Duration::seconds(1)),
+        to: None,
+    }
+    .run(&ctx)
+    .await
+    .unwrap();
+    assert_eq!(excluded.total_usd, 0.0);
+    seen.lock().reads.insert("cost".into(), json!(true));
+    assert!(
+        GetSessionCost {
+            session_id: id.to_string(),
+            from: None,
+            to: None
+        }
+        .run(&ctx)
+        .await
+        .is_err(),
+        "unavailable shard evidence must not fall back to a legacy total"
+    );
+}

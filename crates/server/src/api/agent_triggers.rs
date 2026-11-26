@@ -249,10 +249,11 @@ pub async fn get_agent_trigger(
 #[utoipa::path(
     get,
     path = "/v1/platform/agents/{agent_id}/triggers/{trigger_id}/runs",
-    description = "List the ten most recent durable execution outcomes for an agent trigger.",
+    description = "List paginated durable execution outcomes for an agent trigger.",
     params(
         ("agent_id" = String, Path, description = "Agent ID (prefixed)"),
-        ("trigger_id" = String, Path, description = "Trigger ID (prefixed)")
+        ("trigger_id" = String, Path, description = "Trigger ID (prefixed)"),
+        DeliveriesQuery
     ),
     responses(
         (status = 200, description = "Recent trigger outcomes", body = Vec<AgentTriggerRun>),
@@ -264,8 +265,13 @@ pub async fn list_agent_trigger_runs(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path((agent_id, trigger_id)): Path<(String, String)>,
+    Query(query): Query<DeliveriesQuery>,
 ) -> ApiResult<Vec<AgentTriggerRun>> {
     let runs = ListAgentTriggerRuns {
+        from: query.from,
+        to: query.to,
+        before: query.before,
+        limit: query.limit,
         agent_id,
         trigger_id,
     }
@@ -277,6 +283,9 @@ pub async fn list_agent_trigger_runs(
 /// Query for listing trigger deliveries.
 #[derive(Debug, Deserialize, IntoParams)]
 pub struct DeliveriesQuery {
+    pub from: Option<chrono::DateTime<chrono::Utc>>,
+    pub to: Option<chrono::DateTime<chrono::Utc>>,
+    pub before: Option<uuid::Uuid>,
     /// Maximum rows to return (1-200, default 50).
     pub limit: Option<i64>,
 }
@@ -303,6 +312,9 @@ pub async fn list_agent_trigger_deliveries(
     Query(query): Query<DeliveriesQuery>,
 ) -> ApiResult<Vec<crate::domains::agent_triggers::record::AgentTriggerDelivery>> {
     let deliveries = ListAgentTriggerDeliveries {
+        from: query.from,
+        to: query.to,
+        before: query.before,
         agent_id,
         trigger_id,
         limit: query.limit,

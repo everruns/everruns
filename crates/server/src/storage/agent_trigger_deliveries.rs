@@ -10,8 +10,11 @@ use uuid::Uuid;
 /// One event delivery recorded by the trigger event pipeline.
 #[derive(Debug, Clone, FromRow, Columns)]
 pub struct AgentTriggerDeliveryRow {
+    /// Version 1 distinguishes default manual fires from schedule ticks.
+    pub source_version: i32,
     pub id: Uuid,
     pub org_id: i64,
+    pub requested_by: Option<Uuid>,
     pub trigger_id: TriggerId,
     pub source: String,
     pub event_id: Option<String>,
@@ -20,12 +23,14 @@ pub struct AgentTriggerDeliveryRow {
     pub status: String,
     pub reason: Option<String>,
     pub session_id: Option<Uuid>,
+    pub input_message_id: Option<Uuid>,
     pub created_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone)]
 pub struct CreateAgentTriggerDeliveryRow {
     pub org_id: i64,
+    pub requested_by: Option<Uuid>,
     pub trigger_id: TriggerId,
     pub source: String,
     pub event_id: Option<String>,

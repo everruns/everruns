@@ -2,6 +2,10 @@
 
 ## 2026-11-26
 
+- Added existing-domain investigation reads: frozen episode evidence, attributable
+  trigger history, joint cost filters and session cost windows, with schedule and
+  cost reads respecting each session's data-plane authority. See [Platform Chat](harnesses/platform-chat.md).
+
 - Raise the Bashkit dependency floor to 0.22.0 (resource bounds, `rm` preserve-root, empty-operand errors, file ownership in `Metadata`). See [Dependency Surface](project/dependency-surface.md).
 
 - [Email inbox channels](integrations/email.md): qualified real v2 fresh plus-address polling intake and backlog execution, scoped MCP reads, separate send approval and AgentMail threaded text/HTML readback. Recorded inbox-versus-session retention and the remaining live automatic-gate/provider-webhook qualification boundaries.
