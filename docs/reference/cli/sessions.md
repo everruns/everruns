@@ -23,6 +23,8 @@ Running and archived sessions, their state and participants.
 | [`sessions context`](#sessions-context) | Inspect the last main model request, effective compaction policy, and safe checkpoint metadata. |
 | [`sessions facets`](#sessions-facets) | Counts per status, source, and agent plus masthead metrics for the sessions list, over the same filters as list_sessions. |
 | [`sessions stats`](#sessions-stats) | Get session counts by status. |
+| [`sessions schedules get`](#sessions-schedules-get) | Read one follow-up schedule in its owning session, with its purpose, stop condition, lifetime, spend and stop reason. |
+| [`sessions schedules list`](#sessions-schedules-list) | Read a session's follow-up schedules, including purpose, stop conditions, limits, spend and deleted schedules. |
 | [`sessions list`](#sessions-list) | List sessions. |
 | [`sessions pin`](#sessions-pin) | Pin a session for the current user. |
 | [`sessions resume`](#sessions-resume) | Continue a session past a usage policy's ask step. |
@@ -322,6 +324,45 @@ Example:
 everruns sessions stats
 ```
 
+## sessions schedules get
+
+Read one follow-up schedule in its owning session, with its purpose, stop condition, lifetime, spend and stop reason.
+
+```bash
+everruns sessions schedules get [OPTIONS] --schedule-id <schedule_id> --session-id <session_id>
+```
+
+| Flag | Description |
+|---|---|
+| `--schedule-id <SCHEDULE_ID>` | Required. Prefixed identifier with 'sched' prefix. |
+| `--session-id <SESSION_ID>` | Required. Prefixed identifier with 'session' prefix. |
+
+Example:
+
+```bash
+# Read one follow-up's purpose, limits and stop reason
+everruns sessions schedules get --session-id session_01h9 --schedule-id sched_01h9
+```
+
+## sessions schedules list
+
+Read a session's follow-up schedules, including purpose, stop conditions, limits, spend and deleted schedules.
+
+```bash
+everruns sessions schedules list [OPTIONS] --session-id <session_id>
+```
+
+| Flag | Description |
+|---|---|
+| `--session-id <SESSION_ID>` | Required. Prefixed identifier with 'session' prefix. |
+
+Example:
+
+```bash
+# Inspect a session's follow-ups and their stop conditions
+everruns sessions schedules list --session-id session_01h9
+```
+
 ## sessions list
 
 List sessions. Filter by agent_id, source, status, owner (mine), and creation window; search by title; order by created_at or last_activity. Supports pagination (limit/offset).
@@ -602,6 +643,8 @@ everruns sessions cost get [OPTIONS] [SESSION_ID]
 | Flag | Description |
 |---|---|
 | `--session-id <SESSION_ID>` | Session's prefixed public identifier (a path parameter). |
+| `--from <FROM>` | Inclusive model-call and tool-start time. |
+| `--to <TO>` | Exclusive model-call and tool-start time. |
 
 Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 

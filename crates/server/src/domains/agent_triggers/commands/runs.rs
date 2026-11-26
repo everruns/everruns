@@ -35,7 +35,7 @@ pub struct ListAgentTriggerRuns {
     description = "List executions in a trigger's current durable schedule binding, with time windows, attempts, authenticated manual requester and resulting session. Disabling a trigger removes durable execution history; use list_agent_trigger_deliveries for retained event history. Historical attribution can be unknown.",
     method = "GET", path = "/v1/platform/agents/{agent_id}/triggers/{trigger_id}/runs",
     policy = AGENT_VIEW,
-    cli = CliRoute::new(&["agents", "triggers", "runs"], "list"),
+    cli = CliRoute::new(&["agents", "triggers", "runs"], "list").with_examples(&[CliExample::new("See recent trigger runs and the sessions they started", "everruns agents triggers runs list --agent-id agent_01h9 --trigger-id trg_01h9 --limit 20")]),
 )]
 impl Command for ListAgentTriggerRuns {
     type Output = Vec<AgentTriggerRun>;

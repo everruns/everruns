@@ -84,8 +84,8 @@ Agent definitions and their configuration.
 | [`agents triggers list`](#agents-triggers-list) | List an agent's triggers. |
 | [`agents triggers trigger`](#agents-triggers-trigger) | Manually fire an agent trigger once. |
 | [`agents triggers update`](#agents-triggers-update) | Update an agent trigger. |
-| [`agents triggers deliveries list`](#agents-triggers-deliveries-list) | List recent events delivered to an agent trigger: dispatched, filtered, duplicate or failed. |
-| [`agents triggers runs list`](#agents-triggers-runs-list) | List recent execution outcomes for an agent trigger. |
+| [`agents triggers deliveries list`](#agents-triggers-deliveries-list) | List retained trigger deliveries (90 days), with source, authenticated manual requester, outcome, session and input-message links. |
+| [`agents triggers runs list`](#agents-triggers-runs-list) | List executions in a trigger's current durable schedule binding, with time windows, attempts, authenticated manual requester and resulting session. |
 | [`agents view get`](#agents-view-get) | Read the view definition and its revision for an Agent. |
 | [`agents view replace`](#agents-view-replace) | Replace or remove an Agent view using its current revision. |
 
@@ -1738,7 +1738,7 @@ everruns agents triggers update --agent-id agent_01h9 --trigger-id trg_01h9 --ta
 
 ## agents triggers deliveries list
 
-List recent events delivered to an agent trigger: dispatched, filtered, duplicate or failed.
+List retained trigger deliveries (90 days), with source, authenticated manual requester, outcome, session and input-message links. Supports time windows and a stable before cursor. Legacy schedule labels with ambiguous ingress are unknown. Older or previously pruned deliveries are unavailable.
 
 ```bash
 everruns agents triggers deliveries list [OPTIONS] --agent-id <agent_id> --trigger-id <trigger_id>
@@ -1747,7 +1747,10 @@ everruns agents triggers deliveries list [OPTIONS] --agent-id <agent_id> --trigg
 | Flag | Description |
 |---|---|
 | `--agent-id <AGENT_ID>` | Required. Owning agent's prefixed public identifier. |
+| `--before <BEFORE>` | Return records older than this delivery (exclusive). |
+| `--from <FROM>` |  |
 | `--limit <LIMIT>` | Maximum rows to return (1-200, default 50). |
+| `--to <TO>` |  |
 | `--trigger-id <TRIGGER_ID>` | Required. Agent trigger's prefixed public identifier. |
 
 Output: a JSON array. Read the items with jq '.[]'.
@@ -1761,7 +1764,7 @@ everruns agents triggers deliveries list --agent-id agent_01h9 --trigger-id trg_
 
 ## agents triggers runs list
 
-List recent execution outcomes for an agent trigger.
+List executions in a trigger's current durable schedule binding, with time windows, attempts, authenticated manual requester and resulting session. Disabling a trigger removes durable execution history; use list_agent_trigger_deliveries for retained event history. Historical attribution can be unknown.
 
 ```bash
 everruns agents triggers runs list [OPTIONS] --agent-id <agent_id> --trigger-id <trigger_id>
@@ -1769,16 +1772,20 @@ everruns agents triggers runs list [OPTIONS] --agent-id <agent_id> --trigger-id 
 
 | Flag | Description |
 |---|---|
-| `--agent-id <AGENT_ID>` | Required. Owning agent's prefixed public identifier. |
-| `--trigger-id <TRIGGER_ID>` | Required. Agent trigger's prefixed public identifier. |
+| `--agent-id <AGENT_ID>` | Required. |
+| `--before <BEFORE>` | Stable cursor: return executions older than this execution. |
+| `--from <FROM>` | Inclusive scheduled time. |
+| `--limit <LIMIT>` | Page size, 1-200; default 10. |
+| `--to <TO>` | Exclusive scheduled time. |
+| `--trigger-id <TRIGGER_ID>` | Required. |
 
 Output: a JSON array. Read the items with jq '.[]'.
 
 Example:
 
 ```bash
-# See whether recent firings of a trigger succeeded
-everruns agents triggers runs list --agent-id agent_01h9 --trigger-id trg_01h9
+# See recent trigger runs and the sessions they started
+everruns agents triggers runs list --agent-id agent_01h9 --trigger-id trg_01h9 --limit 20
 ```
 
 ## agents view get

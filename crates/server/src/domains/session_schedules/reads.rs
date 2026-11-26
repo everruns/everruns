@@ -51,7 +51,7 @@ pub struct ListSessionSchedules {
     description = "Read a session's follow-up schedules, including purpose, stop conditions, limits, spend and deleted schedules.",
     method = "GET", path = "/v1/platform/sessions/{session_id}/schedules",
     policy = SESSION_VIEW,
-    cli = CliRoute::new(&["sessions", "schedules"], "list"),
+    cli = CliRoute::new(&["sessions", "schedules"], "list").with_examples(&[CliExample::new("Inspect a session's follow-ups and their stop conditions", "everruns sessions schedules list --session-id session_01h9")]),
 )]
 impl Command for ListSessionSchedules {
     type Output = Vec<SessionSchedule>;
@@ -73,7 +73,7 @@ pub struct GetSessionSchedule {
     description = "Read one follow-up schedule in its owning session, with its purpose, stop condition, lifetime, spend and stop reason.",
     method = "GET", path = "/v1/platform/sessions/{session_id}/schedules/{schedule_id}",
     policy = SESSION_VIEW,
-    cli = CliRoute::new(&["sessions", "schedules"], "get"),
+    cli = CliRoute::new(&["sessions", "schedules"], "get").with_examples(&[CliExample::new("Read one follow-up's purpose, limits and stop reason", "everruns sessions schedules get --session-id session_01h9 --schedule-id sched_01h9")]),
 )]
 impl Command for GetSessionSchedule {
     type Output = SessionSchedule;
