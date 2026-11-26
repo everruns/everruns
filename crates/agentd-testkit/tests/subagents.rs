@@ -139,6 +139,68 @@ async fn a_subagent_on_another_shard_answers_its_parent() {
     assert_eq!(http.get(&missing).send().await.unwrap().status(), 404);
 }
 
+/// A thread on another shard gets its parent tools and closes the
+/// assignment its parent holds: before, a child's record knew no parent and
+/// its shard could not reach the parent's tasks, so `finish` never existed
+/// and the assignment stayed running.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_thread_on_another_shard_finishes_its_parents_assignment() {
+    let mut fleet = Fleet::start().await;
+    fleet.executor(1);
+    fleet.executor(2);
+    let parent = fleet.create_in("threads", 0).await;
+    fleet
+        .say(
+            &parent,
+            r#"call start_thread {"title":"Check","brief":"call finish {\"summary\":\"Checked it.\"}"}"#,
+        )
+        .await;
+    fleet.turns(&parent, 1).await;
+    let events = fleet.events(&parent).await;
+    let thread = child_of(&events);
+
+    // The thread's turn calls `finish`, which settles the parent's
+    // assignment and wakes the parent.
+    let deadline = Instant::now() + Duration::from_secs(60);
+    let task = loop {
+        let tasks = fleet.get(&format!("/v1/sessions/{parent}/tasks")).await;
+        let task = tasks[0].clone();
+        if task["state"] == "succeeded" {
+            break task;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "the assignment did not finish: {tasks}\nthread: {:?}",
+            fleet.events(&thread).await
+        );
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    };
+    assert_eq!(task["kind"], "assignment", "{task}");
+    assert_eq!(task["links"]["child_session_id"], thread.as_str());
+    let finished = fleet
+        .events(&thread)
+        .await
+        .into_iter()
+        .filter(|e| e["type"] == "tool.completed")
+        .map(|e| e["data"].to_string())
+        .collect::<Vec<_>>();
+    assert!(
+        finished
+            .iter()
+            .any(|d| d.contains("finish") && !d.contains("not found")),
+        "the thread called finish: {finished:?}"
+    );
+    let (parent_shard, thread_shard) = (
+        shard_of(&fleet, &parent).await,
+        shard_of(&fleet, &thread).await,
+    );
+    println!("parent on shard {parent_shard}, thread on shard {thread_shard}");
+    assert_ne!(
+        parent_shard, thread_shard,
+        "the thread ran on another shard"
+    );
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn a_background_subagent_wakes_its_parent() {
     let mut fleet = Fleet::start().await;

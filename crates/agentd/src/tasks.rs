@@ -240,6 +240,14 @@ fn stored(task: &SessionTask) -> Value {
     value
 }
 
+fn gateway_err((status, reason): (axum::http::StatusCode, String)) -> AgentLoopError {
+    if status == axum::http::StatusCode::NOT_FOUND {
+        AgentLoopError::store(format!("not found: {reason}"))
+    } else {
+        AgentLoopError::store(format!("{status}: {reason}"))
+    }
+}
+
 fn load(value: &Value) -> Option<SessionTask> {
     serde_json::from_value(value.clone()).ok()
 }
@@ -588,25 +596,83 @@ pub fn api_op(write: ApiWrite, kind: &str) -> std::result::Result<TaskOp, String
 /// The session tasks of an activation, in the owning sessions' shard state.
 pub(crate) struct ShardTasks {
     port: Port,
+    /// The activation's parent, when it is a child (a thread or a spawned
+    /// agent): the one other session whose tasks it may reach on another
+    /// shard, through the gateway. Nothing else leaves this shard.
+    parent: Option<SessionId>,
 }
 
 impl ShardTasks {
     pub(crate) fn new(port: Port) -> Self {
-        Self { port }
+        Self { port, parent: None }
+    }
+
+    pub(crate) fn with_parent(mut self, parent: Option<SessionId>) -> Self {
+        self.parent = parent;
+        self
+    }
+
+    /// Whether `session`'s tasks are reached through the gateway: the
+    /// parent's always are. An executor's mirror holds only the sessions it
+    /// runs, and a node holds the parent only when it shares its shard, so
+    /// the gateway is the one way that works from everywhere.
+    fn remote(&self, session: SessionId) -> bool {
+        self.parent == Some(session)
     }
 
     async fn propose(&self, session: SessionId, op: TaskOp) -> Result<Value> {
-        self.port
-            .propose(
-                session,
-                Command::Platform {
-                    session,
-                    action: crate::platform::Op::Task(op),
-                    now_ms: crate::node::now_ms(),
-                    seed: EventId::new(),
-                },
-            )
+        let command = |op: TaskOp| Command::Platform {
+            session,
+            action: crate::platform::Op::Task(op),
+            now_ms: crate::node::now_ms(),
+            seed: EventId::new(),
+        };
+        if self.remote(session) {
+            return self.propose_elsewhere(session, command(op)).await;
+        }
+        self.port.propose(session, command(op)).await
+    }
+
+    /// Propose `command` on the shard that holds `session`, through the
+    /// gateway, following moves: a thread on one shard finishing the
+    /// assignment its parent holds on another.
+    async fn propose_elsewhere(&self, session: SessionId, command: Command) -> Result<Value> {
+        let gateway = self.gateway(session)?;
+        for _ in 0..5 {
+            let shard = gateway.locate(session).await.map_err(gateway_err)?;
+            match gateway
+                .propose(shard, &command)
+                .await
+                .map_err(gateway_err)?
+            {
+                Response::Value { value } => return Ok(value),
+                Response::Moved { .. } => gateway.forget(session),
+                Response::Frozen => tokio::time::sleep(std::time::Duration::from_millis(100)).await,
+                Response::NotFound => return Err(AgentLoopError::SessionNotFound(session)),
+                Response::Rejected { reason } => return Err(AgentLoopError::config(reason)),
+                other => {
+                    return Err(AgentLoopError::store(format!("unexpected reply {other:?}")));
+                }
+            }
+        }
+        Err(AgentLoopError::store(format!(
+            "session {session} keeps moving"
+        )))
+    }
+
+    /// `session`'s tasks (`task` none) or one task's detail, from the shard
+    /// that holds it, through the gateway.
+    async fn read_elsewhere(&self, session: SessionId, body: Value) -> Result<Value> {
+        self.gateway(session)?
+            .session_command(session, "tasks", &body)
             .await
+            .map_err(gateway_err)
+    }
+
+    fn gateway(&self, session: SessionId) -> Result<Arc<crate::gateway::Gateway>> {
+        self.port
+            .gateway()
+            .ok_or(AgentLoopError::SessionNotFound(session))
     }
 
     fn task(value: Value) -> Result<Option<SessionTask>> {
@@ -653,6 +719,12 @@ impl SessionTaskRegistry for ShardTasks {
     }
 
     async fn get(&self, session_id: SessionId, task_id: &str) -> Result<Option<SessionTask>> {
+        if self.remote(session_id) {
+            let detail = self
+                .read_elsewhere(session_id, json!({ "task": task_id }))
+                .await?;
+            return Ok(load(&detail["task"]));
+        }
         let task_id = task_id.to_owned();
         self.port
             .read(session_id, move |s| {
@@ -667,6 +739,22 @@ impl SessionTaskRegistry for ShardTasks {
         filter: Option<&SessionTaskFilter>,
     ) -> Result<Vec<SessionTask>> {
         let filter = filter.cloned().unwrap_or_default();
+        let keep = move |t: &SessionTask| {
+            filter.kind.as_ref().is_none_or(|k| &t.kind == k)
+                && filter.state.is_none_or(|state| t.state == state)
+        };
+        if self.remote(session_id) {
+            // Already in the shard's order (`listed`).
+            let listed = self.read_elsewhere(session_id, json!({})).await?;
+            return Ok(listed
+                .as_array()
+                .map(Vec::as_slice)
+                .unwrap_or_default()
+                .iter()
+                .filter_map(load)
+                .filter(|t| keep(t))
+                .collect());
+        }
         self.port
             .read(session_id, move |s| {
                 let mut tasks: Vec<SessionTask> = s
@@ -674,8 +762,7 @@ impl SessionTaskRegistry for ShardTasks {
                     .tasks
                     .values()
                     .filter_map(load)
-                    .filter(|t| filter.kind.as_ref().is_none_or(|k| &t.kind == k))
-                    .filter(|t| filter.state.is_none_or(|state| t.state == state))
+                    .filter(|t| keep(t))
                     .collect();
                 tasks.sort_by(|a, b| a.created_at.cmp(&b.created_at).then(a.id.cmp(&b.id)));
                 tasks
@@ -729,6 +816,15 @@ impl SessionTaskRegistry for ShardTasks {
         limit: Option<u32>,
         after_id: Option<&str>,
     ) -> Result<Vec<TaskMessage>> {
+        if self.remote(session_id) {
+            let body = json!({
+                "task": task_id,
+                "after_id": after_id,
+                "limit": limit.map_or(500, |l| l.clamp(1, 500)),
+            });
+            let detail = self.read_elsewhere(session_id, body).await?;
+            return Ok(serde_json::from_value(detail["messages"].clone()).unwrap_or_default());
+        }
         let task_id = task_id.to_owned();
         let after = after_id.map(str::to_owned);
         self.port

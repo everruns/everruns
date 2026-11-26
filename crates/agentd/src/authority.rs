@@ -56,6 +56,20 @@ const KEEP_TURNS: usize = 32;
 /// turns ran.
 const KEEP_OUTCOMES: usize = 1;
 
+/// Epochs lost to slow renewals that are forgiven between a release or
+/// progress (`SessionState::forgive`). Decision: enough for a long turn
+/// through a busy stretch (each forgiven epoch is a TTL of it), few enough
+/// that a turn wedging its own holder is sealed within minutes.
+pub const FORGIVE_LIMIT: u32 = 8;
+
+fn is_zero(n: &u32) -> bool {
+    *n == 0
+}
+
+fn is_zero_u64(n: &u64) -> bool {
+    *n == 0
+}
+
 /// The process running the session now.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Holder {
@@ -101,6 +115,12 @@ pub struct Authority {
     pub fence: u64,
     #[serde(default)]
     pub attempts: u32,
+    /// Epochs forgiven since the last release or progress, and the newest
+    /// forgiven (`forgive`).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub forgiven: u32,
+    #[serde(default, skip_serializing_if = "is_zero_u64")]
+    pub forgiven_fence: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cancel: Option<i64>,
     #[serde(default)]
@@ -629,6 +649,37 @@ impl crate::state::SessionState {
             return false;
         }
         a.attempts = 1;
+        a.forgiven = 0;
+        true
+    }
+
+    /// `name`'s epoch `fence` was lost to renewals that did not get through
+    /// while its holder stayed alive (Engine's `forgive_actor_lease`): not a
+    /// holder death, so its claim's attempt is taken back. An epoch that
+    /// still holds the session gives it back, runnable, so the next epoch
+    /// resumes at once. At most [`FORGIVE_LIMIT`] epochs between a release
+    /// or progress, so a turn that wedges its own holder is still sealed;
+    /// each epoch once. `false`: nothing changed.
+    pub fn forgive(&mut self, name: &str, fence: u64) -> bool {
+        let a = &mut self.authority;
+        if fence == 0 || fence > a.fence || fence <= a.forgiven_fence || a.forgiven >= FORGIVE_LIMIT
+        {
+            return false;
+        }
+        a.forgiven += 1;
+        a.forgiven_fence = fence;
+        if a.holder
+            .as_ref()
+            .is_some_and(|h| h.name == name && h.fence == fence)
+        {
+            a.holder = None;
+            a.runnable = true;
+        }
+        // A later epoch's own attempt stays counted.
+        a.attempts = a
+            .attempts
+            .saturating_sub(1)
+            .max(u32::from(a.holder.is_some()));
         true
     }
 
@@ -651,6 +702,7 @@ impl crate::state::SessionState {
         a.consumed = a.consumed.max(consumed);
         a.holder = None;
         a.attempts = 0;
+        a.forgiven = 0;
         a.runnable = hand_off
             || !a.finalizing.is_empty()
             || a.resume_generation > a.resume_claimed
@@ -841,6 +893,7 @@ pub fn is_terminal(data: &EventData) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::state::SessionState;
     use everruns_contracts::typed_id::SessionId;
     use everruns_core::events::{EventContext, TurnCompletedData};
 
@@ -870,6 +923,85 @@ mod tests {
         a.records.insert(key, outcome);
         a.prune();
         (turn, input)
+    }
+
+    const TTL: i64 = 10_000;
+
+    /// A session with input owed, as a claim finds it.
+    fn owed() -> SessionState {
+        let mut s = SessionState::default();
+        s.authority.binding = Some(everruns::hosting::SessionBinding {
+            framework: 1,
+            behavior: everruns::hosting::AgentBuild::new("agent", "build-1"),
+            harness: None,
+            environment: None,
+            metadata: json!(null),
+        });
+        s.authority.runnable = true;
+        s
+    }
+
+    /// The attempts a claim at `now` reports (Engine seals past 3).
+    fn claim(s: &mut SessionState, now: i64) -> (u64, u64) {
+        let reply = s.claim("exec", 1, TTL, now).expect("claimable");
+        (
+            reply["fence"].as_u64().unwrap(),
+            reply["attempts"].as_u64().unwrap(),
+        )
+    }
+
+    /// (a) A holder that dies never reports back: each expired epoch counts,
+    /// and the fourth claim is past the poison limit, as before.
+    #[test]
+    fn a_turn_whose_holder_keeps_dying_is_still_sealed() {
+        let mut s = owed();
+        let attempts: Vec<u64> = (0..4).map(|n| claim(&mut s, n * (TTL + 1)).1).collect();
+        assert_eq!(attempts, vec![1, 2, 3, 4]);
+    }
+
+    /// (b) The R9 soak: a holder that stays alive but keeps losing its epoch
+    /// to renewals that do not get through says so, and the next claim
+    /// counts as before it. The turn is never sealed for it, and resumes at
+    /// once (the epoch is handed back, no TTL to wait out).
+    #[test]
+    fn a_turn_whose_live_holder_keeps_losing_its_lease_is_not_sealed() {
+        let mut s = owed();
+        for n in 0..FORGIVE_LIMIT as i64 {
+            let (fence, attempts) = claim(&mut s, n);
+            assert_eq!(attempts, 1, "claim {n}");
+            assert!(s.forgive("exec", fence));
+            assert!(s.authority.holder.is_none() && s.authority.runnable);
+            assert!(!s.forgive("exec", fence), "an epoch is forgiven once");
+        }
+        // The report can come after the next epoch already claimed: the
+        // later epoch keeps its own attempt.
+        let mut s = owed();
+        let (first, _) = claim(&mut s, 0);
+        let (_, second) = claim(&mut s, TTL + 1);
+        assert_eq!(second, 2);
+        assert!(s.forgive("exec", first));
+        assert_eq!(s.authority.attempts, 1);
+        assert!(!s.forgive("exec", first + 5), "never claimed");
+    }
+
+    /// Forgiveness is bounded between a release or progress, so a turn that
+    /// wedges its own holder (renewals starved by the turn itself) is
+    /// sealed in the end.
+    #[test]
+    fn forgiveness_is_bounded_until_progress() {
+        let mut s = owed();
+        for n in 0..FORGIVE_LIMIT as i64 {
+            let (fence, _) = claim(&mut s, n);
+            assert!(s.forgive("exec", fence));
+        }
+        let (fence, attempts) = claim(&mut s, 100);
+        assert_eq!(attempts, 1);
+        assert!(!s.forgive("exec", fence), "past the limit it counts again");
+        let (fence, attempts) = claim(&mut s, 100 + TTL + 1);
+        assert_eq!(attempts, 2);
+        // Progress counts from this epoch again, and lifts the bound.
+        assert!(s.progress("exec", fence, 100 + TTL + 2));
+        assert!(s.forgive("exec", fence));
     }
 
     #[test]

@@ -6,11 +6,23 @@ use super::*;
 #[async_trait]
 impl everruns_core::execution_loading::SessionStore for Ports {
     async fn get_session(&self, session: SessionId) -> Result<Option<ExecutionSession>> {
-        self.scope(session)?;
-        let (record, configuration) = self
+        // Another session reads as missing, not as a failed turn: a child's
+        // turn-tool lookups (`finish` for a spawned agent) read its parent's
+        // record, which these ports never hold.
+        if self.scope(session).is_err() {
+            return Ok(None);
+        }
+        let (record, configuration, parent) = self
             .inner
             .read(session, |s| {
-                (s.authority.execution.clone(), s.authority.configuration())
+                (
+                    s.authority.execution.clone(),
+                    s.authority.configuration(),
+                    s.platform
+                        .origin
+                        .as_ref()
+                        .map(|origin| origin.parent_session_id.clone()),
+                )
             })
             .await?;
         let Some(record) = record else {
@@ -20,6 +32,13 @@ impl everruns_core::execution_loading::SessionStore for Ports {
         let configuration: everruns::hosting::SessionConfiguration =
             serde_json::from_value(configuration).map_err(store_err)?;
         configuration.apply(&mut record);
+        // Decision: a child's parent is the one its create named
+        // (`platform.origin`), since the Engine's own record of a session the
+        // gateway created knows none. Parent tools (`finish`, `ask_parent`,
+        // ...) find a thread's assignment through it.
+        if record.parent_session_id.is_none() {
+            record.parent_session_id = parent.and_then(|id| id.parse().ok());
+        }
         Ok(Some(record))
     }
 }
