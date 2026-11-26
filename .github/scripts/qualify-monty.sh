@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Real interpreter + Linux kernel isolation qualification. No model or network keys.
 set -euo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/../.."
 root="${EVERRUNS_MONTY_INSTALL_ROOT:-$PWD/.local/monty}"
 mkdir -p "$root/bin"
 if [[ ! -x "$root/bin/monty" ]] || [[ "$("$root/bin/monty" --version)" != "monty-runtime 1.5.0" ]]; then

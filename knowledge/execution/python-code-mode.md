@@ -85,7 +85,9 @@ routing must preserve the Python execution entry point.
 [Runtime tests](../../crates/integrations/src/monty/tests.rs) cover actual Monty
 execution, approval/resume across fresh workers, recorded effect replay,
 unknown-effect refusal, revocation, structured values, limits, network failure
-and Bashkit coexistence. [Qualification](../../scripts/test-monty.sh) also runs
+and Bashkit coexistence. The runtime qualification belongs to its dedicated CI job,
+not the generic shell-helper test inventory: compiling the interpreter there
+duplicates work and can exhaust the shell job budget. [Qualification](../../.github/scripts/qualify-monty.sh) also runs
 kernel restriction probes; inability to install Landlock is a failed deployment
 qualification, not a skipped or weaker sandbox. The CI job is scoped to this
 surface and uses a separate Rust cache key.
