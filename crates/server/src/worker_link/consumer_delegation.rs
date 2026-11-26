@@ -9,6 +9,16 @@
 //! never anything in the event: threads run only on the agents it allows
 //! (`self`, its named `agents`, or any with `any_agent`), only as children of
 //! the run's first session, owned by the same principal.
+//!
+//! Decision (2026-11-26): a coordinator answering in a Slack conversation (a
+//! workspace member's message there) or running a trigger aimed into a channel
+//! conversation gets the same bounded commands. Before this, `start_thread`
+//! from Slack fell through to the management path and was refused, since a
+//! Slack member is never an organization user. The authority is still only
+//! the agent's Threads config; the Slack member's message is attributed to
+//! them in the thread, never lifted to management authority. Threads of a
+//! channel conversation carry no channel, so a worker never posts into the
+//! channel itself; only the coordinator answers there.
 use crate::domains::common::CommandError;
 use crate::domains::sessions::{SessionService, types::CreateSessionRequest};
 use crate::storage::StorageBackend;
@@ -22,8 +32,12 @@ struct Scope {
     root: crate::storage::SessionRow,
     root_agent: AgentId,
     owner: PrincipalId,
-    /// The Work Chat endpoint; `None` for automated runs.
-    channel: Option<uuid::Uuid>,
+    /// The channel threads are bound to: the Work Chat endpoint, `None` for
+    /// automated runs and other channel conversations.
+    child_channel: Option<uuid::Uuid>,
+    /// A run without Threads keeps the management path (which refuses it)
+    /// instead of failing here; only Work Chat consumers fail here.
+    threads_required: bool,
     /// The end user a consumer message is attributed to; `None` for automated
     /// runs, whose messages stay automated.
     subject: Option<PrincipalId>,
@@ -59,7 +73,8 @@ pub(crate) async fn dispatch(
         root,
         root_agent,
         owner,
-        channel,
+        child_channel,
+        threads_required,
         subject,
         capabilities,
     } = scope;
@@ -71,9 +86,9 @@ pub(crate) async fn dispatch(
         cap.capability_id() == everruns_capabilities::capabilities::THREADS_CAPABILITY_ID
     }) {
         Some(threads) => threads,
-        // An automated run of an agent without Threads keeps the management
-        // path, which refuses it as before.
-        None if channel.is_none() => return Ok(None),
+        // An automated run or channel conversation of an agent without
+        // Threads keeps the management path, which refuses it as before.
+        None if !threads_required => return Ok(None),
         None => return Err(CommandError::forbidden("Threads capability required")),
     };
     let config = threads.config_value();
@@ -144,7 +159,12 @@ pub(crate) async fn dispatch(
                 .get_session(org, id)
                 .await?
                 .ok_or_else(|| CommandError::not_found("Session"))?;
-            if target.channel_id != channel
+            let expected_channel = if target.id == current {
+                session.channel_id
+            } else {
+                child_channel
+            };
+            if target.channel_id != expected_channel
                 || target.owner_principal_id != owner
                 || !(target.id == current || target.parent_session_id == Some(current))
             {
@@ -256,7 +276,7 @@ pub(crate) async fn dispatch(
                     target.harness_id.uuid(),
                     Some(target.internal_id),
                     Some(target.public_id),
-                    channel,
+                    child_channel,
                     None,
                     owner,
                     None,
@@ -277,8 +297,8 @@ pub(crate) async fn dispatch(
     ))
 }
 
-/// A Work Chat consumer's scope: the recorded consumer invocation, never
-/// management authority.
+/// A channel conversation's scope: a Work Chat consumer's, or another
+/// channel's ([`channel_conversation_scope`]). Never management authority.
 async fn work_chat_scope(
     db: &Arc<StorageBackend>,
     encryption: Option<&Arc<crate::storage::EncryptionService>>,
@@ -296,9 +316,12 @@ async fn work_chat_scope(
     else {
         return Ok(None);
     };
-    if channel.channel_type != crate::domains::agent_channels::record::ChannelType::WorkChat {
-        return Ok(None);
-    };
+    let work_chat =
+        channel.channel_type == crate::domains::agent_channels::record::ChannelType::WorkChat;
+    if !work_chat {
+        return channel_conversation_scope(db, org, current, message, session, &context, &channel)
+            .await;
+    }
     if crate::api::channel_ingress::channel_liveness(&context, &channel).is_err() {
         return Err(CommandError::forbidden("Channel unavailable"));
     }
@@ -339,7 +362,8 @@ async fn work_chat_scope(
         root,
         root_agent,
         owner: owner.principal_id,
-        channel: Some(channel.internal_id),
+        child_channel: Some(channel.internal_id),
+        threads_required: true,
         subject: Some(owner.principal_id),
         capabilities,
     }))
@@ -389,8 +413,92 @@ async fn automated_scope(
         owner: root.owner_principal_id,
         root,
         root_agent,
-        channel: None,
+        child_channel: None,
+        threads_required: false,
         subject: None,
+        capabilities,
+    }))
+}
+
+/// A conversation in a channel other than Work Chat: a Slack member's message,
+/// or an automated message (a trigger aimed at the conversation).
+/// THREAT[TM-AUTHZ-030]: the session runs the channel's own agent in the channel's
+/// own conversation, and the invocation is either a Slack member's (an active
+/// end user, attributed to them downstream) or carries no person and is
+/// answered by that agent. A management user's invocation keeps the
+/// management path. Members of other public channels (public chat, A2A, API,
+/// Poppy) get nothing here: they are outside parties, not workspace members.
+async fn channel_conversation_scope(
+    db: &Arc<StorageBackend>,
+    org: i64,
+    current: SessionId,
+    message: uuid::Uuid,
+    session: &crate::storage::SessionRow,
+    context: &crate::domains::agent_channels::ingress::IngressContext,
+    channel: &crate::domains::agent_channels::ingress::IngressChannel,
+) -> Result<Option<Scope>, CommandError> {
+    let Some(root_agent) = context.agent_id else {
+        return Ok(None);
+    };
+    if session.agent_id != Some(root_agent) {
+        return Ok(None);
+    }
+    if db
+        .runtime_invocation_management_user(current, message)
+        .await?
+        .is_some()
+    {
+        return Ok(None);
+    }
+    let subject = match db.runtime_invocation_subject(current, message).await? {
+        Some(subject)
+            if channel.channel_type
+                == crate::domains::agent_channels::record::ChannelType::Slack =>
+        {
+            let member = crate::domains::agent_channels::api_sessions::end_user_principal(
+                db, org, subject, "active",
+            )
+            .await?
+            .ok_or_else(|| CommandError::forbidden("Member unavailable"))?;
+            Some(member.principal_id)
+        }
+        Some(_) => return Ok(None),
+        None => {
+            let Some(responder) = db
+                .runtime_invocation_automated_responder(current, message)
+                .await?
+            else {
+                return Ok(None);
+            };
+            if responder != Some(context.agent_internal_id) {
+                return Ok(None);
+            }
+            None
+        }
+    };
+    if crate::api::channel_ingress::channel_liveness(context, channel).is_err() {
+        return Err(CommandError::forbidden("Channel unavailable"));
+    }
+    let root_id = session.root_session_id.unwrap_or(current);
+    let root = db
+        .get_session(org, root_id)
+        .await?
+        .ok_or_else(|| CommandError::not_found("Conversation"))?;
+    if root.channel_id != Some(channel.internal_id)
+        || root.owner_principal_id != session.owner_principal_id
+        || root.agent_id != Some(root_agent)
+    {
+        return Err(CommandError::forbidden("Conversation mismatch"));
+    }
+    let capabilities = agent_capabilities(db, org, root_agent).await?;
+    Ok(Some(Scope {
+        root_id,
+        owner: root.owner_principal_id,
+        root,
+        root_agent,
+        child_channel: None,
+        threads_required: false,
+        subject,
         capabilities,
     }))
 }

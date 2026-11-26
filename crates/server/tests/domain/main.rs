@@ -45,6 +45,7 @@ mod channel_a2a_pact_delegation_test;
 mod channel_a2a_pact_test;
 mod channel_a2a_protocol_test;
 mod channel_a2a_reactions_test;
+mod channel_coordination_test;
 mod channel_invocation_integration_test;
 mod channel_poppy_test;
 mod channel_rename_test;
