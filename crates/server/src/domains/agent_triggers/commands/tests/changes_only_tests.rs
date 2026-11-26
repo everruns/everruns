@@ -75,6 +75,9 @@ async fn changes_only_wakes_when_a_subject_flips() {
     assert_eq!(fire(ci_event("6", "main", "success")).await, "dispatched");
 
     let reasons: Vec<_> = ListAgentTriggerDeliveries {
+        from: None,
+        to: None,
+        before: None,
         agent_id,
         trigger_id: trigger.id.to_string(),
         limit: None,

@@ -252,7 +252,9 @@ fn thread_message_texts(event_type: &str, data: &Value) -> Vec<String> {
     texts.extend(parts.iter().filter_map(|part| {
         (part["type"].as_str() == Some("tool_call")
             && part["name"].as_str() == Some(everruns_core::conversation::SEND_MESSAGE_TOOL_NAME))
-        .then(|| part["arguments"]["text"].as_str().map(str::to_owned))
+        .then(|| {
+            everruns_core::conversation::send_message_text(&part["arguments"]).map(str::to_owned)
+        })
         .flatten()
     }));
     texts

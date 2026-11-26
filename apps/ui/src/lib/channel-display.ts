@@ -48,6 +48,8 @@ export function channelPublishControl(channel: Pick<AgentChannel, "enabled" | "s
 
 export function getChannelTypeDisplayName(channelType: ChannelType): string {
   switch (channelType) {
+    case "email":
+      return "Email";
     case "ag_ui":
       return "AG-UI";
     case "schedule":

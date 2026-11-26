@@ -35,6 +35,8 @@ everruns applications create [OPTIONS] --name <name> --slug <slug>
 | `--resources <RESOURCES>` | Ordered resource bindings; at most 50, with unique paths and IDs. |
 | `--slug <SLUG>` | Required. Permanent hostname label, globally unique and reserved after archival. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -54,6 +56,8 @@ everruns applications get [OPTIONS] --application-id <application_id>
 |---|---|
 | `--application-id <APPLICATION_ID>` | Required. Prefixed identifier with 'application' prefix. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -72,6 +76,8 @@ everruns applications list [OPTIONS]
 | Flag | Description |
 |---|---|
 | `--include-archived` | Include archived Applications so their owners can restore them as drafts. |
+
+Output: a JSON array. Read the items with jq '.[]'.
 
 Example:
 
@@ -93,6 +99,8 @@ everruns applications status [OPTIONS] --application-id <application_id> --statu
 | `--application-id <APPLICATION_ID>` | Required. Prefixed identifier with 'application' prefix. |
 | `--status <STATUS>` | Required. One of `draft`, `published`, `archived`. |
 | `--version <VERSION>` | Required. Current version from the latest read. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -119,6 +127,8 @@ everruns applications update [OPTIONS] --application-id <application_id> --name 
 | `--slug <SLUG>` | Required. Permanent hostname label, globally unique and reserved after archival. |
 | `--version <VERSION>` | Required. Current version from the latest read; stale edits are rejected. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -142,6 +152,8 @@ everruns applications resources create [OPTIONS] --application-id <application_i
 | `--name <NAME>` | Required. Navigation label and initial name for a new Room or Memory. |
 | `--slug <SLUG>` | Required. Unique navigation path within the Application. |
 | `--version <VERSION>` | Required. Current Application version; creation and binding are one transaction. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 

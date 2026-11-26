@@ -1130,9 +1130,10 @@ pub struct CommandCatalogEntry {
     pub output_shape: &'static str,
 }
 
-/// Every value [`Command::output_shape`] may return. `unknown` covers single
-/// objects and anything without a stable jq path; `output_fields` names them.
-pub const OUTPUT_SHAPES: [&str; 3] = ["array", "paginated", "unknown"];
+/// Every value [`Command::output_shape`] may return. `object` is one JSON
+/// object (read its fields); `unknown` covers anything without a stable jq
+/// path. `#[command]` derives the shape from the output type.
+pub const OUTPUT_SHAPES: [&str; 4] = ["array", "paginated", "object", "unknown"];
 
 pub fn catalog_entries_with_schemas(
     include_schemas: bool,

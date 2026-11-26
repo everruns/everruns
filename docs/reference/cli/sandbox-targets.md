@@ -22,6 +22,8 @@ List the Sandbox targets this deployment can offer.
 everruns sandbox-targets list [OPTIONS]
 ```
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash

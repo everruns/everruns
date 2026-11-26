@@ -65,6 +65,8 @@ everruns rooms archive [OPTIONS] --room-id <room_id>
 | `--archived` | `false` brings an archived room back. |
 | `--room-id <ROOM_ID>` | Required. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -90,6 +92,8 @@ everruns rooms create [OPTIONS] --name <name>
 | `--name <NAME>` | Required. |
 | `--topic <TOPIC>` |  |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -108,6 +112,8 @@ everruns rooms get [OPTIONS] [ROOM_ID]
 | Flag | Description |
 |---|---|
 | `--room-id <ROOM_ID>` | Prefixed room id. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -129,6 +135,8 @@ everruns rooms feed [OPTIONS]
 | `--after <AFTER>` | Read events after this position (`next_after` of the last page). |
 | `--limit <LIMIT>` |  |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -149,6 +157,8 @@ everruns rooms events [OPTIONS] --room-id <room_id>
 | `--after <AFTER>` | Read events after this position (`next_after` of the last page). |
 | `--limit <LIMIT>` |  |
 | `--room-id <ROOM_ID>` | Required. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -172,6 +182,8 @@ everruns rooms list [OPTIONS]
 | `--limit <LIMIT>` |  |
 | `--mine` | Only rooms the caller is a member of. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -192,6 +204,8 @@ everruns rooms mark-read [OPTIONS] --room-id <room_id>
 | `--as-member <AS_MEMBER>` |  |
 | `--message-id <MESSAGE_ID>` | Mark read up to and including this message, in its scope (the top level, or its thread). |
 | `--room-id <ROOM_ID>` | Required. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -215,6 +229,8 @@ everruns rooms unread [OPTIONS] --room-id <room_id>
 | `--peek` | Look without marking read. |
 | `--room-id <ROOM_ID>` | Required. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -236,6 +252,8 @@ everruns rooms recall [OPTIONS] --q <q> [ROOM_ID]
 | `--as-of <AS_OF>` | Recall as of this time: later messages and facts are left out, and a fact replaced after it s... |
 | `--limit <LIMIT>` | Most results, 10 by default, 50 at most. |
 | `--q <Q>` | Required. What to look for, in plain words: any of them may match. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -262,6 +280,8 @@ everruns rooms update [OPTIONS] --room-id <room_id>
 | `--room-id <ROOM_ID>` | Required. |
 | `--topic <TOPIC>` |  |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -283,6 +303,8 @@ everruns rooms files delete [OPTIONS] --path <path> [ROOM_ID]
 | `--as-member <AS_MEMBER>` | Delete as this member (org admins). |
 | `--if-version <IF_VERSION>` | The version you read; the delete fails when the file changed since. |
 | `--path <PATH>` | Required. The file to delete. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -306,6 +328,8 @@ everruns rooms files edit [OPTIONS] --edits <edits> --path <path> --room-id <roo
 | `--path <PATH>` | Required. The file to change. |
 | `--room-id <ROOM_ID>` | Required. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -327,6 +351,8 @@ everruns rooms files history [OPTIONS] --path <path> [ROOM_ID]
 | `--limit <LIMIT>` |  |
 | `--path <PATH>` | Required. The file, as it is now or was when deleted. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -346,6 +372,8 @@ everruns rooms files list [OPTIONS] [ROOM_ID]
 |---|---|
 | `--room-id <ROOM_ID>` |  |
 | `--prefix <PREFIX>` | Only files under this folder, such as `/plans`. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -369,6 +397,8 @@ everruns rooms files move [OPTIONS] --from <from> --room-id <room_id> --to <to>
 | `--room-id <ROOM_ID>` | Required. |
 | `--to <TO>` | Required. Its new path. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -389,6 +419,8 @@ everruns rooms files read [OPTIONS] --path <path> [ROOM_ID]
 | `--room-id <ROOM_ID>` |  |
 | `--path <PATH>` | Required. The file, such as `/plans/launch.md`. |
 | `--version <VERSION>` | An earlier version to read; the current one when absent. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -411,6 +443,8 @@ everruns rooms files restore [OPTIONS] --path <path> --room-id <room_id> --versi
 | `--path <PATH>` | Required. The file, as it is now or was when deleted. |
 | `--room-id <ROOM_ID>` | Required. |
 | `--version <VERSION>` | Required. The version to bring back. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -436,6 +470,8 @@ everruns rooms files write [OPTIONS] --content <content> --path <path> --room-id
 | `--path <PATH>` | Required. The file, such as `/plans/launch.md`. |
 | `--room-id <ROOM_ID>` | Required. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -459,6 +495,8 @@ everruns rooms facts list [OPTIONS] [ROOM_ID]
 | `--kind <KIND>` | Only facts of this kind: decision, rule, claim, deadline, question or observation. |
 | `--limit <LIMIT>` | Most facts, 50 by default, 200 at most. |
 | `--subject <SUBJECT>` | Only facts on this subject. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -487,6 +525,8 @@ everruns rooms facts remember [OPTIONS] --kind <kind> --room-id <room_id> --stat
 | `--status <STATUS>` | Stated (default), proposed, hypothetical or retracted. |
 | `--subject <SUBJECT>` | Required. What it is about, in a few words. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -508,6 +548,8 @@ everruns rooms memory forget [OPTIONS] --entry-id <entry_id> --room-id <room_id>
 | `--entry-id <ENTRY_ID>` | Required. |
 | `--room-id <ROOM_ID>` | Required. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -527,6 +569,8 @@ everruns rooms memory get [OPTIONS] --entry-id <entry_id> --room-id <room_id>
 |---|---|
 | `--entry-id <ENTRY_ID>` | Required. |
 | `--room-id <ROOM_ID>` | Required. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -553,6 +597,8 @@ everruns rooms memory ingest [OPTIONS] --room-id <room_id> --text <text>
 | `--source-ref <SOURCE_REF>` | Your own id for it. |
 | `--text <TEXT>` | Required. The text to remember: meeting notes, a summary, a document. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -573,6 +619,8 @@ everruns rooms memory publish-session [OPTIONS] --room-id <room_id> --session-id
 | `--as-member <AS_MEMBER>` | Publish as this member (org admins). |
 | `--room-id <ROOM_ID>` | Required. |
 | `--session-id <SESSION_ID>` | Required. The session whose conversation to publish. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -603,6 +651,8 @@ everruns rooms members add [OPTIONS] --kind <kind> --room-id <room_id>
 | `--user-id <USER_ID>` | For a person: their user id. |
 | `--wake <WAKE>` |  |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -623,6 +673,8 @@ everruns rooms members list [OPTIONS] [ROOM_ID]
 | `--room-id <ROOM_ID>` |  |
 | `--include-left` | Include members who left. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -642,6 +694,8 @@ everruns rooms members remove [OPTIONS] --member-id <member_id> --room-id <room_
 |---|---|
 | `--member-id <MEMBER_ID>` | Required. |
 | `--room-id <ROOM_ID>` | Required. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -669,6 +723,8 @@ everruns rooms members update [OPTIONS] --member-id <member_id> --room-id <room_
 | `--session-scope <SESSION_SCOPE>` |  |
 | `--wake <WAKE>` |  |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -689,6 +745,8 @@ everruns rooms messages delete [OPTIONS] --message-id <message_id> --room-id <ro
 | `--as-member <AS_MEMBER>` |  |
 | `--message-id <MESSAGE_ID>` | Required. |
 | `--room-id <ROOM_ID>` | Required. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -712,6 +770,8 @@ everruns rooms messages edit [OPTIONS] --message-id <message_id> --room-id <room
 | `--room-id <ROOM_ID>` | Required. |
 | `--text <TEXT>` | Required. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -732,6 +792,8 @@ everruns rooms messages get [OPTIONS] --message-id <message_id> --room-id <room_
 | `--message-id <MESSAGE_ID>` | Required. |
 | `--room-id <ROOM_ID>` | Required. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -751,6 +813,8 @@ everruns rooms messages readers [OPTIONS] --message-id <message_id> --room-id <r
 |---|---|
 | `--message-id <MESSAGE_ID>` | Required. |
 | `--room-id <ROOM_ID>` | Required. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -774,6 +838,8 @@ everruns rooms messages list [OPTIONS] [ROOM_ID]
 | `--before <BEFORE>` | Messages before this time (page backwards). |
 | `--limit <LIMIT>` |  |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -792,6 +858,8 @@ everruns rooms messages pinned [OPTIONS] [ROOM_ID]
 | Flag | Description |
 |---|---|
 | `--room-id <ROOM_ID>` |  |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -816,6 +884,8 @@ everruns rooms messages replies [OPTIONS] --message-id <message_id> --room-id <r
 | `--message-id <MESSAGE_ID>` | Required. |
 | `--room-id <ROOM_ID>` | Required. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -838,6 +908,8 @@ everruns rooms messages pin [OPTIONS] --message-id <message_id> --room-id <room_
 | `--pinned` | `false` unpins. |
 | `--room-id <ROOM_ID>` | Required. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -859,6 +931,8 @@ everruns rooms messages post [OPTIONS] --room-id <room_id> --text <text>
 | `--reply-to <REPLY_TO>` | Reply in the thread of this message (replies are one level deep: a reply to a reply lands in ... |
 | `--room-id <ROOM_ID>` | Required. |
 | `--text <TEXT>` | Required. Markdown. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -883,6 +957,8 @@ everruns rooms messages react [OPTIONS] --emoji <emoji> --message-id <message_id
 | `--message-id <MESSAGE_ID>` | Required. |
 | `--room-id <ROOM_ID>` | Required. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -903,6 +979,8 @@ everruns rooms messages search [OPTIONS] --q <q> --room-id <room_id>
 | `--limit <LIMIT>` |  |
 | `--q <Q>` | Required. Text to find, case-insensitive. |
 | `--room-id <ROOM_ID>` | Required. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 

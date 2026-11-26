@@ -35,6 +35,8 @@ everruns credential-bindings create [OPTIONS] --label <label> --scope <scope> --
 | `--source <SOURCE>` |  |
 | `--usage <USAGE>` | Required. Invocation identity under which a credential may be used; identities never fall back to each ... One of `user`, `service`. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -55,6 +57,8 @@ everruns credential-bindings list [OPTIONS] --scope <scope> --usage <usage>
 | `--owner-id <OWNER_ID>` | Agent or session ID, or virtual-user ID (`me` by default); omit for organization scope. |
 | `--scope <SCOPE>` | Required. Ownership or consumer scope. One of `session`, `agent`, `virtual_user`, `organization`. |
 | `--usage <USAGE>` | Required. Invocation identity under which a credential may be used; identities never fall back to each ... One of `user`, `service`. |
+
+Output: a JSON array. Read the items with jq '.[]'.
 
 Example:
 

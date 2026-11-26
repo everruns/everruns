@@ -2048,6 +2048,26 @@ A `poppy` channel serves the Personal Agent Protocol (draft 0.1) at `/v1/channel
 | TM-POPPY-008 | A sandbox or the model obtains signing keys or Session Tokens | High | The protocol runs in the control plane behind the `worker_poppy_call` internal command (session-scoped, `SESSION_MANAGE`). The deployment key, DPoP keys and Session Tokens are encrypted at rest and never cross to a worker; the tool sees only the company's answer. `domains/poppy_agent/` | MITIGATED |
 | TM-POPPY-009 | SSRF through a model-chosen company domain | High | The domain must be a DNS name over HTTPS; discovery follows at most three HTTPS redirects, and every request goes through the egress boundary with DNS pinning and the org's allowlist. Authenticated calls never follow redirects. `domains/poppy_agent/protocol.rs` | MITIGATED |
 
+## 31. Email inbox channels (TM-EMAIL)
+
+Inbound mail is untrusted external content, including authenticated mail. Domain
+alignment and provider signatures do not authenticate an Everruns user or authorize
+cross-channel actions. See [email inbox channels](../integrations/email.md).
+
+| ID | Threat | Mitigation and evidence |
+|---|---|---|
+| TM-EMAIL-001 | Forged intake, tenant crossing or plus-tag identity confusion | Signed, timestamped raw-body verification scoped to the inbox; organization-scoped administration and session-scoped reads; plus aliases share base-inbox quotas. Provider signatures authenticate delivery only. |
+| TM-EMAIL-002 | Prompt injection causes tools, attachments or cross-channel disclosure | Host-installed email tool policy checks final calls, including nested/client calls; only scoped reads and attachment-free replies/no_reply pass. Independent admission/output gates fail closed. A model verdict is not a security guarantee; preloaded agent context must suit external recipients. |
+| TM-EMAIL-003 | Email bursts exhaust storage, model budgets or workers | Persist before acknowledgement, deduplicate receipts, enforce organization storage/rate quotas, and claim bounded batches under renewable leases. One thousand received messages do not launch one thousand turns. |
+| TM-EMAIL-004 | Duplicate, mutated or misdirected outbound mail | Immutable rendered text/HTML, sender-specific thread binding, explicit sole recipient, separate send approval and fenced outbox. Unknown acceptance holds for reconciliation without blind retries. |
+| TM-EMAIL-005 | Active HTML or cleaned-away instructions alter trust decisions | Sanitized escaped templates, bounded Markkit clean/full views, no remote body fetches, and full normalized content for admission. Cleanup is presentation, never authentication or an injection defense. |
+
+Contract/database tests in [email tests](../../crates/server/src/channels/email/tests.rs)
+and the [runtime policy](../../crates/core/src/host/host/email_policy.rs) cover these
+boundaries. Live qualification currently proves polling and separate operator
+approvals; autonomous Jev decisions and provider-origin webhook delivery remain
+separate live gates. Unknown-send recovery has no operator UI yet.
+
 ## Vulnerability Summary
 
 ### Open Threats (Require Action)
@@ -2255,3 +2275,19 @@ a custom launcher must establish its own equivalent kernel boundary.
 | TM-MONTY-004 | Agent injects, crosses tenants with or downgrades a snapshot | Critical | Host-private stores only; session/input namespace; Server worker commands verify org/session ownership and reject forced settlement; version check; no snapshot bytes in model inputs, KV, workspace, change history or public feed. | MITIGATED |
 | TM-MONTY-005 | Resource exhaustion through source, output, cyclic values or repeated suspensions | High | Independent source, JSON, depth, output, snapshot, memory, time and suspension limits; saved budgets survive resume; failed/cancelled workers are discarded. | MITIGATED |
 | TM-MONTY-006 | Composition enables more privileged fallback or hides unreachable tools | High | No automatic fallback; native schemas retained; Python is a direct execution entry point for shell/Lua routing; Bashkit runtime selection unchanged. | MITIGATED |
+
+## Investigation read extensions
+
+The existing TM-TENANT, TM-AUTHZ, TM-SCHED and TM-TRIGGER boundaries also cover
+historical evidence. Health episode lookups constrain both issue and authenticated
+organization. Schedule commands use the configured permission resolver and check
+both organization and parent session before reading either authority. Trigger
+requesters are stamped from the caller, not caller-controlled event payloads;
+missing historical actors are never inferred. Corrected ingress writes carry provenance,
+and ambiguous older schedule labels are reported as unknown. Native discovery and CLI composition
+continue through the same domain dispatcher.
+
+Joint cost grouping uses fixed SQL fragments from an allowlist; filters are bound
+parameters. Read pages are bounded, delivery retention is time-based, and compact
+v2 cost reads omit model request/response content. The new reads retain the existing
+privilege boundaries.

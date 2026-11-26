@@ -21,8 +21,8 @@ export const messages: Readonly<Record<string, string>> = {
   From: "Origine",
   "By source": "Par source",
   "By who started the work": "Par qui a lancé le travail",
-  "Unattended work is schedules and triggers no person started":
-    "Le travail sans surveillance, ce sont les planifications et déclencheurs qu'aucune personne n'a lancés",
+  "Unattended work includes schedules and agent triggers.":
+    "Le travail sans surveillance inclut les planifications et les déclencheurs des agents.",
   "Started by": "Lancé par",
   "Usage records": "Enregistrements d'utilisation",
   "Unknown person": "Personne inconnue",

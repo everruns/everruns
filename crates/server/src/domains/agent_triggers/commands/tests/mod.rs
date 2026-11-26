@@ -23,6 +23,7 @@ use std::sync::{Arc, Mutex};
 
 mod changes_only_tests;
 mod github_everruns_app_tests;
+mod history_tests;
 mod manual_fire_tests;
 mod schedule_config_tests;
 mod scheduled_invocation_tests;
@@ -655,6 +656,10 @@ async fn recent_runs_use_the_trigger_schedule_execution_history() {
         .expect("complete execution");
 
     let runs = ListAgentTriggerRuns {
+        from: None,
+        to: None,
+        before: None,
+        limit: None,
         agent_id,
         trigger_id: trigger.id.to_string(),
     }
@@ -1126,6 +1131,9 @@ async fn webhook_events_are_filtered_deduplicated_and_routed_per_subject() {
     );
 
     let deliveries = ListAgentTriggerDeliveries {
+        from: None,
+        to: None,
+        before: None,
         agent_id,
         trigger_id: trigger.id.to_string(),
         limit: None,
@@ -1226,6 +1234,7 @@ async fn delivery_history_is_bounded_per_trigger() {
     for index in 0..5 {
         db.record_agent_trigger_delivery(
             crate::storage::agent_trigger_deliveries::CreateAgentTriggerDeliveryRow {
+                requested_by: None,
                 org_id: DEFAULT_ORG_ID,
                 trigger_id,
                 source: "webhook".to_string(),

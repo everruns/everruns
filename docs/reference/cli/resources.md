@@ -33,6 +33,8 @@ everruns resources grants grant [OPTIONS] --consumer-scope <consumer_scope> --id
 | `--id <ID>` | Required. Credential binding or native connection resource identifier. |
 | `--usage <USAGE>` | Required. Invocation identity under which a credential may be used; identities never fall back to each ... One of `user`, `service`. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -51,6 +53,8 @@ everruns resources grants list [OPTIONS] --id <id>
 | Flag | Description |
 |---|---|
 | `--id <ID>` | Required. Credential binding or native connection resource identifier. |
+
+Output: a JSON array. Read the items with jq '.[]'.
 
 Example:
 

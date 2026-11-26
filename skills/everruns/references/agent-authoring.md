@@ -106,11 +106,40 @@ agent; discover the channel commands and connect one only when asked. For
 Slack, start from the `slack-team-assistant` example. Keep the **Reactions**
 capability: it makes the agent react 👀 when it starts on a Slack message and
 ✅ once it has answered, so people see it got the message. Connecting the
-agent's first Slack channel turns it on. Change how the agent reacts in its
+agent's first Slack channel turns it on. For an agent whose Communication is
+explicit, Everruns adds the reactions itself. Change how the agent reacts in its
 instructions ("Don't react to messages", "Use 🫡 instead of 👀") only when the
 person asks; do not restate the default. Add the **Slack** capability when the
 agent should also act in the workspace: update its own messages, share files,
 or look people up.
+
+### Scheduled coordinator in a Slack channel
+
+For an agent that does recurring work and reports in one Slack channel (for
+example a housekeeping agent), adopt `slack-channel-coordinator`. It talks
+explicitly, so its notes stay out of the channel and Everruns reacts 👀/✅ on
+messages it works on. Fill in its "Your job" section and owner list, then:
+
+1. **Draft the channel:** `everruns agents channels create --agent-id <agent>
+   --channel-type slack --channel-config '{"channel_id":"C0123456789"}'`. The
+   `channel_id` binds it to one Slack channel; leave it out to answer anywhere
+   the bot is invited. A new channel is a draft and answers nobody.
+2. **Install:** the person selects **Add to Slack** on the channel page (it
+   needs their browser and Slack consent; give them the channel's `ui_link`).
+   A successful install publishes the channel when they may publish.
+3. **Publish** only if it is still a draft (`status` in `agents channels get`):
+   `everruns agents channels publish --agent-id <agent> --channel-id <appchan>`.
+4. **Invite:** in Slack, `/invite` the app into the channel. Private channels
+   always need this; Health reports "Slack bot is not in its channel" until it
+   is done.
+5. **Point triggers at the channel:** create the schedule with
+   `--target-channel-id <appchan> --target-binding-key slack:channel:<C…>` so
+   runs post into the channel conversation (`slack:channel:` matches the
+   default per-channel session strategy). A second schedule whose message asks
+   for the daily report closes the day. The result shows the target under
+   `.config.target`.
+6. **Check:** run one schedule now (`everruns agents triggers trigger`) and
+   read the channel, not only the session.
 
 ## Verify the behavior
 

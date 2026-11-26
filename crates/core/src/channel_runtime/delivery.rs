@@ -50,7 +50,16 @@ use super::delivery_telemetry::{
 };
 use super::progress::TaskProgress;
 use super::{ChannelDeliveryAdapter, DeliveryContext, DeliveryResult, OutboundChannelMessage};
-use crate::conversation::NO_REPLY_TOOL_NAME;
+use crate::conversation::{NO_REPLY_TOOL_NAME, SEND_MESSAGE_TOOL_NAME};
+
+/// The agent's own reaction tool (Reactions capability). Reacting is talking,
+/// not work, so it does not start the 👀 acknowledgement.
+const REACT_TOOL_NAME: &str = "react";
+/// `effects_done` markers for the acknowledgement, so a resumed delivery
+/// neither repeats nor strands a reaction.
+const ACK_STARTED_DONE: &str = "ack:started";
+const ACK_ANSWERED_DONE: &str = "ack:answered";
+const ACK_AGENT_REACTED: &str = "ack:agent";
 use everruns_contracts::runtime::events::{
     CONVERSATION_MESSAGE, MESSAGE_REACTION_ADDED, MESSAGE_REACTION_REMOVED,
     OUTPUT_MESSAGE_COMPLETED, OUTPUT_MESSAGE_DELTA, OUTPUT_MESSAGE_REPLACED,
@@ -112,7 +121,17 @@ pub struct DeliveryOptions {
     /// Deliver the agent's replies. Off for a channel that only takes
     /// messages in, such as a webhook: its turns run and nothing is posted.
     pub replies: bool,
+    /// Acknowledge the message being answered with reactions: 👀 once the
+    /// agent starts working on it, ✅ once it has sent its answer. Hosts turn
+    /// it on for explicit agents allowed to react, on platforms that show
+    /// reactions. The agent's own reaction on that message takes over.
+    pub acknowledge: bool,
 }
+
+/// Reaction added to the answered message when the agent starts working.
+pub const ACK_STARTED: &str = "👀";
+/// Reaction added to the answered message once the agent sent its answer.
+pub const ACK_ANSWERED: &str = "✅";
 
 impl Default for DeliveryOptions {
     fn default() -> Self {
@@ -123,6 +142,7 @@ impl Default for DeliveryOptions {
             tool_status: None,
             session_link: None,
             replies: true,
+            acknowledge: false,
         }
     }
 }
@@ -244,6 +264,8 @@ pub struct TurnDelivery {
     journal: Option<Arc<DeliveryJournal>>,
     last_sequence: Option<i64>,
     effects_done: HashSet<String>,
+    pub(super) buffered_replies: Vec<(String, String)>,
+    pub(super) buffer_overflow: bool,
 }
 
 impl TurnDelivery {
@@ -278,6 +300,8 @@ impl TurnDelivery {
             journal: None,
             last_sequence: None,
             effects_done: HashSet::new(),
+            buffered_replies: Vec::new(),
+            buffer_overflow: false,
         }
     }
 
@@ -290,6 +314,11 @@ impl TurnDelivery {
     /// reach the platform.
     pub fn know_message_key(&mut self, message_id: impl Into<String>, key: impl Into<String>) {
         self.keys.insert(message_id.into(), key.into());
+    }
+
+    /// Whether this delivery acknowledges the answered message with reactions.
+    pub fn acknowledges(&self) -> bool {
+        self.options.acknowledge && self.adapter.reactions().is_some()
     }
 
     /// Whether the delivery knows a message's platform key.
@@ -340,7 +369,9 @@ impl TurnDelivery {
     }
 
     fn streaming(&self) -> bool {
-        self.options.stream && self.adapter.streaming().is_some()
+        !self.adapter.aggregate_replies()
+            && self.options.stream
+            && self.adapter.streaming().is_some()
     }
 
     /// Feed one event.
@@ -411,10 +442,39 @@ impl TurnDelivery {
             OUTPUT_MESSAGE_DELTA if self.streaming() => self.on_delta(&event.data).await,
             CONVERSATION_MESSAGE => self.on_sent(&event.data).await,
             OUTPUT_MESSAGE_REPLACED if self.streaming() => self.on_replaced(&event.data).await,
+            OUTPUT_MESSAGE_REPLACED if self.adapter.aggregate_replies() => {
+                if let (Some(id), Some(replacement)) = (
+                    event.data["message_id"].as_str(),
+                    event.data["replacement"].as_str(),
+                ) {
+                    if let Some((_, text)) =
+                        self.buffered_replies.iter_mut().find(|(key, _)| key == id)
+                    {
+                        if replacement.len() <= 131_072 {
+                            *text = replacement.to_string();
+                        } else {
+                            self.buffer_overflow = true;
+                        }
+                    }
+                    if self
+                        .buffered_replies
+                        .iter()
+                        .map(|(_, text)| text.len() + 2)
+                        .sum::<usize>()
+                        > 131_072
+                    {
+                        self.buffer_overflow = true;
+                    }
+                    if let Some(journal) = &self.journal {
+                        let _ = journal.save(self.snapshot()).await;
+                    }
+                }
+            }
             OUTPUT_MESSAGE_COMPLETED => self.on_completed(&event.data).await,
             MESSAGE_REACTION_ADDED => self.on_reaction(&event.data, true).await,
             MESSAGE_REACTION_REMOVED => self.on_reaction(&event.data, false).await,
             TOOL_STARTED => {
+                self.acknowledge_start(&event.data).await;
                 self.tools_running += 1;
                 self.set_status(self.current_status()).await;
             }
@@ -424,6 +484,7 @@ impl TurnDelivery {
                 self.tools_running = self.tools_running.saturating_sub(1);
                 if chose_silence(&event.data) {
                     self.delivered = true;
+                    self.buffered_replies.clear();
                 }
                 self.prompt_approval(&event.data).await;
                 self.show_app_view(&event.data).await;
@@ -494,6 +555,46 @@ impl TurnDelivery {
         if self.finished {
             return;
         }
+        if self.adapter.aggregate_replies() {
+            if event_type == TURN_COMPLETED
+                && !self.delivered
+                && !self.buffer_overflow
+                && !self.buffered_replies.is_empty()
+                && !self.done.contains("aggregate-final")
+            {
+                let text = self
+                    .buffered_replies
+                    .iter()
+                    .map(|(_, text)| text.as_str())
+                    .collect::<Vec<_>>()
+                    .join("\n\n");
+                if let Err(error) = self.post_message(text, Some("aggregate-final")).await {
+                    warn!(session_id = %self.session_id, %error, "channel: aggregate reply needs recovery");
+                    return;
+                }
+            }
+            self.done.insert("aggregate-final".into());
+            if self.before_write("turn-finished", true).await.is_err() {
+                return;
+            }
+            let result = self
+                .adapter
+                .turn_finished(
+                    &self.context,
+                    if self.buffer_overflow {
+                        TURN_FAILED
+                    } else {
+                        event_type
+                    },
+                )
+                .await;
+            self.after_write(&result).await;
+            if !matches!(result, DeliveryResult::Ok) {
+                return;
+            }
+            self.finished = true;
+            return;
+        }
         let ids: Vec<String> = self.streams.keys().cloned().collect();
         for id in ids {
             self.close_stream(&id).await;
@@ -502,6 +603,7 @@ impl TurnDelivery {
         // A summary frozen mid-flight reads as live forever: the final push
         // says where the fan-out got to.
         self.push_progress(true).await;
+        self.acknowledge_end(event_type).await;
 
         // An agent that talks through `send_message` may have posted progress
         // before failing; the person still needs to know the request ended.
@@ -710,6 +812,26 @@ impl TurnDelivery {
             return;
         }
         let Some(text) = text else { return };
+        if self.adapter.aggregate_replies() {
+            // Bound durable projection size. An overflow suppresses the whole
+            // automatic reply; sending a partial answer would hide the loss.
+            let size: usize = self.buffered_replies.iter().map(|(_, t)| t.len() + 2).sum();
+            if size.saturating_add(text.len()) > 131_072 {
+                self.buffer_overflow = true;
+            } else if !self.buffer_overflow {
+                self.buffered_replies
+                    .push((message_id.clone().unwrap_or_default(), text));
+            }
+            if let Some(id) = message_id {
+                self.done.insert(id);
+            }
+            if let Some(journal) = &self.journal
+                && let Err(error) = journal.save(self.snapshot()).await
+            {
+                warn!(%error, "channel: could not checkpoint aggregate reply");
+            }
+            return;
+        }
         let started = self.telemetry.start();
         let posted = self.post_message(text, message_id.as_deref()).await;
         let outcome = posted
@@ -758,6 +880,16 @@ impl TurnDelivery {
         };
         let key = effect_key("explicit", data);
         if self.done.contains(&key) {
+            return;
+        }
+        if self.adapter.aggregate_replies() {
+            let size: usize = self.buffered_replies.iter().map(|(_, t)| t.len() + 2).sum();
+            if size.saturating_add(text.len()) > 131_072 {
+                self.buffer_overflow = true;
+            } else if !self.buffer_overflow {
+                self.buffered_replies.push((key.clone(), text.to_string()));
+            }
+            self.done.insert(key);
             return;
         }
         if self
@@ -1075,7 +1207,8 @@ impl TurnDelivery {
         message_id: Option<&str>,
         operation: String,
     ) -> Result<(), DeliveryResult> {
-        self.before_write(operation, false).await?;
+        self.before_write(operation, self.adapter.idempotent_replies())
+            .await?;
         let message = OutboundChannelMessage {
             session_id: self.session_id,
             text,
@@ -1139,6 +1272,9 @@ impl TurnDelivery {
         if !by_agent {
             return;
         }
+        if message_id == self.input_message_id {
+            self.effects_done.insert(ACK_AGENT_REACTED.into());
+        }
         let Some(key) = self.keys.get(message_id) else {
             return;
         };
@@ -1158,6 +1294,82 @@ impl TurnDelivery {
         | DeliveryResult::Partial { .. }) = result
         {
             warn!(session_id = %self.session_id, %error, "channel: could not mirror a reaction");
+        }
+    }
+
+    /// 👀 on the answered message when the agent starts real work: its first
+    /// tool call that is not just talking. A turn that only answers or stays
+    /// quiet never flashes it, which matters for a channel where the agent
+    /// hears every message and answers few.
+    async fn acknowledge_start(&mut self, data: &Value) {
+        if !self.options.acknowledge
+            || self.effects_done.contains(ACK_STARTED_DONE)
+            || self.effects_done.contains(ACK_AGENT_REACTED)
+        {
+            return;
+        }
+        let tool = data
+            .pointer("/tool_call/name")
+            .or_else(|| data.get("tool_name"))
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        if matches!(
+            tool,
+            NO_REPLY_TOOL_NAME | SEND_MESSAGE_TOOL_NAME | REACT_TOOL_NAME
+        ) {
+            return;
+        }
+        if self.acknowledge_react(ACK_STARTED, true).await {
+            self.effects_done.insert(ACK_STARTED_DONE.into());
+        }
+    }
+
+    /// At the end of the turn: ✅ when the agent sent its answer, and the 👀
+    /// this delivery added comes off either way, so a failed or silent turn
+    /// does not look like work still going on.
+    async fn acknowledge_end(&mut self, event_type: &str) {
+        if !self.options.acknowledge || self.effects_done.contains(ACK_AGENT_REACTED) {
+            return;
+        }
+        if self.effects_done.contains(ACK_STARTED_DONE)
+            && self.acknowledge_react(ACK_STARTED, false).await
+        {
+            self.effects_done.remove(ACK_STARTED_DONE);
+        }
+        if self.sent_explicitly
+            && event_type == TURN_COMPLETED
+            && !self.effects_done.contains(ACK_ANSWERED_DONE)
+            && self.acknowledge_react(ACK_ANSWERED, true).await
+        {
+            self.effects_done.insert(ACK_ANSWERED_DONE.into());
+        }
+    }
+
+    /// React on the answered message. False when the platform has no
+    /// reactions, the message's key is unknown (the turn did not start from a
+    /// platform message, such as a schedule), or the call failed.
+    async fn acknowledge_react(&mut self, emoji: &str, add: bool) -> bool {
+        let Some(reactions) = self.adapter.reactions() else {
+            return false;
+        };
+        let Some(key) = self.keys.get(&self.input_message_id).cloned() else {
+            return false;
+        };
+        if self
+            .before_write(format!("ack:{emoji}:{add}"), true)
+            .await
+            .is_err()
+        {
+            return false;
+        }
+        let result = reactions.react(&key, emoji, add, &self.context).await;
+        self.after_write(&result).await;
+        match result {
+            DeliveryResult::Ok => true,
+            error => {
+                warn!(session_id = %self.session_id, %error, "channel: could not acknowledge with a reaction");
+                false
+            }
         }
     }
 

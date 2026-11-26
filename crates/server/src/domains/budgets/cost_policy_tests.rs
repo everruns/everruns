@@ -408,3 +408,88 @@ async fn cost_summary_groups_by_where_the_cost_came_from() {
             .is_err()
     );
 }
+
+#[tokio::test]
+async fn investigation_joint_cost_groups_count_corrections_once_and_filter_before_grouping() {
+    use crate::storage::costs::CostFilter;
+    let db = make_db();
+    let svc = BudgetService::new(db.clone());
+    let first = create_session_with_owner(&db, 1, None, None).await;
+    let second = create_session_with_owner(&db, 1, None, None).await;
+    let mut corrected = None;
+    for (session, amount) in [
+        (first.id, Some(1.0)),
+        (first.id, None),
+        (second.id, Some(9.0)),
+    ] {
+        let event = Event::new(
+            session,
+            EventContext::empty(),
+            generation("some/exotic-model", usage(100, 100, amount, None)),
+        );
+        svc.on_event(&event).await;
+        if amount == Some(1.0) {
+            corrected = Some(event.id.to_string());
+        }
+    }
+    let source = corrected.unwrap();
+    svc.record_host_charge(HostCharge {
+        org_id: 1,
+        source_type: "event",
+        source_id: &source,
+        amount_usd: 1.2,
+        label: "credits",
+        service: "llm",
+    })
+    .await
+    .unwrap();
+    let now = chrono::Utc::now();
+    let filter = CostFilter {
+        session_id: Some(first.id.uuid()),
+        ..Default::default()
+    };
+    let groups = db
+        .cost_breakdown(
+            1,
+            now - chrono::Duration::hours(1),
+            now + chrono::Duration::hours(1),
+            "UTC",
+            &filter,
+            &["session", "source", "started_by"],
+        )
+        .await
+        .unwrap();
+    assert_eq!(groups.len(), 1);
+    assert_eq!(
+        groups[0].records, 2,
+        "correction and budget postings are not separate usage"
+    );
+    assert_eq!(groups[0].unpriced_records, 1);
+    assert!((groups[0].cost_usd - 1.2).abs() < 1e-9);
+    assert_eq!(groups[0].dimensions["session"], first.id.to_string());
+    assert!(
+        db.cost_breakdown(
+            2,
+            now - chrono::Duration::hours(1),
+            now + chrono::Duration::hours(1),
+            "UTC",
+            &filter,
+            &["session"]
+        )
+        .await
+        .unwrap()
+        .is_empty()
+    );
+    assert!(
+        db.cost_breakdown(
+            1,
+            now,
+            now,
+            "UTC",
+            &filter,
+            &["session); DROP TABLE sessions; --"]
+        )
+        .await
+        .is_err()
+    );
+}

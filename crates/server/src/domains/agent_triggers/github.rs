@@ -476,6 +476,7 @@ pub(super) async fn dispatch_to_trigger(
             channel: None,
         },
         TriggerEvent {
+            requested_by: manual.and_then(|f| f.requested_by),
             source,
             event_id: super::manual::event_id(manual, Some(delivery.delivery_id.clone())),
             event_type: Some(event_key(&delivery.event, action)),

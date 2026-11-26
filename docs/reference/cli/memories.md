@@ -36,6 +36,8 @@ everruns memories create [OPTIONS] --name <name>
 | `--name <NAME>` | Required. Human-readable name. |
 | `--source <SOURCE>` |  |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -74,6 +76,8 @@ everruns memories get [OPTIONS] [MEMORY_ID]
 |---|---|
 | `--memory-id <MEMORY_ID>` | Workspace memory's prefixed public identifier. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -93,6 +97,8 @@ everruns memories list [OPTIONS]
 |---|---|
 | `--include-archived` | Include archived memories. |
 | `--search <SEARCH>` | Only memories whose name matches this text. |
+
+Output: a JSON array. Read the items with jq '.[]'.
 
 Example:
 
@@ -167,6 +173,8 @@ everruns memories sync [OPTIONS] --memory-id <memory_id>
 |---|---|
 | `--memory-id <MEMORY_ID>` | Required. Workspace memory's prefixed public identifier. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -188,6 +196,8 @@ everruns memories update [OPTIONS] --memory-id <memory_id>
 | `--memory-id <MEMORY_ID>` | Required. Workspace memory's prefixed public identifier. |
 | `--name <NAME>` | Human-readable name. |
 | `--source <SOURCE>` |  |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 

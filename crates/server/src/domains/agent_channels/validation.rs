@@ -28,7 +28,8 @@ pub(crate) fn normalize_and_validate_channel_config(
         ChannelType::AgUi | ChannelType::A2a | ChannelType::PublicChat => {
             normalize_inline_channel_auth(&channel_type, &mut channel_config)?;
         }
-        ChannelType::Fcp
+        ChannelType::Email
+        | ChannelType::Fcp
         | ChannelType::Slack
         | ChannelType::Schedule
         | ChannelType::Webhook
@@ -50,6 +51,19 @@ pub(crate) fn normalize_and_validate_channel_config(
         }
     }
     match channel_type {
+        ChannelType::Email => {
+            let config = serde_json::from_value::<crate::channels::email::EmailChannelConfig>(
+                channel_config.clone(),
+            )
+            .map_err(|_| {
+                CommandError::bad_request("Email channels require an inbox_id and purpose")
+            })?;
+            if config.purpose.trim().is_empty() || config.purpose.len() > 4096 {
+                return Err(CommandError::bad_request(
+                    "Email purpose must be 1 to 4096 bytes",
+                ));
+            }
+        }
         ChannelType::Slack => {
             // The channel must exist before its manifest can be generated, while
             // Slack provides credentials only after the app is created.
@@ -755,7 +769,7 @@ pub(crate) fn merge_preserved_secret_fields(
         ChannelType::Api => {
             merge_preserved_api_auth_method_secrets(final_channel_config, existing_decrypted);
         }
-        ChannelType::Schedule | ChannelType::Voice | ChannelType::Poppy => {}
+        ChannelType::Email | ChannelType::Schedule | ChannelType::Voice | ChannelType::Poppy => {}
     }
     merge_preserved_channel_auth_secrets(final_channel_config, existing_decrypted);
 }

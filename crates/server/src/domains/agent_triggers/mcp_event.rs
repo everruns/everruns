@@ -939,6 +939,7 @@ pub(super) async fn dispatch_event(
             channel: None,
         },
         TriggerEvent {
+            requested_by: manual.and_then(|f| f.requested_by),
             source,
             // THREAT[TM-TRIGGER-001]: `webhook-id` is the replay key; the
             // pipeline records a repeat as a duplicate.

@@ -3,7 +3,14 @@
 ## 2026-11-26
 
 - [Memory](runtime-resources/memory.md) v2 replaces v1: stores under `/memory` (agent, team, parent, user, org, named), each a switch on `agent_memory`; typed Markdown entries; memory card as a context update; every file version kept. The v1 `memory` capability, source-backed memories, the `memory` flag and the Memory Model note are removed.
+
+- Added existing-domain investigation reads: frozen episode evidence, attributable
+  trigger history, joint cost filters and session cost windows, with schedule and
+  cost reads respecting each session's data-plane authority. See [Platform Chat](harnesses/platform-chat.md).
+
 - Raise the Bashkit dependency floor to 0.22.0 (resource bounds, `rm` preserve-root, empty-operand errors, file ownership in `Metadata`). See [Dependency Surface](project/dependency-surface.md).
+
+- [Email inbox channels](integrations/email.md): qualified real v2 fresh plus-address polling intake and backlog execution, scoped MCP reads, separate send approval and AgentMail threaded text/HTML readback. Recorded inbox-versus-session retention and the remaining live automatic-gate/provider-webhook qualification boundaries.
 
 ## 2026-11-25
 
@@ -27,6 +34,8 @@
 - [Python Code Mode](execution/python-code-mode.md): shared native/Bashkit/Monty eval arms, real approval-pause scoring, replay and fallback checks, and separately scoped hosted boundary evidence.
 
 - [Python Code Mode](execution/python-code-mode.md): optional Monty execution on Framework, Server and agentd; private snapshots and nested-effect records, kernel restrictions, public selection guidance and runtime qualification.
+
+- [Email inbox channels](integrations/email.md): AgentMail, plus addressing, durable batch intake, clean/full views, templates, runtime tool policy and immutable reply review. Qualification and source-only dependency rollout are tracked explicitly.
 
 - [Markdown Messages Rendering](ui/markdown-messages.md): Pele renders Mermaid diagrams across the shared UI renderer and Markdown file previews.
 

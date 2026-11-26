@@ -37,6 +37,8 @@ everruns observers backfill [OPTIONS] --observer-id <observer_id>
 | `--sample` | Apply the observer's sampling rate. |
 | `--since-hours <SINCE_HOURS>` | How far back to read, in hours (1–720). |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -60,6 +62,8 @@ everruns observers create [OPTIONS] --name <name> --scorers <scorers>
 | `--name <NAME>` | Required. Human-readable name. |
 | `--sampling-rate <SAMPLING_RATE>` | Fraction of matching turns to score (0.0–1.0). |
 | `--scorers <SCORERS>` | Required. Scoring rules. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -99,6 +103,8 @@ everruns observers get [OPTIONS] [OBSERVER_ID]
 |---|---|
 | `--observer-id <OBSERVER_ID>` | Observer's prefixed public identifier. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -120,6 +126,8 @@ everruns observers summary [OPTIONS]
 | `--days <DAYS>` | Window in days (1–90). |
 | `--observer-id <OBSERVER_ID>` | Only scores of this observer. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -138,6 +146,8 @@ everruns observers list [OPTIONS]
 | Flag | Description |
 |---|---|
 | `--include-archived` | Include archived observers. |
+
+Output: a JSON array. Read the items with jq '.[]'.
 
 Example:
 
@@ -165,6 +175,8 @@ everruns observers update [OPTIONS] --observer-id <observer_id>
 | `--scorers <SCORERS>` |  |
 | `--status <STATUS>` |  |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -188,6 +200,8 @@ everruns observers scores list [OPTIONS] --observer-id <observer_id>
 | `--review-queue` | Only unreviewed completed scores, failures first (the review queue). |
 | `--session-id <SESSION_ID>` | Session's prefixed public identifier. |
 
+Output: a JSON array. Read the items with jq '.[]'.
+
 Example:
 
 ```bash
@@ -209,6 +223,8 @@ everruns observers scores review [OPTIONS] --agrees [<agrees>] --observer-id <ob
 | `--note <NOTE>` | Optional note on why (at most 2000 characters). |
 | `--observer-id <OBSERVER_ID>` | Required. Observer's prefixed public identifier. |
 | `--score-id <SCORE_ID>` | Required. Score's prefixed public identifier. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 

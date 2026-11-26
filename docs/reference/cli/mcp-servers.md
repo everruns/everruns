@@ -35,6 +35,8 @@ everruns mcp-servers check-connection [OPTIONS] [ID]
 |---|---|
 | `--id <ID>` | Prefixed public identifier. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -64,6 +66,8 @@ everruns mcp-servers create [OPTIONS] --name <name> --url <url>
 | `--tool-timeout-ms <TOOL_TIMEOUT_MS>` | How long one tool call may take, in milliseconds (1000 to 1800000). Defaults to 60000. |
 | `--transport-type <TRANSPORT_TYPE>` | MCP Server transport type. One of `http`, `stdio`. |
 | `--url <URL>` | Required. The URL of the MCP server endpoint. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -122,6 +126,8 @@ everruns mcp-servers get [OPTIONS] [ID]
 |---|---|
 | `--id <ID>` | Prefixed public identifier. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -140,6 +146,8 @@ everruns mcp-servers tools [OPTIONS] [ID]
 | Flag | Description |
 |---|---|
 | `--id <ID>` | Prefixed public identifier. |
+
+Output: a JSON array. Read the items with jq '.[]'.
 
 Example:
 
@@ -160,6 +168,8 @@ everruns mcp-servers list [OPTIONS]
 |---|---|
 | `--include-archived` |  |
 | `--search <SEARCH>` |  |
+
+Output: a JSON array. Read the items with jq '.[]'.
 
 Example:
 
@@ -182,6 +192,8 @@ everruns mcp-servers label-tool [OPTIONS] [ID] [TOOL_NAME]
 | `--tool-name <TOOL_NAME>` | The tool's own name on the MCP server. |
 | `--label <LABEL>` |  |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -200,6 +212,8 @@ everruns mcp-servers suggest-labels [OPTIONS] [ID]
 | Flag | Description |
 |---|---|
 | `--id <ID>` | Prefixed public identifier. |
+
+Output: a JSON array. Read the items with jq '.[]'.
 
 Example:
 
@@ -232,6 +246,8 @@ everruns mcp-servers update [OPTIONS] [ID]
 | `--tool-timeout-ms <TOOL_TIMEOUT_MS>` | How long one tool call may take, in milliseconds (1000 to 1800000). `0` clears it back to the... |
 | `--transport-type <TRANSPORT_TYPE>` |  |
 | `--url <URL>` | The URL of the MCP server endpoint. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 

@@ -438,6 +438,23 @@ impl Database {
     // THREAT[TM-TENANT-012]: bare-`id` mutator — see the note on
     // `get_channel_row_by_public_id`. Callers MUST have already resolved the
     // endpoint through a tenant-resolving path.
+    /// Publish a channel that is still a draft. A live or disabled channel is
+    /// left as it is, so a person's explicit choice is never overridden.
+    /// Returns whether the channel went live.
+    pub async fn publish_draft_channel_by_id(&self, id: Uuid) -> Result<bool> {
+        let result = sqlx::query(
+            "UPDATE agent_channels SET status = 'live', enabled = true, updated_at = NOW() \
+             WHERE id = $1 AND status = 'draft'",
+        )
+        .bind(id)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected() == 1)
+    }
+
+    // THREAT[TM-TENANT-012]: bare-`id` mutator — see the note on
+    // `get_channel_row_by_public_id`. Callers MUST have already resolved the
+    // endpoint through a tenant-resolving path.
     pub async fn update_channel_by_id(
         &self,
         id: Uuid,

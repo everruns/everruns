@@ -306,6 +306,13 @@ fn trigger_run_reports_its_task_outcome() {
     use everruns_durable::{TaskInfo, TaskStatus};
     let queued_at = chrono::Utc::now();
     let run = || AgentTriggerRun {
+        configuration: None,
+        input_message_id: None,
+        source: None,
+        requested_by: None,
+        attempts: None,
+        session_id: None,
+        trigger_revision: None,
         id: "run".into(),
         status: "completed".into(),
         scheduled_at: queued_at,

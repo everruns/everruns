@@ -107,7 +107,7 @@ impl Capability for ReactionsCapability {
 
     fn system_prompt_addition(&self) -> Option<&str> {
         Some(
-            "You can react to messages with `react`, as a person would. When a message reached you from Slack (marked `[via Slack]`), react 👀 as you start working on it and ✅ once you have answered it, so people can see you got it; follow your own instructions instead if they say how, or whether, to react. People's reactions to your messages arrive as notes labeled \"[Reactions, not typed messages]\"; they are feedback, not new requests.",
+            "You can react to messages with `react`, as a person would. When a message reached you from Slack (marked `[via Slack]`), react 👀 as you start working on it and ✅ once you have answered it, so people can see you got it; follow your own instructions instead if they say how, or whether, to react. If you talk with `send_message`, Everruns adds these two for you: react yourself only to say something else, and your own reaction on that message replaces them. People's reactions to your messages arrive as notes labeled \"[Reactions, not typed messages]\"; they are feedback, not new requests.",
         )
     }
 

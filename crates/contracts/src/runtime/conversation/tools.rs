@@ -39,6 +39,7 @@ To say something to the person, call `send_message`. Everything they see from yo
 - Send a message when you have something worth saying: an answer, a question, or a result. Write it complete, in Markdown, for the person reading it.
 - To share a file you made (an image, a PDF, a report), save it in the session and list its path in `files`. It is delivered with the message.
 - Do not narrate tool calls or repeat yourself. One clear message beats several small ones.
+- When answering will take real work (more than a minute, or many tool calls), first send one short line saying what you are doing, in the same step as your first tool call so the turn goes on. Then send the result when you have it.
 - A step that only sends a message ends the turn. The person already has it. If you still have tools to run, call them before the message or in the same step.
 - A successful result means the message was delivered. Do not send the same content again.
 - If sending fails, read the error. An uncertain failure may already have been delivered, so do not blindly resend.
@@ -120,7 +121,7 @@ pub fn sent_message(
         return None;
     }
     let message_id = serde_json::from_value(result.get("message_id")?.clone()).ok()?;
-    let text = arguments.get("text")?.as_str()?.to_owned();
+    let text = send_message_text(arguments)?.to_owned();
     // The result lists the paths the tool actually read, in send order.
     let files = result
         .get("files")
@@ -141,9 +142,23 @@ pub fn sent_message(
 /// Say something to the conversation.
 pub struct SendMessageTool;
 
+/// The message text of a `send_message` call's arguments.
+///
+/// Decision (2026-11-26): the field is `message`, the name every other
+/// tool and command that sends a message uses (`session_send_message`,
+/// threads, rooms). `text`, its earlier name, is still read, so recorded
+/// calls and models that learned it keep working.
+pub fn send_message_text(arguments: &Value) -> Option<&str> {
+    arguments
+        .get("message")
+        .or_else(|| arguments.get("text"))
+        .and_then(Value::as_str)
+}
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct SendArguments {
+    #[serde(rename = "message", alias = "text")]
     text: String,
     #[serde(default)]
     files: Vec<String>,
@@ -163,18 +178,30 @@ impl Tool for SendMessageTool {
         "Send a message to the person you are talking with. This is the only way they see anything from you; your assistant text is private notes. Use it for answers, questions and results. Write the complete message in Markdown. To share files you made (images, PDFs, reports), list their session paths in `files`; they are delivered with the message. The runtime picks the destination: the conversation this turn came from. Success means it was delivered. If this is the only tool in the step, the turn ends after delivery."
     }
 
+    /// `text` is the field's earlier name: read it as `message` so a call in
+    /// that form passes the schema check (both at once still fails).
+    fn upgrade_arguments(&self, mut arguments: Value) -> Value {
+        if let Some(object) = arguments.as_object_mut()
+            && !object.contains_key("message")
+            && let Some(text) = object.remove("text")
+        {
+            object.insert("message".into(), text);
+        }
+        arguments
+    }
+
     fn parameters_schema(&self) -> Value {
         json!({"type":"object", "properties": {
-            "text": {
+            "message": {
                 "type":"string", "minLength":1, "maxLength":MAX_MESSAGE_CHARS,
-                "description":"The complete message for the person. Markdown."
+                "description":"The complete message for the person. Markdown. (`text` is accepted as the same field.)"
             },
             "files": {
                 "type":"array", "maxItems":MAX_MESSAGE_FILES, "uniqueItems":true,
                 "items": {"type":"string", "minLength":1},
                 "description":"Optional paths of existing session files to deliver with the message, such as \"/out/chart.png\". 8 MiB combined."
             }
-        }, "required":["text"], "additionalProperties":false})
+        }, "required":["message"], "additionalProperties":false})
     }
 
     fn requires_context(&self) -> bool {
@@ -207,7 +234,7 @@ impl Tool for SendMessageTool {
                 "Надіслав повідомлення",
                 "Не вдалося надіслати повідомлення",
             ),
-            &["text"],
+            &["message", "text"],
         ))
     }
 

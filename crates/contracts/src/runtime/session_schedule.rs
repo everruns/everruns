@@ -557,16 +557,23 @@ pub struct SessionSchedule {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub effective_owner: Option<PrincipalSummary>,
     /// What the agent should do when the schedule fires.
+    #[cfg_attr(
+        feature = "openapi",
+        schema(example = "Check whether the pull request is merged")
+    )]
     pub description: String,
     /// Cron expression for recurring schedules (None for one-shot).
+    #[cfg_attr(feature = "openapi", schema(example = "*/30 * * * *"))]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cron_expression: Option<String>,
     /// One-shot trigger time (None for recurring).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub scheduled_at: Option<DateTime<Utc>>,
     /// IANA timezone for cron interpretation.
+    #[cfg_attr(feature = "openapi", schema(example = "UTC"))]
     pub timezone: String,
     /// Whether the schedule is active.
+    #[cfg_attr(feature = "openapi", schema(example = true))]
     pub enabled: bool,
     /// Computed type based on cron_expression vs scheduled_at.
     pub schedule_type: ScheduleType,
@@ -577,20 +584,31 @@ pub struct SessionSchedule {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_triggered_at: Option<DateTime<Utc>>,
     /// Total number of times this schedule has fired.
+    #[cfg_attr(feature = "openapi", schema(example = 4))]
     pub trigger_count: u32,
+    /// Time the schedule was created.
+    #[cfg_attr(feature = "openapi", schema(example = "2026-11-25T12:00:00Z"))]
     pub created_at: DateTime<Utc>,
+    /// Time the schedule's stored state was last changed.
+    #[cfg_attr(feature = "openapi", schema(example = "2026-11-25T14:00:00Z"))]
     pub updated_at: DateTime<Utc>,
     /// When the schedule was deleted. The row stays so a session recording can
     /// show it; a deleted schedule does not fire and is hidden from the agent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub deleted_at: Option<DateTime<Utc>>,
     /// The schedule stops firing after this time.
+    #[cfg_attr(feature = "openapi", schema(example = "2026-11-27T12:00:00Z"))]
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ends_at: Option<DateTime<Utc>>,
     /// The schedule stops after this many fires.
+    #[cfg_attr(feature = "openapi", schema(example = 96))]
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_runs: Option<u32>,
     /// When the work is done, in the agent's words.
+    #[cfg_attr(
+        feature = "openapi",
+        schema(example = "The pull request is merged or closed")
+    )]
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stop_when: Option<String>,
     /// Why the schedule stopped on its own (`ended`, `budget_exhausted`).
@@ -606,10 +624,13 @@ pub struct SessionSchedule {
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct ScheduleBudget {
     /// Cap in USD.
+    #[cfg_attr(feature = "openapi", schema(example = 2.0))]
     pub limit_usd: f64,
     /// Spent so far in USD.
+    #[cfg_attr(feature = "openapi", schema(example = 0.25))]
     pub spent_usd: f64,
     /// `active`, `paused`, `exhausted` or `disabled`.
+    #[cfg_attr(feature = "openapi", schema(example = "active"))]
     pub status: String,
 }
 

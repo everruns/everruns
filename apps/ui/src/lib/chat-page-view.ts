@@ -10,6 +10,8 @@ const resources: Record<string, { type: string; roots: string[] }> = {
   // Audience addresses remain in the authoring form, outside the generic Chat cache projection.
   applications: { type: "application", roots: [] },
   exposures: { type: "exposure", roots: [] },
+  // Mail and provider credentials stay outside generic page-chat cache projection.
+  email: { type: "email", roots: [] },
   // Extraction input/results stay private to the form; Chat cannot run paid requests.
   extractions: { type: "extraction", roots: [] },
   agents: {

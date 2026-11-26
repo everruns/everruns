@@ -287,6 +287,8 @@ CREATE INDEX IF NOT EXISTS idx_durable_schedule_executions_schedule
 CREATE INDEX IF NOT EXISTS idx_durable_schedule_executions_running
     ON durable_schedule_executions (schedule_id)
     WHERE status = 'running';
+CREATE INDEX IF NOT EXISTS durable_agent_trigger_run_history
+    ON durable_schedule_executions (schedule_id, scheduled_at DESC, id DESC);
 
 CREATE TABLE IF NOT EXISTS durable_scheduler_instances (
     instance_id TEXT PRIMARY KEY,

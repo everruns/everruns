@@ -346,9 +346,8 @@ pub(crate) struct SeedAgent {
     /// Retained for stable identification; not auto-seeded into DB.
     #[allow(dead_code)]
     pub(crate) id: Uuid,
-    /// Unique name (e.g. "dad-jokes-agent").
+    /// Unique name (e.g. "dad-jokes-agent"); `display_name` is the label people see.
     pub(crate) name: &'static str,
-    /// Human-readable display name (e.g. "Dad Jokes Agent").
     pub(crate) display_name: &'static str,
     pub(crate) description: &'static str,
     pub(crate) system_prompt: &'static str,
@@ -357,6 +356,7 @@ pub(crate) struct SeedAgent {
     pub(crate) capabilities: &'static [SeedCapability],
     /// If true, only seed in dev environments (experimental features)
     pub(crate) dev_only: bool,
+    pub(crate) communication: everruns_contracts::runtime::conversation::Communication,
 }
 
 mod agents;

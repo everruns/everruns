@@ -10,6 +10,12 @@ use crate::domains::sandboxes::types::SandboxStateSpan;
 /// each turn, by tool, and by sandbox.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct SessionCost {
+    /// Inclusive selected start; null means no lower time bound.
+    #[schema(example = "2026-11-24T12:00:00Z")]
+    pub from: Option<DateTime<Utc>>,
+    /// Exclusive selected end; null means no upper time bound.
+    #[schema(example = "2026-11-25T12:00:00Z")]
+    pub to: Option<DateTime<Utc>>,
     /// Session's prefixed public identifier.
     #[schema(example = "session_01a1510c99c8714eabb22a463e7c1fa1")]
     pub session_id: String,

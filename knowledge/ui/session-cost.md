@@ -66,5 +66,23 @@ newest 5,000 turns (`turns_truncated` says when older ones were left out).
 - Record sandbox cost per provider rate so sandbox time can carry dollars.
 - Store hosted-tool charges (`cost_components`) per generation row so they can join the
   category table.
-- When message origin metadata lands, use it for the origin labels instead of the
-  event initiator.
+
+## Investigation windows and data-plane authority
+
+The Cost read accepts a half-open time window. Model calls are selected by their
+occurrence time; a turn that began earlier still appears when it has a call in the
+window. Tool counts use tool start time and sandbox lifecycle spans are clipped to
+the same window. Returned bounds make the scope explicit.
+
+Origin labels prefer platform-authored message origin metadata, with the event
+initiator as a fallback for older messages.
+
+On v2 the shard returns narrow generation and origin rows, never full model request
+payloads; its trace supplies turn/tool state and its schedule history supplies names
+and stop conditions. A failed shard read fails the request rather than silently
+using an incomplete legacy projection. The same aggregator prices and presents
+both authorities. See [portable inputs](../../crates/contracts/src/runtime/session_cost.rs)
+and [Cost command](../../crates/server/src/domains/session_cost/commands.rs).
+
+Deploy shard support for the declared reads before upgrading the control plane.
+Mixed versions must not be hidden by falling back to legacy data.

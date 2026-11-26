@@ -27,6 +27,8 @@ everruns organization-accounts get [OPTIONS] --id <id>
 |---|---|
 | `--id <ID>` | Required. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -46,6 +48,8 @@ everruns organization-accounts update [OPTIONS] --id <id> --name <name>
 |---|---|
 | `--id <ID>` | Required. |
 | `--name <NAME>` | Required. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 

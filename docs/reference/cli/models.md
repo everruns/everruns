@@ -36,6 +36,8 @@ everruns models delete [OPTIONS] [ID]
 |---|---|
 | `--id <ID>` | Prefixed public identifier. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -54,6 +56,8 @@ everruns models get [OPTIONS] [ID]
 | Flag | Description |
 |---|---|
 | `--id <ID>` | Prefixed public identifier. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -76,6 +80,8 @@ everruns models list [OPTIONS]
 | `--include-stale` | Include models the provider no longer lists. |
 | `--service <SERVICE>` |  |
 | `--source <SOURCE>` |  |
+
+Output: a JSON array. Read the items with jq '.[]'.
 
 Example:
 
@@ -103,6 +109,8 @@ everruns models update [OPTIONS] --id <id>
 | `--profile-key <PROFILE_KEY>` | Explicitly reassign the stable profile; preference-only edits preserve it. |
 | `--provider-id <PROVIDER_ID>` | LLM provider's prefixed public identifier. |
 | `--service <SERVICE>` |  |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -206,6 +214,8 @@ everruns models selection apply [OPTIONS] --changes <changes>
 |---|---|
 | `--changes <CHANGES>` | Required. |
 
+Output: a JSON array. Read the items with jq '.[]'.
+
 Example:
 
 ```bash
@@ -224,6 +234,8 @@ everruns models selection undo [OPTIONS] --changes <changes>
 | Flag | Description |
 |---|---|
 | `--changes <CHANGES>` | Required. |
+
+Output: a JSON array. Read the items with jq '.[]'.
 
 Example:
 

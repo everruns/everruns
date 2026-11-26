@@ -442,6 +442,12 @@ async fn begin_install(
             ErrorResponse::new("Agent management permission is required")
                 .into_response(StatusCode::FORBIDDEN)
         })?;
+    let may_publish = crate::domains::agents::AGENT_DANGEROUS
+        .evaluate_with(
+            state.auth.permission_resolver.as_ref(),
+            &everruns_core::Caller::from(&org),
+        )
+        .is_ok();
     // The body is optional so a single-workspace organization can keep
     // posting nothing; an empty body means "the only workspace".
     let request: BeginInstallRequest = if body.is_empty() {
@@ -584,6 +590,7 @@ async fn begin_install(
                 install_state_issued_at: None,
                 team_id: team_id.clone(),
                 install_return_issue: None,
+                publish_on_install: false,
             }
         }
     };
@@ -596,6 +603,7 @@ async fn begin_install(
         provisioned.install_state = None;
         provisioned.install_state_issued_at = None;
         provisioned.install_return_issue = None;
+        provisioned.publish_on_install = false;
         config.provisioned_app = Some(provisioned);
         persist(&state, endpoint.internal_id, &config).await?;
         return Ok(Json(BeginInstallResponse {
@@ -611,6 +619,11 @@ async fn begin_install(
     provisioned.install_state_issued_at = Some(chrono::Utc::now());
     // An install started here returns to the channel editor.
     provisioned.install_return_issue = None;
+    // A successful install makes the channel live, but only for someone who
+    // could publish it by hand: publishing is a dangerous agent action and
+    // installing is not. Decided now, with the caller in hand, because the
+    // callback is unauthenticated.
+    provisioned.publish_on_install = may_publish;
     config.provisioned_app = Some(provisioned);
 
     persist(&state, endpoint.internal_id, &config).await?;
@@ -713,6 +726,8 @@ pub(crate) async fn begin_reconsent(
     provisioned.install_state = Some(install_state.clone());
     provisioned.install_state_issued_at = Some(chrono::Utc::now());
     provisioned.install_return_issue = Some(return_issue);
+    // A permission fix is not a first install: leave the lifecycle alone.
+    provisioned.publish_on_install = false;
     let client_id = provisioned.client_id.clone();
     let team_id = provisioned.team_id.clone();
     config.provisioned_app = Some(provisioned);
@@ -823,6 +838,8 @@ async fn finish_install(
         return rejected(reason);
     }
 
+    // The publish decision is spent with the nonce it was issued with.
+    let publish = std::mem::take(&mut provisioned.publish_on_install);
     // Consume the nonce durably even if consent is declined or the exchange fails.
     config.provisioned_app = Some(provisioned.clone());
     if persist(&state, endpoint.internal_id, &config)
@@ -858,6 +875,17 @@ async fn finish_install(
         context.agent_internal_id,
     )
     .await;
+    // Only a draft goes live: a channel someone disabled stays disabled.
+    if result.is_ok()
+        && publish
+        && let Err(error) = state
+            .slack
+            .db
+            .publish_draft_channel_by_id(endpoint.internal_id)
+            .await
+    {
+        tracing::warn!(%channel_id, %error, "Could not publish the installed Slack channel");
+    }
     drop(_install_lock);
     let outcome = match result {
         Ok(()) => {

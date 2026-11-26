@@ -87,9 +87,9 @@ Everruns opens the channel editor after it saves the channel.
 
 ### 2. Publish the Channel
 
-Select **Publish** in the channel editor. Publishing makes only this channel live.
+A channel starts as a draft, which answers nobody. **Add to Slack** publishes it for you once Slack's consent screen returns successfully, if you are allowed to publish channels. Otherwise, or when you configure the Slack app by hand, publish it yourself. Select **Publish** in the channel editor, or run `everruns agents channels publish`. Publishing makes only this channel live, and a channel someone turned off stays off.
 
-Publish before you create the Slack app. The generated Slack manifest contains the channel's Request URL, and Slack verifies that URL when it creates the app.
+When you create the Slack app by hand, publish first: the manifest contains the channel's Request URL, and Slack verifies that URL when it creates the app.
 
 ### 3. Add the Agent to Slack
 
@@ -118,7 +118,7 @@ Do not replace `{channel_id}` with an Agent ID or an App ID.
 
 ### 4. Invite and Test
 
-1. In Slack, enter `/invite @botname` in a channel.
+1. In Slack, enter `/invite @botname` in a channel. A private channel always needs this. When the channel is bound to one Slack channel (`channel_id`), **Settings > Health** reports **Slack bot is not in its channel** until the bot is a member.
 2. Mention the bot or send it a direct message.
 3. Return to the Agent's **Channels and triggers** tab and expand the Slack channel.
 4. Confirm that the setup checklist records the first message.
@@ -291,7 +291,7 @@ New channels start with `per_channel`, so the agent keeps one conversation per S
 ### Bot Does Not Respond
 
 - Confirm that the channel is published and enabled.
-- Invite the bot to the channel with `/invite @botname`.
+- Invite the bot to the channel with `/invite @botname`. **Settings > Health** says so when the bot is outside the Slack channel the Everruns channel is bound to.
 - Confirm that the Slack app has the required bot events and the `chat:write` scope.
 - Confirm that the channel has the correct signing secret and bot token.
 
@@ -350,11 +350,20 @@ people sent and the agent's replies.
 
 With the **Reactions** capability, an agent reacts 👀 when it starts working
 on a Slack message and ✅ once it has answered, so people in the thread can
-see it got the message before the reply arrives. This is a default in the
-capability's instructions, not an automatic reaction: the agent's own
-instructions win, so write "Don't react to messages" or "Use 🫡 instead of 👀"
-to change it. It applies to Slack messages only; Everruns chat already shows
-live progress.
+see it got the message before the reply arrives. It applies to Slack messages
+only; Everruns chat already shows live progress.
+
+- An agent whose Communication is **Explicit** gets this without any prompt
+  text: Everruns adds 👀 when the agent starts real work (a quick answer or a
+  `no_reply` never shows it), takes it off when the turn ends, and adds ✅ once
+  the agent has sent its answer. If the agent reacts on the message itself,
+  its reaction replaces both. Explicit agents are also told to send one short
+  line first when an answer will take real work.
+- A **Direct** agent reacts because the capability's instructions ask it to.
+  Its own instructions win, so write "Don't react to messages" or "Use 🫡
+  instead of 👀" to change it.
+
+Remove the Reactions capability to turn acknowledgements off for either kind.
 
 Connecting an agent's first Slack channel turns the Reactions capability on,
 recorded in the agent's history. Remove it in the agent's capabilities if you

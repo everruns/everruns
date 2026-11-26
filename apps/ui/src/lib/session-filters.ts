@@ -44,6 +44,7 @@ export const SOURCE_LABELS: Record<SessionSource, string> = {
   playground: "Playground",
   api: "API",
   slack: "Slack",
+  email: "Email",
   ag_ui: "AG-UI",
   fcp: "FCP",
   schedule: "Schedule",

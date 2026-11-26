@@ -197,6 +197,7 @@ fn provisioned(state: Option<&str>, issued_minutes_ago: Option<i64>) -> Provisio
             .map(|ago| chrono::Utc::now() - chrono::Duration::minutes(ago)),
         team_id: None,
         install_return_issue: None,
+        publish_on_install: false,
     }
 }
 

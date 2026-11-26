@@ -61,6 +61,23 @@ instances: use authoritative list/get commands to establish current state.
 Resolve names to returned IDs; ask when matches are ambiguous. Project only the
 fields the next decision needs, and use bounded, filtered lists.
 
+### Output shapes
+
+Every command prints JSON in one of three shapes, and its `--help` says which
+on its `Output:` line (MCP `discover` returns the same as `output_shape`):
+
+| Shape | Looks like | Read items with | Typical commands |
+|---|---|---|---|
+| `array` | `[ {...}, ... ]` | `jq '.[]'` | an agent's own sub-resources: `agents channels list`, `agents triggers list` |
+| `paginated` | `{data, total, offset, limit}` | `jq '.data[]'`, then `--offset`/`--limit` | collections that grow: `agents list`, `sessions list` |
+| `object` | `{...}` | `jq '.id'`; a list inside sits in one named field, such as `.data[]` for `rooms list` | `get`, `create`, `update`, `publish`, and some lists |
+
+Nested settings stay nested in the output even when flags are flat: `agents
+triggers update --target-channel-id ... --target-binding-key ...` prints the
+target as `.config.target.channel_id` and `.config.target.binding_key`, and a
+schedule's cron as `.config.cron_expression`. Read the `Output:` line, or run
+one bounded sample, before writing a `jq` path.
+
 Before an existing entity is changed, read its manager context:
 
 ```bash

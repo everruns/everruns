@@ -115,6 +115,55 @@ fn extractions_requires_write_scope() {
 }
 
 #[test]
+fn email_reads_do_not_grant_approval_or_credential_authority() {
+    for path in [
+        "/v1/platform/email/inboxes",
+        "/v1/platform/email/inboxes/{inbox}/messages/{message}",
+        "/v1/platform/email/inboxes/{inbox}/outbox",
+        "/v1/platform/email/templates",
+    ] {
+        assert!(PatScope::Read.permits(classify(&Method::GET, path)));
+    }
+    for (method, path, expected) in [
+        (
+            Method::POST,
+            "/v1/platform/email/inboxes",
+            RouteAccess::Never,
+        ),
+        (
+            Method::PATCH,
+            "/v1/platform/email/inboxes/{inbox}",
+            RouteAccess::Never,
+        ),
+        (
+            Method::POST,
+            "/v1/platform/email/inboxes/{inbox}/messages/{message}/approve",
+            RouteAccess::Write,
+        ),
+        (
+            Method::POST,
+            "/v1/platform/email/inboxes/{inbox}/outbox/{id}/approve",
+            RouteAccess::Write,
+        ),
+        (
+            Method::POST,
+            "/v1/platform/email/inboxes/{inbox}/batches/claim",
+            RouteAccess::Write,
+        ),
+    ] {
+        let access = classify(&method, path);
+        assert_eq!(access, Some(expected));
+        assert!(!PatScope::Read.permits(access));
+        assert!(PatScope::Full.permits(access));
+    }
+    // Webhook ingestion writes; its handler authenticates provider signatures, not PATs.
+    assert_eq!(
+        classify(&Method::POST, "/v1/email/inboxes/{inbox}/webhook"),
+        Some(RouteAccess::Write)
+    );
+}
+
+#[test]
 fn decision_4_routes_are_never() {
     let never = [
         ("GET", "/v1/platform/users/me/export"),

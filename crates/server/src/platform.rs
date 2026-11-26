@@ -160,6 +160,7 @@ pub fn oss_connector_registry() -> ConnectorRegistry {
 pub fn oss_connector_registry_for_grade(grade: DeploymentGrade) -> ConnectorRegistry {
     let mut registry = ConnectorRegistry::new();
     everruns_capabilities::integrations_catalog::register_connectors(&mut registry, grade);
+    registry.register(crate::channels::email::connector::AgentMailInboxConnector);
     registry
 }
 

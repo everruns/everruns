@@ -38,6 +38,8 @@ everruns virtual-users create [OPTIONS] --name <name>
 | `--timezone <TIMEZONE>` | IANA time zone used for agent-facing defaults. |
 | `--usage <USAGE>` | VirtualUser is a durable virtual principal. One of `end_user`, `service`. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -95,6 +97,8 @@ everruns virtual-users get [OPTIONS] [ID]
 |---|---|
 | `--id <ID>` | Prefixed public identifier. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -117,6 +121,8 @@ everruns virtual-users list [OPTIONS]
 | `--offset <OFFSET>` | Zero-based page offset. |
 | `--search <SEARCH>` | Search runtime names and descriptions. |
 | `--usage <USAGE>` |  |
+
+Output: one page as {data, total, offset, limit}. Read the items with jq '.data[]'; page with --offset and --limit.
 
 Example:
 
@@ -143,6 +149,8 @@ everruns virtual-users update [OPTIONS] [ID]
 | `--status <STATUS>` |  |
 | `--timezone <TIMEZONE>` | IANA time zone used for agent-facing defaults. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -161,6 +169,8 @@ everruns virtual-users self-profile get [OPTIONS] --id <id>
 | Flag | Description |
 |---|---|
 | `--id <ID>` | Required. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -186,6 +196,8 @@ everruns virtual-users self-profile update [OPTIONS] --id <id>
 | `--name <NAME>` | Human-readable name. |
 | `--status <STATUS>` |  |
 | `--timezone <TIMEZONE>` | IANA time zone used for agent-facing defaults. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 

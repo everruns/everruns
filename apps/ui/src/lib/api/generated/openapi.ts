@@ -1262,6 +1262,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/email/inboxes/{inbox}/webhook": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Email webhook */
+    post: operations["email_webhook"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/platform/agent-examples": {
     parameters: {
       query?: never;
@@ -2649,7 +2666,7 @@ export interface paths {
     };
     /**
      * List agent trigger runs
-     * @description List the ten most recent durable execution outcomes for an agent trigger.
+     * @description List paginated durable execution outcomes for an agent trigger.
      */
     get: operations["list_agent_trigger_runs"];
     put?: never;
@@ -3189,7 +3206,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Summarize what usage cost the organization */
+    /**
+     * Summarize organization costs
+     * @description Summarize organization costs over a window, with combined agent/session/source/starter filters and an optional joint group_by breakdown. Includes unpriced counts and reports truncated joint groups.
+     */
     get: operations["get_cost_summary"];
     put?: never;
     post?: never;
@@ -3871,6 +3891,229 @@ export interface paths {
     get: operations["stream_workflow_sse"];
     put?: never;
     post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/email/inboxes": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Email list inboxes */
+    get: operations["email_list_inboxes"];
+    put?: never;
+    /** Email create inbox */
+    post: operations["email_create_inbox"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/email/inboxes/{inbox}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /** Email update inbox */
+    patch: operations["email_update_inbox"];
+    trace?: never;
+  };
+  "/v1/platform/email/inboxes/{inbox}/batches/claim": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Email claim */
+    post: operations["email_claim"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/email/inboxes/{inbox}/batches/{lease}/dispositions": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Email dispose */
+    post: operations["email_dispose"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/email/inboxes/{inbox}/messages": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Email list messages */
+    get: operations["email_list_messages"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/email/inboxes/{inbox}/messages/{message}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Email read message */
+    get: operations["email_read_message"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/email/inboxes/{inbox}/messages/{message}/approve": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Email approve execution */
+    post: operations["email_approve_execution"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/email/inboxes/{inbox}/messages/{message}/dismiss": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Email dismiss message */
+    post: operations["email_dismiss_message"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/email/inboxes/{inbox}/outbox": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Email list outbox */
+    get: operations["email_list_outbox"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/email/inboxes/{inbox}/outbox/{id}/approve": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Email approve reply */
+    post: operations["email_approve_reply"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/email/inboxes/{inbox}/outbox/{id}/reject": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Email reject reply */
+    post: operations["email_reject_reply"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/email/templates": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Email list templates */
+    get: operations["email_list_templates"];
+    put?: never;
+    /** Email create template */
+    post: operations["email_create_template"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/email/templates/preview": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Email preview template */
+    post: operations["email_preview_template"];
     delete?: never;
     options?: never;
     head?: never;
@@ -6450,7 +6693,7 @@ export interface paths {
     };
     /**
      * List connections
-     * @description List non-secret metadata for organization-owned provider accounts: sandbox provider accounts and web search accounts.
+     * @description List non-secret metadata for organization-owned provider accounts: sandbox provider accounts, web search accounts and email inbox accounts.
      */
     get: operations["list_connections"];
     put?: never;
@@ -6472,7 +6715,7 @@ export interface paths {
     put?: never;
     /**
      * Create connection
-     * @description Create and validate an encrypted organization-owned account for a connector that declares sandbox_provisioning or web_search.
+     * @description Create and validate an encrypted organization-owned account for a connector that declares sandbox_provisioning, web_search or email_inbox.
      */
     post: operations["create_connection"];
     delete?: never;
@@ -8844,6 +9087,40 @@ export interface paths {
      * @description Manage the session sandbox lifecycle (start, stop, reset).
      */
     post: operations["manage_sandbox"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/sessions/{session_id}/schedules": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List all schedules for a session */
+    get: operations["list_session_schedules"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/platform/sessions/{session_id}/schedules/{schedule_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get a specific schedule */
+    get: operations["get_session_schedule"];
+    put?: never;
+    post?: never;
     delete?: never;
     options?: never;
     head?: never;
@@ -11811,11 +12088,20 @@ export interface components {
       event_type?: string | null;
       /** @description Delivery identifier. */
       id: string;
+      input_message_id?: components["schemas"]["messageId"] | null;
       /** @description Why the event was filtered or failed. */
       reason?: string | null;
+      /**
+       * Format: uuid
+       * @description Authenticated manual requester; absent for automatic or historical deliveries.
+       */
+      requested_by?: string | null;
       /** @description Session that handled the event. */
       session_id?: string | null;
-      /** @description Where the event came from (`schedule`, `webhook`, ...). */
+      /**
+       * @description Where the event came from (`schedule`, `webhook`, ...), or `unknown`
+       *     when a legacy schedule label could also have been a manual fire.
+       */
       source: string;
       /** @description Outcome. */
       status: components["schemas"]["TriggerDeliveryStatus"];
@@ -11825,21 +12111,46 @@ export interface components {
     /** @description One recent durable execution of an agent schedule trigger. */
     AgentTriggerRun: {
       /**
+       * Format: int32
+       * @description Number of task attempts observed; absent when unavailable.
+       */
+      attempts?: number | null;
+      /**
        * Format: date-time
        * @description Time the execution completed, when terminal.
        */
       completed_at?: string | null;
+      /** @description Non-secret trigger kind, cron, timezone and session mode at dispatch. */
+      configuration?: unknown;
       /** @description Failure message for an unsuccessful execution. */
       error?: string | null;
       /** @description Durable execution identifier. */
       id: string;
+      input_message_id?: components["schemas"]["messageId"] | null;
+      /**
+       * Format: uuid
+       * @description Authenticated user who fired it, when recorded.
+       */
+      requested_by?: string | null;
       /**
        * Format: date-time
        * @description Time the execution was scheduled.
        */
       scheduled_at: string;
+      /**
+       * @description Resulting session's prefixed public identifier, when available.
+       * @example session_550e8400e29b41d4a716446655440000
+       */
+      session_id?: string | null;
+      /** @description What fired it: manual, schedule, or unknown for old records. */
+      source?: string | null;
       /** @description Outcome of the run's task: completed, failed, skipped, cancelled, or queued, running or retrying while it is outstanding. */
       status: string;
+      /**
+       * Format: date-time
+       * @description Trigger configuration revision observed at dispatch.
+       */
+      trigger_revision?: string | null;
     };
     /** @description A trigger: a run the agent starts itself (schedule, webhook, GitHub, MCP event). */
     AgentTriggerSummary: {
@@ -13048,6 +13359,7 @@ export interface components {
      * @enum {string}
      */
     ChannelType:
+      | "email"
       | "slack"
       | "ag_ui"
       | "schedule"
@@ -14392,6 +14704,13 @@ export interface components {
     };
     /** @description Org cost over a window, grouped several ways. */
     CostSummary: {
+      /** @description Joint breakdown requested by group_by; at most 200 groups. */
+      breakdown: components["schemas"]["CostSummaryBreakdown"][];
+      /**
+       * @description Whether additional joint groups were omitted after the first 200.
+       * @example false
+       */
+      breakdown_truncated: boolean;
       /** @description Totals by agent. */
       by_agent: components["schemas"]["CostSummaryLine"][];
       /** @description Totals by where the amount came from. */
@@ -14401,8 +14720,8 @@ export interface components {
       /** @description Totals by what was used, such as a provider and model. */
       by_source: components["schemas"]["CostSummaryLine"][];
       /**
-       * @description Totals by who started the work: `person`, or `unattended` (schedules
-       *     and other runs nobody watches).
+       * @description Totals by recorded starter: `person`, `unattended` (including schedules
+       *     and agent triggers), or `unknown` when attribution was not recorded.
        */
       by_started_by: components["schemas"]["CostSummaryLine"][];
       /** @description Totals by the person the usage counts for. */
@@ -14433,6 +14752,29 @@ export interface components {
       /**
        * Format: int64
        * @description Usage records over the window with no price.
+       */
+      unpriced_records: number;
+    };
+    /** @description One joint cost group. Null dimensions mean attribution was not recorded. */
+    CostSummaryBreakdown: {
+      /**
+       * Format: double
+       * @description Priced usage cost in USD within this group and the selected filters.
+       * @example 6.61
+       */
+      cost_usd: number;
+      /** @description Requested dimension keys mapped to their recorded attribution values. */
+      dimensions: unknown;
+      /**
+       * Format: int64
+       * @description Usage journal records in this group, after the selected filters.
+       * @example 20
+       */
+      records: number;
+      /**
+       * Format: int64
+       * @description Usage journal records in this group whose cost is unpriced.
+       * @example 1
        */
       unpriced_records: number;
     };
@@ -19602,6 +19944,11 @@ export interface components {
        */
       code: string;
       /**
+       * Format: uuid
+       * @description Current episode, also carried by its notification.
+       */
+      episode_id: string;
+      /**
        * @description Sanitized provider or verification error code, when available.
        * @example missing_scope
        */
@@ -19652,6 +19999,7 @@ export interface components {
        * @example notification_550e8400e29b41d4a716446655440001
        */
       notification_id?: string | null;
+      opening_observation?: components["schemas"]["HealthIssueObservation"] | null;
       /**
        * @description Public identifier of the session the issue points at, when it has one.
        * @example session_550e8400e29b41d4a716446655440000
@@ -19710,6 +20058,23 @@ export interface components {
        * @example 1
        */
       total: number;
+    };
+    /** @description Evidence frozen when a health issue episode first opened. */
+    HealthIssueObservation: {
+      /**
+       * Format: uuid
+       * @description Episode whose first accepted opening evidence was captured.
+       * @example 550e8400-e29b-41d4-a716-446655440000
+       */
+      episode_id: string;
+      /** @description Original detector evidence; excludes session content. */
+      evidence?: unknown;
+      /**
+       * Format: date-time
+       * @description Observation time of that episode's opening evidence.
+       * @example 2026-11-25T12:00:00Z
+       */
+      observed_at: string;
     };
     /** @description System health response */
     HealthResponse: {
@@ -30856,6 +31221,26 @@ export interface components {
        */
       revision: number;
     };
+    /** @description A schedule's spend cap, read from its `session_schedule` budget. */
+    ScheduleBudget: {
+      /**
+       * Format: double
+       * @description Cap in USD.
+       * @example 2
+       */
+      limit_usd: number;
+      /**
+       * Format: double
+       * @description Spent so far in USD.
+       * @example 0.25
+       */
+      spent_usd: number;
+      /**
+       * @description `active`, `paused`, `exhausted` or `disabled`.
+       * @example active
+       */
+      status: string;
+    };
     /** @description Schedule execution response */
     ScheduleExecutionResponse: {
       /**
@@ -31131,6 +31516,11 @@ export interface components {
       /** @description The agent's channel the conversation belongs to. */
       channel_id: string;
     };
+    /**
+     * @description Type of schedule: one-shot or recurring.
+     * @enum {string}
+     */
+    ScheduleType: "oneshot" | "recurring";
     /** @description Schedules list response */
     SchedulesListResponse: {
       /** @description Page of items returned by this query. */
@@ -32050,6 +32440,12 @@ export interface components {
        *     `cache_read`, `cache_write`, `output`.
        */
       categories: components["schemas"]["CostCategory"][];
+      /**
+       * Format: date-time
+       * @description Inclusive selected start; null means no lower time bound.
+       * @example 2026-11-24T12:00:00Z
+       */
+      from?: string | null;
       /** @description Spend per UTC hour that had model calls, oldest first. */
       hours: components["schemas"]["CostHour"][];
       /**
@@ -32069,6 +32465,12 @@ export interface components {
       session_id: string;
       /** @description Turns and spend by what started them, largest spend first. */
       sources: components["schemas"]["CostSource"][];
+      /**
+       * Format: date-time
+       * @description Exclusive selected end; null means no upper time bound.
+       * @example 2026-11-25T12:00:00Z
+       */
+      to?: string | null;
       /** @description Tool calls across the session. */
       tools: components["schemas"]["CostTools"];
       /**
@@ -32481,6 +32883,112 @@ export interface components {
      * @enum {string}
      */
     SessionSandboxStatusValue: "running" | "paused" | "lost";
+    /** @description A session-scoped schedule. */
+    SessionSchedule: {
+      budget?: components["schemas"]["ScheduleBudget"] | null;
+      /**
+       * Format: date-time
+       * @description Time the schedule was created.
+       * @example 2026-11-25T12:00:00Z
+       */
+      created_at: string;
+      /**
+       * @description Cron expression for recurring schedules (None for one-shot).
+       * @example *\/30 * * * *
+       */
+      cron_expression?: string | null;
+      /**
+       * Format: date-time
+       * @description When the schedule was deleted. The row stays so a session recording can
+       *     show it; a deleted schedule does not fire and is hidden from the agent.
+       */
+      deleted_at?: string | null;
+      /**
+       * @description What the agent should do when the schedule fires.
+       * @example Check whether the pull request is merged
+       */
+      description: string;
+      effective_owner?: components["schemas"]["PrincipalSummary"] | null;
+      /**
+       * @description Whether the schedule is active.
+       * @example true
+       */
+      enabled: boolean;
+      /**
+       * Format: date-time
+       * @description The schedule stops firing after this time.
+       * @example 2026-11-27T12:00:00Z
+       */
+      ends_at?: string | null;
+      /**
+       * @description Unique identifier (format: sched_{32-hex}).
+       * @example sched_01933b5a00007000800000000000001
+       */
+      id: string;
+      /**
+       * Format: date-time
+       * @description Last time this schedule fired.
+       */
+      last_triggered_at?: string | null;
+      /**
+       * Format: int32
+       * @description The schedule stops after this many fires.
+       * @example 96
+       */
+      max_runs?: number | null;
+      /**
+       * Format: date-time
+       * @description Next computed trigger time.
+       */
+      next_trigger_at?: string | null;
+      owner?: components["schemas"]["PrincipalSummary"] | null;
+      /**
+       * @description Owning principal for this schedule.
+       * @example principal_01933b5a000070008000000000000001
+       */
+      owner_principal_id: string;
+      /**
+       * Format: uuid
+       * @description Denormalized effective human owner of the owning principal lineage.
+       */
+      resolved_owner_user_id?: string | null;
+      /** @description Computed type based on cron_expression vs scheduled_at. */
+      schedule_type: components["schemas"]["ScheduleType"];
+      /**
+       * Format: date-time
+       * @description One-shot trigger time (None for recurring).
+       */
+      scheduled_at?: string | null;
+      /**
+       * @description Session this schedule belongs to.
+       * @example session_01933b5a00007000800000000000001
+       */
+      session_id: string;
+      /** @description Why the schedule stopped on its own (`ended`, `budget_exhausted`). */
+      stop_reason?: string | null;
+      /**
+       * @description When the work is done, in the agent's words.
+       * @example The pull request is merged or closed
+       */
+      stop_when?: string | null;
+      /**
+       * @description IANA timezone for cron interpretation.
+       * @example UTC
+       */
+      timezone: string;
+      /**
+       * Format: int32
+       * @description Total number of times this schedule has fired.
+       * @example 4
+       */
+      trigger_count: number;
+      /**
+       * Format: date-time
+       * @description Time the schedule's stored state was last changed.
+       * @example 2026-11-25T14:00:00Z
+       */
+      updated_at: string;
+    };
     /**
      * @description Which conversation an agent member keeps in a room.
      * @enum {string}
@@ -32502,6 +33010,7 @@ export interface components {
       | "playground"
       | "api"
       | "slack"
+      | "email"
       | "ag_ui"
       | "fcp"
       | "schedule"
@@ -38848,6 +39357,134 @@ export interface components {
      *     (and omitted from the wire shape) until the underlying resource opts
      *     into the convention by overriding `ResourceUrlable::allowed_actions`.
      */
+    WithUrls_SessionSchedule: {
+      budget?: components["schemas"]["ScheduleBudget"] | null;
+      /**
+       * Format: date-time
+       * @description Time the schedule was created.
+       * @example 2026-11-25T12:00:00Z
+       */
+      created_at: string;
+      /**
+       * @description Cron expression for recurring schedules (None for one-shot).
+       * @example *\/30 * * * *
+       */
+      cron_expression?: string | null;
+      /**
+       * Format: date-time
+       * @description When the schedule was deleted. The row stays so a session recording can
+       *     show it; a deleted schedule does not fire and is hidden from the agent.
+       */
+      deleted_at?: string | null;
+      /**
+       * @description What the agent should do when the schedule fires.
+       * @example Check whether the pull request is merged
+       */
+      description: string;
+      effective_owner?: components["schemas"]["PrincipalSummary"] | null;
+      /**
+       * @description Whether the schedule is active.
+       * @example true
+       */
+      enabled: boolean;
+      /**
+       * Format: date-time
+       * @description The schedule stops firing after this time.
+       * @example 2026-11-27T12:00:00Z
+       */
+      ends_at?: string | null;
+      /**
+       * @description Unique identifier (format: sched_{32-hex}).
+       * @example sched_01933b5a00007000800000000000001
+       */
+      id: string;
+      /**
+       * Format: date-time
+       * @description Last time this schedule fired.
+       */
+      last_triggered_at?: string | null;
+      /**
+       * Format: int32
+       * @description The schedule stops after this many fires.
+       * @example 96
+       */
+      max_runs?: number | null;
+      /**
+       * Format: date-time
+       * @description Next computed trigger time.
+       */
+      next_trigger_at?: string | null;
+      owner?: components["schemas"]["PrincipalSummary"] | null;
+      /**
+       * @description Owning principal for this schedule.
+       * @example principal_01933b5a000070008000000000000001
+       */
+      owner_principal_id: string;
+      /**
+       * Format: uuid
+       * @description Denormalized effective human owner of the owning principal lineage.
+       */
+      resolved_owner_user_id?: string | null;
+      /** @description Computed type based on cron_expression vs scheduled_at. */
+      schedule_type: components["schemas"]["ScheduleType"];
+      /**
+       * Format: date-time
+       * @description One-shot trigger time (None for recurring).
+       */
+      scheduled_at?: string | null;
+      /**
+       * @description Session this schedule belongs to.
+       * @example session_01933b5a00007000800000000000001
+       */
+      session_id: string;
+      /** @description Why the schedule stopped on its own (`ended`, `budget_exhausted`). */
+      stop_reason?: string | null;
+      /**
+       * @description When the work is done, in the agent's words.
+       * @example The pull request is merged or closed
+       */
+      stop_when?: string | null;
+      /**
+       * @description IANA timezone for cron interpretation.
+       * @example UTC
+       */
+      timezone: string;
+      /**
+       * Format: int32
+       * @description Total number of times this schedule has fired.
+       * @example 4
+       */
+      trigger_count: number;
+      /**
+       * Format: date-time
+       * @description Time the schedule's stored state was last changed.
+       * @example 2026-11-25T14:00:00Z
+       */
+      updated_at: string;
+    } & {
+      /**
+       * @description State-aware hypermedia actions the caller can take on this resource
+       *     next (e.g. `cancel`, `events`, `update`). Omitted from the wire
+       *     shape when empty so resources that haven't opted into the
+       *     convention don't grow their payloads.
+       */
+      allowed_actions?: components["schemas"]["AllowedAction"][];
+      /** @description Full API endpoint URL for this resource. */
+      self_url: string;
+      /** @description Alias for `view_url`, used by command and MCP outputs. */
+      ui_link: string;
+      /** @description Full UI URL for viewing this resource. */
+      view_url: string;
+    };
+    /**
+     * @description Wrapper that adds API and UI links to a serialized resource.
+     *
+     *     Uses `self_url` (not `url`) for the API link to avoid collision with
+     *     resources that already have a `url` field (e.g. McpServer). The
+     *     `allowed_actions` array carries state-aware hypermedia links — empty
+     *     (and omitted from the wire shape) until the underlying resource opts
+     *     into the convention by overriding `ResourceUrlable::allowed_actions`.
+     */
     WithUrls_Skill: {
       /** @description Comma-separated list of tool patterns this skill may invoke. `None` means inherit from the harness. */
       allowed_tools?: string | null;
@@ -39381,6 +40018,11 @@ export interface components {
      * @example harness_01933b5a000070008000000000000001
      */
     harnessId: string;
+    /**
+     * @description Prefixed identifier with 'message' prefix
+     * @example message_01933b5a000070008000000000000001
+     */
+    messageId: string;
     /**
      * @description Prefixed identifier with 'model' prefix
      * @example model_01933b5a000070008000000000000001
@@ -42847,6 +43489,45 @@ export interface operations {
       };
     };
   };
+  email_webhook: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Scoped resource identifier */
+        inbox: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": string;
+      };
+    };
+    responses: {
+      /** @description Receipt durably persisted or already known */
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Invalid webhook signature */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Intake capacity unavailable; retry delivery */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   list_agent_examples: {
     parameters: {
       query?: never;
@@ -46197,7 +46878,10 @@ export interface operations {
   list_agent_trigger_deliveries: {
     parameters: {
       query?: {
-        /** @description Maximum rows to return (1-200, default 50). */
+        from?: string | null;
+        to?: string | null;
+        before?: string | null;
+        /** @description Maximum rows to return (1-200; defaults to 10 runs or 50 deliveries). */
         limit?: number | null;
       };
       header?: never;
@@ -46233,7 +46917,13 @@ export interface operations {
   };
   list_agent_trigger_runs: {
     parameters: {
-      query?: never;
+      query?: {
+        from?: string | null;
+        to?: string | null;
+        before?: string | null;
+        /** @description Maximum rows to return (1-200; defaults to 10 runs or 50 deliveries). */
+        limit?: number | null;
+      };
       header?: never;
       path: {
         /** @description Agent ID (prefixed) */
@@ -47631,6 +48321,14 @@ export interface operations {
   get_cost_summary: {
     parameters: {
       query?: {
+        /** @description Restrict usage to this session. */
+        session_id?: string;
+        /** @description Exact source key from by_source (for example a provider/model). */
+        source?: string;
+        /** @description person, unattended, or unknown for historical records. */
+        started_by?: string;
+        /** @description Comma-separated joint dimensions: agent,session,source,started_by,basis,user,day. */
+        group_by?: string;
         /** @description Window start (inclusive). Default: the start of this month. */
         from?: string;
         /** @description Window end (exclusive). Default: now. */
@@ -49307,6 +50005,524 @@ export interface operations {
       };
       /** @description Durable store not available */
       503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  email_list_inboxes: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Authentication required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Organization administrator required */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  email_create_inbox: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": unknown;
+      };
+    };
+    responses: {
+      /** @description Success */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Authentication required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Organization administrator required */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  email_update_inbox: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Scoped resource identifier */
+        inbox: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": unknown;
+      };
+    };
+    responses: {
+      /** @description Success */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Authentication required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Organization administrator required */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  email_claim: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Scoped resource identifier */
+        inbox: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Authentication required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Organization administrator required */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  email_dispose: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Scoped resource identifier */
+        inbox: string;
+        /** @description Scoped resource identifier */
+        lease: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": unknown;
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Authentication required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Organization administrator required */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  email_list_messages: {
+    parameters: {
+      query?: {
+        /** @description Exclusive message cursor */
+        before?: string;
+      };
+      header?: never;
+      path: {
+        /** @description Scoped resource identifier */
+        inbox: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Authentication required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Organization administrator required */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  email_read_message: {
+    parameters: {
+      query?: {
+        /** @description preview, clean or full */
+        view?: string;
+        /** @description UTF-8 byte offset */
+        offset?: number;
+      };
+      header?: never;
+      path: {
+        /** @description Scoped resource identifier */
+        inbox: string;
+        /** @description Scoped resource identifier */
+        message: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Authentication required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Organization administrator required */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  email_approve_execution: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Scoped resource identifier */
+        inbox: string;
+        /** @description Scoped resource identifier */
+        message: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Agent execution approved; sending requires separate approval */
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Authentication required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Organization administrator required */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  email_dismiss_message: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        inbox: string;
+        message: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Message dismissed */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  email_list_outbox: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Scoped resource identifier */
+        inbox: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Authentication required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Organization administrator required */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  email_approve_reply: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Scoped resource identifier */
+        inbox: string;
+        /** @description Scoped resource identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Authentication required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Organization administrator required */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  email_reject_reply: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        inbox: string;
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Reply rejected */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  email_list_templates: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Authentication required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Organization administrator required */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  email_create_template: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": unknown;
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Authentication required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Organization administrator required */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  email_preview_template: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": unknown;
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Authentication required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Organization administrator required */
+      403: {
         headers: {
           [name: string]: unknown;
         };
@@ -51197,7 +52413,10 @@ export interface operations {
   };
   get_health_issue: {
     parameters: {
-      query?: never;
+      query?: {
+        /** @description Select frozen opening evidence from this episode. */
+        episode_id?: string | null;
+      };
       header?: never;
       path: {
         issue_id: string;
@@ -59262,7 +60481,12 @@ export interface operations {
   };
   get_session_cost: {
     parameters: {
-      query?: never;
+      query?: {
+        /** @description Inclusive model-call and tool-start time. Omitted means lifetime. */
+        from?: string;
+        /** @description Exclusive model-call and tool-start time. Omitted means no upper bound. */
+        to?: string;
+      };
       header?: never;
       path: {
         /** @description Prefixed public identifier */
@@ -60912,6 +62136,75 @@ export interface operations {
         content?: never;
       };
       /** @description Session not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  list_session_schedules: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Session's prefixed public identifier */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description List of schedules */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["WithUrls_SessionSchedule"][];
+        };
+      };
+      /** @description Caller may not view this session */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  get_session_schedule: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Session's prefixed public identifier */
+        session_id: string;
+        /** @description Schedule's prefixed public identifier */
+        schedule_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Schedule details */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["WithUrls_SessionSchedule"];
+        };
+      };
+      /** @description Caller may not view this session */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Schedule not found */
       404: {
         headers: {
           [name: string]: unknown;

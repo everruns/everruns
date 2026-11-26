@@ -87,6 +87,12 @@ pub struct ProvisionedSlackApp {
     /// with it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub install_return_issue: Option<uuid::Uuid>,
+    /// Publish the channel once the install in flight succeeds. Set only by
+    /// the server, alongside `install_state`, when the person who started the
+    /// install may publish channels; spent with the nonce. An installed Slack
+    /// app that stays a draft answers nobody, and nothing in Slack says why.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub publish_on_install: bool,
 }
 
 /// Hand-written for the same reason as `SlackAppCredentials`: the derived one
@@ -104,6 +110,7 @@ impl std::fmt::Debug for ProvisionedSlackApp {
             )
             .field("install_state_issued_at", &self.install_state_issued_at)
             .field("team_id", &self.team_id)
+            .field("publish_on_install", &self.publish_on_install)
             .finish()
     }
 }

@@ -28,6 +28,7 @@ enum Call {
 
 #[derive(Default)]
 struct Recorder {
+    aggregate: bool,
     calls: Mutex<Vec<Call>>,
     stream: bool,
     surface: bool,
@@ -58,6 +59,9 @@ impl Recorder {
 
 #[async_trait]
 impl ChannelDeliveryAdapter for Recorder {
+    fn aggregate_replies(&self) -> bool {
+        self.aggregate
+    }
     fn platform(&self) -> &str {
         if self.slack { "slack" } else { "test" }
     }
@@ -1020,3 +1024,198 @@ async fn without_a_view_surface_a_tool_view_draws_nothing() {
 
 #[path = "checkpoint_delivery_tests.rs"]
 mod checkpoint_tests;
+
+fn tool_started(name: &str) -> DeliveryEvent {
+    event(
+        TOOL_STARTED,
+        json!({"tool_call": {"id": format!("call_{name}"), "name": name, "arguments": {}}}),
+    )
+}
+
+fn acknowledging(recorder: &Arc<Recorder>) -> TurnDelivery {
+    let mut delivery = delivery(
+        recorder,
+        DeliveryOptions {
+            acknowledge: true,
+            ..DeliveryOptions::default()
+        },
+    );
+    delivery.know_message_key(TURN, "C1:input");
+    delivery
+}
+
+fn reacted(recorder: &Recorder) -> Vec<Call> {
+    recorder
+        .calls()
+        .into_iter()
+        .filter(|call| matches!(call, Call::React(..)))
+        .collect()
+}
+
+#[tokio::test]
+async fn acknowledging_reacts_eyes_on_work_and_check_once_answered() {
+    let recorder = Arc::new(Recorder {
+        reactions: true,
+        ..Recorder::default()
+    });
+    let mut delivery = acknowledging(&recorder);
+    delivery.observe(&tool_started("github_search")).await;
+    delivery.observe(&tool_started("github_read")).await;
+    delivery
+        .observe(&sent("Two pull requests are blocked.", None))
+        .await;
+    delivery.observe(&event(TURN_COMPLETED, json!({}))).await;
+
+    assert_eq!(
+        reacted(&recorder),
+        vec![
+            Call::React("C1:input".into(), ACK_STARTED.into(), true),
+            Call::React("C1:input".into(), ACK_STARTED.into(), false),
+            Call::React("C1:input".into(), ACK_ANSWERED.into(), true),
+        ]
+    );
+}
+
+#[tokio::test]
+async fn a_quick_answer_or_silence_never_flashes_eyes() {
+    let recorder = Arc::new(Recorder {
+        reactions: true,
+        ..Recorder::default()
+    });
+    let mut answered = acknowledging(&recorder);
+    answered.observe(&tool_started("send_message")).await;
+    answered.observe(&sent("Yes.", None)).await;
+    answered.observe(&event(TURN_COMPLETED, json!({}))).await;
+    assert_eq!(
+        reacted(&recorder),
+        vec![Call::React("C1:input".into(), ACK_ANSWERED.into(), true)]
+    );
+
+    let recorder = Arc::new(Recorder {
+        reactions: true,
+        ..Recorder::default()
+    });
+    let mut quiet = acknowledging(&recorder);
+    quiet.observe(&tool_started("no_reply")).await;
+    quiet
+        .observe(&event(
+            TOOL_COMPLETED,
+            json!({"tool_name": "no_reply", "success": true}),
+        ))
+        .await;
+    quiet.observe(&event(TURN_COMPLETED, json!({}))).await;
+    assert!(recorder.calls().is_empty(), "{:?}", recorder.calls());
+}
+
+#[tokio::test]
+async fn a_failed_turn_takes_the_eyes_off_without_a_check() {
+    let recorder = Arc::new(Recorder {
+        reactions: true,
+        ..Recorder::default()
+    });
+    let mut delivery = acknowledging(&recorder);
+    delivery.observe(&tool_started("github_search")).await;
+    delivery.observe(&sent("Looking into it.", None)).await;
+    delivery.observe(&event(TURN_FAILED, json!({}))).await;
+    assert_eq!(
+        reacted(&recorder),
+        vec![
+            Call::React("C1:input".into(), ACK_STARTED.into(), true),
+            Call::React("C1:input".into(), ACK_STARTED.into(), false),
+        ]
+    );
+}
+
+#[tokio::test]
+async fn the_agents_own_reaction_takes_over_the_acknowledgement() {
+    let recorder = Arc::new(Recorder {
+        reactions: true,
+        ..Recorder::default()
+    });
+    let mut delivery = acknowledging(&recorder);
+    delivery.observe(&reaction(TURN, "🤔", "agent", true)).await;
+    delivery.observe(&tool_started("github_search")).await;
+    delivery.observe(&sent("Done.", None)).await;
+    delivery.observe(&event(TURN_COMPLETED, json!({}))).await;
+    assert_eq!(
+        reacted(&recorder),
+        vec![Call::React("C1:input".into(), "🤔".into(), true)]
+    );
+}
+
+#[tokio::test]
+async fn no_acknowledgement_without_the_option_or_a_platform_message() {
+    let recorder = Arc::new(Recorder {
+        reactions: true,
+        ..Recorder::default()
+    });
+    let mut off = delivery(&recorder, DeliveryOptions::default());
+    off.know_message_key(TURN, "C1:input");
+    off.observe(&tool_started("github_search")).await;
+    off.observe(&sent("Done.", None)).await;
+    off.observe(&event(TURN_COMPLETED, json!({}))).await;
+    assert!(reacted(&recorder).is_empty());
+
+    // A scheduled run has no platform message to react on.
+    let recorder = Arc::new(Recorder {
+        reactions: true,
+        ..Recorder::default()
+    });
+    let mut scheduled = delivery(
+        &recorder,
+        DeliveryOptions {
+            acknowledge: true,
+            ..DeliveryOptions::default()
+        },
+    );
+    scheduled.observe(&tool_started("github_search")).await;
+    scheduled.observe(&sent("Daily report.", None)).await;
+    scheduled.observe(&event(TURN_COMPLETED, json!({}))).await;
+    assert!(reacted(&recorder).is_empty());
+}
+
+#[tokio::test]
+async fn aggregate_email_waits_for_success_and_uses_guarded_final_text() {
+    let recorder = Arc::new(Recorder {
+        aggregate: true,
+        stream: true,
+        ..Default::default()
+    });
+    let mut d = delivery(&recorder, DeliveryOptions::default());
+    d.observe(&delta("m1", "unreviewed")).await;
+    d.observe(&completed("m1", "first")).await;
+    d.observe(&completed("m1", "first")).await;
+    d.observe(&completed("m2", "second")).await;
+    d.observe(&event(
+        OUTPUT_MESSAGE_REPLACED,
+        json!({"message_id":"m1","replacement":"safe"}),
+    ))
+    .await;
+    assert!(recorder.calls().is_empty());
+    d.observe(&event(TURN_COMPLETED, json!({}))).await;
+    d.observe(&event(TURN_COMPLETED, json!({}))).await;
+    assert_eq!(recorder.calls(), vec![Call::Post("safe\n\nsecond".into())]);
+}
+#[tokio::test]
+async fn aggregate_email_suppresses_failed_cancelled_empty_and_oversized_turns() {
+    for terminal in [TURN_FAILED, TURN_CANCELLED] {
+        let recorder = Arc::new(Recorder {
+            aggregate: true,
+            ..Default::default()
+        });
+        let mut d = delivery(&recorder, DeliveryOptions::default());
+        d.observe(&completed("m1", "partial answer")).await;
+        d.observe(&event(terminal, json!({}))).await;
+        assert!(recorder.calls().is_empty());
+    }
+    for text in [String::new(), "x".repeat(131_073)] {
+        let recorder = Arc::new(Recorder {
+            aggregate: true,
+            ..Default::default()
+        });
+        let mut d = delivery(&recorder, DeliveryOptions::default());
+        d.observe(&completed("m1", &text)).await;
+        d.observe(&event(TURN_COMPLETED, json!({}))).await;
+        assert!(recorder.calls().is_empty());
+    }
+}

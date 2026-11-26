@@ -274,10 +274,13 @@ async fn unknown_or_resolved_fixes_are_refused() {
     db.observe_health_issue(observation(&row, "resolved"))
         .await
         .unwrap();
-    let resolved = GetHealthIssue { issue_id: issue.id }
-        .run(&ctx)
-        .await
-        .unwrap();
+    let resolved = GetHealthIssue {
+        episode_id: None,
+        issue_id: issue.id,
+    }
+    .run(&ctx)
+    .await
+    .unwrap();
     assert!(resolved.fixers.is_empty());
     assert!(
         fixers::run_fixer(&ctx, issue.id, SLACK_ADD_PERMISSIONS, "http://127.0.0.1:9")

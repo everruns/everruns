@@ -317,6 +317,22 @@ enum Source {
 }
 
 impl RelevanceChecker {
+    /// Email admission/output gates honor the org's decision-model preference
+    /// but never use the conversational fail-open/fallback path.
+    pub async fn evaluate_strict(
+        &self,
+        org_id: i64,
+        request: DecisionRequest,
+    ) -> anyhow::Result<DecisionOutcome> {
+        match self.source(org_id, None).await? {
+            Source::Organization(binding) => self.ask_org(binding, None, request).await,
+            Source::Deployment => Ok(self.deployment.evaluate(request).await?),
+            Source::Missing(reason) => {
+                Err(anyhow::anyhow!("decision service unavailable: {reason}"))
+            }
+        }
+    }
+
     /// Decide one check. An error means the agent stays quiet.
     pub async fn decide(
         &self,

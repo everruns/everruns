@@ -36,10 +36,12 @@
 //!         intent: "List the ten most recent agents".into(),
 //!         command: "everruns agents list --limit 10".into(),
 //!     }],
+//!     output: everruns_cli_contract::output_note("paginated").map(Into::into),
 //! };
 //!
 //! assert_eq!(command.spelling(), "agents list");
 //! assert!(command.after_help().contains("List the ten most recent agents:"));
+//! assert!(command.after_help().contains("Output: one page as {data, total, offset, limit}"));
 //! ```
 
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
@@ -157,6 +159,31 @@ pub struct ContractCommand {
     /// `--help` is one it will guess at instead.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub examples: Vec<ContractExample>,
+    /// The JSON shape the command prints, as [`output_note`] words it, so a
+    /// script knows where the items are before it runs the command. Absent
+    /// when the shape is not fixed by the command's output type.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output: Option<String>,
+}
+
+/// How a command's output shape reads in its help, by the shape name the
+/// server's command catalog declares (`array`, `paginated`, `object`).
+///
+/// Decision: one sentence per shape, the same for every command, so the
+/// three shapes become something a reader learns once. Lists of an agent's
+/// own sub-resources (channels, triggers) are arrays; collections that can
+/// grow without bound (agents, sessions) are pages.
+pub fn output_note(shape: &str) -> Option<&'static str> {
+    match shape {
+        "array" => Some("a JSON array. Read the items with jq '.[]'."),
+        "paginated" => Some(
+            "one page as {data, total, offset, limit}. Read the items with jq '.data[]'; page with --offset and --limit.",
+        ),
+        "object" => Some(
+            "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.",
+        ),
+        _ => None,
+    }
 }
 
 impl ContractCommand {
@@ -173,6 +200,9 @@ impl ContractCommand {
                 text.push_str(&format!("  {}:\n    {}\n", example.intent, example.command));
             }
             text.push('\n');
+        }
+        if let Some(output) = &self.output {
+            text.push_str(&format!("Output: {output}\n\n"));
         }
         text.push_str(&format!("Wire name: {}", self.wire_name));
         text

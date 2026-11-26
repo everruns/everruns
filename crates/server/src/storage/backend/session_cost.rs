@@ -8,30 +8,9 @@
 
 use super::*;
 use crate::storage::backend::sandbox_fleet::SandboxTransitionRow;
-
-/// One model call's tokens and cost.
-#[derive(Debug, Clone, sqlx::FromRow)]
-pub struct CostGenerationRow {
-    pub turn_id: Option<Uuid>,
-    pub created_at: DateTime<Utc>,
-    pub model: Option<String>,
-    pub provider: Option<String>,
-    pub input_tokens: i64,
-    pub output_tokens: i64,
-    pub cache_read_tokens: i64,
-    pub cache_creation_tokens: i64,
-    pub actual_cost_usd: Option<f64>,
-    pub estimated_cost_usd: Option<f64>,
-}
-
-/// One turn of the trace index.
-#[derive(Debug, Clone, sqlx::FromRow)]
-pub struct CostTurnRow {
-    pub turn_no: i32,
-    pub turn_id: Uuid,
-    pub started_at: DateTime<Utc>,
-    pub status: String,
-}
+pub use everruns_contracts::runtime::session_cost::{
+    CostGenerationRow, CostToolRow, CostTurnOriginRow, CostTurnRow,
+};
 
 /// One turn of a session in a run, for the whole-run timeline.
 #[derive(Debug, Clone, sqlx::FromRow)]
@@ -50,26 +29,6 @@ pub struct RunTurnCostRow {
     pub session_id: Uuid,
     pub turn_id: Option<Uuid>,
     pub cost_usd: f64,
-}
-
-/// What started a turn, read from its input message.
-#[derive(Debug, Clone, sqlx::FromRow)]
-pub struct CostTurnOriginRow {
-    /// Public turn id (`turn_...`).
-    pub turn_id: String,
-    /// `schedule`, `agent_trigger`, ...; `None` for a message a person sent.
-    pub kind: Option<String>,
-    /// The schedule or trigger behind it, when there is one.
-    pub source_id: Option<String>,
-}
-
-/// Calls, failures and running time of one tool.
-#[derive(Debug, Clone, sqlx::FromRow)]
-pub struct CostToolRow {
-    pub name: String,
-    pub calls: i64,
-    pub failed: i64,
-    pub duration_ms: i64,
 }
 
 /// A session schedule, deleted ones included, to name turn origins.
@@ -100,13 +59,24 @@ impl StorageBackend {
         org_id: i64,
         session_id: Uuid,
     ) -> Result<Vec<CostGenerationRow>> {
+        self.session_cost_generations_between(org_id, session_id, None, None)
+            .await
+    }
+
+    pub async fn session_cost_generations_between(
+        &self,
+        org_id: i64,
+        session_id: Uuid,
+        from: Option<DateTime<Utc>>,
+        to: Option<DateTime<Utc>>,
+    ) -> Result<Vec<CostGenerationRow>> {
         Ok(sqlx::query_as(
             "SELECT turn_id, created_at, model, provider, input_tokens, output_tokens, \
                     cache_read_tokens, cache_creation_tokens, actual_cost_usd, estimated_cost_usd \
-             FROM llm_generations WHERE org_id = $1 AND session_id = $2 ORDER BY created_at",
+             FROM llm_generations WHERE org_id = $1 AND session_id = $2 AND ($3::timestamptz IS NULL OR created_at >= $3) AND ($4::timestamptz IS NULL OR created_at < $4) ORDER BY created_at",
         )
         .bind(org_id)
-        .bind(session_id)
+        .bind(session_id).bind(from).bind(to)
         .fetch_all(self.database().pool())
         .await?)
     }
@@ -165,9 +135,9 @@ impl StorageBackend {
     ) -> Result<Vec<CostTurnOriginRow>> {
         Ok(sqlx::query_as(
             "SELECT t.data->>'turn_id' AS turn_id, \
-                    COALESCE(NULLIF(m.metadata->'initiator'->>'type', 'user'), \
+                    COALESCE(m.data->'message'->'metadata'->'everruns_origin'->>'kind', NULLIF(m.metadata->'initiator'->>'type', 'user'), \
                              m.data->'message'->'metadata'->>'source') AS kind, \
-                    COALESCE(m.metadata->'initiator'->>'schedule_id', \
+                    COALESCE(m.data->'message'->'metadata'->'everruns_origin'->>'source_id', m.metadata->'initiator'->>'schedule_id', \
                              m.metadata->'initiator'->>'trigger_id', \
                              m.metadata->'initiator'->>'channel_id') AS source_id \
              FROM events t \
