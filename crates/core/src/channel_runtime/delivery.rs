@@ -825,10 +825,10 @@ impl TurnDelivery {
             if let Some(id) = message_id {
                 self.done.insert(id);
             }
-            if let Some(journal) = &self.journal {
-                if let Err(error) = journal.save(self.snapshot()).await {
-                    warn!(%error, "channel: could not checkpoint aggregate reply");
-                }
+            if let Some(journal) = &self.journal
+                && let Err(error) = journal.save(self.snapshot()).await
+            {
+                warn!(%error, "channel: could not checkpoint aggregate reply");
             }
             return;
         }
