@@ -13,9 +13,9 @@
 //! What a click does is deliberately small: it posts a message into the session.
 //! `soft_approval`'s pause is answered by the user's next message, so a click
 //! that becomes that message resumes the turn through the path that already
-//! exists, and [`crate::domains::audit_logs::approval_listener`] attributes it to the Slack
-//! identity the API recorded — without approvals needing an identity path of
-//! their own. See [`crate::channels::slack::approvals`].
+//! exists. The verified click also writes a deduplicated org audit row with
+//! the Slack identity; a model-authored approval cannot supply that identity.
+//! See [`crate::channels::slack::approvals`].
 
 use crate::domains::agent_channels::record::slack_channel::SlackChannelConfig;
 use axum::body::Bytes;
@@ -552,6 +552,24 @@ async fn handle_block_action(
             .into_response(StatusCode::INTERNAL_SERVER_ERROR));
     }
 
+    // The session may run on a data plane, whose events do not flow through
+    // the v1 approval listener. The provider-authenticated callback is the
+    // trusted source of the clicker's Slack identity on either plane.
+    if let Err(error) = audit_approval_click(
+        state,
+        ingress,
+        slack_channel,
+        slack_config,
+        &session,
+        &binding,
+        decision,
+        clicker,
+    )
+    .await
+    {
+        tracing::warn!(ingress_id = %ingress_id, %session_id, %error, "Failed to audit Slack approval click");
+    }
+
     // Rewrite the card for clarity. Single-use enforcement is server-side, so
     // a failed update cannot make the already-consumed card actionable again.
     if binding.private {
@@ -607,6 +625,61 @@ async fn handle_block_action(
         "Recorded a Slack approval decision"
     );
     Ok(ack())
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn audit_approval_click(
+    state: &SlackState,
+    ingress: &IngressContext,
+    slack_channel: &IngressChannel,
+    slack_config: &SlackChannelConfig,
+    session: &crate::storage::SessionRow,
+    binding: &ApprovalBinding,
+    decision: ApprovalDecision,
+    clicker: &str,
+) -> anyhow::Result<()> {
+    use crate::domains::audit_logs::record::{AgentAction, AuditEvent};
+
+    let decision = match decision {
+        ApprovalDecision::Approved => "approved",
+        ApprovalDecision::Declined => "declined",
+    };
+    let mut audit = AuditEvent::agent(AgentAction::ApprovalClicked, ingress.org_id, None)
+        .target("session", session.id.to_string())
+        .detail("session_id", session.id.to_string())
+        .detail("channel_id", slack_channel.public_id.to_string())
+        .detail("card_id", binding.card_id.clone())
+        .detail("turn_id", binding.turn_id.clone().unwrap_or_default())
+        .detail("slack_user_id", clicker.to_string())
+        .detail("decision", decision);
+    if let Some(team_id) = &slack_config.team_id {
+        audit = audit.detail("slack_team_id", team_id.clone());
+    }
+    let row = audit.build();
+    // A Slack identity is not a management user UUID. Store the verified
+    // provider identity in details rather than asserting the wrong actor_id.
+    let id = uuid::Uuid::new_v5(
+        &session.id.uuid(),
+        format!("slack.approval.clicked:{}", binding.card_id).as_bytes(),
+    );
+    state
+        .db
+        .create_audit_log_once(
+            id,
+            crate::storage::CreateAuditLogRow {
+                org_id: row.org_id,
+                actor_id: row.actor_user_id,
+                event_type: row.action.as_str().to_string(),
+                ip_address: row.ip_address,
+                metadata: row.details,
+                domain: row.domain.as_str().to_string(),
+                action: row.action.as_str().to_string(),
+                target_type: row.target.as_ref().map(|target| target.target_type.clone()),
+                target_id: row.target.as_ref().map(|target| target.target_id.clone()),
+            },
+        )
+        .await?;
+    Ok(())
 }
 
 /// Tell the clicker something only they need to see.
@@ -680,11 +753,9 @@ fn slack_response_url(raw: &str) -> Option<url::Url> {
 
 /// Post a decision into the session as the clicking Slack user.
 ///
-/// Carries the same `ExternalActor` an ordinary Slack message would, which is
-/// the whole reason a click can be attributed: `ApprovalAuditListener` resolves
-/// the approver from the `input.message` event the API writes, so an approval
-/// clicked in Slack lands in the audit log under the person who clicked it,
-/// with no approval-specific identity path. It goes through the channel host
+/// Carries the same `ExternalActor` an ordinary Slack message would. The
+/// verified callback records the clicker's provider identity in the org audit
+/// log after admission. It goes through the channel host
 /// like any message, so the clicker joins the session and the turn it resumes
 /// is delivered back to the thread.
 #[allow(clippy::too_many_arguments)]
@@ -806,12 +877,26 @@ mod tests {
         let consumed = || {
             sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM events WHERE session_id = $1 AND event_type = 'slack.approval.consumed'").bind(session_id.uuid())
         };
+        let audited = || {
+            sqlx::query_scalar::<_, serde_json::Value>(
+                "SELECT metadata FROM audit_logs WHERE org_id = $1 AND action = 'agent.approval.clicked' AND target_id = $2",
+            )
+            .bind(slack.context.org_id)
+            .bind(session_id.to_string())
+        };
         assert_eq!(
             consumed()
                 .fetch_one(slack.db.database().pool())
                 .await
                 .unwrap(),
             0
+        );
+        assert!(
+            audited()
+                .fetch_optional(slack.db.database().pool())
+                .await
+                .unwrap()
+                .is_none()
         );
         // A different endpoint in the same organization cannot consume it.
         body["user"]["id"] = serde_json::json!("U1");
@@ -852,6 +937,12 @@ mod tests {
                 .unwrap(),
             1
         );
+        let audit = audited()
+            .fetch_one(slack.db.database().pool())
+            .await
+            .unwrap();
+        assert_eq!(audit["slack_user_id"], "U1");
+        assert_eq!(audit["decision"], "approved");
         // The single-use decision is in storage, not in the ephemeral message.
         let _ = handle_block_action(
             &slack.state,
@@ -865,6 +956,15 @@ mod tests {
         .unwrap();
         assert_eq!(
             consumed()
+                .fetch_one(slack.db.database().pool())
+                .await
+                .unwrap(),
+            1
+        );
+        assert_eq!(
+            sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM audit_logs WHERE org_id = $1 AND action = 'agent.approval.clicked' AND target_id = $2")
+                .bind(slack.context.org_id)
+                .bind(session_id.to_string())
                 .fetch_one(slack.db.database().pool())
                 .await
                 .unwrap(),

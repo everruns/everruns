@@ -26,7 +26,8 @@ Custom `ChannelStore` implementations must support checkpoints. The supplied Mem
 SQLite and PostgreSQL stores do. Host egress governs provider requests and file
 downloads. Agent output neutralizes channel-wide and user-group notifications.
 Slack files reach Responses models. Data plane v2 approval decisions remain
-single-use across shard restarts.
+single-use across shard restarts. Verified Slack approval clicks add one org
+audit record with the Slack workspace, user and decision.
 
 **Operators** deploy the protocol-aware baseline to every delivery host and drain
 older owners before enabling the adapter. Reconcile legacy pending rows and retain

@@ -222,11 +222,11 @@ That makes the Slack half smaller than the shape above implies, and better:
 - A click posts an ordinary user message on that session. The turn resumes
   through the path that already exists.
 
-Answering as a message is also what keeps attribution honest for free.
-`ApprovalAuditListener` resolves the approver from the `input.message` event the
-API wrote — never from anything the model said — so a Slack click lands in the
-audit log under the Slack identity that clicked it, and approvals need no
-identity path of their own.
+The verified interaction records one org audit row for the consumed card after
+the decision message is admitted. It names the Slack workspace and user in the
+row's details; that external identity is not a management-user UUID. The
+session message also keeps its `ExternalActor` for the conversation. Tool-call
+audit rows remain separate from the provider click record.
 
 ### Authorization
 

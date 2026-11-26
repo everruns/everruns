@@ -163,6 +163,8 @@ pub enum AgentAction {
     ApprovalRequested,
     /// A human's spoken consent for a critical action was recorded.
     ApprovalGranted,
+    /// A verified provider interaction consumed a Slack approval card.
+    ApprovalClicked,
     /// The auto approval reviewer allowed or blocked a tool call, or handed
     /// it to a person.
     AutoReviewed,
@@ -179,6 +181,7 @@ impl AgentAction {
             Self::ChannelInvocationStarted => "agent.channel_invocation.started",
             Self::ApprovalRequested => "agent.approval.requested",
             Self::ApprovalGranted => "agent.approval.granted",
+            Self::ApprovalClicked => "agent.approval.clicked",
             Self::AutoReviewed => "agent.approval.auto_reviewed",
         }
     }
@@ -297,6 +300,10 @@ impl std::str::FromStr for AgentAction {
             "agent.tool.executed" => Ok(Self::ToolExecuted),
             "agent.llm.request" => Ok(Self::LlmRequest),
             "agent.channel_invocation.started" => Ok(Self::ChannelInvocationStarted),
+            "agent.approval.requested" => Ok(Self::ApprovalRequested),
+            "agent.approval.granted" => Ok(Self::ApprovalGranted),
+            "agent.approval.clicked" => Ok(Self::ApprovalClicked),
+            "agent.approval.auto_reviewed" => Ok(Self::AutoReviewed),
             other => Err(format!("unknown agent action: {other}")),
         }
     }
