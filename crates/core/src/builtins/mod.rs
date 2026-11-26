@@ -372,7 +372,7 @@ fn capabilities_with_ask_user(ask_user: AskUserCapability) -> Vec<Arc<dyn Capabi
 mod bundle_tests {
     use super::*;
 
-    const RUNTIME_IDS: [&str; 36] = [
+    const RUNTIME_IDS: [&str; 37] = [
         "human_intent",
         "ask_user",
         "infinity_context",
@@ -384,6 +384,7 @@ mod bundle_tests {
         "stateless_todo_list",
         "btw",
         "dreaming",
+        "agent_memory",
         "budgeting",
         "self_budget",
         "compaction",
