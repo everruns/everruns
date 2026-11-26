@@ -67,7 +67,7 @@ export function TaskUpdateMarker({
 
   return (
     <div
-      className="flex min-w-0 items-center gap-2 py-1 text-[13px] text-muted-foreground animate-chat-row-in"
+      className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 py-1 text-[13px] text-muted-foreground animate-chat-row-in"
       data-testid="task-update-marker"
       data-kind={kind}
     >

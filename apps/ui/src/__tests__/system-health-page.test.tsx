@@ -7,6 +7,9 @@ import {
   usePageViewRegistry,
 } from "@/components/chat-mode/page-view-state";
 
+jest.mock("@/components/chat/continue-in-chat", () => ({
+  ContinueInChat: () => <button>Continue in chat</button>,
+}));
 const mockRefresh = jest.fn();
 let mockReport: DoctorReport | undefined;
 let mockPlatformAccess = false;

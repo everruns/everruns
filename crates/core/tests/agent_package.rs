@@ -862,3 +862,221 @@ fn bundled_agent_problems_are_reported_where_they_are() {
         .to_string();
     assert!(error.contains("cannot list itself"), "{error}");
 }
+
+fn portrait_package() -> AgentPackage {
+    use everruns_core::agent_package::{Avatar, AvatarImage};
+    let mut package =
+        AgentPackage::parse("name = 'portrait'\ninstructions = 'Help.'", Format::Toml).unwrap();
+    package.manifest.avatar = Some(Avatar::Image(
+        AvatarImage::new("image/png", b"portrait bytes").unwrap(),
+    ));
+    package
+}
+
+#[test]
+fn portraits_survive_text_zip_folders_and_team_exports_without_becoming_workspace_files() {
+    let mut package = portrait_package();
+    let mut member = portrait_package().manifest;
+    member.name = "helper".into();
+    package.manifest.agents.push(member);
+    for format in [Format::Markdown, Format::Toml, Format::Yaml, Format::Json] {
+        let restored = AgentPackage::parse(&package.to_string(format).unwrap(), format).unwrap();
+        assert!(package.diff(&restored).unwrap().is_empty());
+    }
+    let entries = package.folder_entries().unwrap();
+    assert_eq!(entries["avatar.png"], b"portrait bytes");
+    assert_eq!(
+        entries[".agents/agents/helper/avatar.png"],
+        b"portrait bytes"
+    );
+    let restored = AgentPackage::from_zip(&package.to_zip().unwrap()).unwrap();
+    assert!(package.diff(&restored).unwrap().is_empty());
+    assert!(restored.files().unwrap().is_empty());
+    assert!(restored.manifest.agents[0].initial_files.is_empty());
+    let canonical = package.canonical().unwrap().to_string();
+    assert!(!canonical.contains("image_base64"));
+    assert!(!canonical.contains("portrait bytes"));
+    assert!(canonical.contains("sha256"));
+    let dir = tempfile::tempdir().unwrap();
+    package.write_folder(dir.path()).unwrap();
+    assert!(
+        package
+            .diff(&AgentPackage::load(dir.path()).unwrap())
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[test]
+fn portrait_sources_are_selected_safely_and_edits_preserve_unrelated_repository_files() {
+    use everruns_core::agent_package::{Avatar, AvatarImage};
+    use std::collections::BTreeMap;
+    for path in [
+        "../secret.png",
+        "/tmp/secret.png",
+        "https://example.com/a.png",
+        ".aws/key.png",
+        "*.png",
+        "picture.svg",
+    ] {
+        let input =
+            serde_json::json!({"name":"test","instructions":"Help.","avatar":path}).to_string();
+        assert!(AgentPackage::parse(&input, Format::Json).is_err(), "{path}");
+    }
+    let original = AgentPackage::parse(
+        "name = 'portrait'\ninstructions = 'Help.'\navatar = 'branding/picture.png'",
+        Format::Toml,
+    )
+    .unwrap();
+    assert_eq!(
+        original
+            .referenced_paths(["branding/picture.png", "secret.png"])
+            .unwrap(),
+        ["branding/picture.png".to_string()].into()
+    );
+    let entries = BTreeMap::from([
+        (
+            "agent.toml".into(),
+            original.to_string(Format::Toml).unwrap().into_bytes(),
+        ),
+        ("branding/picture.png".into(), b"old picture".to_vec()),
+        ("unrelated.txt".into(), b"keep".to_vec()),
+    ]);
+    let previous = AgentPackage::from_entries(entries.clone()).unwrap();
+    let mut desired = previous.clone();
+    desired.manifest.avatar = Some(Avatar::Image(
+        AvatarImage::new("image/png", b"new picture").unwrap(),
+    ));
+    let edited = AgentPackage::edit_entries(entries, "agent.toml", &previous, &desired).unwrap();
+    assert_eq!(edited["branding/picture.png"], b"new picture");
+    assert_eq!(edited["unrelated.txt"], b"keep");
+    assert!(
+        desired
+            .diff(&AgentPackage::from_entries(edited).unwrap())
+            .unwrap()
+            .is_empty()
+    );
+
+    let no_portrait =
+        AgentPackage::parse("name='portrait'\ninstructions='Help.'", Format::Toml).unwrap();
+    let entries = BTreeMap::from([
+        (
+            "agent.toml".into(),
+            no_portrait.to_string(Format::Toml).unwrap().into_bytes(),
+        ),
+        ("avatar.png".into(), b"unrelated".to_vec()),
+    ]);
+    let edited =
+        AgentPackage::edit_entries(entries, "agent.toml", &no_portrait, &portrait_package())
+            .unwrap();
+    assert_eq!(edited["avatar.png"], b"unrelated");
+    assert_eq!(edited["avatar-1.png"], b"portrait bytes");
+}
+
+#[test]
+fn portraits_are_bounded_and_source_symlinks_cannot_escape_the_package() {
+    use everruns_core::agent_package::{AvatarImage, MAX_AVATAR_BYTES};
+    assert!(AvatarImage::new("image/svg+xml", b"<svg/>").is_err());
+    assert!(AvatarImage::new("image/png", &[]).is_err());
+    assert!(AvatarImage::new("image/png", &vec![0; MAX_AVATAR_BYTES + 1]).is_err());
+    assert!(
+        AgentPackage::parse(
+            "name='test'\ninstructions='Help.'\navatar=true",
+            Format::Toml
+        )
+        .is_err()
+    );
+    #[cfg(unix)]
+    {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("agent.toml"),
+            "name='test'\ninstructions='Help.'\navatar='avatar.png'",
+        )
+        .unwrap();
+        let outside = tempfile::NamedTempFile::new().unwrap();
+        std::os::unix::fs::symlink(outside.path(), dir.path().join("avatar.png")).unwrap();
+        assert!(
+            AgentPackage::load(dir.path().join("agent.toml"))
+                .unwrap_err()
+                .to_string()
+                .contains("symlink")
+        );
+    }
+}
+
+#[test]
+fn github_team_portrait_edits_keep_the_child_folder_and_unrelated_assets() {
+    use everruns_core::agent_package::{Avatar, AvatarImage};
+    let mut package = portrait_package();
+    let mut child = portrait_package().manifest;
+    child.name = "helper".into();
+    package.manifest.agents.push(child);
+    let mut entries = package.folder_entries().unwrap();
+    entries.insert("unrelated.txt".into(), b"keep".to_vec());
+    let mut desired = package.clone();
+    desired.manifest.agents[0].avatar = Some(Avatar::Image(
+        AvatarImage::new("image/png", b"child portrait changed").unwrap(),
+    ));
+    let edited = AgentPackage::edit_entries(entries, "agent.toml", &package, &desired).unwrap();
+    assert_eq!(
+        edited[".agents/agents/helper/avatar.png"],
+        b"child portrait changed"
+    );
+    assert_eq!(edited["avatar.png"], b"portrait bytes");
+    assert_eq!(edited["unrelated.txt"], b"keep");
+    let restored = AgentPackage::from_entries(edited).unwrap();
+    assert!(desired.diff(&restored).unwrap().is_empty());
+}
+
+#[test]
+fn github_single_markdown_team_members_keep_portrait_edits_self_contained() {
+    use everruns_core::agent_package::{Avatar, AvatarImage};
+    use std::collections::BTreeMap;
+    let entries = BTreeMap::from([
+        (
+            "agent.toml".into(),
+            b"name='lead'\ninstructions='Lead.'".to_vec(),
+        ),
+        (
+            ".agents/agents/helper.md".into(),
+            b"---\nname: helper\n---\nHelp.".to_vec(),
+        ),
+    ]);
+    let previous = AgentPackage::from_entries(entries.clone()).unwrap();
+    let mut desired = previous.clone();
+    desired.manifest.agents[0].avatar = Some(Avatar::Image(
+        AvatarImage::new("image/png", b"portrait").unwrap(),
+    ));
+    let edited = AgentPackage::edit_entries(entries, "agent.toml", &previous, &desired).unwrap();
+    assert_eq!(edited.len(), 2);
+    assert!(String::from_utf8_lossy(&edited[".agents/agents/helper.md"]).contains("image_base64"));
+    assert!(
+        desired
+            .diff(&AgentPackage::from_entries(edited).unwrap())
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[test]
+fn adding_a_portrait_never_replaces_an_unrelated_directory_in_github() {
+    use std::collections::BTreeMap;
+    let previous =
+        AgentPackage::parse("name='portrait'\ninstructions='Help.'", Format::Toml).unwrap();
+    let entries = BTreeMap::from([
+        (
+            "agent.toml".into(),
+            previous.to_string(Format::Toml).unwrap().into_bytes(),
+        ),
+        (
+            "avatar.png/unrelated.txt".into(),
+            b"keep this directory".to_vec(),
+        ),
+    ]);
+    let edited =
+        AgentPackage::edit_entries(entries, "agent.toml", &previous, &portrait_package()).unwrap();
+    assert_eq!(edited["avatar.png/unrelated.txt"], b"keep this directory");
+    assert!(!edited.contains_key("avatar.png"));
+    assert_eq!(edited["avatar-1.png"], b"portrait bytes");
+}

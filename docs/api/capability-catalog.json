@@ -1247,7 +1247,7 @@
       "category": null,
       "dependencies": [],
       "docs_slug": null,
-      "feature_flag": "agent_views",
+      "feature_flag": null,
       "features": [],
       "grades": [
         "prod",

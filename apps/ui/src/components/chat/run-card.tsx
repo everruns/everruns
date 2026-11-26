@@ -63,16 +63,16 @@ export function RunCard({ run, now }: { run: ChatRun; now: number }) {
     <div
       data-slot="run-card"
       data-run-task-id={task.id}
-      className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 border border-border/70 bg-card/90 px-3 py-2 text-[13px] shadow-[inset_0_1px_0_hsl(var(--background)/0.92)]"
+      className="mt-2 flex min-w-0 max-w-full flex-wrap items-center gap-x-3 gap-y-1.5 border border-border/70 bg-card/90 px-3 py-2 text-[13px] shadow-[inset_0_1px_0_hsl(var(--background)/0.92)]"
     >
-      <span className="flex min-w-0 items-center gap-2">
+      <span className="flex min-w-0 flex-1 basis-48 items-center gap-2">
         <span aria-hidden="true" className={cn("h-2 w-2 flex-none", STATUS_DOT[task.state])} />
         <span className="sr-only">{STATUS_LABEL[task.state]}: </span>
         <span className="flex-none text-muted-foreground">{kindIcon(task.kind)}</span>
         <span className="truncate font-medium text-foreground">{label}</span>
       </span>
 
-      <span className="flex items-center gap-3 text-xs text-muted-foreground">
+      <span className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
         <WorkHeadline
           sessionId={task.links?.child_session_id ?? undefined}
           live={task.state === "running" || task.state === "awaiting_input"}

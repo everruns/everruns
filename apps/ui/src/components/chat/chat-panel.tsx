@@ -27,6 +27,7 @@ import { getDisplayName } from "@/lib/entity-lifecycle";
 import { getSessionParticipantLabel } from "@/lib/session-participant-label";
 import type { ParticipantMentionOption } from "@/components/chat/participant-mention-autocomplete";
 import { useChatModelSelection } from "@/hooks/use-chat-model-selection";
+import { useChatHandoff } from "@/hooks/use-chat-handoff";
 import { useChatDraft } from "@/hooks/use-chat-draft";
 import { COMPOSE_DRAFT_EVENT, type ComposeDraftDetail } from "@/lib/mcp-apps";
 import { useIntelligenceStatus } from "@/hooks/use-intelligence";
@@ -221,6 +222,7 @@ export function ChatPanel({
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [voiceError, setVoiceError] = useState<VoiceErrorState | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  useChatHandoff(chatSends.storageKey, setInputValue, textareaRef);
   // No focus on mount: in the chat-first layout Chat is always beside the page,
   // so grabbing focus would steal it from the page. Cmd/Ctrl-J focuses it.
 

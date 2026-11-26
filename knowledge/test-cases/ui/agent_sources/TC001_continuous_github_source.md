@@ -86,3 +86,12 @@ publication controls retain their existing local behavior.
    Reconnect in pull mode and verify authored editing becomes unavailable again.
 7. Disconnect with queued work. Expect the current local definition retained and
    no new attempts, with the confirmation explaining in-flight requests.
+
+## Portrait regression
+
+A package with a relative portrait image imports its bytes and recreates local
+avatar variants. Its preview shows a digest, never the encoded body or a runtime
+URL. Two-way local avatar edits queue write-back and update the authored image
+path when the type matches; an unrelated file named avatar.png survives.
+Bundled folder and single-Markdown team portraits remain in their own authored
+definitions. Pull-only upload, preset, generation and removal are refused.

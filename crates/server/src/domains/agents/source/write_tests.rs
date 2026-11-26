@@ -524,3 +524,141 @@ async fn ambiguous_source_channel_bindings_cannot_overwrite_repository_intent() 
             .all(|r| r.method.as_str() == "GET")
     );
 }
+
+fn portrait_bytes(color: u8) -> Vec<u8> {
+    let image = image::RgbImage::from_pixel(64, 64, image::Rgb([color, 30, 90]));
+    let mut bytes = std::io::Cursor::new(Vec::new());
+    image::DynamicImage::ImageRgb8(image)
+        .write_to(&mut bytes, image::ImageFormat::Png)
+        .unwrap();
+    bytes.into_inner()
+}
+
+async fn package_with_portrait(remote: &wiremock::MockServer, bytes: &[u8]) {
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
+    package(remote, 'a', "From GitHub", None).await;
+    let manifest = b"schema_version=1\nname='source-agent'\nharness='base'\ninstructions='From GitHub'\navatar='branding/portrait.png'\nfiles=[]\n";
+    let files = [
+        ("agent.toml", manifest.as_slice()),
+        ("branding/portrait.png", bytes),
+    ];
+    let entries: Vec<_> = files.iter().enumerate().map(|(i,(path,bytes))| json!({"path":path,"mode":"100644","type":"blob","size":bytes.len(),"sha":format!("{:040x}",i+70)})).collect();
+    Mock::given(method("GET"))
+        .and(path(format!(
+            "/repos/acme/agents/git/trees/{}",
+            "b".repeat(40)
+        )))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(json!({"truncated":false,"tree":entries})),
+        )
+        .with_priority(1)
+        .mount(remote)
+        .await;
+    for (i, (_, bytes)) in files.iter().enumerate() {
+        get(
+            remote,
+            &format!("/repos/acme/agents/git/blobs/{:040x}", i + 70),
+            json!({"encoding":"base64","content":STANDARD.encode(bytes)}),
+        )
+        .await;
+    }
+}
+
+#[tokio::test]
+async fn github_pulls_portraits_and_two_way_avatar_edits_write_the_owned_image_asset() {
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
+    let (ctx, remote, id) = setup().await;
+    package_with_portrait(&remote, &portrait_bytes(10)).await;
+    connect_write(&ctx, &id).await;
+    let original = packages::export(&ctx, &id).await.unwrap();
+    assert!(original.manifest.avatar.is_some());
+    let before = ctx
+        .db
+        .get_agent_by_public_id(ctx.org_id(), &id)
+        .await
+        .unwrap()
+        .unwrap()
+        .avatar_id;
+    let update = portrait_bytes(200);
+    run(
+        &ctx,
+        "set_agent_avatar",
+        json!({"agent_id":id,"image_base64":STANDARD.encode(&update),"content_type":"image/png"}),
+    )
+    .await
+    .unwrap();
+    assert!(binding(&ctx, &id).await.unwrap().local_dirty);
+    let changed = packages::export(&ctx, &id).await.unwrap();
+    let expected = match &changed.manifest.avatar {
+        Some(everruns_core::agent_package::Avatar::Image(image)) => image.bytes().unwrap(),
+        _ => panic!("stored portrait missing"),
+    };
+    assert!(!original.diff(&changed).unwrap().is_empty());
+    writes(&remote, 200).await;
+    tick(&ctx, &id).await;
+    let row = binding(&ctx, &id).await.unwrap();
+    assert_eq!(row.status, "synced", "{:?}", row.error);
+    assert!(!row.local_dirty);
+    let requests = remote.received_requests().await.unwrap();
+    let tree = requests
+        .iter()
+        .find(|r| r.method.as_str() == "POST" && r.url.path().ends_with("/git/trees"))
+        .unwrap()
+        .body_json::<Value>()
+        .unwrap();
+    let paths: Vec<_> = tree["tree"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|v| v["path"].as_str())
+        .collect();
+    assert_eq!(paths, ["branding/portrait.png"]);
+    let image = requests
+        .iter()
+        .filter(|r| r.method.as_str() == "POST" && r.url.path().ends_with("/git/blobs"))
+        .map(|r| r.body_json::<Value>().unwrap())
+        .any(|v| {
+            STANDARD
+                .decode(v["content"].as_str().unwrap())
+                .is_ok_and(|bytes| bytes == expected)
+        });
+    assert!(
+        image,
+        "new portrait bytes must be written, not a runtime URL or ID"
+    );
+    assert_ne!(
+        ctx.db
+            .get_agent_by_public_id(ctx.org_id(), &id)
+            .await
+            .unwrap()
+            .unwrap()
+            .avatar_id,
+        before
+    );
+}
+
+#[tokio::test]
+async fn a_pull_source_owns_its_avatar_and_rejects_local_avatar_changes() {
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
+    let (ctx, remote, id) = setup().await;
+    package_with_portrait(&remote, &portrait_bytes(10)).await;
+    connect(&ctx, &id).await;
+    let current = ctx
+        .db
+        .get_agent_by_public_id(ctx.org_id(), &id)
+        .await
+        .unwrap()
+        .unwrap()
+        .avatar_id;
+    let error = run(&ctx, "set_agent_avatar", json!({"agent_id":id,"image_base64":STANDARD.encode(portrait_bytes(200)),"content_type":"image/png"})).await.unwrap_err();
+    assert!(error.message().contains("managed by GitHub"), "{error:?}");
+    assert_eq!(
+        ctx.db
+            .get_agent_by_public_id(ctx.org_id(), &id)
+            .await
+            .unwrap()
+            .unwrap()
+            .avatar_id,
+        current
+    );
+}

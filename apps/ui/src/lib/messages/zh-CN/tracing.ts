@@ -1,5 +1,9 @@
 // Product-owned tracing copy. Keep credentials and authored destination names outside translation.
 export const messages: Readonly<Record<string, string>> = {
+  "Tool definitions refreshed": "工具定义已更新",
+  "Tool declarations changed; no conversation messages were removed.":
+    "工具声明已更改；未移除任何对话消息。",
+  "Session details": "会话详情",
   "Agent-based LangSmith workspace": "基于代理的 LangSmith 工作区",
   "LangSmith agent ID": "LangSmith 代理 ID",
   "LangSmith environment": "LangSmith 环境",

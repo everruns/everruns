@@ -271,8 +271,7 @@ fn apply(spec: &mut Value) {
                 // No current API has an announced stable compatibility guarantee.
                 "support": "preview",
                 "audience": if internal { "internal" } else { "public" },
-                "availability": if tag == "agent_views" || path.ends_with("/chat/view") { "Requires organization adoption of the agent_views feature flag" }
-                    else if tag == "evals" { "Requires the evals feature flag" }
+                "availability": if tag == "evals" { "Requires the evals feature flag" }
                     else if tag == "extractions" { "Requires an organization-owned provider and an enabled extraction model" }
                     else { "Everruns Cloud and self-hosted Platform" },
             });

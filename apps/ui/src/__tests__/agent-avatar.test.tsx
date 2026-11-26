@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { AgentAvatarField, avatarFileError } from "@/components/agents/agent-avatar-field";
 import { AgentAvatar } from "@/components/agents/agent-avatar";
+import { AgentAvatar as ChatAgentAvatar } from "@/components/chat/agent-avatar";
 import { agentAvatarUrl } from "@/lib/api/agents";
 import type { AgentAvatar as AgentAvatarData } from "@/lib/api/agent-types";
 
@@ -12,6 +13,19 @@ const avatar: AgentAvatarData = {
 };
 
 describe("agent avatar", () => {
+  it("uses the stored Platform Chat portrait and falls back to initials", () => {
+    const { container, rerender } = render(
+      <ChatAgentAvatar name="Platform Chat" avatar={avatar} />,
+    );
+    expect(container.querySelector("img")).toHaveAttribute(
+      "src",
+      `/api/v1/avatars/${avatar.id}/square-64.png`,
+    );
+    expect(container).not.toHaveTextContent("PC");
+    rerender(<ChatAgentAvatar name="Platform Chat" />);
+    expect(container.querySelector("img")).toBeNull();
+    expect(container).toHaveTextContent("PC");
+  });
   it("picks the smallest preset that covers the requested size", () => {
     expect(agentAvatarUrl(avatar, 64)).toBe(`/api/v1/avatars/${avatar.id}/square-64.png`);
     expect(agentAvatarUrl(avatar, 76, "circle")).toBe(

@@ -9,6 +9,8 @@ export const COMPACTION_STRATEGIES: Record<string, string> = {
   portable_summary: "Portable summary",
   aggressive_trim: "History trimming",
   trimming: "History trimming",
+  trim: "History trimming",
+  tool_rebase: "Tool definitions refreshed",
 };
 
 export function compactionStrategyLabels(strategy: string): string[] {

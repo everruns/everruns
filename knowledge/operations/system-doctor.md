@@ -82,6 +82,7 @@ enforces manifest limits it does not document, so each server sends its
 worst-case manifests to `apps.manifest.validate` once a day, using any
 connected workspace's configuration token, which the server already keeps
 fresh. The doctor reports the last answer; it never calls Slack itself.
+Synthetic rejections are compatibility warnings, not evidence that a customer agent failed. The report names the maintainer action, explains the possible impact on new installations, keeps rejected test cases in diagnostics, and gives a shorter-branding workaround only for installations that fail. It preserves the actual probe timestamp; refreshing the doctor does not rerun the daily Slack probe. Overview links directly to the relevant check.
 There is no CI check: CI holds no Slack token, and the daily check against
 production is enough for limits that change rarely.
 

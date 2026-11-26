@@ -562,15 +562,33 @@ async fn sweep_org_budgets(db: &StorageBackend) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn sweep_spend_spikes(db: &StorageBackend) -> anyhow::Result<()> {
+pub(super) async fn sweep_spend_spikes(db: &StorageBackend) -> anyhow::Result<()> {
+    sweep_spend_spikes_at(db, Utc::now()).await
+}
+
+pub(super) async fn sweep_spend_spikes_at(
+    db: &StorageBackend,
+    window_end: DateTime<Utc>,
+) -> anyhow::Result<()> {
     let spikes = db
-        .unattended_spend_spikes(SPIKE_FLOOR_USD, SPIKE_FACTOR)
+        .unattended_spend_spikes(SPIKE_FLOOR_USD, SPIKE_FACTOR, window_end)
         .await?;
     let mut seen = Vec::with_capacity(spikes.len());
     for spike in &spikes {
         let Some((public_id, name)) = db.agent_label(spike.agent_id).await? else {
             continue;
         };
+        let sessions = db
+            .unattended_spend_sessions(spike.org_id, spike.agent_id, spike.window_end)
+            .await?
+            .into_iter()
+            .map(|s| {
+                serde_json::json!({
+                    "session_id": SessionId::from_uuid(s.session_id).to_string(),
+                    "amount_usd": s.amount_usd,
+                })
+            })
+            .collect::<Vec<_>>();
         let issue = SubjectHealthIssue {
             org_id: spike.org_id,
             code: SPEND_SPIKE,
@@ -581,8 +599,10 @@ async fn sweep_spend_spikes(db: &StorageBackend) -> anyhow::Result<()> {
             evidence: serde_json::json!({
                 "last_day_usd": spike.last_day_usd,
                 "baseline_daily_usd": spike.baseline_daily_usd,
+                "window_end": spike.window_end,
+                "top_sessions": sessions,
             }),
-            checked_at: Utc::now(),
+            checked_at: window_end,
         };
         let recipients = agent_recipients(db, spike.org_id, Some(spike.agent_id)).await;
         record(
@@ -601,6 +621,27 @@ async fn sweep_spend_spikes(db: &StorageBackend) -> anyhow::Result<()> {
             .any(|(org, id)| *org == row.org_id && Some(id.as_str()) == row.subject_id.as_deref())
         {
             resolve(db, &row).await?;
+        }
+    }
+    // Acknowledging a spike is not proof that spending recovered. Keep it
+    // quiet while the same condition holds; only a healthy sweep rearms it.
+    for row in db.dismissed_subject_health_issues(SPEND_SPIKE).await? {
+        if !seen
+            .iter()
+            .any(|(org, id)| *org == row.org_id && Some(id.as_str()) == row.subject_id.as_deref())
+            && let Some(subject) = row.subject_id.as_deref()
+        {
+            db.observe_subject_health_issue(SubjectHealthIssue {
+                org_id: row.org_id,
+                code: SPEND_SPIKE,
+                subject_id: subject,
+                agent_id: None,
+                session_id: None,
+                status: "inapplicable",
+                evidence: row.evidence.clone().unwrap_or_default(),
+                checked_at: window_end,
+            })
+            .await?;
         }
     }
     Ok(())

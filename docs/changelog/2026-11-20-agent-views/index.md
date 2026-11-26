@@ -10,7 +10,7 @@ links:
   docs: [/features/channels/]
 ---
 
-Enable **Agent views** in organization Features, then open **More → Views** in
+Open **More → Views** in
 the Agent editor. Choose an A2UI or HTML layout, declare its data fields, and
 preview it. Add the **Published views** capability so successful scheduled runs
 can update the view.
@@ -32,3 +32,7 @@ or landing page. If the author enables personalization, each signed-in viewer
 can preview and save their own layout.
 
 ![A Work Chat landing page showing the findings from a scheduled repository sweep](./work-chat-published-view@2x.png)
+
+## Update 2026-11-25
+
+Agent views are now available in every organization, without a feature flag.

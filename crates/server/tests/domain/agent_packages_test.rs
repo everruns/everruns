@@ -676,3 +676,88 @@ async fn zip_export_rejects_incomplete_or_nested_teams() {
         .assert_status(StatusCode::BAD_REQUEST);
     assert!(incomplete.text().contains("agent is not active"));
 }
+
+#[tokio::test]
+async fn agent_portraits_round_trip_root_and_bundled_team_and_legacy_imports_preserve_them() {
+    use everruns_core::agent_package::{Avatar, AvatarImage};
+    let server = TestServer::in_memory().await;
+    let mut image = std::io::Cursor::new(Vec::new());
+    image::DynamicImage::new_rgb8(64, 64)
+        .write_to(&mut image, image::ImageFormat::Png)
+        .unwrap();
+    let avatar = Avatar::Image(AvatarImage::new("image/png", image.get_ref()).unwrap());
+    let mut child = definition("portrait-child");
+    child["avatar"] = serde_json::to_value(&avatar).unwrap();
+    let mut parent = definition("portrait-lead");
+    parent["avatar"] = serde_json::to_value(&avatar).unwrap();
+    parent["agents"] = json!([child]);
+    let root = server
+        .post(
+            "/v1/platform/agents/import",
+            json!({"content":parent.to_string(),"format":"json"}),
+        )
+        .await
+        .assert_success()
+        .json_value();
+    assert!(root["avatar"]["id"].is_string(), "{root}");
+    let response = server
+        .get("/v1/platform/agents/portrait-lead/export?format=zip")
+        .await
+        .assert_success();
+    let package = AgentPackage::from_zip(response.bytes()).unwrap();
+    assert!(package.manifest.avatar.is_some());
+    assert!(package.manifest.agents[0].avatar.is_some());
+    assert!(
+        package.canonical().unwrap()["avatar"]
+            .get("image_base64")
+            .is_none()
+    );
+    let mut imported = package.clone();
+    imported.manifest.name = "portrait-copy".into();
+    imported.manifest.agents[0].name = "portrait-child-copy".into();
+    let copied = server
+        .post(
+            "/v1/platform/agents/import",
+            json!({"content":imported.to_string(Format::Json).unwrap(),"format":"json"}),
+        )
+        .await
+        .assert_success()
+        .json_value();
+    assert_ne!(copied["avatar"]["id"], root["avatar"]["id"]);
+    let roundtrip = server
+        .get("/v1/platform/agents/portrait-copy/export?format=json")
+        .await
+        .assert_success()
+        .json_value();
+    assert_eq!(
+        roundtrip["avatar"],
+        serde_json::to_value(&package.manifest.avatar).unwrap()
+    );
+    assert_eq!(
+        roundtrip["agents"][0]["avatar"],
+        serde_json::to_value(&package.manifest.agents[0].avatar).unwrap()
+    );
+    let legacy = definition("portrait-lead");
+    let preserved = server
+        .post(
+            "/v1/platform/agents/import",
+            json!({"content":legacy.to_string(),"format":"json","target":"portrait-lead"}),
+        )
+        .await
+        .assert_success()
+        .json_value();
+    assert_eq!(preserved["avatar"]["id"], root["avatar"]["id"]);
+    let mut invalid = definition("invalid-portrait");
+    invalid["avatar"] = json!({"content_type":"image/png","image_base64":"bm90LWFuLWltYWdl"});
+    server
+        .post(
+            "/v1/platform/agents/import",
+            json!({"content":invalid.to_string(),"format":"json"}),
+        )
+        .await
+        .assert_status(StatusCode::BAD_REQUEST);
+    server
+        .get("/v1/platform/agents/invalid-portrait")
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+}

@@ -1,5 +1,9 @@
 // Ukrainian product copy for customer tracing.
 export const messages: Readonly<Record<string, string>> = {
+  "Tool definitions refreshed": "Оновлено визначення інструментів",
+  "Tool declarations changed; no conversation messages were removed.":
+    "Оголошення інструментів змінено; жодних повідомлень розмови не видалено.",
+  "Session details": "Деталі сесії",
   "Agent-based LangSmith workspace": "Робочий простір LangSmith на основі агентів",
   "LangSmith agent ID": "ID агента LangSmith",
   "LangSmith environment": "Середовище LangSmith",

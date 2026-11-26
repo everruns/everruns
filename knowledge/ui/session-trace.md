@@ -178,6 +178,25 @@ short banner names that failed turn and its recorded error independently of the 
 current outcome. A turn that failed before any indexed step still opens on the turn, without
 inventing an assistant error message.
 
+### Responsive inspection
+
+The trace pane, rather than the browser viewport, determines its layout. Narrow
+panes keep the timeline as the only permanent column. **Turns** opens the minimap
+and turn navigation in a drawer; **Filters** reveals secondary controls. Selected
+steps and full turn inputs open in a full-height drawer, with Escape and **Back
+to trace** returning to the existing scroll position. Deep links keep their
+selected step. Open model requests retain their message and scroll state when
+the inspector moves into a drawer during resizing. Wider panes show the inspector
+alongside the timeline and add a
+permanent turn rail only when all three columns have room. Waterfalls depend on
+the timeline column's own width. Session metadata and recording actions remain
+available through **Session details** in narrow panes.
+
+The [browser regressions](../../apps/ui/e2e/session-trace-minimap.spec.ts) exercise
+phone, tablet and docked-Chat widths, including turn jumps, filter URLs, step
+selection and returning to the timeline. Shared page-scoped drawers preserve
+Chat beside the trace rather than covering it.
+
 ### 3. Live sessions refresh the tail, not the session
 
 The page keeps the existing SSE stream. When a step-relevant event arrives for the last

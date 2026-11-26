@@ -3,6 +3,7 @@ use crate::storage::{CreateAgentRow, StorageBackend};
 use anyhow::Result;
 use everruns_contracts::typed_id::{AgentId, HarnessId};
 
+mod avatar;
 mod page_tools;
 pub(crate) use page_tools::{add_page_tools, configure_page_tools};
 
@@ -44,6 +45,7 @@ pub async fn initialize(db: &StorageBackend, org_id: i64) -> Result<()> {
         .await?;
     db.create_agent_with_id(org_id, id, definition(bashkit_worker, id))
         .await?;
+    avatar::ensure(db, org_id, id).await?;
     let capabilities = vec![
         (
             "platform".into(),

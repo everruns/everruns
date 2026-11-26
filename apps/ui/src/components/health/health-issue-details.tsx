@@ -10,6 +10,10 @@ import { useOrg } from "@/providers/org-provider";
 import { useHealthIssueAction } from "@/hooks/use-health-issues";
 import { getAgentChannel } from "@/lib/api/agent-channels";
 import { HealthFixer } from "@/components/health/health-fixer";
+import { ContinueInChat } from "@/components/chat/continue-in-chat";
+import { DismissAlert } from "@/components/health/dismiss-alert";
+import { SpendAlertDetails } from "@/components/health/spend-alert-details";
+import { isFinding } from "@/components/evals/findings";
 import type { HealthIssue, SlackChannelConfig } from "@/lib/api/types";
 
 const SCOPE_LABELS: Record<string, string> = {
@@ -52,6 +56,9 @@ export function HealthIssueDetails({
     | (SlackChannelConfig & { slack_app_provisioned?: boolean; slack_app_id?: string })
     | undefined;
   const resolved = issue.status === "resolved" || issue.status === "inapplicable";
+  const dismissed = resolved && !!issue.investigation?.dismissed_at;
+  const canDismiss = !resolved && canManage && !!issue.subject_id && isFinding(issue);
+  const spendAlert = issue.code === "agent.unattended_spend_spike";
   const Icon = resolved ? CheckCircle2 : AlertTriangle;
   const integrationHref = `/agents/${issue.agent_id ?? ""}/channels/${issue.channel_id ?? ""}`;
   const fixers = issue.fixers ?? [];
@@ -74,14 +81,21 @@ export function HealthIssueDetails({
       <div className="flex items-start gap-3">
         <Icon className={`mt-0.5 size-4 shrink-0 ${resolved ? "text-success" : "text-warning"}`} />
         <div className="min-w-0 space-y-1">
-          <h3 className="text-base font-medium">{issue.title}</h3>
+          <h3 className="text-base font-medium">
+            {dismissed ? ui("Alert dismissed") : issue.title}
+          </h3>
           <p className="text-xs text-muted-foreground">
             {issue.agent_name ?? ui("Organization")}
             {config?.team_id ? ui(" · {value0}", { value0: config.team_id }) : ""}
           </p>
-          <p className="text-sm">{issue.body}</p>
+          {(!spendAlert || resolved) && (
+            <p className="text-sm">
+              {dismissed ? issue.investigation?.dismiss_reason : issue.body}
+            </p>
+          )}
         </div>
       </div>
+      {!resolved && spendAlert && <SpendAlertDetails issue={issue} />}
       {issue.stale && (
         <p className="text-sm text-warning">
           {ui("Verification is unavailable or out of date.")}{" "}
@@ -153,8 +167,10 @@ export function HealthIssueDetails({
           >
             {check.isPending ? ui("Checking…") : ui("Check again")}
           </Button>
+          {canDismiss && <DismissAlert issueId={issue.id} />}
         </div>
       )}
+      {canDismiss && fixers.length > 0 && <DismissAlert issueId={issue.id} />}
       {!resolved && orgIssue && canManage && fixers.length > 0 && issue.session_id && (
         <LinkButton href={`/sessions/${issue.session_id}`} size="sm" variant="outline">
           {ui("Open session")}
@@ -231,6 +247,18 @@ export function HealthIssueDetails({
           )}
         </>
       )}
+      <ContinueInChat
+        issue={{
+          id: issue.id,
+          code: issue.code,
+          title: issue.title,
+          summary: issue.body,
+          status: issue.status,
+          agent: issue.agent_name,
+          agent_id: issue.agent_id,
+          href: `/settings/health?issue=${encodeURIComponent(issue.id)}`,
+        }}
+      />
       <p className="text-xs text-muted-foreground">
         {ui("Detected")} {new Date(issue.first_detected_at).toLocaleString(displayLocale)}{" "}
         {ui("· Last checked")} {new Date(issue.last_checked_at).toLocaleString(displayLocale)}

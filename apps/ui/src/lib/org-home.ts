@@ -123,7 +123,10 @@ export function homeAttentionItems(inputs: HomeInputs): HomeAttentionItem[] {
     items.push({
       key: `health:${issue.id}`,
       source: "health",
-      severity: issue.code.startsWith("org.") ? "warning" : "error",
+      severity:
+        issue.code.startsWith("org.") || issue.code === "agent.unattended_spend_spike"
+          ? "warning"
+          : "error",
       title: issue.title,
       body: issue.body,
       subject: issue.agent_name ?? undefined,
@@ -197,8 +200,8 @@ export function homeAttentionItems(inputs: HomeInputs): HomeAttentionItem[] {
       severity: check.status === "problem" ? "error" : "warning",
       title: check.title,
       body: check.summary,
-      href: "/system/health",
-      action: "Open",
+      href: `/system/health#${encodeURIComponent(check.id)}`,
+      action: "Review",
       since: check.observed_at,
     });
   }

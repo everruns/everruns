@@ -70,10 +70,24 @@ indicator. Active issues stay visible after an announcement is read. The complet
 paginated list lives in **Settings → Health**, with contextual warnings beside Slack
 channel settings.
 
+Health presents the issue list before its details: a selected row stays marked in a
+two-pane layout, while a narrow pane opens details with a return link to the list.
+Pagination appears only when the list spans multiple pages. Advisory findings offer
+**Dismiss alert**, with a required reason retained on the episode; issues requiring
+an integration repair keep their recovery actions instead.
+
 An issue explains the affected agent, impact, missing permissions, evidence freshness
 and recovery action. **Check again** verifies current state; **Remind me tomorrow**
 snoozes only the current user's reminder. Snoozing does not hide the issue. Technical
 error codes are collapsed; credentials and raw provider responses are never displayed.
+
+Unattended spend alerts show the recorded 24-hour usage, the preceding six-day daily
+average (including days without usage), the increase and exact observation window.
+They link to the five largest contributing sessions' Cost and Trace pages, the
+agent's sessions and triggers, and usage policies. Evidence contains only session
+identifiers and amounts, never session content. A spend increase alone does not
+establish an agent failure. Dismissing that episode keeps it quiet while the condition
+persists; a healthy observation rearms the detector for a later spike.
 
 Missing `reactions:write` says the bot cannot add emoji reactions. It does not claim
 message replies are healthy or declare the whole agent unavailable. Other missing

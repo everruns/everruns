@@ -150,6 +150,49 @@ pub async fn store_avatar(
     Ok(AgentAvatar::from_uuid(avatar_id))
 }
 
+/// Authored avatar edits participate in source ownership and durable write-back.
+/// Render/provider work finishes before taking the definition row lock.
+pub async fn store_authored_avatar(
+    ctx: &Ctx,
+    agent: &AgentRow,
+    source: String,
+    variants: Vec<RenderedAvatarVariant>,
+) -> Result<AgentAvatar, CommandError> {
+    crate::storage::transaction::scope(
+        &ctx.db,
+        async {
+            super::source::ensure_writable(ctx, agent.id).await?;
+            store_avatar(
+                &ctx.db,
+                ctx.slack_provisioner.clone(),
+                ctx.encryption.clone(),
+                ctx.org_id(),
+                agent,
+                source,
+                variants,
+            )
+            .await
+        },
+        CommandError::internal,
+    )
+    .await
+}
+
+pub async fn clear_authored_avatar(ctx: &Ctx, agent: &AgentRow) -> Result<(), CommandError> {
+    crate::storage::transaction::scope(
+        &ctx.db,
+        async {
+            super::source::ensure_writable(ctx, agent.id).await?;
+            ctx.db
+                .clear_agent_avatar(ctx.org_id(), agent.id.uuid())
+                .await?;
+            Ok(())
+        },
+        CommandError::internal,
+    )
+    .await
+}
+
 /// Strip whitespace and an optional `data:<type>;base64,` prefix, enforce the
 /// inline cap, decode, and settle the content type: the caller's, else the
 /// data URI's, else the one the bytes announce.
@@ -298,16 +341,7 @@ impl Command for SetAgentAvatar {
                 render_upload(data, content_type).await?,
             ),
         };
-        store_avatar(
-            &ctx.db,
-            ctx.slack_provisioner.clone(),
-            ctx.encryption.clone(),
-            ctx.org_id(),
-            &agent,
-            label,
-            variants,
-        )
-        .await
+        store_authored_avatar(ctx, &agent, label, variants).await
     }
 }
 
@@ -432,6 +466,16 @@ impl Command for GenerateAgentAvatar {
 
         // Every check that can fail runs before the paid provider call.
         let agent = manageable_agent(&ctx.db, ctx.org_id(), &self.agent_id).await?;
+        if ctx
+            .db
+            .get_agent_source(ctx.org_id(), agent.id.uuid())
+            .await?
+            .is_some_and(|source| source.mode != "two_way")
+        {
+            return Err(CommandError::conflict(
+                "This Agent's source is managed by GitHub. Edit the repository or disconnect source sync before editing",
+            ));
+        }
         let prompt = avatar_prompt(&agent, self.req.prompt.as_deref())?;
         let resolver = ctx
             .provider_service
@@ -476,16 +520,7 @@ impl Command for GenerateAgentAvatar {
         })?;
 
         let variants = render_upload(image.data, image.media_type.to_string()).await?;
-        let avatar = store_avatar(
-            &ctx.db,
-            ctx.slack_provisioner.clone(),
-            ctx.encryption.clone(),
-            ctx.org_id(),
-            &agent,
-            "generated".to_string(),
-            variants,
-        )
-        .await?;
+        let avatar = store_authored_avatar(ctx, &agent, "generated".to_string(), variants).await?;
         Ok(GeneratedAgentAvatar {
             avatar,
             model: image.model,

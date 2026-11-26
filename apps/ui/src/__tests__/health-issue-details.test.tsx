@@ -1,10 +1,15 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { HealthIssueDetails } from "@/components/health/health-issue-details";
 import type { HealthIssue } from "@/lib/api/types";
+jest.mock("@/components/chat/continue-in-chat", () => ({
+  ContinueInChat: () => <button>Continue in chat</button>,
+}));
 const check = jest.fn();
 const snooze = jest.fn();
 const runFixer = jest.fn();
+const dismiss = jest.fn();
+let mockDismissError: Error | null = null;
 let mockManaged = false;
 let mockAuthenticated = true;
 jest.mock("@/providers/auth-provider", () => ({
@@ -23,6 +28,7 @@ jest.mock("@/hooks/use-health-issues", () => ({
     error: null,
   }),
   useRunHealthFixer: () => ({ mutateAsync: runFixer, isPending: false }),
+  useDismissFinding: () => ({ mutateAsync: dismiss, isPending: false, error: mockDismissError }),
 }));
 jest.mock("@/lib/api/agent-channels", () => ({
   getAgentChannel: jest.fn(() =>
@@ -76,6 +82,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockManaged = false;
   mockAuthenticated = true;
+  mockDismissError = null;
 });
 test("manual repair explains reinstall and token update; check and snooze remain distinct", async () => {
   mount();
@@ -212,4 +219,87 @@ test("organization issue has no Slack repair and does not load a channel", () =>
   expect(check).toHaveBeenCalledWith(issue.id);
   fireEvent.click(screen.getByRole("button", { name: "Remind me tomorrow" }));
   expect(snooze).toHaveBeenCalledWith(issue.id);
+});
+
+const spendIssue: HealthIssue = {
+  ...issue,
+  code: "agent.unattended_spend_spike",
+  channel_id: null,
+  subject_id: "agent_1",
+  missing_scopes: [],
+  title: "Unattended spend jumped",
+  evidence: {
+    last_day_usd: 6.61,
+    baseline_daily_usd: 0.31,
+    window_end: "2026-11-25T19:00:00Z",
+    top_sessions: [{ session_id: "session_01a20fbf2bd4741f85c2ea934b262895", amount_usd: 5.5 }],
+  },
+};
+
+test("spend alerts explain their baseline and link to contributing sessions and agent controls", () => {
+  mount(spendIssue);
+  const breakdown = screen.getByRole("region", { name: "Spend breakdown" });
+  expect(within(breakdown).getByText("$6.61")).toBeInTheDocument();
+  expect(within(breakdown).getByText("$0.31")).toBeInTheDocument();
+  expect(within(breakdown).getByText("+$6.30")).toBeInTheDocument();
+  expect(within(breakdown).getByText(/six days before/)).toBeInTheDocument();
+  expect(within(breakdown).getByText(/does not mean/)).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: /Session 4b262895/ })).toHaveAttribute(
+    "href",
+    "/sessions/session_01a20fbf2bd4741f85c2ea934b262895/cost",
+  );
+  expect(screen.getByRole("link", { name: "Agent sessions" })).toHaveAttribute(
+    "href",
+    "/agents/agent_1?tab=sessions",
+  );
+  expect(screen.getByRole("link", { name: "Channels and triggers" })).toHaveAttribute(
+    "href",
+    "/agents/agent_1?tab=integrations",
+  );
+});
+
+test("dismissing an advisory alert requires a reason and retains errors for retry", async () => {
+  dismiss.mockRejectedValue(new Error("Could not dismiss"));
+  mockDismissError = new Error("Could not dismiss");
+  mount(spendIssue);
+  fireEvent.click(screen.getByRole("button", { name: "Dismiss alert" }));
+  const dialog = screen.getByRole("dialog");
+  expect(within(dialog).getByRole("button", { name: "Dismiss" })).toBeDisabled();
+  fireEvent.change(within(dialog).getByRole("textbox", { name: "Reason" }), {
+    target: { value: "Expected scheduled audit" },
+  });
+  fireEvent.click(within(dialog).getByRole("button", { name: "Dismiss" }));
+  await waitFor(() =>
+    expect(dismiss).toHaveBeenCalledWith({ id: spendIssue.id, reason: "Expected scheduled audit" }),
+  );
+  expect(within(dialog).getByRole("alert")).toHaveTextContent("Could not dismiss");
+  expect(screen.getByRole("dialog")).toBeInTheDocument();
+});
+
+test("dismissal is unavailable to viewers, closed alerts, and issues that require repair", () => {
+  const view = mount(spendIssue, false);
+  expect(screen.queryByRole("button", { name: "Dismiss alert" })).not.toBeInTheDocument();
+  view.unmount();
+  const closed = mount({ ...spendIssue, status: "resolved" });
+  expect(screen.queryByRole("button", { name: "Dismiss alert" })).not.toBeInTheDocument();
+  closed.unmount();
+  mount(issue);
+  expect(screen.queryByRole("button", { name: "Dismiss alert" })).not.toBeInTheDocument();
+});
+
+test("legacy and malformed spend evidence stays readable without unsafe links or invented ratios", () => {
+  mount({
+    ...spendIssue,
+    evidence: {
+      last_day_usd: 8,
+      baseline_daily_usd: 0,
+      top_sessions: [
+        { session_id: "../../settings", amount_usd: 8 },
+        { session_id: "session_01a20fbf2bd4741f85c2ea934b262895", amount_usd: -1 },
+      ],
+    },
+  });
+  expect(screen.queryByText(/Infinity/)).not.toBeInTheDocument();
+  expect(screen.queryByRole("link", { name: /Session / })).not.toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "Agent sessions" })).toBeInTheDocument();
 });

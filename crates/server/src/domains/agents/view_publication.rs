@@ -2,7 +2,6 @@
 //! deliveries and runs finishing out of order cannot replace a newer snapshot.
 
 use super::views::{AgentViewDefinition, AgentViewLayout, validate_layout};
-use crate::records::FeatureFlagPolicy;
 use crate::storage::StorageBackend;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -306,24 +305,11 @@ fn validate_publication(definition: Value, draft: Value) -> Option<Value> {
 
 pub(crate) struct AgentViewPublication {
     db: Arc<StorageBackend>,
-    policy: FeatureFlagPolicy,
 }
 
 impl AgentViewPublication {
-    pub fn new(db: Arc<StorageBackend>, policy: FeatureFlagPolicy) -> Self {
-        Self { db, policy }
-    }
-
-    async fn enabled(&self, org_id: i64) -> anyhow::Result<bool> {
-        Ok(
-            crate::services::org_feature_flags::resolve_org_feature_flags(
-                &self.db,
-                org_id,
-                &self.policy,
-            )
-            .await?
-            .agent_views,
-        )
+    pub fn new(db: Arc<StorageBackend>) -> Self {
+        Self { db }
     }
 
     async fn project(&self, event: &Event) -> anyhow::Result<()> {
@@ -336,7 +322,7 @@ impl AgentViewPublication {
                 let Some(org) = self.db.session_org_id(session).await? else {
                     return Ok(());
                 };
-                if !self.db.has_agent_views(org).await? || !self.enabled(org).await? {
+                if !self.db.has_agent_views(org).await? {
                     return Ok(());
                 }
                 // THREAT[TM-TENANT-024]: only the server attaches a Trigger origin.
@@ -375,7 +361,7 @@ impl AgentViewPublication {
             }
             EventData::TurnCompleted(done) => {
                 let enabled = match self.db.session_org_id(session).await? {
-                    Some(org) => self.db.has_agent_views(org).await? && self.enabled(org).await?,
+                    Some(org) => self.db.has_agent_views(org).await?,
                     None => false,
                 };
                 self.db
@@ -422,8 +408,8 @@ mod tests {
     use crate::storage::CreateSessionRow;
     use everruns_contracts::typed_id::{MessageId, PrincipalId, TurnId};
     use everruns_core::{
-        DEFAULT_ORG_ID, DeploymentGrade, EventContext, ToolCompletedData, TurnCompletedData,
-        TurnStartedData, message::ContentPart,
+        DEFAULT_ORG_ID, EventContext, ToolCompletedData, TurnCompletedData, TurnStartedData,
+        message::ContentPart,
     };
     use serde_json::json;
 
@@ -487,7 +473,7 @@ mod tests {
         let agent = AgentId::from_uuid(db.create_test_agent(org, Uuid::now_v7()).await);
         db.replace_org_feature_flags(
             org,
-            &std::collections::HashMap::from([("agent_views".into(), true)]),
+            &std::collections::HashMap::from([("agent_views".into(), false)]),
         )
         .await
         .unwrap();
@@ -522,10 +508,7 @@ mod tests {
             .await
             .unwrap()
             .id;
-        let projector = AgentViewPublication::new(
-            db.clone(),
-            FeatureFlagPolicy::from_env(DeploymentGrade::Prod),
-        );
+        let projector = AgentViewPublication::new(db.clone());
         let now = Utc::now();
         let older = stage(
             &projector,

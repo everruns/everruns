@@ -114,6 +114,12 @@ for unattended work that goes wrong. Each is about one subject, kept in
   **Check again** runs the issue's part of it. Only the runaway pause and
   stop act on anything; the rest report.
 
+- **Explainable spend alerts.** The alert's bounded session drill-down uses the same
+  unattended ledger, organization, agent and time window as its totals. A dismissed
+  spend spike stays closed until a sweep observes normal spending, then a subsequent
+  spike starts a new episode. The acknowledgment and its reason remain in history;
+  dismissal never changes a budget or stops work. See [Health](health-issues.md).
+
 - The three `session.*` behavior detectors apply to every session, attended
   or not, except eval sessions. The spend baseline is the agent's own median,
   not a fixed bar, so an agent that is always expensive is not flagged and a

@@ -13,7 +13,7 @@ jest.mock("@/hooks/use-agent-view-settings", () => ({
   },
 }));
 jest.mock("@/providers/feature-flags-provider", () => ({
-  useOptionalFeatureFlags: () => ({ flags: { agent_views: !!mockPublishedView } }),
+  useOptionalFeatureFlags: () => ({ flags: {} }),
 }));
 jest.mock("@everruns/generative-ui", () => ({
   PublishedView: ({ view }: { view: PublishedAgentView }) => <h2>{view.title}</h2>,

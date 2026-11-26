@@ -67,4 +67,25 @@ describe("CompactionDivider", () => {
     fireEvent.click(screen.getByRole("button"));
     expect(screen.queryByText(/Saved:/)).not.toBeInTheDocument();
   });
+  it("identifies a tool refresh without claiming conversation compaction", () => {
+    render(
+      <CompactionDivider
+        data={data({
+          strategy_used: "tool_rebase",
+          messages_before: 80,
+          messages_after: 80,
+          tokens_before: 58000,
+          tokens_after: 53000,
+          duration_ms: 0,
+        })}
+      />,
+    );
+    expect(screen.getByText(/Tool definitions refreshed/)).toBeInTheDocument();
+    expect(screen.queryByText(/Context compacted/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button"));
+    expect(
+      screen.getByText("Tool declarations changed; no conversation messages were removed."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Saved:/)).not.toBeInTheDocument();
+  });
 });

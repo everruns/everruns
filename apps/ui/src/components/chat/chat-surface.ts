@@ -10,11 +10,12 @@
 export const chatSurfaceStyles = {
   emptyStateCard:
     "animate-chat-surface-in mx-auto mb-6 w-full max-w-md border border-border/70 bg-card/90 px-6 py-6 text-center shadow-[inset_0_1px_0_hsl(var(--background)/0.92)]",
-  column: "mx-auto w-full max-w-[820px]",
+  column: "mx-auto min-w-0 w-full max-w-[820px]",
   userMessage:
-    "animate-chat-row-in max-w-[min(78%,42rem)] bg-[hsl(var(--accent)/0.12)] px-3.5 py-2.5 text-sm leading-[1.6] text-foreground",
+    "animate-chat-row-in min-w-0 max-w-[min(90%,42rem)] [overflow-wrap:anywhere] bg-[hsl(var(--accent)/0.12)] px-3.5 py-2.5 text-sm leading-[1.6] text-foreground",
   agentMessageRow: "group/agent-reply flex w-full min-w-0 flex-col gap-1",
-  agentMessage: "animate-chat-row-in min-w-0 space-y-1.5 text-sm leading-[1.6] text-foreground",
+  agentMessage:
+    "animate-chat-row-in min-w-0 max-w-full [overflow-wrap:anywhere] space-y-1.5 text-sm leading-[1.6] text-foreground",
   /** Copy and details under a reply: always shown on the latest, on hover for earlier ones. */
   agentActions:
     "-ml-1 flex h-7 items-center gap-0.5 text-muted-foreground transition-opacity duration-150 focus-within:opacity-100 group-hover/agent-reply:opacity-100",

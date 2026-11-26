@@ -66,8 +66,8 @@ export function NeedsAttention({
         />
         <span className="shrink-0 text-sm font-semibold">
           {items.length === 1
-            ? ui("1 agent setting needs")
-            : ui("{value0} agent settings need", { value0: items.length })}{" "}
+            ? ui("1 alert needs")
+            : ui("{value0} alerts need", { value0: items.length })}{" "}
           {ui("attention")}
         </span>
         <span className="min-w-0 flex-1 truncate text-[13px] text-muted-foreground">

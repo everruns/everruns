@@ -188,16 +188,7 @@ async fn store_avatar(
     variants: Vec<RenderedAvatarVariant>,
 ) -> Result<Json<AgentAvatar>, ApiError> {
     let change = avatar_change(state, org, agent, "set_agent_avatar").await?;
-    let avatar = avatars::store_avatar(
-        &state.db,
-        state.slack_provisioner.clone(),
-        state.encryption.clone(),
-        org.org_id,
-        agent,
-        source,
-        variants,
-    )
-    .await?;
+    let avatar = avatars::store_authored_avatar(&state.ctx(org), agent, source, variants).await?;
     change.finish(&agent.public_id).await;
     Ok(Json(avatar))
 }
@@ -304,14 +295,7 @@ pub async fn delete_agent_avatar(
 ) -> Result<StatusCode, ApiError> {
     let agent = manageable_agent(&state, &org, &agent_id).await?;
     let change = avatar_change(&state, &org, &agent, "delete_agent_avatar").await?;
-    state
-        .db
-        .clear_agent_avatar(org.org_id, agent.id.uuid())
-        .await
-        .map_err(|error| {
-            tracing::error!(%error, "Failed to remove agent avatar");
-            ErrorResponse::internal_error()
-        })?;
+    avatars::clear_authored_avatar(&state.ctx(&org), &agent).await?;
     change.finish(&agent.public_id).await;
     Ok(StatusCode::NO_CONTENT)
 }

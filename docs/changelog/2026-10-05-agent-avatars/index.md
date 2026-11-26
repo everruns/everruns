@@ -24,3 +24,7 @@ preset. The agent's `avatar` field lists public, immutable image URLs. The A2A
 Agent Card carries it as `iconUrl`, and one-click Slack apps use it as their icon.
 
 See [Web UI](/features/ui/) and [#4198](https://github.com/everruns/everruns/pull/4198), [#4220](https://github.com/everruns/everruns/pull/4220).
+
+## Update 2026-11-25
+
+Platform Chat uses the built-in Caretaker portrait in every new organization. Existing managed agents receive it when they have no avatar; custom portraits are preserved. [Agent exports and GitHub sync also keep portraits](/changelog/2026-11-25-agent-portrait-portability/).

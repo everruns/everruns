@@ -1,5 +1,43 @@
 // Ukrainian product copy for Health fixers.
 export const messages: Readonly<Record<string, string>> = {
+  "Continue in chat": "Продовжити в чаті",
+  "Opening chat…": "Відкриваємо чат…",
+  "Could not open Platform Chat. Try again.":
+    "Не вдалося відкрити Platform Chat. Спробуйте ще раз.",
+  "Help me investigate this issue. Check its current state, explain the cause and suggest what to do next.":
+    "Допоможи дослідити цю проблему. Перевір її поточний стан, поясни причину й запропонуй наступні кроки.",
+
+  "Open alerts · {value0}": "Відкриті сповіщення · {value0}",
+
+  "1 alert needs": "1 сповіщення потребує",
+  "{value0} alerts need": "{value0} сповіщень потребують",
+
+  "Dismiss alert": "Відхилити сповіщення",
+  "Explain why this needs no action, for example expected work or a false alarm. Dismissal does not stop the agent or change its budget.":
+    "Поясніть, чому дія не потрібна, наприклад це очікувана робота або хибна тривога. Відхилення не зупиняє агента й не змінює його бюджет.",
+  "Alert dismissed": "Сповіщення відхилено",
+  "Spend breakdown": "Розподіл витрат",
+  "Previous daily average": "Попереднє середнє за день",
+  Increase: "Зростання",
+  "Compares recorded unattended usage over 24 hours with the daily average over the six days before, including days with no usage. Alerts above $5 and 3× that average.":
+    "Порівнює зареєстроване автономне використання за 24 години із середнім за день за попередні шість днів, включно з днями без використання. Сповіщає про витрати понад 5 $ і 3× цього середнього.",
+  "Usage window": "Період використання",
+  "An increase can be expected work; it does not mean the agent failed. Review the sessions and triggers before changing its budget.":
+    "Зростання може бути очікуваною роботою; воно не означає збій агента. Перегляньте сесії та тригери, перш ніж змінювати бюджет.",
+  "Top sessions by unattended spend": "Сесії з найбільшими автономними витратами",
+  "Session {value0}": "Сесія {value0}",
+  "Agent sessions": "Сесії агента",
+  "Usage policies": "Політики використання",
+  "Review alerts, understand their impact, and choose what to do next.":
+    "Перегляньте сповіщення, зрозумійте їхній вплив і виберіть наступну дію.",
+  "Back to issues": "Назад до проблем",
+  "Select an issue to see its details and actions.":
+    "Виберіть проблему, щоб побачити її деталі та дії.",
+  "{from}–{to} of {total}": "{from}–{to} із {total}",
+  "{value0}× the daily average": "{value0}× середнього за день",
+  "Session breakdown is unavailable. Check again to refresh this alert.":
+    "Розподіл за сесіями недоступний. Перевірте ще раз, щоб оновити це сповіщення.",
+
   Fix: "Виправлення",
   "Fix available": "Є виправлення",
   "Fix not available yet": "Виправлення поки недоступне",

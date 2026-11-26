@@ -179,7 +179,13 @@ export function ChatThreadHeader({
   if (layout === "page") {
     return (
       <PageMasthead
-        icon={<MessageCircle />}
+        icon={
+          agent?.avatar ? (
+            <AgentAvatar name={counterpart} avatar={agent.avatar} />
+          ) : (
+            <MessageCircle />
+          )
+        }
         title={<ThreadTitle session={session} title={title} large />}
         badges={
           session.archived_at ? (
@@ -203,7 +209,7 @@ export function ChatThreadHeader({
     // A named container: beside a page the chat pane is narrow, so action labels
     // collapse to icons by the pane's width, not the viewport's.
     <div className="@container/chathead flex min-w-0 items-center gap-3 border-b border-border/70 bg-background/70 px-4 py-3 backdrop-blur-[1px] sm:px-6">
-      <AgentAvatar name={counterpart} />
+      <AgentAvatar name={counterpart} avatar={agent?.avatar} />
       <div className="flex min-w-0 flex-col">
         <span className="flex min-w-0 items-center gap-2">
           {permanent ? (
