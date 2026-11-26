@@ -71,6 +71,15 @@ threads of their own.
 Every thread in one run shares the `shared/` folder. Pass file paths in the
 brief instead of pasting long content.
 
+## Where threads can start
+
+Threads start from the console, from a Work Chat, from a Slack conversation
+and from runs no person sent (a schedule, a webhook or a trigger, including a
+trigger aimed at a Slack conversation). Outside the console the agent can only
+run the agents its Threads settings name, and threads stay out of the channel:
+only the agent itself answers in Slack. A Slack member's follow-ups to a thread
+are still attributed to that member.
+
 ## Notes
 
 - The retired id `coordination` is rewritten into `threads` plus

@@ -937,3 +937,51 @@ async fn user_or_service_invalidates_only_the_grant_that_served_the_call() {
         assert_eq!(*invalidated.lock().unwrap(), vec![served_by]);
     }
 }
+
+fn features_of(connection: &McpConnection) -> Option<String> {
+    match &connection.endpoint {
+        McpEndpoint::Http { headers, .. } => headers
+            .iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case("x-mcp-features"))
+            .map(|(_, v)| v.clone()),
+        #[allow(unreachable_patterns)]
+        _ => None,
+    }
+}
+
+/// GitHub turns writes into an MCP Apps form for a person to submit. An agent
+/// acting as its own GitHub App has nobody to submit it, so the worker asks
+/// GitHub to run the call; a person's own login keeps GitHub's default, and an
+/// explicit server header wins.
+#[tokio::test]
+async fn github_writes_as_the_agent_skip_the_form_only_for_github() {
+    let oauth = crate::core::McpServerAuthMode::OAuth;
+    let github = |acts_as, headers: &[(&str, &str)]| {
+        let mut info = server_info(acts_as, oauth.clone(), None, headers);
+        info.url = "https://api.githubcopilot.com/mcp/".to_string();
+        info
+    };
+    let token = || RecordingResolver {
+        acts_as_token: Some("token".to_string()),
+        ..Default::default()
+    };
+    let (agent, _) = resolve_with(github(McpServerActsAs::Service, &[]), token()).await;
+    assert_eq!(
+        features_of(&agent).as_deref(),
+        Some("mcp_apps_disable_form_deferral")
+    );
+    let (person, _) = resolve_with(github(McpServerActsAs::User, &[]), token()).await;
+    assert_eq!(features_of(&person), None);
+    let (explicit, _) = resolve_with(
+        github(McpServerActsAs::Service, &[("X-MCP-Features", "other")]),
+        token(),
+    )
+    .await;
+    assert_eq!(features_of(&explicit).as_deref(), Some("other"));
+    let (other, _) = resolve_with(
+        server_info(McpServerActsAs::Service, oauth.clone(), None, &[]),
+        token(),
+    )
+    .await;
+    assert_eq!(features_of(&other), None);
+}
