@@ -3546,6 +3546,7 @@
         "ChannelType": {
           "description": "Supported channel types for app distribution.",
           "enum": [
+            "email",
             "slack",
             "ag_ui",
             "schedule",
