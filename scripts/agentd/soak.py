@@ -53,6 +53,36 @@ def shard_sample(shard):
     return None
 
 
+def machine_mb():
+    """This container's memory limit (cgroup v2, then v1), else the machine's."""
+    for path in ("/sys/fs/cgroup/memory.max", "/sys/fs/cgroup/memory/memory.limit_in_bytes"):
+        try:
+            raw = open(path).read().strip()
+        except OSError:
+            continue
+        if raw.isdigit() and int(raw) < 1 << 60:
+            return int(raw) // 2**20
+    try:
+        return os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES") // 2**20
+    except (ValueError, OSError):
+        return 0
+
+
+def node_limit_mb(nodes):
+    """Each node's share of the machine, as its memory limit.
+
+    Decision (R9, 2026-11-26): with no limit a node never reaches its
+    pressure levels, so an overloaded fleet held every turn it admitted and
+    grew until the kernel killed it (6 nodes, 3 to 6 GB each, 27 GiB pod,
+    24 minutes in). A production node always runs with a limit
+    (`AGENTD_MEMORY_LIMIT_MB`) and sheds new work from 92% of it; the soak
+    gives each node its share, nine tenths of the machine split evenly,
+    leaving the rest to the load driver and the kernel. The pass rule is
+    unchanged: every session finishes all its turns, 0 errors.
+    """
+    return int(machine_mb() * 0.9 / max(nodes, 1))
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--shards", type=int, default=2)
@@ -63,6 +93,8 @@ def main():
     p.add_argument("--scenarios", default="mix")
     p.add_argument("--scale", default="1", help="AGENTD_TOOL_SCALE (1 = real tool durations)")
     p.add_argument("--memory-mb", default="128", help="memory budget per node")
+    p.add_argument("--limit-mb", type=int, default=0,
+                   help="memory limit per node (0: its share of this machine, see node_limit_mb)")
     p.add_argument("--kill-every", type=float, default=0, help="seconds between kills (0: none)")
     p.add_argument("--seed-per-shard", type=int, default=0, help="sessions each shard holds before the fault (the verifier: goal density)")
     a = p.parse_args()
@@ -72,8 +104,10 @@ def main():
     subprocess.run(["rm", "-rf", fleet.STATE])
     os.makedirs(fleet.STATE, exist_ok=True)
     ledger = os.path.join(fleet.STATE, "ledger.txt")
+    limit_mb = a.limit_mb or int(os.environ.get("AGENTD_MEMORY_LIMIT_MB") or 0) or node_limit_mb(3 * a.shards)
     os.environ.update({"AGENTD_LEDGER": ledger, "AGENTD_TOOL_SCALE": a.scale,
-                       "AGENTD_MEMORY_BUDGET_MB": a.memory_mb})
+                       "AGENTD_MEMORY_BUDGET_MB": a.memory_mb,
+                       "AGENTD_MEMORY_LIMIT_MB": str(limit_mb)})
     fleet.up(a.shards, 3, 7100)
     seeded = fleet.seed(a.seed_per_shard)
     time.sleep(1)
@@ -82,7 +116,7 @@ def main():
     sessions_file = os.path.join(fleet.STATE, "sessions.txt")
     out = os.path.join(fleet.STATE, "soak-load.json")
     print(f"soak: {a.minutes:g} min, {a.rate:g} new sessions/s, {a.turns} turns each, "
-          f"think {a.think:g} s, tool scale {a.scale}, {a.shards} shards", flush=True)
+          f"think {a.think:g} s, tool scale {a.scale}, {a.shards} shards, {limit_mb} MB a node", flush=True)
     load = subprocess.Popen(
         [DRIVE, "load", "--gateways", gateways, "--agent", "sim", "--scenarios", a.scenarios,
          "--rate", str(a.rate), "--duration", str(a.minutes * 60), "--sessions", "0",
@@ -145,6 +179,12 @@ def main():
         "rss_mb": {"max": max(rss, default=None),
                    "last": {k: v for k, v in timeline[-1]["rss_mb"].items()} if timeline else None},
         "kills": len(kills), "leader_kills": sum(k["leader"] for k in kills),
+        "limit_mb": limit_mb,
+        # Refusals for load (429, retried with backoff until they finish):
+        # not errors, and their share of the requests sent.
+        "shed": report.get("shed") or 0,
+        "shed_share": round((report.get("shed") or 0) / max(
+            (report.get("sessions") or 0) + (report.get("turns_completed") or 0) + (report.get("shed") or 0), 1), 5),
         "check": {k: result.get(k) for k in ("ok", "failed_sessions", "totals", "failures")},
     }
     with open(os.path.join(fleet.STATE, "soak.json"), "w") as f:
