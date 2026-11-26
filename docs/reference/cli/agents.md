@@ -949,7 +949,7 @@ everruns agents credentials create [OPTIONS] --label <label>
 | Flag | Description |
 |---|---|
 | `--agent-id <AGENT_ID>` | Agent ID, populated from the request path by the HTTP API. |
-| `--auth <AUTH>` | `bearer` (default) sends `Authorization: Bearer <value>`; `header` sends the value in `header... |
+| `--auth <AUTH>` | `bearer` (default) sends `Authorization: ***; `header` sends the value in `header... |
 | `--description <DESCRIPTION>` | Optional explanation of how the credential will be used. |
 | `--env-name <ENV_NAME>` | Env var name the agent's shell uses as a placeholder (HTTP API). |
 | `--header-name <HEADER_NAME>` | Header that carries the value when `auth` is `header` (HTTP API). |

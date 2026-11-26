@@ -119,6 +119,8 @@ everruns memories entries [OPTIONS] [MEMORY_ID]
 |---|---|
 | `--memory-id <MEMORY_ID>` | Memory's prefixed public identifier. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -133,6 +135,8 @@ List the memory stores agents use: the organization's, named memories, team and 
 ```bash
 everruns memories stores [OPTIONS]
 ```
+
+Output: a JSON array. Read the items with jq '.[]'.
 
 Example:
 
@@ -153,6 +157,8 @@ everruns memories history [OPTIONS] [MEMORY_ID]
 |---|---|
 | `--memory-id <MEMORY_ID>` | Memory's prefixed public identifier. |
 | `--path <PATH>` | A path inside the memory (`/decisions/everruns-5528.md`). |
+
+Output: a JSON array. Read the items with jq '.[]'.
 
 Example:
 
