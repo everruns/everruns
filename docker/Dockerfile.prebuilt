@@ -60,6 +60,11 @@ ENV RUST_LOG=info
 
 CMD ["/app/everruns-worker"]
 
+# Empty state directories for the shard image. Distroless has no shell to
+# mkdir with, so they are made here and copied in owned by nonroot (65532).
+FROM --platform=$BUILDPLATFORM debian:bookworm-slim AS shard-dirs
+RUN mkdir -p /out/data /out/store
+
 # ============================================================================
 # Data plane v2 runtime (distroless): one binary, roles chosen by the first
 # argument: `node` (a shard's Raft node, gateway on 7000), `executor` (runs
@@ -73,6 +78,13 @@ ARG TARGETARCH
 WORKDIR /app
 
 COPY --chmod=0755 bin/${TARGETARCH}/agentd /app/agentd
+
+# Docker seeds a new named volume from the image path it mounts over, owner
+# included. Without these, Compose's agentd_data and agentd_store volumes come
+# up owned by root and the nonroot process fails with EACCES at start.
+# Kubernetes sets fsGroup instead (charts/agentd, charts/everruns).
+COPY --from=shard-dirs --chown=65532:65532 /out/data /data
+COPY --from=shard-dirs --chown=65532:65532 /out/store /store
 
 EXPOSE 7000
 EXPOSE 7001
