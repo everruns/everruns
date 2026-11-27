@@ -50,12 +50,12 @@ a dispatch names.
 | 1 | Chat | the reply streams deltas; `wait=true` returns it; cancel ends a turn as cancelled | in the suite |
 | 2 | Coding | the agent writes and edits files, runs bash, and the session's git diff lists the edit | in the suite (session files and the in-process shell; the repositories Changes panel needs a sandbox, later) |
 | 3 | Threads | `start_thread` runs a child that asks its parent with `ask_parent`, gets the answer, calls `finish`; the assignment succeeds | in the suite |
-| 4 | Spawned agents | the parent spawns another agent, which runs and reports back | to add |
-| 5 | Schedules and triggers | a schedule fires on time; a saved-script trigger runs | to add |
+| 4 | Spawned agents | the parent spawns another agent, which runs and reports back | in the suite (`spawn`) |
+| 5 | Schedules and triggers | a schedule fires on time; a saved-script trigger runs | in the suite (`schedules`: a one-off schedule the agent creates; the saved-script trigger later) |
 | 6 | MCP | an org MCP server and a person's own connection both serve a tool call | to add |
-| 7 | Knowledge, memory, SQL | a knowledge page is read, a fact remembered across sessions, a session database queried | to add |
-| 8 | Approvals | a guarded tool waits, runs once approved; auto-approval skips the wait | to add |
-| 9 | Spend | usage reaches the control plane; a session at zero balance is refused | to add |
+| 7 | Knowledge, memory, SQL | a knowledge page is read, a fact remembered across sessions, a session database queried | in the suite (`memory`: memory across sessions and SQL; knowledge pages later) |
+| 8 | Approvals | a guarded tool waits, runs once approved; auto-approval skips the wait | in the suite (`approvals`) |
+| 9 | Spend | usage reaches the control plane; a session at zero balance is refused | in the suite (`spend`: a session token budget of 1) |
 | 10 | Slack | a mention in the test workspace gets a threaded reply (Socket Mode) | to add |
 | 11 | Moves | a v1 session moves to v2 and continues | to add |
 | 12 | Console | chat, the Threads panel and the Files tab render a v2 session | to add |

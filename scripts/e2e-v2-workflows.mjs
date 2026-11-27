@@ -383,6 +383,176 @@ const rows = {
     );
     return { thread };
   },
+
+  /** The parent spawns another agent by name; it runs as itself and its answer comes back. */
+  async spawn() {
+    const helper = await agent(
+      "spawn-helper",
+      "You are the archivist. Whatever you are asked, answer in one sentence that contains the word lighthouse.",
+    );
+    const parent = await session(
+      await agent(
+        "spawn",
+        [
+          "You delegate. When the person asks for the archivist, call spawn_agent with agent \"archivist\" and the person's question as the brief.",
+          "Then reply with the archivist's answer, word for word.",
+        ].join(" "),
+        [{ ref: "spawn_agents", config: { self: false, agents: [{ agent_id: helper, name: "archivist" }] } }],
+      ),
+    );
+    const asked = await say(parent, "Ask the archivist what guides ships at night.");
+    const first = await turnOf(parent, asked.id, { timeout: 300_000 });
+    assert(succeeded(first, "spawn_agent"), `no agent spawned: ${JSON.stringify(tools(first))}`);
+    // The answer reaches the parent in this turn or a later one.
+    const deadline = Date.now() + 300_000;
+    while (Date.now() < deadline) {
+      const all = await events(parent);
+      const said = all
+        .filter((e) => e.type === "output.message.completed")
+        .map((e) => JSON.stringify(e.data?.message?.content ?? ""))
+        .join(" ");
+      if (/lighthouse/i.test(said)) return { spawned: true };
+      await delay(2000);
+    }
+    throw new Error("the archivist's answer never reached the parent");
+  },
+
+  /** The agent schedules a one-off run a minute out, and it fires on time. */
+  async schedules() {
+    const id = await session(
+      await agent(
+        "schedules",
+        "You manage schedules. When asked to schedule something, call create_schedule with exactly the time and text given, then confirm in one sentence.",
+        ["session_schedule"],
+      ),
+    );
+    const at = new Date(Date.now() + 75_000);
+    at.setUTCSeconds(0, 0);
+    at.setUTCMinutes(at.getUTCMinutes() + 1);
+    const asked = await say(
+      id,
+      `Create a one-off schedule at ${at.toISOString()} (UTC) with the description "Say: tick".`,
+    );
+    const first = await turnOf(id, asked.id);
+    assert(succeeded(first, "create_schedule"), `no schedule created: ${JSON.stringify(tools(first))}`);
+    const listed = (await get(`/sessions/${id}/schedules`)).data ?? [];
+    assert(listed.length > 0, "the session lists no schedule");
+    const deadline = at.getTime() + 120_000;
+    while (Date.now() < deadline) {
+      const turns = (await events(id)).filter((e) => e.type === "turn.completed");
+      if (turns.length >= 2) {
+        const lateSeconds = Math.round((Date.parse(turns[1].ts) - at.getTime()) / 1000);
+        return { schedules: listed.length, fired_late_s: lateSeconds };
+      }
+      await delay(2000);
+    }
+    throw new Error(`the schedule for ${at.toISOString()} did not run within 2 minutes`);
+  },
+
+  /** A guarded tool waits for approval and runs once approved; auto mode runs a harmless call without asking. */
+  async approvals() {
+    const ask = "Run `echo approved-42` with bash, then reply with its output.";
+    const guarded = await session(
+      await agent("approvals", "You run shell commands with bash when asked.", [
+        "bashkit_shell",
+        { ref: "tool_approval", config: { mode: "protective" } },
+      ]),
+    );
+    const sent = await say(guarded, ask);
+    let requested;
+    const deadline = Date.now() + 180_000;
+    while (!requested && Date.now() < deadline) {
+      const all = await events(guarded);
+      const done = new Set(all.filter((e) => e.type === "tool.completed").map((e) => e.data?.tool_call_id));
+      requested = all
+        .filter((e) => e.type === "tool.call_requested")
+        .flatMap((e) => e.data?.tool_calls ?? [])
+        .find((call) => call.name === "approve_tool_call" && !done.has(call.id));
+      if (!requested) await delay(1000);
+    }
+    assert(requested, "the guarded call never asked for approval");
+    assert(
+      !(await events(guarded)).some((e) => e.type === "tool.completed" && e.data?.tool_name === "bash"),
+      "bash ran before it was approved",
+    );
+    for (let tries = 0; ; tries++) {
+      const answer = await api(`/sessions/${guarded}/tool-approvals`, "POST", {
+        decisions: [{ tool_call_id: requested.id, decision: "allow" }],
+      }, { ok: false });
+      if (answer.status < 300) break;
+      // The request lands before the session waits on it.
+      assert(answer.status === 409 && tries < 100, `tool-approvals: HTTP ${answer.status}`);
+      await delay(200);
+    }
+    const resumed = await turnOf(guarded, sent.id);
+    assert(succeeded(resumed, "bash"), `bash did not run after approval: ${JSON.stringify(tools(resumed))}`);
+
+    const auto = await session(
+      await agent("approvals-auto", "You run shell commands with bash when asked.", [
+        "bashkit_shell",
+        { ref: "tool_approval", config: { mode: "auto" } },
+      ]),
+    );
+    const autoTurn = await turnOf(auto, (await say(auto, ask)).id);
+    assert(succeeded(autoTurn, "bash"), `auto mode did not run bash: ${JSON.stringify(tools(autoTurn))}`);
+    const asked = (await events(auto))
+      .filter((e) => e.type === "tool.call_requested")
+      .flatMap((e) => e.data?.tool_calls ?? [])
+      .some((call) => call.name === "approve_tool_call");
+    assert(!asked, "auto mode asked a person about a harmless command");
+    return { approved: requested.id };
+  },
+
+  /** A fact remembered in one session is recalled in the next; a session database is written and queried. */
+  async memory() {
+    const remembering = await agent(
+      "memory",
+      "You keep notes. Save facts the person asks you to remember with your memory tools, and look them up when asked. Use the SQL tools for databases.",
+      ["agent_memory", "session_sql_database"],
+    );
+    const first = await session(remembering);
+    const saved = await turnOf(first, (await say(first, "Remember this: the project codename is Heron.")).id);
+    assert(tools(saved).some((t) => t.ok), `nothing was saved: ${JSON.stringify(tools(saved))}`);
+    const second = await session(remembering);
+    const recalled = await post(`/sessions/${second}/messages?wait=true&timeout_ms=240000`, {
+      message: { role: "user", content: [{ type: "text", text: "What is the project codename? Answer with the name only." }] },
+    });
+    const reply = JSON.stringify((recalled.messages ?? []).filter((m) => m.role === "agent"));
+    assert(/heron/i.test(reply), `the next session did not recall the fact: ${reply.slice(0, 300)}`);
+
+    const sql = await turnOf(
+      second,
+      (await say(second, "Create a table colors(name text), insert red and blue, then query how many rows it has.")).id,
+    );
+    assert(succeeded(sql, "sql_execute"), `no SQL write: ${JSON.stringify(tools(sql))}`);
+    assert(succeeded(sql, "sql_query"), `no SQL query: ${JSON.stringify(tools(sql))}`);
+    return { recalled: true };
+  },
+
+  /** A turn's usage reaches the control plane; a session over its budget is refused. */
+  async spend() {
+    const id = await session(await agent("spend", "You are a helpful assistant. Keep answers short."));
+    await turnOf(id, (await say(id, "Say hello.")).id);
+    let cost;
+    const deadline = Date.now() + 60_000;
+    while (Date.now() < deadline) {
+      cost = await get(`/sessions/${id}/cost`);
+      if ((cost.model_calls ?? 0) > 0) break;
+      await delay(2000);
+    }
+    assert((cost?.model_calls ?? 0) > 0, `no usage reached the control plane: ${JSON.stringify(cost).slice(0, 300)}`);
+
+    const capped = await session(await agent("spend-capped", "You are a helpful assistant. Keep answers short."));
+    await post("/budgets", { subject_type: "session", subject_id: capped, currency: "tokens", limit: 1 });
+    const refused = await api(`/sessions/${capped}/messages`, "POST", {
+      message: { role: "user", content: [{ type: "text", text: "Write a long poem." }] },
+    }, { ok: false });
+    if (refused.status < 300) {
+      const turn = await turnOf(capped, refused.body.id, { until: "turn.failed", timeout: 120_000 });
+      assert(!turn.some((e) => e.type === "turn.completed"), "a session over its budget completed a turn");
+    }
+    return { model_calls: cost.model_calls, over_budget_status: refused.status };
+  },
 };
 
 // --- Run --------------------------------------------------------------------
