@@ -154,7 +154,10 @@ async function signIn(password) {
 async function chooseModel() {
   const provider = (await get("/providers")).data.find((p) => p.provider_type === "openrouter");
   assert(provider?.api_key_set, "the OpenRouter key was not seeded into the default org");
-  await post(`/providers/${provider.id}/sync-models`);
+  // 409: the startup seeding already synced this provider's catalog (seen on
+  // the first CI run); the model lookup below covers either way.
+  const sync = await api(`/providers/${provider.id}/sync-models`, "POST", {}, { ok: false });
+  assert(sync.status < 300 || sync.status === 409, `sync-models: HTTP ${sync.status}`);
   let model = (await get("/models?limit=1000")).data.find(
     (m) => m.provider_id === provider.id && m.model_id === modelSlug,
   );
