@@ -255,3 +255,17 @@
 .markdown-message [data-markdown="code-header"] button:disabled {
   opacity: 0.4;
 }
+
+/* The raw HTML tags MarkdownMessage allows (ALLOWED_HTML in markdown-message.tsx). */
+.markdown-message kbd {
+  padding: 0.05em 0.35em;
+  border: 1px solid var(--color-border);
+  border-bottom-width: 2px;
+  font: 0.85em var(--font-mono);
+}
+.markdown-message details {
+  margin: 0.5em 0;
+}
+.markdown-message summary {
+  cursor: pointer;
+}

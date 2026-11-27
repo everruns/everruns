@@ -15,7 +15,10 @@
  * - Syntax highlighting (`@pierre/highlights`, every grammar) and Mermaid diagrams (Pele)
  *   load on first use, so a page without code or diagrams pays for neither. Until the
  *   highlighter arrives, code renders as plain text.
- * - Raw HTML in the Markdown is never rendered: the React component omits it.
+ * - Raw HTML: only the presentational tags in `ALLOWED_HTML` render, without attributes
+ *   other than `details open`; Words drops every other tag, attribute and comment. Agents
+ *   use `<details>` for long output, which GFM has no syntax for. `skipHtml` turns even
+ *   these off for surfaces that must show text only.
  *
  * @see knowledge/ui/markdown-messages.md
  */
@@ -62,6 +65,15 @@ function loadMermaidPlugin(): Promise<MermaidPlugin> {
   );
   return mermaidPluginLoading;
 }
+
+const ALLOWED_HTML = {
+  details: ["open"],
+  summary: [],
+  kbd: [],
+  sub: [],
+  sup: [],
+  br: [],
+} as const;
 
 const MERMAID_FENCE = /^\s*(```|~~~)\s*mermaid\b/im;
 const CODE_FENCE = /^\s*(```|~~~)/m;
@@ -111,6 +123,7 @@ export function MarkdownMessage({
   className,
   variant = "default",
   citations,
+  skipHtml = false,
 }: MarkdownMessageProps) {
   const [container, setContainer] = useState<HTMLDivElement | null>(null);
   const code = useLazyPlugin(
@@ -145,7 +158,12 @@ export function MarkdownMessage({
         className,
       )}
     >
-      <Markdown isAnimating={isAnimating} plugins={plugins} components={components}>
+      <Markdown
+        isAnimating={isAnimating}
+        plugins={plugins}
+        components={components}
+        allowedHtml={skipHtml ? undefined : ALLOWED_HTML}
+      >
         {children}
       </Markdown>
       <MarkdownSlots container={container} citations={citations} />

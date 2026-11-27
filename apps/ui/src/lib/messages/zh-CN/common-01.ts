@@ -249,6 +249,7 @@ export const messages: Readonly<Record<string, string>> = {
   "Allowed hosts": "允许的主机",
   "Allowed HTTPS URL": "允许的 HTTPS URL",
   "Allowed tools": "允许使用的工具",
+  "Allowed HTML": "允许的 HTML",
   "Already have an account?": "已有账户？",
   "Already have one?": "已经有了吗？",
   "Also supported": "也支持",

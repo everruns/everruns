@@ -31,7 +31,9 @@ with Words (`@pierre/words`, Apache-2.0), a streaming GFM renderer written in We
    - `#cite-<n>` markers become citation chips when the message has citations.
    - Code blocks are highlighted in the console's light and dark themes.
    - Mermaid fences render as diagrams that follow the theme.
-5. **No raw HTML** from the text is rendered.
+5. **Raw HTML is an allowlist**: only presentational tags agents use (`details` with
+   `open`, `summary`, `kbd`, `sub`, `sup`, `br`) render; every other tag, attribute and
+   comment is dropped. Surfaces that pass `skipHtml` render none.
 6. **Pay for what is used**: the highlighter and the diagram renderer load only when a
    message contains a code fence or a Mermaid fence.
 
@@ -72,9 +74,10 @@ uses it.
 - **Diagrams** use Pele through Words' Mermaid plugin, with links and images off because
   diagrams are agent-written. Pele's palette variables map to design tokens in
   [`markdown-message.css`](../../apps/ui/src/components/markdown/markdown-message.css).
-- **Raw HTML**: Words 0.2.x always omits it. `skipHtml` callers (work logs, traces, package
-  review) mark the places that must stay HTML-free if a later Words version allows a safe
-  tag allowlist elsewhere.
+- **Raw HTML** goes through Words' `allowedHtml`, which also strips `on*` attributes and
+  unsafe URL schemes. `<details>` is the reason it exists: GFM has no syntax for a
+  collapsible block and agents use one for long output. `skipHtml` callers (work logs,
+  traces, package review) turn the allowlist off.
 
 ## Rendering contexts
 

@@ -24,6 +24,16 @@ describe("MarkdownMessage", () => {
     expect(components.blockquote).toBe(alertBlockquoteHook);
   });
 
+  it("keeps only the presentational HTML allowlist, and none with skipHtml", () => {
+    const { rerender } = render(<MarkdownMessage>text</MarkdownMessage>);
+    const allowed = markdownProps().allowedHtml as Record<string, readonly string[]>;
+    expect(Object.keys(allowed).sort()).toEqual(["br", "details", "kbd", "sub", "summary", "sup"]);
+    expect(allowed.details).toEqual(["open"]);
+
+    rerender(<MarkdownMessage skipHtml>text</MarkdownMessage>);
+    expect(markdownProps().allowedHtml).toBeUndefined();
+  });
+
   it("loads no plugin for text without code or diagrams", () => {
     render(<MarkdownMessage>Just prose.</MarkdownMessage>);
 
