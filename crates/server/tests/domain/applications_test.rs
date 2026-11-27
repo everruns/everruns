@@ -307,7 +307,7 @@ async fn application_rooms_and_memory_enforce_resource_access_and_attribution() 
     let memory: Value = server
         .post(
             "/v1/platform/memories",
-            json!({"name":"Application handbook"}),
+            json!({"name":"application-handbook"}),
         )
         .await
         .assert_success()
@@ -718,6 +718,21 @@ async fn application_resource_creation_rolls_back_and_memory_mounts_follow_curre
         .await
         .assert_success()
         .json();
+    // A resource label ("Handbook") is not a valid memory store name, so the
+    // created store is named for its path: /memory/handbook.
+    let memory_id = app["resources"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["slug"] == "handbook")
+        .and_then(|r| r["resource_id"].as_str())
+        .unwrap();
+    let created_memory: Value = server
+        .get(&format!("/v1/platform/memories/{memory_id}"))
+        .await
+        .assert_success()
+        .json();
+    assert_eq!(created_memory["name"], "handbook");
     let app = server
         .db
         .set_application_status(
