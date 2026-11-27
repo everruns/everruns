@@ -323,6 +323,7 @@ impl ToolsBuiltin {
     /// turn's MCP invoker, and record the reveal so the turn lists the server
     /// from the next step on. A host that cannot list mid-call still gets the
     /// reveal, and the script is told to try again on the next step.
+    #[allow(clippy::result_large_err)]
     async fn load(&self, pending: &Pending) -> Result<(), ExecResult> {
         let server = &pending.source;
         if self

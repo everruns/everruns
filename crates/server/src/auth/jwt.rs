@@ -7,6 +7,7 @@ use chrono::{Duration, Utc};
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use rand::RngExt;
 use serde::{Deserialize, Serialize};
+use std::sync::OnceLock;
 use uuid::Uuid;
 
 use super::config::JwtConfig;
@@ -48,6 +49,23 @@ fn generate_random_id() -> String {
     let mut rng = rand::rng();
     let bytes: [u8; 16] = rng.random();
     hex::encode(bytes)
+}
+
+/// Per-process HMAC secret used when `JwtConfig::secret` is empty.
+///
+/// jsonwebtoken 12 rejects an empty HMAC key, so a `JwtConfig` built by
+/// `Default` (no `AUTH_JWT_SECRET`, e.g. `AuthMode::None` and unit tests) needs
+/// some non-empty bytes. Minting and validating inside one process still agree
+/// because the value is generated once, and it is never a signing secret for a
+/// deployment: authentication-enabled modes refuse to start without an explicit
+/// secret.
+fn dev_jwt_secret() -> &'static str {
+    static SECRET: OnceLock<String> = OnceLock::new();
+    SECRET.get_or_init(|| {
+        let mut rng = rand::rng();
+        let bytes: [u8; 32] = rng.random();
+        hex::encode(bytes)
+    })
 }
 
 /// JWT claims for access tokens
@@ -141,8 +159,15 @@ pub struct JwtService {
 
 impl JwtService {
     pub fn new(config: JwtConfig) -> Self {
-        let encoding_key = EncodingKey::from_secret(config.secret.as_bytes());
-        let decoding_key = DecodingKey::from_secret(config.secret.as_bytes());
+        let secret = if config.secret.is_empty() {
+            dev_jwt_secret()
+        } else {
+            config.secret.as_str()
+        };
+        let encoding_key = EncodingKey::from_secret(secret.as_bytes())
+            .expect("non-empty secret is a valid HMAC key");
+        let decoding_key = DecodingKey::from_secret(secret.as_bytes())
+            .expect("non-empty secret is a valid HMAC key");
 
         Self {
             config,
@@ -820,7 +845,7 @@ mod runtime_token_tests {
         let old_token = encode(
             &Header::default(),
             &wire,
-            &EncodingKey::from_secret(config.secret.as_bytes()),
+            &EncodingKey::from_secret(dev_jwt_secret().as_bytes()).unwrap(),
         )
         .unwrap();
         assert_eq!(
@@ -871,7 +896,7 @@ mod runtime_token_tests {
         let changed = encode(
             &Header::default(),
             &claims,
-            &EncodingKey::from_secret(config.secret.as_bytes()),
+            &EncodingKey::from_secret(dev_jwt_secret().as_bytes()).unwrap(),
         )
         .unwrap();
         assert!(jwt.validate_runtime_token(&changed).is_err());
@@ -880,7 +905,7 @@ mod runtime_token_tests {
         let changed = encode(
             &Header::default(),
             &claims,
-            &EncodingKey::from_secret(config.secret.as_bytes()),
+            &EncodingKey::from_secret(dev_jwt_secret().as_bytes()).unwrap(),
         )
         .unwrap();
         assert!(jwt.validate_runtime_token(&changed).is_err());

@@ -161,6 +161,7 @@ impl ValkeyClient {
     /// chooses fail-open vs fail-closed).
     ///
     /// Uses `SET key 1 NX EX ttl_secs` — single round-trip, O(1).
+    #[allow(clippy::result_unit_err)] // Deliberately unit: the caller only chooses fail-open vs fail-closed.
     pub async fn try_record_nonce(&self, key: &str, ttl_secs: u64) -> Result<bool, ()> {
         let result: Option<String> = match self
             .client

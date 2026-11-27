@@ -265,7 +265,7 @@ impl RestoreEntityRevision {
         let restored = snapshot_of(&row)?;
         let Some(current) = snapshot::read(ctx, kind, &entity_ref).await.or_else(|| {
             // Kinds read through a parent: their latest snapshot is current.
-            Some(restored.clone()).filter(|_| kind.lookup().is_none())
+            kind.lookup().is_none().then_some(restored.clone())
         }) else {
             return Err(CommandError::not_found_msg(format!(
                 "{entity_ref} no longer exists; restoring a deleted {} is not supported",

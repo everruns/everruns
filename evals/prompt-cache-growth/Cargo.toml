@@ -9,7 +9,7 @@
 name = "everruns-prompt-cache-growth-evals"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.96.0"
+rust-version = "1.100.0"
 description = "Mira eval study: prompt cache reuse as a hosted session grows"
 publish = false
 

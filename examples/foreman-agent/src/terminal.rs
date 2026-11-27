@@ -72,7 +72,7 @@ fn next_line(buffer: &mut String) -> Option<String> {
         .char_indices()
         .nth(WRAP)
         .map_or(buffer.len(), |(index, _)| index);
-    let cut = buffer[..limit].rfind(' ').map_or(limit, |index| index);
+    let cut = buffer[..limit].rfind(' ').unwrap_or(limit);
     let line = buffer[..cut].to_owned();
     buffer.drain(..cut);
     let trimmed = buffer.trim_start().to_owned();

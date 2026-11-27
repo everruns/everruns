@@ -84,7 +84,7 @@ dotenvy.workspace = true
 clap.workspace = true
 jsonwebtoken.workspace = true
 # Validates `json_schema` eval scorers (already linked through everruns-core).
-jsonschema = { version = "0.61.0", default-features = false }
+jsonschema = { version = "0.63.1", default-features = false }
 rand.workspace = true
 sha2.workspace = true
 hmac.workspace = true
@@ -143,7 +143,7 @@ everruns-capabilities = { path = "../capabilities", features = ["openapi", "envi
 # neutral event-listener contracts only.
 everruns-cli-contract.workspace = true
 # Sandbox Templates validate Modal egress with the provider's own rules.
-rusqlite = { version = "0.41.1", features = ["bundled", "serialize", "column_decltype", "hooks"] }
+rusqlite = { version = "0.43.0", features = ["bundled", "serialize", "column_decltype", "hooks"] }
 everruns-worker = { path = "../worker" }  # worker adapters, in-process worker
 everruns-turbopuffer = { path = "../turbopuffer" }  # Opt-in vector-store backend
 everruns-internal-protocol = { path = "../internal-protocol" }

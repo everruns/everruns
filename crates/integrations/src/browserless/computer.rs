@@ -71,6 +71,7 @@ pub struct CdpDisplay {
 
 impl CdpDisplay {
     /// Wrap an attached page and size its viewport to `display`.
+    #[allow(clippy::result_large_err)]
     pub async fn attach(
         session: CdpSession,
         display: DisplaySize,

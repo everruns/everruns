@@ -8,7 +8,7 @@ JavaScript supplies storage, alarms and provider fetch. The
 
 ## Run with a real model
 
-Requires Rust 1.96, Node 24, the wasm32 target and wasm-bindgen-cli 0.2.129:
+Requires Rust 1.100, Node 24, the wasm32 target and wasm-bindgen-cli 0.2.129:
 
 ```sh
 rustup target add wasm32-unknown-unknown

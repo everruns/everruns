@@ -291,7 +291,7 @@ mod tests {
         let token = jsonwebtoken::encode(
             &header,
             &claims(json!({})),
-            &jsonwebtoken::EncodingKey::from_secret(b"not-an-allowed-platform-key"),
+            &jsonwebtoken::EncodingKey::from_secret(b"not-an-allowed-platform-key").unwrap(),
         )
         .unwrap();
         assert!(check(&key, &token).is_err());

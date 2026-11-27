@@ -181,7 +181,12 @@ pub(super) async fn call(
         }
     }
     let request = request.body(Body::from(body)).map_err(|e| e.to_string())?;
-    let response = router.oneshot(request).await.map_err(|e| e.to_string())?;
+    // `Router::oneshot` is infallible (axum's `Infallible` error type), so the
+    // only way to satisfy the `?` is to destructure the uninhabited error.
+    let response = match router.oneshot(request).await {
+        Ok(response) => response,
+        Err(never) => match never {},
+    };
     let status = response.status().as_u16();
     let headers: serde_json::Map<String, Value> = [
         "content-type",

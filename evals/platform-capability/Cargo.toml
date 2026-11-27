@@ -7,7 +7,7 @@
 name = "everruns-platform-capability"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.96.0"
+rust-version = "1.100.0"
 description = "Mira eval study: evaluates the everruns platform capability"
 publish = false
 

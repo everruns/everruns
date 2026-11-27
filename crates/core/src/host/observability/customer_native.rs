@@ -100,10 +100,8 @@ fn annotate(attrs: &mut Vec<KeyValue>, provider: NativeTraceProvider) {
                 _ => "chain",
             };
             attrs.push(KeyValue::new("langsmith.span.kind", kind));
-            for (from, to) in [("gen_ai.conversation.id", "langsmith.metadata.thread_id")] {
-                if let Some(v) = get(from) {
-                    attrs.push(KeyValue::new(to, v));
-                }
+            if let Some(v) = get("gen_ai.conversation.id") {
+                attrs.push(KeyValue::new("langsmith.metadata.thread_id", v));
             }
         }
     }

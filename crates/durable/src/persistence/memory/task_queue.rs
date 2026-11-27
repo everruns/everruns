@@ -397,10 +397,7 @@ impl TaskQueue for InMemoryWorkflowEventStore {
                     return false;
                 }
                 // Apply standalone_only filter
-                if filter.standalone_only && t.definition.workflow_id.is_some() {
-                    return false;
-                }
-                true
+                !(filter.standalone_only && t.definition.workflow_id.is_some())
             })
             .map(|(id, t)| TaskInfo {
                 id: *id,

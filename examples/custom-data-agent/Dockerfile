@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM rust:1.96-bookworm AS build
+FROM rust:1.100-bookworm AS build
 RUN --mount=type=secret,id=system_ca \
     apt_options=""; if [ -f /run/secrets/system_ca ]; then apt_options="-o Acquire::https::CaInfo=/run/secrets/system_ca"; fi; \
     apt-get $apt_options update && apt-get $apt_options install -y --no-install-recommends clang cmake libclang-dev libssl-dev pkg-config && rm -rf /var/lib/apt/lists/*

@@ -188,11 +188,7 @@ fn is_blocked_host(host: &str) -> bool {
     }
 
     // Cloud metadata hostname
-    if host_lower == "metadata.google.internal" || host_lower == "metadata.google.internal." {
-        return true;
-    }
-
-    false
+    host_lower == "metadata.google.internal" || host_lower == "metadata.google.internal."
 }
 
 /// Check if an IP address is in a blocked range (loopback, private, link-local,

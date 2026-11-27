@@ -304,7 +304,6 @@ mod tests {
     use everruns_contracts::tool_types::ToolCall;
     use everruns_contracts::typed_id::SessionId;
     use everruns_core::tool_context::ToolContext;
-    use everruns_core::tools::Tool as _;
     use everruns_llmsim::LlmSimConfig;
     use serde_json::{Value, json};
     use tokio::sync::Notify;
