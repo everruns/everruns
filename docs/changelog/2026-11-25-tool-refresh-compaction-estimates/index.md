@@ -10,14 +10,13 @@ links:
   docs: [/advanced/compaction/]
 ---
 
-OpenRouter sends the current tool declarations. Request budgeting no longer
-counts historical inline tool epochs that this transport does not send. That
-could repeatedly report a smaller request even though its conversation and
-actual tool declarations stayed the same.
+Compaction budgeting now follows the declarations and prompt each driver sends.
+OpenRouter budgets current tools; verified native inline routes include their
+baseline and changes. Custom Framework drivers keep conservative estimates until
+they opt in.
 
-Historical tool-only markers now say **Tool definitions refreshed** and explain
-that no conversation messages were removed. For example, this recorded event
-represents a tool refresh rather than a saved summary:
+Tool-only refresh markers say **Tool definitions refreshed**, making clear that
+conversation messages were retained. This event records a refresh, not a saved summary:
 
 ```json
 {
@@ -28,20 +27,10 @@ represents a tool refresh rather than a saved summary:
 }
 ```
 
-Drivers now share the model/endpoint layout decision with request budgeting,
-including custom Framework provider keys. Gateway and fallback routes budget
-current declarations; verified native inline routes keep their baseline and
-changes. Inline system-prompt updates are counted once, avoiding false pressure
-from counting both the current prompt and its recorded additions. Epoch resets
-persist across transcript reloads rather than restoring
-obsolete declarations on every turn.
+Inline prompt updates count once, and epoch resets survive worker restarts.
+Runtime fallback diagnostics remain in traces instead of provider options.
+Only verified complete, nonempty, tool-free summaries can replace history;
+unknown, paused and truncated endings are rejected. Incomplete Responses remain
+incomplete even when their reason is missing or contradictory.
 
-Summary completion and output-limit recovery use typed terminal outcomes. Unknown,
-paused or truncated output cannot replace history. An incomplete Responses result
-stays incomplete even if its reason is missing or conflicts with its status.
-Runtime fallback observations stay outside provider options. Existing custom
-drivers retain conservative budgeting until they opt in.
-
-Verified first-party inline tool changes retain their existing cache behavior.
-[Compaction](/advanced/compaction/) explains the distinction between request
-projections and durable continuity.
+See [Compaction](/advanced/compaction/) for request budgets and durable continuity.
