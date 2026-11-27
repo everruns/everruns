@@ -60,11 +60,11 @@ importers:
         specifier: 1.6.4
         version: 1.6.4(@shikijs/themes@4.5.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@pierre/highlights':
-        specifier: 0.5.1
-        version: 0.5.1
+        specifier: 0.5.2
+        version: 0.5.2
       '@pierre/words':
-        specifier: 0.2.2
-        version: 0.2.2(@pierre/highlights@0.5.1)(react@19.3.1)
+        specifier: 0.3.0
+        version: 0.3.0(@pierre/highlights@0.5.2)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@rjsf/core':
         specifier: ^6.11.0
         version: 6.11.0(@rjsf/utils@6.11.0(react@19.3.1))(react@19.3.1)
@@ -1502,8 +1502,8 @@ packages:
   '@pierre/highlights@0.4.0':
     resolution: {integrity: sha512-2a38H7ep3KweGi1fGQpJk+Krod2OMpDIXagKPlqBd1Y9P460T7zQmc66Wm2JAH1SpIG93wCyyhZVrkc5dnAJVQ==}
 
-  '@pierre/highlights@0.5.1':
-    resolution: {integrity: sha512-c2WF6sgwgKdxXU6FpWDLWUYHRca/cJy+3QJkWAqYqEAFxqlPf8eSH0ehHcFFjKBmT+9KBl9H7q6z7HMRU7+m6g==}
+  '@pierre/highlights@0.5.2':
+    resolution: {integrity: sha512-CV+yFa8dodaU3w7U42FR+AfoavrsfcH0/n3rckDu1A/UXan1Dzo6OdM/MPOAAsGM/EbKhDxD6k+qMcNUtnLfsg==}
 
   '@pierre/theme@2.0.0':
     resolution: {integrity: sha512-yNDd9GYLQl1mEUJR8AneJ5e4ohLIHQd/wZLWr4fagt78vS2RwwZNW530vVgHqXFAyFVcFlRmGUD5ramXH46OXw==}
@@ -1529,15 +1529,18 @@ packages:
       shiki:
         optional: true
 
-  '@pierre/words@0.2.2':
-    resolution: {integrity: sha512-gOMolXeQzPK9IVNDimh8pronqzpFISFxp+rhobKT8NYQsTOpDLQKgr0rjwZn3I/kHLF+Sqoe2aIO/R7H71IzwQ==}
+  '@pierre/words@0.3.0':
+    resolution: {integrity: sha512-k38qoYj0eUCr+vGQlXlSer78q5EeG7rSge9b2ADBFvLQ0L+OJH5zAdgdgm1jqkFq2Q6zXUuBkZWB5nQgPy2iUQ==}
     peerDependencies:
       '@pierre/highlights': '>=0.5.1'
       react: ^18.3.1 || ^19.0.0
+      react-dom: ^18.3.1 || ^19.0.0
     peerDependenciesMeta:
       '@pierre/highlights':
         optional: true
       react:
+        optional: true
+      react-dom:
         optional: true
 
   '@pkgr/core@0.3.6':
@@ -7306,7 +7309,7 @@ snapshots:
 
   '@pierre/highlights@0.4.0': {}
 
-  '@pierre/highlights@0.5.1': {}
+  '@pierre/highlights@0.5.2': {}
 
   '@pierre/theme@2.0.0': {}
 
@@ -7318,10 +7321,11 @@ snapshots:
       react-dom: 19.3.1(react@19.3.1)
       shiki: 4.5.0
 
-  '@pierre/words@0.2.2(@pierre/highlights@0.5.1)(react@19.3.1)':
+  '@pierre/words@0.3.0(@pierre/highlights@0.5.2)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
     optionalDependencies:
-      '@pierre/highlights': 0.5.1
+      '@pierre/highlights': 0.5.2
       react: 19.3.1
+      react-dom: 19.3.1(react@19.3.1)
 
   '@pkgr/core@0.3.6': {}
 

@@ -253,6 +253,7 @@ export const messages: Readonly<Record<string, string>> = {
   "Allowed hosts": "Дозволені хости",
   "Allowed HTTPS URL": "Дозволена URL-адреса HTTPS",
   "Allowed tools": "Дозволені інструменти",
+  "Allowed HTML": "Дозволений HTML",
   "Already have an account?": "Вже маєте акаунт?",
   "Already have one?": "Уже є?",
   "Also supported": "Також підтримується",

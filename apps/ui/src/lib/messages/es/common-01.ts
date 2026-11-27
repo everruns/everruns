@@ -254,6 +254,7 @@ export const messages: Readonly<Record<string, string>> = {
   "Allowed hosts": "Anfitriones permitidos",
   "Allowed HTTPS URL": "URL HTTPS permitida",
   "Allowed tools": "Herramientas permitidas",
+  "Allowed HTML": "HTML permitido",
   "Already have an account?": "¿Ya tienes una cuenta?",
   "Already have one?": "¿Ya tienes uno?",
   "Also supported": "También compatible",

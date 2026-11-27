@@ -123,6 +123,17 @@ flowchart LR
 > [!CAUTION]
 > Negative potential consequences of an action.`,
 
+  allowedHtml: `Press <kbd>Ctrl</kbd> + <kbd>C</kbd> to stop. Water is H<sub>2</sub>O, and x<sup>2</sup> grows fast.
+
+<details>
+<summary>Full test output (42 lines)</summary>
+
+All 42 tests passed in **3.1 s**.
+
+</details>
+
+<img src="x" onerror="alert(1)"> <span style="color:red">Disallowed tags show only their text.</span>`,
+
   longStreaming: `# Agent Response
 
 I'll help you implement a new feature for your application.
@@ -363,6 +374,11 @@ export default function DevMarkdownPage() {
           >
             <ShowcaseItem label={ui("All Alert Types")}>
               <MarkdownMessage variant="inline">{sampleMarkdownContent.alerts}</MarkdownMessage>
+            </ShowcaseItem>
+            <ShowcaseItem label={ui("Allowed HTML")}>
+              <MarkdownMessage variant="inline">
+                {sampleMarkdownContent.allowedHtml}
+              </MarkdownMessage>
             </ShowcaseItem>
           </ShowcaseSection>
 
