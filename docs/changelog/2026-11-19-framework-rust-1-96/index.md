@@ -2,6 +2,7 @@
 title: Framework crates need Rust 1.96
 description: Bashkit 0.21.1 moves the embedded shell and Python to Wasmtime 49.0.6, which fixes six Wasmtime advisories and raises the minimum Rust to 1.96.
 date: 2026-11-19
+supersededBy: 2026-11-27-framework-rust-1-100
 kind: breaking
 significance: minor
 products: [framework, platform]
