@@ -242,6 +242,54 @@ async fn a_slack_file_is_downloaded_into_the_sessions_files() {
 }
 
 #[tokio::test]
+async fn auto_registered_channel_keeps_its_agents_workspace_for_attachments() {
+    let engine = Engine::new();
+    let capture = Arc::new(Mutex::new(Vec::new()));
+    let agent = Agent::builder()
+        .instructions("You are concise.")
+        .model(Model::simulated_capturing("ok", capture.clone()))
+        .build()
+        .unwrap();
+    let recorder = Recorder::default();
+    let channels = Channels::builder(&engine)
+        .channel("support", Channel::new(recorder.clone()), agent)
+        .build();
+    let response = channels
+        .handle("support", &message("hi", "attachment-thread"))
+        .await;
+    assert_eq!(response.status, 200, "{:?}", response.body);
+    let session = response.body["session_id"].as_str().unwrap();
+    wait_for_posts(&recorder, 1).await;
+    let parts = channels
+        .host()
+        .attachment_parts(
+            "support",
+            Some(session),
+            &[InboundAttachment::Bytes {
+                name: Some("report.pdf".into()),
+                media_type: Some("application/pdf".into()),
+                data: b"%PDF-1.7 fixture".to_vec(),
+            }],
+            None,
+        )
+        .await
+        .unwrap();
+    assert!(
+        matches!(parts.as_slice(), [everruns_core::ContentPart::File(_)]),
+        "{parts:?}"
+    );
+    let session = engine.resume(session.parse().unwrap()).await.unwrap();
+    let mut message = everruns_core::InputMessage::user("Read the attached report.");
+    message.content.extend(parts);
+    session.run(message).await.expect("attachment turn runs");
+    let request = format!("{:?}", capture.lock().unwrap().last().expect("model call"));
+    assert!(
+        request.contains("data:application/pdf;base64,"),
+        "{request}"
+    );
+}
+
+#[tokio::test]
 async fn rejected_preparation_clears_its_channel_delivery_without_a_turn_terminal() {
     let engine = InMemoryEngine::new();
     let recorder = Recorder::default();

@@ -245,7 +245,18 @@ impl ChannelsBuilder {
                         agent: format!("channel:{name}"),
                         build_id: uuid::Uuid::new_v4().to_string(),
                     };
-                    match self.engine.register_agent(build.clone(), *agent) {
+                    // A snapshot has the same workspace as Engine::create. An
+                    // environment-less registration can chat, but cannot keep
+                    // incoming files when the channel reopens its session.
+                    let environment = agent.environment_factory();
+                    let reference = format!("channel-workspace-{}", build.build_id);
+                    match self.engine.register_agent_with_environment(
+                        build.clone(),
+                        *agent,
+                        None,
+                        reference,
+                        environment,
+                    ) {
                         Ok(()) => ChannelAgent::Registered(build),
                         Err(_) => ChannelAgent::Unavailable,
                     }

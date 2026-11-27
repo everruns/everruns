@@ -47,6 +47,12 @@ different bots. It acts as the bot the user already invited —
 no second token, no second set of scopes to rotate, and the agent's Slack
 identity matches the one answering in the thread.
 
+Standalone Framework hosts can also authorize a conversation explicitly through
+[`SlackActions`](../../crates/everruns/src/slack.rs). The model instructions must
+describe this host binding as well as Slack-created sessions; otherwise the model
+can refuse a valid bound action before calling a tool. User-supplied identifiers
+never grant access, and the invoker still checks the bound channel and thread.
+
 **Exact message references are part of the model view.** Slack actions address
 messages by their platform timestamp, including its fractional digits. A received
 message's wall-clock time cannot reconstruct that identifier. The Slack capability

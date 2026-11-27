@@ -22,6 +22,7 @@ Verifies real-model Slack replies, requester-bound approvals and retained output
 - A public HTTPS callback, or the authenticated Socket Mode supervisor with an app-level token. Record which transport actually receives provider-origin events.
 - Two opted-in Slack test users for the allowed/denied approval checks; the second user's identity grants no Everruns authority.
 - A separate controlled transport-fault fixture for uncertain writes. Never inject faults into another application's Slack traffic.
+- The opt-in [live bridge contracts](../../../../crates/integrations/tests/slack_channel_live.rs) cover provider readback and cleanup for files, reactions and DM streams. They complement the native user-message and approval-click steps below.
 
 ## Test Data
 

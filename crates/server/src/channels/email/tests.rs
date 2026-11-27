@@ -421,6 +421,7 @@ async fn email_delivery_stages_one_immutable_reply_after_successful_turn() {
             ("session_id".into(), session.to_string()),
         ]),
         receipts: None,
+        egress: None,
     };
     let event = |kind: &str, data| DeliveryEvent {
         sequence: Some(1),

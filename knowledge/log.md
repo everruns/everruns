@@ -3,6 +3,9 @@
 ## 2026-11-27
 
 - [Channelkit migration](integrations/channelkit-migration.md): share the published alpha.7 core and Slack pin with the server's email adapter after merging current main; Slack provider source is unchanged from alpha.6. No additional upstream release is required.
+- Add opt-in live bridge contracts for file byte/limit verification, reaction readback and DM stream replacement/closure, with explicit workspace fixtures and owned-resource cleanup.
+- Framework channels retain snapshot Agents' Environment factories when registering their builds, so incoming files survive the session reopen used by channel intake.
+- [Slack actions](integrations/slack-agent-actions.md): model instructions recognize explicitly host-bound standalone conversations as well as Slack-created sessions; the invoker remains the authorization authority.
 
 ## 2026-11-26
 

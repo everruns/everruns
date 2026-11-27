@@ -61,6 +61,9 @@ transferring bot credentials.
 The Framework `channels` feature enables its default policy-aware host egress;
 otherwise the provider model can finish while Slack delivery remains offline.
 An application-supplied egress service remains authoritative for every provider hop.
+Automatically registered Agent snapshots retain the Agent's Environment factory,
+as `Engine::create` does. Registering behavior without that workspace lets plain
+replies succeed while file intake fails after reopening the conversation.
 Native file downloads accept the host ceiling and cap transport reads instead of
 rejecting a larger budget before fetching a small file. This preserves the host's
 default 25 MiB intake contract; upload limits remain provider-specific.
@@ -82,6 +85,13 @@ qualification is tracked with the source tests and the
 turns, native user-origin messages/approval clicks and deployed-host adoption are
 separate gates; do not infer them from library live API checks or signed fixtures.
 The dependency publication does not itself complete the Everruns cutover.
+
+The opt-in [live bridge contracts](../../crates/integrations/tests/slack_channel_live.rs)
+verify native file bytes and intake ceilings, reaction readback, and DM stream
+closure, replacement and reopening against explicit test fixtures. They require
+credentials and an expected workspace, retain known handles for cleanup, and
+never turn missing inputs into a passing test. Provider API contracts do not
+establish user-origin event delivery or browser approval clicks.
 
 ## Existing architecture and the boundary to retain
 
