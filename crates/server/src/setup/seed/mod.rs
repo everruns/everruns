@@ -922,6 +922,20 @@ pub fn spawn_seed_task_with_host_composition(
                                         &r.connected,
                                     )
                                     .await;
+                                    // The default org may already be on a data
+                                    // plane (startup places it before this
+                                    // runs); its providers travel there as
+                                    // connections, and this write bypassed
+                                    // the provider service that syncs them.
+                                    let mut cp = crate::domains::data_plane::ControlPlane::from_env(
+                                        db.clone(),
+                                    );
+                                    cp.encryption = Some(encryption.clone());
+                                    crate::domains::data_plane::providers::sync_logged(
+                                        &cp,
+                                        DEFAULT_ORG_ID,
+                                    )
+                                    .await;
                                 }
                                 Ok(_) => {}
                                 Err(e) => tracing::warn!(
