@@ -66,7 +66,7 @@ pub(super) async fn run_delivery(
         input_message_id,
         target,
     } = turn;
-    let context = driver.delivery_context(&target);
+    let context = delivery_context(&inner, &channel.config, driver.as_ref(), &target);
     let options = channel.config.delivery.clone();
     let (adapter, options) = match &channel.planner {
         Some(planner) => planner.plan(&session_id, &target, options).await,
@@ -263,4 +263,19 @@ async fn save_links(
         }
     }
     saved
+}
+
+/// The host stamps scope after the driver derives credentials. Providers cannot
+/// replace a configured tenant/network boundary with their default transport.
+pub(super) fn delivery_context(
+    inner: &Inner,
+    channel: &ChannelConfig,
+    driver: &dyn ChannelDriver,
+    target: &DeliveryTarget,
+) -> everruns_contracts::runtime::channel::DeliveryContext {
+    let mut context = driver.delivery_context(target);
+    if let Some(egress) = &inner.egress {
+        context.egress = Some(inner.port.attachment_egress(channel, egress.clone()));
+    }
+    context
 }

@@ -206,7 +206,7 @@ impl TurnBackend for NoopRunner {
 mod wiremock_tests {
     use super::*;
     use wiremock::matchers::{header, method, path};
-    use wiremock::{Mock, MockServer, ResponseTemplate};
+    use wiremock::{Mock, ResponseTemplate};
 
     // ------------------------------------------
     // resolve_slack_user_name — success paths
@@ -214,7 +214,7 @@ mod wiremock_tests {
 
     #[tokio::test]
     async fn test_resolve_user_name_display_name() {
-        let mock_server = MockServer::start().await;
+        let mock_server = crate::channels::slack::events::tests_support::mock_provider().await;
 
         Mock::given(method("GET"))
             .and(path("/users.info"))
@@ -242,13 +242,17 @@ mod wiremock_tests {
         assert_eq!(result, Some("Alice S.".to_string()));
 
         // Verify it was cached
-        let cached = cache.get("U123");
+        let cached = cache.get(&crate::channels::slack::provider::cache_key(
+            &mock_server.uri(),
+            "xoxb-test-token",
+            "U123",
+        ));
         assert_eq!(cached, Some(Some("Alice S.".to_string())));
     }
 
     #[tokio::test]
     async fn test_resolve_user_name_fallback_to_real_name() {
-        let mock_server = MockServer::start().await;
+        let mock_server = crate::channels::slack::events::tests_support::mock_provider().await;
 
         Mock::given(method("GET"))
             .and(path("/users.info"))
@@ -278,7 +282,7 @@ mod wiremock_tests {
 
     #[tokio::test]
     async fn test_resolve_user_name_fallback_to_name() {
-        let mock_server = MockServer::start().await;
+        let mock_server = crate::channels::slack::events::tests_support::mock_provider().await;
 
         Mock::given(method("GET"))
             .and(path("/users.info"))
@@ -307,7 +311,7 @@ mod wiremock_tests {
 
     #[tokio::test]
     async fn test_resolve_user_name_no_profile() {
-        let mock_server = MockServer::start().await;
+        let mock_server = crate::channels::slack::events::tests_support::mock_provider().await;
 
         Mock::given(method("GET"))
             .and(path("/users.info"))
@@ -337,11 +341,18 @@ mod wiremock_tests {
 
     #[tokio::test]
     async fn test_resolve_user_name_uses_cache() {
-        let mock_server = MockServer::start().await;
+        let mock_server = crate::channels::slack::events::tests_support::mock_provider().await;
 
         // No mock mounted — any actual HTTP call would fail
         let cache: SlackUserCache = new_slack_user_cache();
-        cache.insert("U123".to_string(), Some("Cached Alice".to_string()));
+        cache.insert(
+            crate::channels::slack::provider::cache_key(
+                &mock_server.uri(),
+                "xoxb-test-token",
+                "U123",
+            ),
+            Some("Cached Alice".to_string()),
+        );
 
         let result =
             resolve_slack_user_name_base(&mock_server.uri(), &cache, "xoxb-test-token", "U123")
@@ -364,11 +375,18 @@ mod wiremock_tests {
 
     #[tokio::test]
     async fn test_resolve_user_name_cached_none_skips_api() {
-        let mock_server = MockServer::start().await;
+        let mock_server = crate::channels::slack::events::tests_support::mock_provider().await;
 
         // Cache a None (permanent failure like missing_scope)
         let cache: SlackUserCache = new_slack_user_cache();
-        cache.insert("U123".to_string(), None);
+        cache.insert(
+            crate::channels::slack::provider::cache_key(
+                &mock_server.uri(),
+                "xoxb-test-token",
+                "U123",
+            ),
+            None,
+        );
 
         let result =
             resolve_slack_user_name_base(&mock_server.uri(), &cache, "xoxb-test-token", "U123")
@@ -383,7 +401,7 @@ mod wiremock_tests {
 
     #[tokio::test]
     async fn test_resolve_user_name_missing_scope_cached() {
-        let mock_server = MockServer::start().await;
+        let mock_server = crate::channels::slack::events::tests_support::mock_provider().await;
 
         Mock::given(method("GET"))
             .and(path("/users.info"))
@@ -403,13 +421,17 @@ mod wiremock_tests {
         assert_eq!(result, None);
 
         // Permanent error should be cached as None
-        let cached = cache.get("U123");
+        let cached = cache.get(&crate::channels::slack::provider::cache_key(
+            &mock_server.uri(),
+            "xoxb-test-token",
+            "U123",
+        ));
         assert_eq!(cached, Some(None));
     }
 
     #[tokio::test]
     async fn test_resolve_user_name_invalid_auth_cached() {
-        let mock_server = MockServer::start().await;
+        let mock_server = crate::channels::slack::events::tests_support::mock_provider().await;
 
         Mock::given(method("GET"))
             .and(path("/users.info"))
@@ -427,12 +449,19 @@ mod wiremock_tests {
                 .await;
 
         assert_eq!(result, None);
-        assert_eq!(cache.get("U123"), Some(None));
+        assert_eq!(
+            cache.get(&crate::channels::slack::provider::cache_key(
+                &mock_server.uri(),
+                "xoxb-bad-token",
+                "U123"
+            )),
+            Some(None)
+        );
     }
 
     #[tokio::test]
     async fn test_resolve_user_name_transient_error_not_cached() {
-        let mock_server = MockServer::start().await;
+        let mock_server = crate::channels::slack::events::tests_support::mock_provider().await;
 
         // Transient error (e.g. internal_error) should NOT be cached
         Mock::given(method("GET"))
@@ -453,12 +482,20 @@ mod wiremock_tests {
         assert_eq!(result, None);
 
         // Transient error should NOT be cached (allow retry)
-        assert!(cache.get("U123").is_none());
+        assert!(
+            cache
+                .get(&crate::channels::slack::provider::cache_key(
+                    &mock_server.uri(),
+                    "xoxb-test-token",
+                    "U123"
+                ))
+                .is_none()
+        );
     }
 
     #[tokio::test]
     async fn test_resolve_user_name_malformed_json() {
-        let mock_server = MockServer::start().await;
+        let mock_server = crate::channels::slack::events::tests_support::mock_provider().await;
 
         Mock::given(method("GET"))
             .and(path("/users.info"))
@@ -474,7 +511,15 @@ mod wiremock_tests {
 
         assert_eq!(result, None);
         // Parse failure is transient — not cached
-        assert!(cache.get("U123").is_none());
+        assert!(
+            cache
+                .get(&crate::channels::slack::provider::cache_key(
+                    &mock_server.uri(),
+                    "xoxb-test-token",
+                    "U123"
+                ))
+                .is_none()
+        );
     }
 
     // ------------------------------------------
@@ -507,11 +552,13 @@ mod wiremock_tests {
     /// 250 messages must arrive whole, which requires following two cursors.
     #[tokio::test]
     async fn test_fetch_thread_replies_follows_cursor_to_end_of_thread() {
-        let mock_server = MockServer::start().await;
+        let mock_server = crate::channels::slack::events::tests_support::mock_provider().await;
 
         Mock::given(method("GET"))
             .and(path("/conversations.replies"))
-            .and(wiremock::matchers::query_param_is_missing("cursor"))
+            .and(|request: &wiremock::Request| {
+                !request.url.query_pairs().any(|(key, _)| key == "cursor")
+            })
             .respond_with(ResponseTemplate::new(200).set_body_json(replies_page(
                 0,
                 100,
@@ -555,10 +602,47 @@ mod wiremock_tests {
         assert_eq!(backfill.messages[249].text.as_deref(), Some("message 249"));
     }
 
+    #[tokio::test]
+    async fn native_history_retains_subtype_policy_after_actorless_entries() {
+        let server = crate::channels::slack::events::tests_support::mock_provider().await;
+        Mock::given(method("GET"))
+            .and(path("/conversations.replies"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "ok":true,"messages":[
+                    {"subtype":"tombstone","ts":"1.0","text":"deleted"},
+                    {"user":"U1","subtype":"channel_join","ts":"2.0","text":"joined"},
+                    {"user":"U1","subtype":"file_share","ts":"3.0","text":"attached file"},
+                    {"user":"U1","ts":"4.0","text":"human reply"},
+                    {"bot_id":"B1","subtype":"bot_message","ts":"5.0","text":"bot reply"}
+                ]
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let backfill =
+            fetch_thread_replies_base(&server.uri(), "xoxb-test-token", "C123", "1.0").await;
+        assert!(backfill.exhausted);
+        assert_eq!(backfill.messages.len(), 4);
+        assert_eq!(
+            backfill.messages[0].subtype.as_deref(),
+            Some("channel_join")
+        );
+        assert_eq!(backfill.messages[1].subtype.as_deref(), Some("file_share"));
+        let admitted = backfill
+            .messages
+            .iter()
+            .filter(|reply| {
+                !crate::channels::slack::events::thread::should_skip_thread_reply(reply, None)
+            })
+            .map(|reply| reply.text.as_deref().unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(admitted, ["human reply"]);
+    }
+
     /// An empty cursor string is Slack's "no more pages", not a page to fetch.
     #[tokio::test]
     async fn test_fetch_thread_replies_treats_empty_cursor_as_end() {
-        let mock_server = MockServer::start().await;
+        let mock_server = crate::channels::slack::events::tests_support::mock_provider().await;
 
         Mock::given(method("GET"))
             .and(path("/conversations.replies"))
@@ -579,7 +663,7 @@ mod wiremock_tests {
     /// so the notice can say how much is missing instead of guessing.
     #[tokio::test]
     async fn test_fetch_thread_replies_caps_and_keeps_newest() {
-        let mock_server = MockServer::start().await;
+        let mock_server = crate::channels::slack::events::tests_support::mock_provider().await;
         let total_pages = (THREAD_BACKFILL_MAX_MESSAGES / 100) + 2; // 7 pages = 700 messages
 
         for page in 0..total_pages {
@@ -596,8 +680,10 @@ mod wiremock_tests {
             let body = replies_page(page * 100, 100, cursor_out.as_deref());
             let mut mock = Mock::given(method("GET")).and(path("/conversations.replies"));
             mock = match cursor_in {
-                Some(ref c) => mock.and(wiremock::matchers::query_param("cursor", c.as_str())),
-                None => mock.and(wiremock::matchers::query_param_is_missing("cursor")),
+                Some(ref c) => mock.and(wiremock::matchers::query_param("cursor", c)),
+                None => mock.and(|request: &wiremock::Request| {
+                    !request.url.query_pairs().any(|(key, _)| key == "cursor")
+                }),
             };
             mock.respond_with(ResponseTemplate::new(200).set_body_json(body))
                 .mount(&mock_server)
@@ -626,7 +712,7 @@ mod wiremock_tests {
     /// A cursor that never terminates must not page forever.
     #[tokio::test]
     async fn test_fetch_thread_replies_stops_at_page_cap() {
-        let mock_server = MockServer::start().await;
+        let mock_server = crate::channels::slack::events::tests_support::mock_provider().await;
 
         // Every page hands back a fresh cursor, so only the cap ends this.
         Mock::given(method("GET"))
@@ -653,11 +739,13 @@ mod wiremock_tests {
     /// throwing away history the agent could still use.
     #[tokio::test]
     async fn test_fetch_thread_replies_keeps_earlier_pages_on_later_error() {
-        let mock_server = MockServer::start().await;
+        let mock_server = crate::channels::slack::events::tests_support::mock_provider().await;
 
         Mock::given(method("GET"))
             .and(path("/conversations.replies"))
-            .and(wiremock::matchers::query_param_is_missing("cursor"))
+            .and(|request: &wiremock::Request| {
+                !request.url.query_pairs().any(|(key, _)| key == "cursor")
+            })
             .respond_with(ResponseTemplate::new(200).set_body_json(replies_page(
                 0,
                 100,
@@ -691,7 +779,7 @@ mod wiremock_tests {
     /// A first-page error still degrades to "no history", as before.
     #[tokio::test]
     async fn test_fetch_thread_replies_empty_on_first_page_error() {
-        let mock_server = MockServer::start().await;
+        let mock_server = crate::channels::slack::events::tests_support::mock_provider().await;
 
         Mock::given(method("GET"))
             .and(path("/conversations.replies"))

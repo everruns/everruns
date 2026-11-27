@@ -13,9 +13,9 @@
 //! What a click does is deliberately small: it posts a message into the session.
 //! `soft_approval`'s pause is answered by the user's next message, so a click
 //! that becomes that message resumes the turn through the path that already
-//! exists, and [`crate::domains::audit_logs::approval_listener`] attributes it to the Slack
-//! identity the API recorded — without approvals needing an identity path of
-//! their own. See [`crate::channels::slack::approvals`].
+//! exists. The verified click also writes a deduplicated org audit row with
+//! the Slack identity; a model-authored approval cannot supply that identity.
+//! See [`crate::channels::slack::approvals`].
 
 use crate::domains::agent_channels::record::slack_channel::SlackChannelConfig;
 use axum::body::Bytes;
@@ -28,14 +28,14 @@ use super::{SlackState, SlackTarget, resolve_slack_channel, verify_slack_signatu
 use crate::api::ErrorResponse;
 use crate::api::channel_ingress::{IngressChannel, IngressContext};
 use crate::channels::slack::approvals::{
-    ApprovalBinding, ApprovalDecision, ApprovalPolicy, ApprovalPrompt, build_resolved_blocks,
+    ApprovalBinding, ApprovalDecision, ApprovalPolicy, ApprovalPrompt,
 };
 use crate::middleware::RequestId;
 
 type ApiError = (StatusCode, Json<ErrorResponse>);
 
 /// Slack's interactivity envelope, narrowed to the parts a card click uses.
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 struct InteractionPayload {
     #[serde(rename = "type")]
     interaction_type: String,
@@ -48,9 +48,13 @@ struct InteractionPayload {
     #[serde(default)]
     message: Option<SlackMessageRef>,
     #[serde(default)]
-    response_url: Option<String>,
-    #[serde(default)]
     container: Option<SlackContainerRef>,
+    #[serde(skip)]
+    response: Option<channelkit_slack::SlackResponseUrl>,
+    #[serde(skip)]
+    client: Option<std::sync::Arc<channelkit_slack::Slack>>,
+    #[serde(skip)]
+    conversation: Option<channelkit::ConversationKey>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -76,15 +80,69 @@ struct SlackMessageRef {
 }
 
 impl InteractionPayload {
+    fn from_ingress(
+        ingress: channelkit_slack::SlackIngress,
+        client: std::sync::Arc<channelkit_slack::Slack>,
+    ) -> Option<Self> {
+        let action = ingress
+            .ingress
+            .events
+            .into_iter()
+            .find_map(|event| match event.kind {
+                channelkit::EventKind::Action(action) => Some(action),
+                _ => None,
+            })?;
+        let context = ingress.context.interaction.unwrap_or_default();
+        Some(Self {
+            interaction_type: "block_actions".into(),
+            user: Some(SlackUserRef {
+                id: action.actor.id,
+            }),
+            actions: vec![SlackAction {
+                action_id: action.id,
+                value: Some(action.value),
+            }],
+            channel: Some(SlackChannelRef {
+                id: action.conversation.channel.clone(),
+            }),
+            message: context.message_ts.map(|ts| SlackMessageRef {
+                ts,
+                thread_ts: context.thread_ts,
+            }),
+            container: None,
+            response: ingress.interaction_response,
+            client: Some(client),
+            conversation: Some(action.conversation),
+        })
+    }
+
     fn approval_event(
         &self,
         clicker: &str,
         binding: &ApprovalBinding,
     ) -> Option<super::SlackEvent> {
         if !binding.private {
-            return self.decision_event(clicker);
+            let event = self.decision_event(clicker)?;
+            // Keep legacy signed public cards usable, but bind every newly
+            // rendered card to its original conversation before claiming it.
+            if let Some((channel, thread)) = &binding.reply_destination {
+                // A scheduled, top-level card has no original thread yet;
+                // only that card's own root may become the resumed thread.
+                let expected_thread = if thread.is_empty() {
+                    event.ts.as_deref()?
+                } else {
+                    thread.as_str()
+                };
+                if channel.is_empty()
+                    || event.channel.as_ref() != Some(channel)
+                    || event.thread_ts.as_deref() != Some(expected_thread)
+                {
+                    return None;
+                }
+            }
+            return Some(event);
         }
-        let (channel, thread) = binding.private_destination.as_ref()?;
+        let (channel, thread) = binding.reply_destination.as_ref()?;
         if channel.is_empty() || thread.is_empty() || self.channel.as_ref()?.id != *channel {
             return None;
         }
@@ -102,8 +160,10 @@ impl InteractionPayload {
             interaction_type: self.interaction_type.clone(),
             user: None,
             actions: vec![],
-            response_url: None,
             container: None,
+            response: None,
+            client: None,
+            conversation: None,
             channel: Some(SlackChannelRef {
                 id: channel.clone(),
             }),
@@ -200,30 +260,69 @@ async fn handle_slack_interactivity(
                 .into_response(StatusCode::INTERNAL_SERVER_ERROR)
         })?;
 
-    // THREAT[TM-SLACK-001]: signature and replay window, before the body is
-    // interpreted at all. Identical to the events endpoint.
+    // THREAT[TM-SLACK-001]: reject forged requests before parsing or provider discovery.
     verify_slack_signature(&headers, &body, &slack_config.signing_secret).map_err(|e| {
         tracing::warn!(ingress_id = %ingress_id, error = %e, "Slack interactivity signature verification failed");
         ErrorResponse::new("Invalid signature").into_response(StatusCode::UNAUTHORIZED)
     })?;
 
-    let Some(payload) = parse_interaction(&body) else {
-        tracing::warn!(ingress_id = %ingress_id, "Failed to parse Slack interactivity payload");
-        return Err(
-            ErrorResponse::new("Invalid request body").into_response(StatusCode::BAD_REQUEST)
-        );
+    let request = everruns_contracts::runtime::channel_driver::ChannelRequest {
+        path: String::new(),
+        headers: headers
+            .iter()
+            .filter_map(|(key, value)| {
+                value
+                    .to_str()
+                    .ok()
+                    .map(|value| (key.to_string(), value.into()))
+            })
+            .collect(),
+        body: body.to_vec(),
     };
-
-    if payload.interaction_type != "block_actions" {
-        // Shortcuts, view submissions, and the rest are not ours. Acknowledged
-        // so Slack stops, ignored because nothing here handles them.
-        tracing::debug!(
-            ingress_id = %ingress_id,
-            interaction_type = %payload.interaction_type,
-            "Ignoring Slack interaction this endpoint does not handle"
-        );
+    let egress = super::super::provider::egress(&state, ingress.org_id);
+    let received = super::super::provider::receive(
+        &slack_channel.public_id.to_string(),
+        &slack_config,
+        &request,
+        egress.clone(),
+    )
+    .await
+    .map_err(|error| {
+        ErrorResponse::new("Invalid or unavailable Slack interaction").into_response(
+            StatusCode::from_u16(error.status()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+        )
+    })?;
+    let everruns_integrations::slack_channel::ingress::VerifiedHttpIngress::Events {
+        ingress: slack_ingress,
+        ..
+    } = received
+    else {
+        return Ok(ack());
+    };
+    if !slack_ingress
+        .ingress
+        .events
+        .iter()
+        .any(|event| matches!(event.kind, channelkit::EventKind::Action(_)))
+    {
         return Ok(ack());
     }
+    // Identity discovery must fit Slack's acknowledgement deadline. A failed
+    // read has made no decision/write: refuse intake so Slack can redeliver.
+    let client = tokio::time::timeout(
+        std::time::Duration::from_millis(1500),
+        interaction_client(&slack_channel, &slack_config, egress),
+    )
+    .await
+    .ok()
+    .flatten()
+    .ok_or_else(|| {
+        ErrorResponse::new("Slack interaction temporarily unavailable")
+            .into_response(StatusCode::SERVICE_UNAVAILABLE)
+    })?;
+    let Some(payload) = InteractionPayload::from_ingress(*slack_ingress, client) else {
+        return Ok(ack());
+    };
 
     handle_block_action(
         &state,
@@ -246,16 +345,32 @@ pub(crate) async fn handle_socket_interaction(
     slack_config: &SlackChannelConfig,
     payload: serde_json::Value,
 ) {
-    let payload: InteractionPayload = match serde_json::from_value(payload) {
-        Ok(payload) => payload,
-        Err(error) => {
-            tracing::warn!(channel_id = %slack_channel.public_id, %error, "Failed to parse Slack Socket Mode interaction");
-            return;
-        }
+    let request = everruns_contracts::runtime::channel_driver::ChannelRequest {
+        path: super::super::socket_mode::SOCKET_MODE_PATH.into(),
+        headers: vec![],
+        body: payload.to_string().into_bytes(),
     };
-    if payload.interaction_type != "block_actions" {
+    let egress = super::super::provider::egress(state, ingress.org_id);
+    let received = super::super::provider::receive(
+        &slack_channel.public_id.to_string(),
+        slack_config,
+        &request,
+        egress.clone(),
+    )
+    .await;
+    let Ok(everruns_integrations::slack_channel::ingress::VerifiedHttpIngress::Events {
+        ingress: slack_ingress,
+        ..
+    }) = received
+    else {
         return;
-    }
+    };
+    let Some(client) = interaction_client(slack_channel, slack_config, egress).await else {
+        return;
+    };
+    let Some(payload) = InteractionPayload::from_ingress(*slack_ingress, client) else {
+        return;
+    };
     if let Err(error) =
         handle_block_action(state, ingress, slack_channel, slack_config, payload, None).await
     {
@@ -264,6 +379,25 @@ pub(crate) async fn handle_socket_interaction(
 }
 
 /// Slack posts `payload=<json>` as form-encoded, not as a JSON body.
+async fn interaction_client(
+    channel: &IngressChannel,
+    config: &SlackChannelConfig,
+    egress: Option<std::sync::Arc<dyn everruns_contracts::runtime::egress::EgressService>>,
+) -> Option<std::sync::Arc<channelkit_slack::Slack>> {
+    everruns_integrations::slack_channel::bridge::direct_factory()
+        .ok()?
+        .for_credentials(
+            &channel.public_id.to_string(),
+            config.team_id.as_deref(),
+            &config.bot_token,
+            super::SLACK_API_BASE,
+            egress,
+        )
+        .await
+        .ok()
+}
+
+#[cfg(test)]
 fn parse_interaction(body: &[u8]) -> Option<InteractionPayload> {
     let form = std::str::from_utf8(body).ok()?;
     let raw = url::form_urlencoded::parse(form.as_bytes())
@@ -375,11 +509,15 @@ async fn handle_block_action(
     }
 
     // THREAT[TM-SLACK-004]: claim the exact pending card before creating the
-    // consent message. Storage serializes this with event creation, so retries,
+    // consent message. The session authority orders this with event creation, so retries,
     // concurrent clicks, prose replies, and superseding asks all fail closed.
-    let claimed = state
-        .db
-        .claim_slack_approval_card(session.id, &binding.card_id, turn_id)
+    let claimed = crate::channels::slack::approvals::claim_card(
+        &state.db,
+        ingress.org_id,
+        session.id,
+        &binding.card_id,
+        turn_id,
+    )
         .await
         .map_err(|error| {
             tracing::error!(ingress_id = %ingress_id, %session_id, %error, "Failed to claim Slack approval card");
@@ -414,6 +552,24 @@ async fn handle_block_action(
             .into_response(StatusCode::INTERNAL_SERVER_ERROR));
     }
 
+    // The session may run on a data plane, whose events do not flow through
+    // the v1 approval listener. The provider-authenticated callback is the
+    // trusted source of the clicker's Slack identity on either plane.
+    if let Err(error) = audit_approval_click(
+        state,
+        ingress,
+        slack_channel,
+        slack_config,
+        &session,
+        &binding,
+        decision,
+        clicker,
+    )
+    .await
+    {
+        tracing::warn!(ingress_id = %ingress_id, %session_id, %error, "Failed to audit Slack approval click");
+    }
+
     // Rewrite the card for clarity. Single-use enforcement is server-side, so
     // a failed update cannot make the already-consumed card actionable again.
     if binding.private {
@@ -428,20 +584,37 @@ async fn handle_block_action(
             question: None,
             turn_id: None,
         };
-        let blocks = build_resolved_blocks(&request, &decision.as_resolution(clicker));
-        everruns_integrations::slack_channel::web_api::update_slack_message_blocks(
-            &slack_config.bot_token,
-            &channel.id,
-            &message.ts,
-            &decision.as_resolution(clicker),
-            &blocks,
-        )
-        .await
-        .unwrap_or_else(|error| {
-            // The decision is already recorded and the card is consumed; a
-            // card left showing its buttons is cosmetic.
-            tracing::warn!(ingress_id = %ingress_id, %error, "Failed to resolve the Slack approval card");
-        });
+        if let Some(client) = &payload.client {
+            let result = async {
+                let target = channelkit::ConversationKey::new(
+                    channelkit::Provider::Slack,
+                    slack_channel.public_id.to_string(),
+                    &channel.id,
+                    message.thread_ts.clone(),
+                )?;
+                client
+                    .edit_card(
+                        &channelkit::MessageRef {
+                            conversation: target,
+                            id: message.ts.clone(),
+                        },
+                        &channelkit_slack::SlackCard {
+                            title: None,
+                            text: format!(
+                                "{}\n{}",
+                                request.action,
+                                decision.as_resolution(clicker)
+                            ),
+                            actions: vec![],
+                        },
+                    )
+                    .await
+            }
+            .await;
+            if result.is_err() {
+                tracing::warn!("Failed to resolve Slack approval card");
+            }
+        }
     }
 
     tracing::info!(
@@ -452,6 +625,61 @@ async fn handle_block_action(
         "Recorded a Slack approval decision"
     );
     Ok(ack())
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn audit_approval_click(
+    state: &SlackState,
+    ingress: &IngressContext,
+    slack_channel: &IngressChannel,
+    slack_config: &SlackChannelConfig,
+    session: &crate::storage::SessionRow,
+    binding: &ApprovalBinding,
+    decision: ApprovalDecision,
+    clicker: &str,
+) -> anyhow::Result<()> {
+    use crate::domains::audit_logs::record::{AgentAction, AuditEvent};
+
+    let decision = match decision {
+        ApprovalDecision::Approved => "approved",
+        ApprovalDecision::Declined => "declined",
+    };
+    let mut audit = AuditEvent::agent(AgentAction::ApprovalClicked, ingress.org_id, None)
+        .target("session", session.id.to_string())
+        .detail("session_id", session.id.to_string())
+        .detail("channel_id", slack_channel.public_id.to_string())
+        .detail("card_id", binding.card_id.clone())
+        .detail("turn_id", binding.turn_id.clone().unwrap_or_default())
+        .detail("slack_user_id", clicker.to_string())
+        .detail("decision", decision);
+    if let Some(team_id) = &slack_config.team_id {
+        audit = audit.detail("slack_team_id", team_id.clone());
+    }
+    let row = audit.build();
+    // A Slack identity is not a management user UUID. Store the verified
+    // provider identity in details rather than asserting the wrong actor_id.
+    let id = uuid::Uuid::new_v5(
+        &session.id.uuid(),
+        format!("slack.approval.clicked:{}", binding.card_id).as_bytes(),
+    );
+    state
+        .db
+        .create_audit_log_once(
+            id,
+            crate::storage::CreateAuditLogRow {
+                org_id: row.org_id,
+                actor_id: row.actor_user_id,
+                event_type: row.action.as_str().to_string(),
+                ip_address: row.ip_address,
+                metadata: row.details,
+                domain: row.domain.as_str().to_string(),
+                action: row.action.as_str().to_string(),
+                target_type: row.target.as_ref().map(|target| target.target_type.clone()),
+                target_id: row.target.as_ref().map(|target| target.target_id.clone()),
+            },
+        )
+        .await?;
+    Ok(())
 }
 
 /// Tell the clicker something only they need to see.
@@ -470,24 +698,32 @@ async fn respond_private_resolution(payload: &InteractionPayload, text: &str) {
 }
 
 async fn send_private_response(payload: &InteractionPayload, text: &str, replace: bool) {
-    let Some(url) = payload.response_url.as_deref().and_then(slack_response_url) else {
+    // A signed callback must exist; a failed private response never becomes public.
+    let (Some(response), Some(client)) = (&payload.response, &payload.client) else {
         return;
     };
-    let body = private_response_body(text, replace);
-    // Do not follow redirects or log a callback URL (it is a bearer secret).
-    let client = reqwest::Client::builder()
-        .redirect(reqwest::redirect::Policy::none())
-        .timeout(std::time::Duration::from_secs(5))
-        .build();
-    let Ok(client) = client else {
+    let card = channelkit_slack::SlackCard {
+        title: None,
+        text: everruns_integrations::slack_channel::markdown::neutralize_broadcasts(text)
+            .into_owned(),
+        actions: vec![],
+    };
+    let result = if replace {
+        client.replace_ephemeral(response, &card).await
+    } else if let (Some(conversation), Some(user)) = (&payload.conversation, &payload.user) {
+        client
+            .post_ephemeral(conversation, &user.id, &card)
+            .await
+            .map(|_| ())
+    } else {
         return;
     };
-    match client.post(url).json(&body).send().await {
-        Ok(response) if response.status().is_success() => {}
-        _ => tracing::warn!("Failed to post a private Slack approval response"),
+    if result.is_err() {
+        tracing::warn!("Failed to post private Slack approval response");
     }
 }
 
+#[cfg(test)]
 fn private_response_body(text: &str, replace: bool) -> serde_json::Value {
     let mut body = serde_json::json!({
         "response_type": "ephemeral",
@@ -500,6 +736,7 @@ fn private_response_body(text: &str, replace: bool) -> serde_json::Value {
     body
 }
 
+#[cfg(test)]
 fn slack_response_url(raw: &str) -> Option<url::Url> {
     let url = url::Url::parse(raw).ok()?;
     (url.scheme() == "https"
@@ -516,11 +753,9 @@ fn slack_response_url(raw: &str) -> Option<url::Url> {
 
 /// Post a decision into the session as the clicking Slack user.
 ///
-/// Carries the same `ExternalActor` an ordinary Slack message would, which is
-/// the whole reason a click can be attributed: `ApprovalAuditListener` resolves
-/// the approver from the `input.message` event the API writes, so an approval
-/// clicked in Slack lands in the audit log under the person who clicked it,
-/// with no approval-specific identity path. It goes through the channel host
+/// Carries the same `ExternalActor` an ordinary Slack message would. The
+/// verified callback records the clicker's provider identity in the org audit
+/// log after admission. It goes through the channel host
 /// like any message, so the clicker joins the session and the turn it resumes
 /// is delivered back to the thread.
 #[allow(clippy::too_many_arguments)]
@@ -593,6 +828,7 @@ async fn post_decision_message(
 mod tests {
     use super::*;
     use crate::channels::slack::approvals::APPROVE_ACTION_ID;
+    use crate::channels::slack::events::verify_slack_signature;
 
     /// Slack posts interactivity as `payload=<url-encoded json>`, not as JSON.
     /// Getting this wrong makes every click a 400, so it is pinned against the
@@ -619,7 +855,7 @@ mod tests {
             "private action".into(),
         );
         binding.private = true;
-        binding.private_destination = Some(("C1".into(), "1.0".into()));
+        binding.reply_destination = Some(("C1".into(), "1.0".into()));
         let mut body = click(APPROVE_ACTION_ID, "U2", "U1");
         body.as_object_mut().unwrap().remove("response_url");
         body.as_object_mut().unwrap().remove("message");
@@ -641,12 +877,26 @@ mod tests {
         let consumed = || {
             sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM events WHERE session_id = $1 AND event_type = 'slack.approval.consumed'").bind(session_id.uuid())
         };
+        let audited = || {
+            sqlx::query_scalar::<_, serde_json::Value>(
+                "SELECT metadata FROM audit_logs WHERE org_id = $1 AND action = 'agent.approval.clicked' AND target_id = $2",
+            )
+            .bind(slack.context.org_id)
+            .bind(session_id.to_string())
+        };
         assert_eq!(
             consumed()
                 .fetch_one(slack.db.database().pool())
                 .await
                 .unwrap(),
             0
+        );
+        assert!(
+            audited()
+                .fetch_optional(slack.db.database().pool())
+                .await
+                .unwrap()
+                .is_none()
         );
         // A different endpoint in the same organization cannot consume it.
         body["user"]["id"] = serde_json::json!("U1");
@@ -687,6 +937,12 @@ mod tests {
                 .unwrap(),
             1
         );
+        let audit = audited()
+            .fetch_one(slack.db.database().pool())
+            .await
+            .unwrap();
+        assert_eq!(audit["slack_user_id"], "U1");
+        assert_eq!(audit["decision"], "approved");
         // The single-use decision is in storage, not in the ephemeral message.
         let _ = handle_block_action(
             &slack.state,
@@ -705,6 +961,61 @@ mod tests {
                 .unwrap(),
             1
         );
+        assert_eq!(
+            sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM audit_logs WHERE org_id = $1 AND action = 'agent.approval.clicked' AND target_id = $2")
+                .bind(slack.context.org_id)
+                .bind(session_id.to_string())
+                .fetch_one(slack.db.database().pool())
+                .await
+                .unwrap(),
+            1
+        );
+    }
+
+    #[test]
+    fn public_approval_checks_original_conversation_and_legacy_format() {
+        let mut body = click(APPROVE_ACTION_ID, "U_R", "U_R");
+        body["message"]["thread_ts"] = serde_json::json!("1.0");
+        let mut binding: ApprovalBinding = serde_json::from_str(&binding_value("U_R")).unwrap();
+        binding.reply_destination = Some(("C1".into(), "1.0".into()));
+        let payload = parse_interaction(&form_body(&body)).unwrap();
+        assert!(payload.approval_event("U_R", &binding).is_some());
+        body["message"]["thread_ts"] = serde_json::json!("2.0");
+        let redirected = parse_interaction(&form_body(&body)).unwrap();
+        assert!(redirected.approval_event("U_R", &binding).is_none());
+        body["channel"]["id"] = serde_json::json!("C_OTHER");
+        assert!(
+            parse_interaction(&form_body(&body))
+                .unwrap()
+                .approval_event("U_R", &binding)
+                .is_none()
+        );
+        // The previous wire format is still accepted with its signed reference.
+        binding.reply_destination = None;
+        assert!(payload.approval_event("U_R", &binding).is_some());
+    }
+
+    #[test]
+    fn top_level_public_card_resumes_only_its_own_root() {
+        let mut body = click(APPROVE_ACTION_ID, "U_R", "U_R");
+        let mut binding: ApprovalBinding = serde_json::from_str(&binding_value("U_R")).unwrap();
+        binding.reply_destination = Some(("C1".into(), String::new()));
+        let payload = parse_interaction(&form_body(&body)).unwrap();
+        assert_eq!(
+            payload
+                .approval_event("U_R", &binding)
+                .unwrap()
+                .thread_ts
+                .as_deref(),
+            Some("1.2")
+        );
+        body["message"]["thread_ts"] = serde_json::json!("OTHER");
+        assert!(
+            parse_interaction(&form_body(&body))
+                .unwrap()
+                .approval_event("U_R", &binding)
+                .is_none()
+        );
     }
 
     #[test]
@@ -714,14 +1025,14 @@ mod tests {
         body["container"] = serde_json::json!({"message_ts": "ephemeral-ts"});
         let mut binding: ApprovalBinding = serde_json::from_str(&binding_value("U_R")).unwrap();
         binding.private = true;
-        binding.private_destination = Some(("C1".into(), "1.0".into()));
+        binding.reply_destination = Some(("C1".into(), "1.0".into()));
         let payload = parse_interaction(&form_body(&body)).unwrap();
         let event = payload.approval_event("U_R", &binding).unwrap();
         assert_eq!(event.thread_ts.as_deref(), Some("1.0"));
         assert_eq!(event.channel.as_deref(), Some("C1"));
-        binding.private_destination = Some(("C_OTHER".into(), "1.0".into()));
+        binding.reply_destination = Some(("C_OTHER".into(), "1.0".into()));
         assert!(payload.approval_event("U_R", &binding).is_none());
-        binding.private_destination = None;
+        binding.reply_destination = None;
         assert!(payload.approval_event("U_R", &binding).is_none());
     }
 

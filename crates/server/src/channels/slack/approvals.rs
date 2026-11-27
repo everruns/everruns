@@ -1,6 +1,6 @@
 //! Slack approvals: the card, the click, and who may click it (EVE-1025).
 //!
-//! # No new protocol
+//! # Reuse soft approval
 //!
 //! The `soft_approval` capability already pauses a turn: `request_approval` is
 //! a real tool call, the model ends its turn on it, and the pause is answered by
@@ -42,8 +42,33 @@
 
 use everruns_contracts::typed_id::SessionId;
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::Value;
+#[cfg(test)]
+use serde_json::json;
 use uuid::Uuid;
+
+/// Claims follow the session's authority. A missing or unavailable v2 plane
+/// never falls back to the unrelated v1 event log.
+pub(crate) async fn claim_card(
+    db: &std::sync::Arc<crate::storage::StorageBackend>,
+    org_id: i64,
+    session: SessionId,
+    card_id: &str,
+    turn_id: &str,
+) -> anyhow::Result<bool> {
+    // THREAT[TM-SLACK-004]: never consult a second authority after a failed claim.
+    // Ownership is a per-session fact, not the cached organization routing hint.
+    if db.dp_session_on_data_plane(&session.to_string()).await? {
+        let plane =
+            crate::domains::data_plane::session_plane::SessionPlane::of(db, org_id, session)
+                .await?
+                .ok_or_else(|| anyhow::anyhow!("channel approval authority unavailable"))?;
+        plane.claim_channel_approval(card_id, turn_id).await
+    } else {
+        db.claim_slack_approval_card(session, card_id, turn_id)
+            .await
+    }
+}
 
 /// Session hint a Slack endpoint declares when it can draw approval cards.
 ///
@@ -101,10 +126,11 @@ pub(crate) struct ApprovalBinding {
     /// Visibility is stamped into the signed card, not read from mutable config.
     #[serde(default, rename = "p", skip_serializing_if = "is_false")]
     pub private: bool,
-    /// Ephemeral message timestamps are not public thread roots. Carry the
-    /// original destination so a click can resume even without a message body.
+    /// Original reply destination for new public and private cards. Older public
+    /// cards omit it; private cards require it because ephemeral timestamps
+    /// cannot identify the original conversation.
     #[serde(default, rename = "d", skip_serializing_if = "Option::is_none")]
-    pub private_destination: Option<(String, String)>,
+    pub reply_destination: Option<(String, String)>,
 }
 
 fn is_false(value: &bool) -> bool {
@@ -132,7 +158,7 @@ impl ApprovalBinding {
             turn_id,
             action,
             private: false,
-            private_destination: None,
+            reply_destination: None,
         }
     }
 }
@@ -222,12 +248,41 @@ fn hint_is_set(hint: Option<&Value>) -> bool {
     hint.and_then(Value::as_bool).unwrap_or(false)
 }
 
+/// Keep authorization values in the host; Channelkit owns native rendering.
+pub(crate) fn build_approval_card(
+    request: &ApprovalPrompt,
+    binding: &ApprovalBinding,
+) -> Option<channelkit_slack::SlackCard> {
+    let value = serde_json::to_string(binding).ok()?;
+    let text = request.text();
+    if value.len() > MAX_ACTION_VALUE_BYTES || text.chars().count() > 3000 {
+        return None;
+    }
+    Some(channelkit_slack::SlackCard {
+        title: Some("Approval needed".into()),
+        text,
+        actions: [
+            (APPROVE_ACTION_ID, "Approve"),
+            (DECLINE_ACTION_ID, "Decline"),
+        ]
+        .into_iter()
+        .map(|(id, label)| channelkit_slack::SlackButton {
+            action_id: id.into(),
+            label: label.into(),
+            value: Some(value.clone()),
+            url: None,
+        })
+        .collect(),
+    })
+}
+
 /// Build the Block Kit blocks for an approval card.
 ///
 /// Returns `None` when the binding will not fit in a button value, which is the
 /// one case where a card would render buttons that cannot be authorized. The
 /// caller falls back to posting the question as text, which is exactly the
 /// no-hint behaviour: the model asks, the human answers in prose.
+#[cfg(test)]
 pub(crate) fn build_approval_blocks(
     request: &ApprovalPrompt,
     binding: &ApprovalBinding,
@@ -283,6 +338,7 @@ pub(crate) fn build_approval_blocks(
 /// makes a second click harmless: the buttons are gone, so there is nothing
 /// left to click, and the thread reads as a decision rather than as a question
 /// with an answer somewhere below it.
+#[cfg(test)]
 pub(crate) fn build_resolved_blocks(request: &ApprovalPrompt, resolution: &str) -> Value {
     json!([
         {
@@ -311,7 +367,7 @@ mod tests {
             turn_id: Some("turn_1".to_string()),
             action: "delete the staging database".to_string(),
             private: false,
-            private_destination: None,
+            reply_destination: None,
         }
     }
 

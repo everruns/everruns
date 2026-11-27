@@ -587,11 +587,10 @@ impl OpenResponsesProtocolChatDriver {
                                 LlmContentPart::File { url, filename } => {
                                     Some(ResponsesContentPart::InputFile {
                                         r#type: "input_file".to_string(),
-                                        input_file: ResponsesInputFile {
-                                            file_data: Some(url.clone()),
-                                            file_url: None,
-                                            filename: filename.clone(),
-                                        },
+                                        input_file: ResponsesInputFile::from_source(
+                                            url,
+                                            filename.as_deref(),
+                                        ),
                                     })
                                 }
                                 LlmContentPart::Audio { .. }
@@ -642,11 +641,10 @@ impl OpenResponsesProtocolChatDriver {
                         LlmContentPart::File { url, filename } => {
                             Some(ResponsesContentPart::InputFile {
                                 r#type: "input_file".to_string(),
-                                input_file: ResponsesInputFile {
-                                    file_data: Some(url.clone()),
-                                    file_url: None,
-                                    filename: filename.clone(),
-                                },
+                                input_file: ResponsesInputFile::from_source(
+                                    url,
+                                    filename.as_deref(),
+                                ),
                             })
                         }
                         LlmContentPart::ProviderOpaque(_) => None,

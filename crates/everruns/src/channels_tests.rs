@@ -242,6 +242,54 @@ async fn a_slack_file_is_downloaded_into_the_sessions_files() {
 }
 
 #[tokio::test]
+async fn auto_registered_channel_keeps_its_agents_workspace_for_attachments() {
+    let engine = Engine::new();
+    let capture = Arc::new(Mutex::new(Vec::new()));
+    let agent = Agent::builder()
+        .instructions("You are concise.")
+        .model(Model::simulated_capturing("ok", capture.clone()))
+        .build()
+        .unwrap();
+    let recorder = Recorder::default();
+    let channels = Channels::builder(&engine)
+        .channel("support", Channel::new(recorder.clone()), agent)
+        .build();
+    let response = channels
+        .handle("support", &message("hi", "attachment-thread"))
+        .await;
+    assert_eq!(response.status, 200, "{:?}", response.body);
+    let session = response.body["session_id"].as_str().unwrap();
+    wait_for_posts(&recorder, 1).await;
+    let parts = channels
+        .host()
+        .attachment_parts(
+            "support",
+            Some(session),
+            &[InboundAttachment::Bytes {
+                name: Some("report.pdf".into()),
+                media_type: Some("application/pdf".into()),
+                data: b"%PDF-1.7 fixture".to_vec(),
+            }],
+            None,
+        )
+        .await
+        .unwrap();
+    assert!(
+        matches!(parts.as_slice(), [everruns_core::ContentPart::File(_)]),
+        "{parts:?}"
+    );
+    let session = engine.resume(session.parse().unwrap()).await.unwrap();
+    let mut message = everruns_core::InputMessage::user("Read the attached report.");
+    message.content.extend(parts);
+    session.run(message).await.expect("attachment turn runs");
+    let request = format!("{:?}", capture.lock().unwrap().last().expect("model call"));
+    assert!(
+        request.contains("data:application/pdf;base64,"),
+        "{request}"
+    );
+}
+
+#[tokio::test]
 async fn rejected_preparation_clears_its_channel_delivery_without_a_turn_terminal() {
     let engine = InMemoryEngine::new();
     let recorder = Recorder::default();
@@ -385,4 +433,137 @@ impl ChannelStore for ObservedChannelStore {
         self.completed.notify_one();
         Ok(())
     }
+}
+
+#[derive(Default)]
+struct ScopedSlackEgress {
+    seen: Mutex<Vec<String>>,
+}
+#[async_trait]
+impl everruns_core::EgressService for ScopedSlackEgress {
+    async fn send(
+        &self,
+        _: everruns_core::egress::EgressRequest,
+    ) -> everruns_core::egress::EgressResult<everruns_core::egress::EgressResponse> {
+        unreachable!()
+    }
+    async fn send_stream(
+        &self,
+        request: everruns_core::egress::EgressRequest,
+    ) -> everruns_core::egress::EgressResult<everruns_core::egress::EgressStreamResponse> {
+        assert!(request.dns_pinning_required);
+        assert_eq!(
+            request.headers.get("authorization").map(String::as_str),
+            Some("Bearer fixture-token")
+        );
+        self.seen.lock().unwrap().push(request.url.clone());
+        let body = if request.url.ends_with("/auth.test") {
+            json!({"ok":true,"team_id":"T1","user_id":"U-bot"})
+        } else {
+            assert!(request.url.ends_with("/chat.postMessage"));
+            json!({"ok":true,"ts":"2.0"})
+        };
+        Ok(everruns_core::egress::EgressStreamResponse {
+            status: 200,
+            headers: Default::default(),
+            body: Box::pin(futures::stream::iter([Ok(body.to_string().into_bytes())])),
+        })
+    }
+}
+struct ForbiddenSlackDefault;
+#[async_trait]
+impl everruns_core::EgressService for ForbiddenSlackDefault {
+    async fn send(
+        &self,
+        _: everruns_core::egress::EgressRequest,
+    ) -> everruns_core::egress::EgressResult<everruns_core::egress::EgressResponse> {
+        panic!("host must override the provider's default transport")
+    }
+    async fn send_stream(
+        &self,
+        _: everruns_core::egress::EgressRequest,
+    ) -> everruns_core::egress::EgressResult<everruns_core::egress::EgressStreamResponse> {
+        panic!("host must override the provider's default transport")
+    }
+}
+#[tokio::test]
+async fn slack_installation_discovery_and_reply_use_the_framework_hosts_egress() {
+    use hmac::{Hmac, KeyInit, Mac};
+    use sha2::Sha256;
+    let engine = InMemoryEngine::new();
+    let egress = Arc::new(ScopedSlackEgress::default());
+    let slack =
+        Slack::new("fixture-token", "fixture-secret").egress(Arc::new(ForbiddenSlackDefault));
+    let channels = Channels::builder(&engine)
+        .channel("slack", slack, agent("A scoped reply"))
+        .egress(egress.clone())
+        .build();
+    let body=json!({"type":"event_callback","event_id":"fixture","team_id":"T1","event":{"type":"app_mention","channel":"C1","user":"U7","ts":"1.0","text":"fixture"}}).to_string().into_bytes();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let mut mac = Hmac::<Sha256>::new_from_slice(b"fixture-secret").unwrap();
+    mac.update(format!("v0:{now}:").as_bytes());
+    mac.update(&body);
+    let request = ChannelRequest {
+        path: String::new(),
+        headers: vec![],
+        body,
+    }
+    .header("x-slack-request-timestamp", now.to_string())
+    .header(
+        "x-slack-signature",
+        format!("v0={}", hex::encode(mac.finalize().into_bytes())),
+    );
+    assert_eq!(channels.handle("slack", &request).await.status, 200);
+    tokio::time::timeout(Duration::from_secs(3), async {
+        while !egress
+            .seen
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|url| url.ends_with("/chat.postMessage"))
+        {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(
+        egress
+            .seen
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|url| url.ends_with("/auth.test"))
+            .count(),
+        1
+    );
+}
+
+#[tokio::test]
+async fn channels_default_egress_applies_request_network_policy() {
+    let error = crate::batteries::runtime_egress_service()
+        .send(
+            everruns_core::EgressRequest::new(
+                "GET",
+                "https://blocked.example.invalid/",
+                everruns_core::EgressRequestKind::Integration,
+            )
+            .network_access(Some(
+                everruns_core::network_access::NetworkAccessList::allow_only([
+                    "allowed.example.invalid",
+                ]),
+            )),
+        )
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(
+            error,
+            everruns_core::EgressError::NetworkAccessDenied { .. }
+        ),
+        "{error:?}"
+    );
 }

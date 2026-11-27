@@ -11,11 +11,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         thread.clone(),
     );
     let agent = Agent::builder()
-        .instructions(concat!(
-            "Use Slack actions only in the authorized conversation. ",
-            "Add an eyes reaction to the supplied message and upload a short text file ",
-            "that says this Framework bot is connected. ",
-            "Report success only after checking tool results.",
+        .instructions(format!(
+            "The application has authorized and bound Slack tools to channel {channel}, \
+             thread root {thread}. Use Slack actions only in that conversation. \
+             Add an eyes reaction to the supplied message and upload a short text file \
+             that says this Framework bot is connected. \
+             Report success only after checking tool results.",
         ))
         .model(Model::new("gpt-6.2-sol", OpenAI::from_env()?))
         .slack_actions(actions)

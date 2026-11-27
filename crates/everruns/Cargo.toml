@@ -217,6 +217,7 @@ channel-auth = ["everruns-core/channel-auth"]
 # delivery, recovery). Brings the webhook and Slack drivers; no HTTP server.
 channels = [
     "everruns-core/channels",
+    "everruns-core/direct-egress",
     "dep:futures",
     "dep:everruns-integrations",
     "everruns-integrations/webhook-channel",
@@ -298,6 +299,9 @@ everruns-core = { workspace = true, default-features = false, features = ["host"
 everruns-llmsim.workspace = true
 
 [dev-dependencies]
+hmac.workspace = true
+sha2.workspace = true
+hex.workspace = true
 axum.workspace = true
 chrono.workspace = true
 # Verifies existing embedding callbacks keep their SQLite query type identity.

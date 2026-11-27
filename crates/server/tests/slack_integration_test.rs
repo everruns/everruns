@@ -277,7 +277,11 @@ async fn send_slack_event_to_path(
     signing_secret: &str,
     event_payload: &Value,
 ) -> test_harness::TestResponse {
-    let body = serde_json::to_vec(event_payload).unwrap();
+    let mut payload = event_payload.clone();
+    if payload["type"] == "event_callback" && payload.get("event_id").is_none() {
+        payload["event_id"] = json!(format!("Ev-{}", unique_ts()));
+    }
+    let body = serde_json::to_vec(&payload).unwrap();
     let timestamp = format!(
         "{}",
         std::time::SystemTime::now()

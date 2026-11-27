@@ -153,6 +153,19 @@ async fn read_only_named_memory_rejects_create_edit_delete_and_survives_new_sess
             .contains("Retained memory")
     );
 }
+#[cfg(any(
+    feature = "slack-actions",
+    all(feature = "channels", feature = "triggers")
+))]
+async fn slack_identity(server: &wiremock::MockServer) {
+    wiremock::Mock::given(wiremock::matchers::path("/auth.test"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200)
+                .set_body_json(json!({"ok":true,"team_id":"T1","user_id":"B1"})),
+        )
+        .mount(server)
+        .await;
+}
 #[cfg(feature = "slack-actions")]
 #[tokio::test]
 async fn slack_native_actions_use_shared_operations_and_keep_credentials_out_of_history() {
@@ -161,6 +174,7 @@ async fn slack_native_actions_use_shared_operations_and_keep_credentials_out_of_
         matchers::{header, method, path},
     };
     let server = MockServer::start().await;
+    slack_identity(&server).await;
     for (endpoint, body) in [
         ("reactions.add", json!({"ok":true})),
         ("chat.update", json!({"ok":true})),
@@ -168,29 +182,19 @@ async fn slack_native_actions_use_shared_operations_and_keep_credentials_out_of_
             "users.info",
             json!({"ok":true,"user":{"profile":{"display_name":"Alice","email":"private@example.com"},"is_bot":false}}),
         ),
-        (
-            "files.getUploadURLExternal",
-            json!({"ok":true,"upload_url":format!("{}/upload",server.uri()),"file_id":"F1"}),
-        ),
-        (
-            "files.completeUploadExternal",
-            json!({"ok":true,"files":[{"permalink":"https://slack.com/F1"}]}),
-        ),
     ] {
-        Mock::given(method("POST"))
-            .and(path(format!("/{endpoint}")))
-            .and(header("authorization", "Bearer sentinel-slack-key"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(body))
-            .expect(1)
-            .mount(&server)
-            .await;
-    }
-    Mock::given(method("POST"))
-        .and(path("/upload"))
-        .respond_with(ResponseTemplate::new(200))
+        Mock::given(method(if endpoint == "users.info" {
+            "GET"
+        } else {
+            "POST"
+        }))
+        .and(path(format!("/{endpoint}")))
+        .and(header("authorization", "Bearer sentinel-slack-key"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(body))
         .expect(1)
         .mount(&server)
         .await;
+    }
     let actions = everruns::slack::SlackActions::new("sentinel-slack-key", "C1", "1.0")
         .api_base(server.uri());
     assert!(!format!("{actions:?}").contains("sentinel-slack-key"));
@@ -205,10 +209,6 @@ async fn slack_native_actions_use_shared_operations_and_keep_credentials_out_of_
         ),
         ("slack_lookup_user", json!({"user_id":"U1"})),
         (
-            "slack_upload_file",
-            json!({"filename":"note.txt","content":"Hello"}),
-        ),
-        (
             "slack_add_reaction",
             json!({"channel":"OTHER","timestamp":"1.0","name":"eyes"}),
         ),
@@ -219,12 +219,91 @@ async fn slack_native_actions_use_shared_operations_and_keep_credentials_out_of_
     let session = Engine::new().create(agent);
     session.run("Update this conversation").await.unwrap();
     let data = results(&session).await;
-    assert_eq!(data.len(), 5);
-    assert!(data[..4].iter().all(|v| v["error"].is_null()), "{data:?}");
-    assert!(!data[4]["error"].is_null());
+    assert_eq!(data.len(), 4);
+    assert!(data[..3].iter().all(|v| v["error"].is_null()), "{data:?}");
+    assert!(!data[3]["error"].is_null());
     let text = format!("{:?}", session.history().page().await.unwrap());
     assert!(!text.contains("sentinel-slack-key"));
     assert!(!text.contains("private@example.com"));
+}
+#[cfg(feature = "slack-actions")]
+#[derive(Default)]
+struct SlackUploadEgress(std::sync::Mutex<Vec<String>>);
+#[cfg(feature = "slack-actions")]
+#[everruns::capability::async_trait]
+impl everruns_core::EgressService for SlackUploadEgress {
+    async fn send(
+        &self,
+        _: everruns_core::egress::EgressRequest,
+    ) -> everruns_core::egress::EgressResult<everruns_core::egress::EgressResponse> {
+        unreachable!()
+    }
+    async fn send_stream(
+        &self,
+        request: everruns_core::egress::EgressRequest,
+    ) -> everruns_core::egress::EgressResult<everruns_core::egress::EgressStreamResponse> {
+        assert!(request.dns_pinning_required);
+        assert_eq!(request.method, "POST");
+        let url = request.url.as_str();
+        self.0.lock().unwrap().push(url.into());
+        let body = if url == "https://files.slack.com/upload-fixture" {
+            assert!(!request.headers.contains_key("authorization"));
+            assert_eq!(request.body, b"Hello");
+            Vec::new()
+        } else {
+            assert_eq!(
+                request.headers.get("authorization").map(String::as_str),
+                Some("Bearer scoped-fixture-token")
+            );
+            let response = match url {
+                "https://slack.com/api/auth.test" => {
+                    json!({"ok":true,"team_id":"T1","user_id":"B1"})
+                }
+                "https://slack.com/api/files.getUploadURLExternal" => {
+                    assert_eq!(
+                        String::from_utf8(request.body).unwrap(),
+                        "filename=note.txt&length=5"
+                    );
+                    json!({"ok":true,"file_id":"F1","upload_url":"https://files.slack.com/upload-fixture"})
+                }
+                "https://slack.com/api/files.completeUploadExternal" => {
+                    let body: Value = serde_json::from_slice(&request.body).unwrap();
+                    assert_eq!(body["channel_id"], "C1");
+                    assert_eq!(body["thread_ts"], "1.0");
+                    json!({"ok":true,"files":[{"id":"F1"}]})
+                }
+                _ => panic!("unexpected fixture operation"),
+            };
+            response.to_string().into_bytes()
+        };
+        Ok(everruns_core::egress::EgressStreamResponse {
+            status: 200,
+            headers: Default::default(),
+            body: Box::pin(futures::stream::iter([Ok(body)])),
+        })
+    }
+}
+#[cfg(feature = "slack-actions")]
+#[tokio::test]
+async fn slack_upload_uses_host_egress_for_discovery_reservation_bytes_and_completion() {
+    let egress = std::sync::Arc::new(SlackUploadEgress::default());
+    let agent = scripted(vec![(
+        "slack_upload_file",
+        json!({"filename":"note.txt","content":"Hello"}),
+    )])
+    .slack_actions(
+        everruns::slack::SlackActions::new("scoped-fixture-token", "C1", "1.0")
+            .egress(egress.clone()),
+    )
+    .build()
+    .unwrap();
+    let session = Engine::new().create(agent);
+    session.run("Upload this note").await.unwrap();
+    assert!(results(&session).await[0]["error"].is_null());
+    assert_eq!(egress.0.lock().unwrap().len(), 4);
+    assert!(
+        !format!("{:?}", session.history().page().await.unwrap()).contains("scoped-fixture-token")
+    );
 }
 #[cfg(feature = "mcp-auth")]
 #[test]
@@ -803,11 +882,11 @@ mod advanced_slack {
     }
     fn message(kind: &str, text: &str) -> ChannelRequest {
         signed(ChannelRequest::json(
-            &json!({"type":"event_callback","team_id":"T1","event":{"type":kind,"channel":"C1","user":"U1","ts":"2.0","thread_ts":"1.0","text":text}}),
+            &json!({"type":"event_callback","event_id":"Ev-fixture","team_id":"T1","event":{"type":kind,"channel":"C1","user":"U1","ts":"2.0","thread_ts":"1.0","text":text}}),
         ))
     }
     fn interaction(key: &str, user: &str) -> ChannelRequest {
-        let payload = json!({"type":"block_actions","team":{"id":"T1"},"user":{"id":user},"channel":{"id":"C1"},"actions":[{"action_id":"everruns_approve","value":key}]});
+        let payload = json!({"type":"block_actions","team":{"id":"T1"},"user":{"id":user},"channel":{"id":"C1"},"message":{"ts":"3.0","thread_ts":"1.0"},"actions":[{"action_id":"everruns_approve","value":key,"action_ts":"4.0"}]});
         let body = format!(
             "payload={}",
             payload
@@ -868,6 +947,7 @@ mod advanced_slack {
     #[tokio::test]
     async fn approval_cards_bind_requester_are_one_use_and_are_superseded_by_new_input() {
         let api = MockServer::start().await;
+        slack_identity(&api).await;
         Mock::given(method("POST"))
             .and(path("/chat.postMessage"))
             .respond_with(ResponseTemplate::new(200).set_body_json(json!({"ok":true,"ts":"3.0"})))
@@ -899,7 +979,11 @@ mod advanced_slack {
             DeliveryResult::Ok
         ));
         let requests = api.received_requests().await.unwrap();
-        let body: Value = serde_json::from_slice(&requests[0].body).unwrap();
+        let posts = requests
+            .iter()
+            .filter(|r| r.url.path() == "/chat.postMessage")
+            .collect::<Vec<_>>();
+        let body: Value = serde_json::from_slice(&posts[0].body).unwrap();
         let key = body["blocks"][1]["elements"][0]["value"].as_str().unwrap();
         assert!(slack.receive(&interaction(key, "OTHER")).await.is_err());
         let Inbound::Message(answer) = slack.receive(&interaction(key, "U1")).await.unwrap() else {
@@ -917,7 +1001,11 @@ mod advanced_slack {
             .prompt(everruns::SessionId::new(), &prompt, &context)
             .await;
         let requests = api.received_requests().await.unwrap();
-        let body: Value = serde_json::from_slice(&requests[1].body).unwrap();
+        let posts = requests
+            .iter()
+            .filter(|r| r.url.path() == "/chat.postMessage")
+            .collect::<Vec<_>>();
+        let body: Value = serde_json::from_slice(&posts[1].body).unwrap();
         let key = body["blocks"][1]["elements"][0]["value"].as_str().unwrap();
         slack
             .receive(&message("message", "Never mind"))
@@ -931,6 +1019,7 @@ mod advanced_slack {
     #[tokio::test]
     async fn shared_stream_surface_retracts_after_stopping_and_bounds_thread_history() {
         let api = MockServer::start().await;
+        slack_identity(&api).await;
         for endpoint in [
             "chat.startStream",
             "chat.appendStream",
@@ -947,16 +1036,16 @@ mod advanced_slack {
                 .mount(&api)
                 .await;
         }
-        Mock::given(method("POST")).and(path("/conversations.replies")).respond_with(ResponseTemplate::new(200).set_body_json(json!({"ok":true,"messages":[{"ts":"1.0","user":"U0","text":"root"},{"ts":"1.5","user":"U0","text":"earlier"},{"ts":"2.0","user":"U1","text":"current"},{"ts":"3.0","bot_id":"B1","text":"bot"}]}))).mount(&api).await;
+        Mock::given(method("GET")).and(path("/conversations.replies")).respond_with(ResponseTemplate::new(200).set_body_json(json!({"ok":true,"messages":[{"ts":"1.0","user":"U0","text":"root"},{"ts":"1.5","user":"U0","text":"earlier"},{"ts":"2.0","user":"U1","text":"current"},{"ts":"3.0","bot_id":"B1","text":"bot"}]}))).mount(&api).await;
         let slack = Slack::new("bot", "signing-secret")
             .agent_pane()
             .thread_history(2)
             .api_base(api.uri());
-        let Inbound::Message(input) = slack
-            .receive(&message("app_mention", "help"))
-            .await
-            .unwrap()
-        else {
+        let mut request = message("app_mention", "help");
+        let mut body: Value = serde_json::from_slice(&request.body).unwrap();
+        body["event"]["channel"] = json!("D1");
+        request = signed(ChannelRequest::json(&body));
+        let Inbound::Message(input) = slack.receive(&request).await.unwrap() else {
             panic!()
         };
         let history = slack.backfill(&input).await.unwrap();

@@ -123,6 +123,7 @@ fn register_session_service_capabilities(registry: &mut CapabilityRegistry) {
 /// not link the concrete HTTP crate.
 pub fn runtime_egress_service() -> Arc<dyn EgressService> {
     #[cfg(any(
+        feature = "channels",
         feature = "bashkit",
         feature = "web-fetch",
         feature = "duckduckgo",
@@ -135,6 +136,7 @@ pub fn runtime_egress_service() -> Arc<dyn EgressService> {
         Arc::new(everruns_core::host::DirectEgressService::for_runtime_traffic_from_env())
     }
     #[cfg(not(any(
+        feature = "channels",
         feature = "bashkit",
         feature = "web-fetch",
         feature = "duckduckgo",

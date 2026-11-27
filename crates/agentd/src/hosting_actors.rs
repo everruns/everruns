@@ -65,6 +65,10 @@ impl everruns_contracts::runtime::tool_execution::BudgetChecker for ShardBudget 
             };
             match self.inner.propose(self.session, command).await {
                 Ok(Response::Value { value }) => {
+                    if value["status"] == "exhausted" && self.expired_grant_pending_refresh().await
+                    {
+                        return self.wait_for_grant_refresh(value).await;
+                    }
                     return serde_json::from_value(value).map_err(store_err);
                 }
                 Ok(other) => last = format!("{other:?}"),
@@ -74,6 +78,76 @@ impl everruns_contracts::runtime::tool_execution::BudgetChecker for ShardBudget 
         tracing::warn!(session = %self.session, reason = %last, "no reservation; stopping the call");
         serde_json::from_value(serde_json::json!({ "status": "exhausted", "budgets": [] }))
             .map_err(store_err)
+    }
+}
+
+impl ShardBudget {
+    /// A grant may expire between provider calls in one running turn. The
+    /// control loop asks for a replacement, so let that answer arrive before
+    /// treating the expired grant as an org budget limit.
+    async fn expired_grant_pending_refresh(&self) -> bool {
+        let Ok(shared) = self.inner.caught_up(self.session).await else {
+            return false;
+        };
+        let state = shared.state.read();
+        let Some(tenant) = state
+            .sessions
+            .get(&self.session)
+            .and_then(|s| s.tenant.as_deref())
+        else {
+            return false;
+        };
+        state
+            .allowances
+            .tenants
+            .get(tenant)
+            .is_some_and(|allowance| {
+                allowance.refused.is_none()
+                    && allowance
+                        .grants
+                        .values()
+                        .any(|grant| grant.spend_until_ms <= now_ms())
+            })
+    }
+
+    async fn wait_for_grant_refresh(
+        &self,
+        exhausted: serde_json::Value,
+    ) -> Result<everruns_contracts::runtime::budget::BudgetToolResponse> {
+        let deadline = std::time::Instant::now() + Duration::from_secs(6);
+        while std::time::Instant::now() < deadline {
+            tokio::time::sleep(Duration::from_millis(250)).await;
+            let command = Command::Reserve {
+                session: self.session,
+                now_ms: now_ms(),
+            };
+            if let Ok(Response::Value { value }) = self.inner.propose(self.session, command).await
+                && (value["status"] != "exhausted" || self.allowance_refused().await)
+            {
+                return serde_json::from_value(value).map_err(store_err);
+            }
+        }
+        // The control plane did not replenish the grant: fail closed.
+        serde_json::from_value(exhausted).map_err(store_err)
+    }
+
+    async fn allowance_refused(&self) -> bool {
+        let Ok(shared) = self.inner.caught_up(self.session).await else {
+            return false;
+        };
+        let state = shared.state.read();
+        let Some(tenant) = state
+            .sessions
+            .get(&self.session)
+            .and_then(|s| s.tenant.as_deref())
+        else {
+            return false;
+        };
+        state
+            .allowances
+            .tenants
+            .get(tenant)
+            .is_some_and(|allowance| allowance.refused.is_some())
     }
 }
 

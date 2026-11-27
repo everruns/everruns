@@ -23,9 +23,16 @@ protocol also requires compatible owners.
    durable stores. A requiring driver retains unmarked ledgerless legacy rows;
    legacy drivers retain marked rows. Missing or unpublished channels retain
    pending evidence for explicit reconciliation. Native file intake uses host egress.
+   For data plane v2, pause v2 writes and upgrade the control plane and shards
+   together. Approval clicks require the new internal claim command and durable
+   shard records; an older shard fails closed. Preserve the pre-upgrade restore
+   point: v2 rollback requires restoring it with writes paused, rather than
+   starting an older shard on upgraded volumes.
 5. Verify signed ingress, an existing conversation, completed replies, stream
    closure, reactions, private approvals and bounded file intake. Watch pending
    age, unknown/partial outcomes, duplicate posts and open streams.
+   On v2, include a card rendered before the upgrade, concurrent valid clicks,
+   and replay after a shard restart. Exactly one decision input may be admitted.
 
 Rollback uses the protocol-aware baseline or a later build that enforces the
 same rules. Do not restart a ledger-only older binary against marked pending

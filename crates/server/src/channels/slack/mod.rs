@@ -24,6 +24,8 @@ pub(crate) mod host;
 pub(crate) mod host_tests;
 pub mod install;
 mod manager_connect;
+mod provider;
 pub mod provisioning;
 pub(crate) mod scheduled;
 pub(crate) mod socket_mode;
+mod socket_transport;

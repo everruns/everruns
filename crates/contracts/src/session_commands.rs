@@ -76,6 +76,11 @@ pub const TOOL_RESULTS: SessionCommand = command(
 );
 /// An event the control plane records on the session (a reaction, feedback).
 pub const RECORD: SessionCommand = command("record", "an event the control plane records");
+/// Consume a channel approval at the canonical position the control plane checked.
+pub const CLAIM_APPROVAL: SessionCommand = command(
+    "claim-approval",
+    "claim a channel approval once at a checked log position",
+);
 /// A person's change to the session's storage (values, sealed secrets).
 pub const STORAGE: SessionCommand =
     command("storage", "a person's change to the session's storage");
@@ -124,6 +129,7 @@ pub const SESSION_COMMANDS: &[SessionCommand] = &[
     SEED,
     TOOL_RESULTS,
     RECORD,
+    CLAIM_APPROVAL,
     STORAGE,
     FS,
     SQLDB,
@@ -263,6 +269,17 @@ pub fn registry_text() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn channel_approval_claim_is_an_internal_command() {
+        assert!(find(Kind::Command, "claim-approval").is_some());
+        assert!(
+            SESSION_ROUTES
+                .iter()
+                .all(|(route, _)| *route != "claim-approval"),
+            "only the trusted control plane may claim channel approvals"
+        );
+    }
 
     /// A change to either list must change `session_commands_registry.txt`
     /// too, so every new command or route shows in review.

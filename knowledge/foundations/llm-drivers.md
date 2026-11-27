@@ -184,7 +184,14 @@ native driver clients keep their existing routing. See the
    **Image Content in Tool Results**: When a tool returns images (via `ToolResultImage`), they become `LlmContentPart::Image` entries in the Tool message's content. Provider-specific handling:
    - **Anthropic**: Tool results with images use array `content` in `tool_result` block (text + image blocks)
    - **OpenAI Chat Completions**: Tool messages include `image_url` content parts alongside text
-   - **OpenAI Responses API**: Images not supported in `function_call_output` (text only, images dropped with warning)
+   - **OpenAI Responses API**: Multipart tool results retain images and files alongside text.
+
+   Responses file encoding is shared across user messages, tool results and native
+   compacted history. Inline data and HTTPS file locations use the provider's
+   native content-part shape; an extra nested file object makes the API reject
+   otherwise valid attachments. Keep compatible-provider behavior in the shared
+   [wire encoder](../../crates/contracts/src/openresponses_protocol/wire.rs) and its
+   [request regressions](../../crates/contracts/src/openresponses_protocol/tests_request.rs).
 
 2. **LlmCallConfig**: Configuration for LLM calls
    - `model`: Model identifier
@@ -721,8 +728,8 @@ discovery keeps the `id == name` entry, chat models only, minus scheduled retire
 Mistral Responses is an explicit connection-level selection owned by the Mistral driver, using the
 shared Responses driver with stateless full-history replay and required terminal
 completion. This preserves the existing Chat Completions default and its native
-JSON transport. The request extension removes OpenAI-only fields and flattens
-file inputs, selecting `file_url` for HTTPS and `file_data` for data URLs.
+JSON transport. The request extension removes OpenAI-only fields; shared Responses
+encoding handles native file content for both inline data and HTTPS locations.
 Plaintext reasoning is opt-in on the shared protocol, tagged `mistral`, and only
 replayed to that provider; OpenAI retains its encrypted-only default. Existing
 reasoning retention and public-projection rules apply (TM-LLM-034). Wire tests in

@@ -55,12 +55,12 @@ use crate::{Agent, Engine, InputMessage, ResumeError, SendDisposition, Session};
 
 pub use crate::channel_controls::{ConversationState, ConversationStore, MemoryConversationStore};
 pub use everruns_core::channel::{
-    ApprovalPrompt, ChannelAgentSurface, ChannelApprovalPrompt, ChannelDeliveryAdapter,
-    ChannelDriver, ChannelError, ChannelProgressSurface, ChannelReactionSurface, ChannelRequest,
-    ChannelResponse, ChannelStreamDelivery, ControlAction, DeliveryContext, DeliveryResult,
-    DeliveryTarget, ExternalActor, Inbound, InboundAttachment, InboundChannelEvent, InboundControl,
-    InboundDecision, InboundMessage, InboundReaction, InboundRoute, OutboundChannelMessage,
-    SessionBinding,
+    ApprovalPrompt, ChannelAgentSurface, ChannelApprovalPrompt, ChannelAttachmentResolver,
+    ChannelDeliveryAdapter, ChannelDriver, ChannelError, ChannelProgressSurface,
+    ChannelReactionSurface, ChannelRequest, ChannelResponse, ChannelStreamDelivery, ControlAction,
+    DeliveryContext, DeliveryResult, DeliveryTarget, ExternalActor, Inbound, InboundAttachment,
+    InboundChannelEvent, InboundControl, InboundDecision, InboundMessage, InboundReaction,
+    InboundRoute, OutboundChannelMessage, SessionBinding,
 };
 pub use everruns_core::channel_runtime::TurnDeliveryPlanner;
 /// File intake, for hosts that take files outside a channel (serve's
@@ -210,7 +210,7 @@ impl ChannelsBuilder {
     /// Download files messages link to (a Slack file) through this egress
     /// service. Defaults to the Framework's runtime egress
     /// ([`batteries::runtime_egress_service`](crate::batteries::runtime_egress_service)),
-    /// which stays offline unless a network feature is enabled.
+    /// enabled by the `channels` feature and subject to host network policy.
     pub fn egress(mut self, egress: Arc<dyn everruns_core::EgressService>) -> Self {
         self.egress = Some(egress);
         self
@@ -245,7 +245,18 @@ impl ChannelsBuilder {
                         agent: format!("channel:{name}"),
                         build_id: uuid::Uuid::new_v4().to_string(),
                     };
-                    match self.engine.register_agent(build.clone(), *agent) {
+                    // A snapshot has the same workspace as Engine::create. An
+                    // environment-less registration can chat, but cannot keep
+                    // incoming files when the channel reopens its session.
+                    let environment = agent.environment_factory();
+                    let reference = format!("channel-workspace-{}", build.build_id);
+                    match self.engine.register_agent_with_environment(
+                        build.clone(),
+                        *agent,
+                        None,
+                        reference,
+                        environment,
+                    ) {
                         Ok(()) => ChannelAgent::Registered(build),
                         Err(_) => ChannelAgent::Unavailable,
                     }

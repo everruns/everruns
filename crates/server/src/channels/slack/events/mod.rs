@@ -3,8 +3,10 @@ use axum::{
     routing::{get, post},
 };
 use everruns_core::host::TurnBackend;
+#[cfg(test)]
 use hmac::Hmac;
 use moka::sync::Cache;
+#[cfg(test)]
 use sha2::Sha256;
 use std::sync::Arc;
 
@@ -35,6 +37,7 @@ pub(crate) use response_policy::should_process_message;
 pub(crate) use thread::*;
 pub(crate) use wire::*;
 
+#[cfg(test)]
 type HmacSha256 = Hmac<Sha256>;
 
 /// Resolved Slack user display name.

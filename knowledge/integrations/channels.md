@@ -161,8 +161,8 @@ message services.
   the builder's static map becomes one `ChannelResolver`, the server's resolver
   reads `agent_channels`. Recovery resolves each pending delivery's channel
   through the resolver and retains pending output when the channel is unavailable
-  or gone. Absence cannot establish that an earlier writer sent nothing;
-  explicit reconciliation retires that output.
+  or gone. A missing channel cannot prove that an earlier writer sent nothing;
+  retiring that output requires explicit reconciliation.
 - **Host scope.** `ChannelConfig` carries an opaque, typed scope the host's
   port downcasts (the server's ingress context: org, agent, harness, owner,
   virtual user, channel row id). `NewChannelSession` and `send` receive the
@@ -317,8 +317,8 @@ a callback failure stops further output. An old custom store without checkpoint
 support fails before a requiring driver's first provider write. Ledger-capable stores
 advertise that capability even when a legacy driver is active: the host refuses to
 replay or clear any existing checkpoint through that driver, before admission or
-provider I/O. Known stores also fence legacy completion. Legacy deliveries without
-a ledger retain their delivery policy while an unmarked legacy driver is active.
+provider I/O. Known stores also fence legacy completion. Unmarked legacy rows without a ledger
+retain their delivery policy under a legacy driver.
 New requiring drivers mark pending rows before their first intent; a legacy driver
 refuses these rows even when no ledger exists yet. A requiring driver retains
 unmarked ledgerless rows for reconciliation instead of replaying unaudited output.

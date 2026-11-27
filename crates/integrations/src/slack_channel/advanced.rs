@@ -1,13 +1,7 @@
 //! Optional Slack conversation affordances. No control-plane state is required.
-use super::{
-    Slack,
-    markdown::{markdown_block, neutralize_broadcasts},
-    strip_mentions,
-    surfaces::*,
-    unix_now,
-    web_api::slack_api_call,
-};
+use super::{Slack, bridge, strip_mentions, surfaces::*, unix_now};
 use async_trait::async_trait;
+use channelkit::Adapter;
 use everruns_contracts::{runtime::channel::*, typed_id::SessionId};
 use serde_json::{Value, json};
 use std::{
@@ -111,27 +105,14 @@ impl Slack {
             cards.retain(|_, card| card.channel != channel || card.thread != thread);
         }
     }
-    pub(super) fn interactive(&self, request: &ChannelRequest) -> Result<Inbound, ChannelError> {
+    pub(super) fn interactive_action(
+        &self,
+        action: &channelkit::ActionEvent,
+    ) -> Result<Inbound, ChannelError> {
         if !self.advanced.approvals {
             return Ok(Inbound::Ignore);
         }
-        let payload = url::form_urlencoded::parse(&request.body)
-            .find(|(k, _)| k == "payload")
-            .map(|(_, v)| v.into_owned())
-            .ok_or_else(|| ChannelError::BadRequest("Slack interaction has no payload".into()))?;
-        let body: Value = serde_json::from_str(&payload)
-            .map_err(|_| ChannelError::BadRequest("Invalid Slack interaction".into()))?;
-        if self
-            .workspace
-            .as_ref()
-            .is_some_and(|team| body["team"]["id"].as_str() != Some(team.as_str()))
-        {
-            return Err(ChannelError::Unauthorized(
-                "Slack interaction belongs to another workspace".into(),
-            ));
-        }
-        let action = &body["actions"][0];
-        let key = action["value"].as_str().unwrap_or("");
+        let key = &action.value;
         let mut cards = self
             .advanced
             .cards
@@ -141,17 +122,17 @@ impl Slack {
         let Some(card) = cards.get(key).cloned() else {
             return Ok(Inbound::Ignore);
         };
-        // A valid Slack signature authenticates Slack, not the person allowed to answer this card.
-        if body["user"]["id"].as_str() != Some(&card.user)
-            || body["channel"]["id"].as_str() != Some(&card.channel)
+        if action.actor.id != card.user
+            || action.conversation.channel != card.channel
+            || action.conversation.thread.as_deref() != Some(card.thread.as_str())
         {
             return Err(ChannelError::Unauthorized(
-                "This approval belongs to another person or channel".into(),
+                "This approval belongs to another person or conversation".into(),
             ));
         }
-        let text = match action["action_id"].as_str() {
-            Some("everruns_approve") => "Approved",
-            Some("everruns_deny") => "Denied",
+        let text = match action.id.as_str() {
+            "everruns_approve" => "Approved",
+            "everruns_deny" => "Denied",
             _ => return Ok(Inbound::Ignore),
         };
         cards.remove(key);
@@ -183,72 +164,21 @@ impl Slack {
             reply_to: target(&card.channel, &card.thread, &card.user, ""),
         })))
     }
-    pub(super) fn pane_control(&self, event: &Value) -> Option<Inbound> {
-        if !self.advanced.pane {
-            return None;
-        }
-        let kind = event["type"].as_str()?;
-        let thread = &event["assistant_thread"];
-        let action = match kind {
-            "app_context_changed" | "assistant_thread_context_changed" => ControlAction::Context {
-                key: "channel_view_context".into(),
-                value: thread["context"].clone(),
-            },
-            "agent_session_stopped" => ControlAction::Cancel,
-            "agent_session_title_changed" => ControlAction::Rename {
-                title: thread["title"]
-                    .as_str()
-                    .or(event["title"].as_str())?
-                    .chars()
-                    .take(250)
-                    .collect(),
-            },
-            "assistant_thread_started" => return Some(Inbound::Ignore),
-            _ => return None,
-        };
-        let channel = thread["channel_id"]
-            .as_str()
-            .or(event["channel"].as_str())?;
-        let ts = thread["thread_ts"]
-            .as_str()
-            .or(event["thread_ts"].as_str())?;
-        let user = event["user"]
-            .as_str()
-            .or(thread["user_id"].as_str())
-            .unwrap_or("");
-        Some(Inbound::Control(Box::new(InboundControl {
-            route: InboundRoute {
-                actor: ExternalActor {
-                    actor_id: user.into(),
-                    actor_name: None,
-                    source: "slack".into(),
-                    metadata: None,
-                },
-                thread_ref: Some(format!("{channel}:{ts}")),
-                routing_metadata: HashMap::from([
-                    ("channel_id".into(), channel.into()),
-                    ("user_id".into(), user.into()),
-                ]),
-                reply_to: target(channel, ts, user, ""),
-            },
-            action,
-        })))
-    }
     pub(super) async fn history(
         &self,
         message: &InboundMessage,
+        context: &DeliveryContext,
     ) -> Result<Vec<InboundChannelEvent>, ChannelError> {
         let limit = self.advanced.history;
         if limit == 0 {
             return Ok(vec![]);
         }
-        let token = self.token.value().unwrap_or_default();
-        if token.is_empty() {
-            return Err(ChannelError::Unauthorized(
-                "Slack history needs a bot token".into(),
-            ));
-        }
-        let body=slack_api_call(&self.api_base,&token,"conversations.replies",json!({"channel":message.reply_to.channel_id,"ts":message.reply_to.thread_ref,"limit":limit+1})).await.map_err(|_|ChannelError::Session("Slack history unavailable".into()))?;
+        let factory = self.factory().map_err(super::ingress::ingress_error)?;
+        let client = factory
+            .for_context(context, &self.api_base)
+            .await
+            .map_err(super::ingress::ingress_error)?;
+        let target = bridge::target(&client, context).map_err(super::ingress::ingress_error)?;
         let current = message
             .event
             .message_metadata
@@ -256,26 +186,41 @@ impl Slack {
             .and_then(Value::as_str)
             .unwrap_or("");
         let mut events = vec![];
-        for reply in body["messages"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .take(limit + 1)
-        {
-            let ts = reply["ts"].as_str().unwrap_or("");
-            if ts.is_empty() || ts >= current || reply.get("bot_id").is_some() {
-                continue;
+        let mut cursor = None;
+        // Bound both pages and retained messages. History is informational;
+        // it cannot authorize an action or choose another conversation.
+        for _ in 0..4 {
+            let page = client
+                .history(&target, cursor.as_deref(), (limit + 1).min(100))
+                .await
+                .map_err(|_| ChannelError::Session("Slack history unavailable".into()))?;
+            for reply in page.messages {
+                let ts = &reply.reference.id;
+                if ts.is_empty() || ts.as_str() >= current || reply.author.is_bot {
+                    continue;
+                }
+                let mut event = message.event.clone();
+                event
+                    .message_metadata
+                    .insert("slack_user".into(), json!(&reply.author.id));
+                event
+                    .message_metadata
+                    .insert("slack_mention".into(), json!(reply.mentioned));
+                event
+                    .routing_metadata
+                    .insert("user_id".into(), reply.author.id.clone());
+                event.actor.actor_id = reply.author.id;
+                event.actor.actor_name = reply.author.display_name;
+                event.text = strip_mentions(&reply.text).chars().take(12000).collect();
+                event.attachments.clear();
+                event.dedup_key = format!("{}:{ts}", message.reply_to.channel_id);
+                event.message_metadata.insert("slack_ts".into(), json!(ts));
+                events.push(event);
             }
-            let mut event = message.event.clone();
-            event.actor.actor_id = reply["user"].as_str().unwrap_or("").into();
-            event.text = strip_mentions(reply["text"].as_str().unwrap_or(""))
-                .chars()
-                .take(12000)
-                .collect();
-            event.attachments.clear();
-            event.dedup_key = format!("{}:{ts}", message.reply_to.channel_id);
-            event.message_metadata.insert("slack_ts".into(), json!(ts));
-            events.push(event);
+            cursor = page.next_cursor;
+            if cursor.is_none() || events.len() >= limit {
+                break;
+            }
         }
         events.sort_by(|a, b| a.dedup_key.cmp(&b.dedup_key));
         events.truncate(limit);
@@ -285,66 +230,94 @@ impl Slack {
 #[async_trait]
 impl ChannelStreamDelivery for Slack {
     async fn start(&self, c: &DeliveryContext) -> Result<String, String> {
-        SlackSurfaces {
-            api_base: &self.api_base,
-        }
-        .start(c)
-        .await
+        self.start_checked(c)
+            .await
+            .map_err(|error| error.to_string())
+    }
+    async fn start_checked(&self, c: &DeliveryContext) -> Result<String, DeliveryResult> {
+        let c = self.scoped_context(c)?;
+        self.provider_surfaces()
+            .map_err(|error| bridge::outcome(&error))?
+            .start_checked(&c)
+            .await
     }
     async fn append(&self, h: &str, t: &str, c: &DeliveryContext) -> DeliveryResult {
-        SlackSurfaces {
-            api_base: &self.api_base,
+        let c = match self.scoped_context(c) {
+            Ok(c) => c,
+            Err(error) => return error,
+        };
+        match self.provider_surfaces() {
+            Ok(provider) => provider.append(h, t, &c).await,
+            Err(error) => bridge::outcome(&error),
         }
-        .append(h, t, c)
-        .await
     }
     async fn replace(&self, h: &str, t: &str, c: &DeliveryContext) -> DeliveryResult {
-        SlackSurfaces {
-            api_base: &self.api_base,
+        let c = match self.scoped_context(c) {
+            Ok(c) => c,
+            Err(error) => return error,
+        };
+        match self.provider_surfaces() {
+            Ok(provider) => provider.replace(h, t, &c).await,
+            Err(error) => bridge::outcome(&error),
         }
-        .replace(h, t, c)
-        .await
     }
     async fn stop(&self, h: &str, c: &DeliveryContext) -> DeliveryResult {
-        SlackSurfaces {
-            api_base: &self.api_base,
+        let c = match self.scoped_context(c) {
+            Ok(c) => c,
+            Err(error) => return error,
+        };
+        match self.provider_surfaces() {
+            Ok(provider) => provider.stop(h, &c).await,
+            Err(error) => bridge::outcome(&error),
         }
-        .stop(h, c)
-        .await
     }
 }
 #[async_trait]
 impl ChannelAgentSurface for Slack {
-    async fn set_status(&self, s: &str, c: &DeliveryContext) -> DeliveryResult {
-        SlackSurfaces {
-            api_base: &self.api_base,
+    async fn set_status(&self, t: &str, c: &DeliveryContext) -> DeliveryResult {
+        let c = match self.scoped_context(c) {
+            Ok(c) => c,
+            Err(error) => return error,
+        };
+        match self.provider_surfaces() {
+            Ok(provider) => provider.set_status(t, &c).await,
+            Err(error) => bridge::outcome(&error),
         }
-        .set_status(s, c)
-        .await
     }
     async fn set_title(&self, t: &str, c: &DeliveryContext) -> DeliveryResult {
-        SlackSurfaces {
-            api_base: &self.api_base,
+        let c = match self.scoped_context(c) {
+            Ok(c) => c,
+            Err(error) => return error,
+        };
+        match self.provider_surfaces() {
+            Ok(provider) => provider.set_title(t, &c).await,
+            Err(error) => bridge::outcome(&error),
         }
-        .set_title(t, c)
-        .await
     }
 }
 #[async_trait]
 impl ChannelProgressSurface for Slack {
     async fn post(&self, t: &str, c: &DeliveryContext) -> Result<String, String> {
-        SlackSurfaces {
-            api_base: &self.api_base,
-        }
-        .post(t, c)
-        .await
+        self.post_checked(t, c)
+            .await
+            .map_err(|error| error.to_string())
+    }
+    async fn post_checked(&self, t: &str, c: &DeliveryContext) -> Result<String, DeliveryResult> {
+        let c = self.scoped_context(c)?;
+        self.provider_surfaces()
+            .map_err(|error| bridge::outcome(&error))?
+            .post_checked(t, &c)
+            .await
     }
     async fn update(&self, h: &str, t: &str, c: &DeliveryContext) -> DeliveryResult {
-        SlackSurfaces {
-            api_base: &self.api_base,
+        let c = match self.scoped_context(c) {
+            Ok(c) => c,
+            Err(error) => return error,
+        };
+        match self.provider_surfaces() {
+            Ok(provider) => provider.update(h, t, &c).await,
+            Err(error) => bridge::outcome(&error),
         }
-        .update(h, t, c)
-        .await
     }
 }
 #[async_trait]
@@ -355,6 +328,11 @@ impl ChannelApprovalPrompt for Slack {
         p: &ApprovalPrompt,
         c: &DeliveryContext,
     ) -> DeliveryResult {
+        let c = match self.scoped_context(c) {
+            Ok(c) => c,
+            Err(error) => return error,
+        };
+        let c = &c;
         let user = c
             .extra
             .get(SLACK_RECIPIENT_USER_ID)
@@ -387,15 +365,108 @@ impl ChannelApprovalPrompt for Slack {
                 },
             );
         }
-        let body = json!({"channel":c.channel_id,"thread_ts":c.thread_ref,"text":neutralize_broadcasts(&p.text()),"blocks":[markdown_block(&p.text()),{"type":"actions","elements":[{"type":"button","text":{"type":"plain_text","text":"Approve"},"action_id":"everruns_approve","value":key},{"type":"button","text":{"type":"plain_text","text":"Deny"},"action_id":"everruns_deny","value":key}]}]});
-        match slack_api_call(&self.api_base, &c.auth_token, "chat.postMessage", body).await {
+        let result = async {
+            let factory = self.factory()?;
+            let client = factory.for_context(c, &self.api_base).await?;
+            let target = bridge::target(&client, c)?;
+            let card = channelkit_slack::SlackCard {
+                title: None,
+                text: super::markdown::neutralize_broadcasts(&p.text()).into_owned(),
+                actions: vec![
+                    channelkit_slack::SlackButton {
+                        action_id: "everruns_approve".into(),
+                        label: "Approve".into(),
+                        value: Some(key.clone()),
+                        url: None,
+                    },
+                    channelkit_slack::SlackButton {
+                        action_id: "everruns_deny".into(),
+                        label: "Deny".into(),
+                        value: Some(key.clone()),
+                        url: None,
+                    },
+                ],
+            };
+            let observer =
+                c.receipts
+                    .as_ref()
+                    .map(|sink| crate::channelkit_bridge::ReceiptObserver {
+                        sink: sink.as_ref(),
+                        target: &target,
+                        encode: bridge::message_key,
+                    });
+            let receipt = client
+                .post_card(&target, &card, &Default::default())
+                .await?;
+            if let Some(observer) = observer {
+                for reference in &receipt.messages {
+                    if let Err(error) =
+                        channelkit::ReceiptObserver::confirmed(&observer, reference).await
+                    {
+                        return Err(channelkit::Error::PartialDelivery {
+                            confirmed: receipt.messages.clone(),
+                            source: Box::new(error),
+                        });
+                    }
+                }
+            }
+            Ok(receipt)
+        }
+        .await;
+        match result {
             Ok(_) => DeliveryResult::Ok,
-            Err(e) => {
-                if let Ok(mut cards) = self.advanced.cards.lock() {
+            Err(error) => {
+                // An unknown/partial send may already show its card. Keep its
+                // authorization binding until expiry instead of disabling it.
+                let outcome = bridge::outcome(&error);
+                if !outcome.is_uncertain()
+                    && let Ok(mut cards) = self.advanced.cards.lock()
+                {
                     cards.remove(&key);
                 }
-                classify_slack_failure(e)
+                outcome
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn expired_sdk_card_cannot_resume_the_conversation() {
+        let slack = Slack::new("fixture-token", "fixture-secret").approval_buttons();
+        slack.advanced.cards.lock().unwrap().insert(
+            "expired".into(),
+            Card {
+                channel: "C1".into(),
+                thread: "1.0".into(),
+                user: "U7".into(),
+                expires: unix_now() - 1,
+                action: "fixture action".into(),
+                turn: None,
+            },
+        );
+        let action = channelkit::ActionEvent {
+            conversation: channelkit::ConversationKey::new(
+                channelkit::Provider::Slack,
+                "everruns-sdk-slack",
+                "C1",
+                Some("1.0".into()),
+            )
+            .unwrap(),
+            actor: channelkit::User {
+                id: "U7".into(),
+                display_name: None,
+                is_bot: false,
+            },
+            id: "everruns_approve".into(),
+            value: "expired".into(),
+            message_id: Some("2.0".into()),
+        };
+        assert!(matches!(
+            slack.interactive_action(&action).unwrap(),
+            Inbound::Ignore
+        ));
     }
 }

@@ -9,6 +9,8 @@ pub mod boxd;
 pub mod brave_search;
 #[cfg(feature = "browserless")]
 pub mod browserless;
+#[cfg(feature = "slack-channel")]
+pub mod channelkit_bridge;
 #[cfg(feature = "cursor")]
 pub mod cursor;
 #[cfg(feature = "daytona")]

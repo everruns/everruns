@@ -1877,6 +1877,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "channelkit-slack"
+version = "0.1.0-alpha.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "64cda4559d5f1a3faa394aefd7987bbfdcfcddd377ac1095f2cf06f848dfcb0f"
+dependencies = [
+ "async-trait",
+ "channelkit",
+ "futures-util",
+ "hex",
+ "hmac 0.12.1",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tokio",
+ "url",
+]
+
+[[package]]
 name = "chrono"
 version = "0.4.45"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4457,6 +4475,8 @@ dependencies = [
  "bashkit",
  "buffa",
  "bytes",
+ "channelkit",
+ "channelkit-slack",
  "chrono",
  "clap",
  "connectrpc",
@@ -4751,6 +4771,7 @@ dependencies = [
  "bytes",
  "channelkit",
  "channelkit-agentmail",
+ "channelkit-slack",
  "chrono",
  "chrono-tz",
  "clap",

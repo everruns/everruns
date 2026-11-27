@@ -150,6 +150,42 @@ impl SessionPlane {
         self.command(&session_commands::MESSAGES, &body).await
     }
 
+    /// Consume the current channel approval against its canonical log, never
+    /// the control plane's v1 event tables. The shard compares the read position
+    /// and retains the claim before another callback can consume the same ask.
+    pub async fn claim_channel_approval(
+        &self,
+        claim_id: &str,
+        turn_id: &str,
+    ) -> anyhow::Result<bool> {
+        for _ in 0..4 {
+            let rows = self.events(1, i32::MAX, &[], Some(128)).await?;
+            let Some((approval_sequence, expected_last_sequence)) =
+                approval_snapshot(&rows, turn_id)
+            else {
+                return Ok(false);
+            };
+            let reply = self
+                .command(
+                    &session_commands::CLAIM_APPROVAL,
+                    &serde_json::json!({
+                        "approval_sequence": approval_sequence,
+                        "expected_last_sequence": expected_last_sequence,
+                        "turn_id": turn_id,
+                        "claim_id": claim_id,
+                    }),
+                )
+                .await?;
+            match (reply["claimed"].as_bool(), reply["retry"].as_bool()) {
+                (Some(true), Some(false)) => return Ok(true),
+                (Some(false), Some(false)) => return Ok(false),
+                (Some(false), Some(true)) => continue,
+                _ => anyhow::bail!("invalid channel approval claim response"),
+            }
+        }
+        anyhow::bail!("channel approval log changed during claim")
+    }
+
     /// A session command on the session (`tool-results`, ...): the shard's
     /// answer.
     pub async fn command(
@@ -161,6 +197,27 @@ impl SessionPlane {
             .session_command(&self.org, self.session, command, body)
             .await
     }
+}
+
+/// The same freshness window the v1 transaction checks. Missing history is a
+/// refusal, not evidence that a card is current. Its position is checked again
+/// by the shard; a read followed by an unconditional write would race input.
+fn approval_snapshot(rows: &[SessionEventRow], turn_id: &str) -> Option<(i32, i32)> {
+    let approval = rows.iter().rposition(|row| {
+        row.event_type == "tool.completed"
+            && row.data["tool_name"] == "request_approval"
+            && row.context["turn_id"].as_str() == Some(turn_id)
+    })?;
+    if rows[approval + 1..].iter().any(|row| {
+        row.event_type == INPUT_MESSAGE
+            || row.event_type == "slack.approval.consumed"
+            || (row.event_type == "tool.completed" && row.data["tool_name"] == "request_approval")
+    }) {
+        return None;
+    }
+    let sequence = rows[approval].sequence;
+    let last = rows.last()?.sequence;
+    (sequence > 0 && last >= sequence).then_some((sequence, last))
 }
 
 /// The message an event carries into a seeded conversation: a person's or
@@ -217,6 +274,66 @@ fn events_query(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn approval_row(
+        sequence: i32,
+        kind: &str,
+        turn: Option<&str>,
+        tool: Option<&str>,
+    ) -> SessionEventRow {
+        SessionEventRow {
+            id: format!("event-{sequence}"),
+            sequence,
+            event_type: kind.into(),
+            ts: chrono::Utc::now(),
+            context: serde_json::json!({"turn_id": turn}),
+            data: serde_json::json!({"tool_name": tool}),
+        }
+    }
+
+    #[test]
+    fn channel_approval_snapshot_requires_the_unanswered_requesting_turn() {
+        let request = approval_row(
+            10,
+            "tool.completed",
+            Some("turn-a"),
+            Some("request_approval"),
+        );
+        let tail = approval_row(12, "turn.completed", Some("turn-a"), None);
+        assert_eq!(
+            approval_snapshot(&[request.clone(), tail], "turn-a"),
+            Some((10, 12))
+        );
+        assert_eq!(
+            approval_snapshot(std::slice::from_ref(&request), "turn-b"),
+            None
+        );
+        assert_eq!(approval_snapshot(&[], "turn-a"), None);
+        for later in [
+            approval_row(13, INPUT_MESSAGE, Some("turn-b"), None),
+            approval_row(
+                13,
+                "tool.completed",
+                Some("turn-b"),
+                Some("request_approval"),
+            ),
+            approval_row(13, "slack.approval.consumed", Some("turn-a"), None),
+        ] {
+            assert_eq!(approval_snapshot(&[request.clone(), later], "turn-a"), None);
+        }
+        assert_eq!(
+            approval_snapshot(
+                &[approval_row(
+                    10,
+                    "tool.completed",
+                    None,
+                    Some("request_approval")
+                )],
+                "turn-a"
+            ),
+            None
+        );
+    }
 
     #[test]
     fn an_events_query_names_what_it_asks() {

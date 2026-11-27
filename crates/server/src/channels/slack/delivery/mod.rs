@@ -17,10 +17,11 @@ use everruns_core::channel::{
 pub(crate) mod turn_adapter;
 use crate::domains::agent_channels::record::exposure;
 use everruns_core::channel_runtime::DeliveryOptions;
-use everruns_integrations::slack_channel::web_api::{SLACK_API_BASE, slack_api_call};
-use everruns_integrations::slack_channel::web_api::{SlackApiError, retry_wait};
+use everruns_integrations::slack_channel::web_api::SLACK_API_BASE;
+#[cfg(test)]
+use everruns_integrations::slack_channel::web_api::SlackApiError;
 use exposure::{PublicToolVisibility, public_tool_activity_text};
-use tracing::{debug, info, warn};
+use tracing::debug;
 
 /// Which Slack surface a turn belongs to.
 ///
@@ -137,31 +138,40 @@ impl SlackDeliveryAdapter {
 }
 
 impl SlackDeliveryAdapter {
-    /// Post one reply with retries; returns the first posted message's `ts`.
+    fn surfaces(
+        &self,
+    ) -> Result<
+        everruns_integrations::slack_channel::channelkit_surfaces::ChannelkitSurfaces<'_>,
+        ChannelDeliveryResult,
+    > {
+        Ok(
+            everruns_integrations::slack_channel::channelkit_surfaces::ChannelkitSurfaces {
+                api_base: &self.api_base,
+                factory: everruns_integrations::slack_channel::bridge::direct_factory().map_err(
+                    |error| everruns_integrations::slack_channel::bridge::outcome(&error),
+                )?,
+            },
+        )
+    }
     async fn post_reply(
         &self,
         message: &OutboundChannelMessage,
         context: &ChannelDeliveryContext,
-    ) -> Result<Option<String>, SlackApiError> {
-        // Correlation comes from the message rather than the context: the
-        // context is per-registration, the ids identify this one reply.
-        let correlation =
-            message
-                .correlation_id
-                .as_ref()
-                .map(|input_message_id| SlackCorrelation {
-                    session_id: message.session_id.to_string(),
-                    input_message_id: input_message_id.clone(),
-                });
-        post_to_slack_with_retry_base(
-            &self.api_base,
-            &context.auth_token,
-            &context.channel_id,
-            &context.thread_ref,
-            &message.text,
-            correlation.as_ref(),
-        )
-        .await
+    ) -> Result<Option<String>, ChannelDeliveryResult> {
+        let session = message.session_id.to_string();
+        let correlation = message
+            .correlation_id
+            .as_deref()
+            .map(|input| (session.as_str(), input));
+        self.surfaces()?
+            .post_reply(&message.text, context, correlation)
+            .await
+            .map(|receipt| {
+                receipt
+                    .messages
+                    .first()
+                    .map(|reference| reference.id.clone())
+            })
     }
 }
 
@@ -184,7 +194,7 @@ impl ChannelDeliveryAdapter for SlackDeliveryAdapter {
     ) -> ChannelDeliveryResult {
         match self.post_reply(message, context).await {
             Ok(_) => ChannelDeliveryResult::Ok,
-            Err(e) => classify_slack_failure(e),
+            Err(e) => e,
         }
     }
 
@@ -194,18 +204,20 @@ impl ChannelDeliveryAdapter for SlackDeliveryAdapter {
         text: &str,
         context: &ChannelDeliveryContext,
     ) -> ChannelDeliveryResult {
-        match post_to_slack_base(
-            &self.api_base,
-            &context.auth_token,
-            &context.channel_id,
-            thread_ref,
-            text,
-        )
-        .await
-        {
-            Ok(()) => ChannelDeliveryResult::Ok,
-            Err(e) => classify_slack_failure(e),
-        }
+        let mut context = context.clone();
+        context.thread_ref = thread_ref.into();
+        let surface = match self.surfaces() {
+            Ok(surface) => surface,
+            Err(error) => return error,
+        };
+        surface
+            .post_reply(text, &context, None)
+            .await
+            .map_or_else(|error| error, |_| ChannelDeliveryResult::Ok)
+    }
+
+    fn requires_checkpoint(&self) -> bool {
+        true
     }
 
     fn streaming(&self) -> Option<&dyn ChannelStreamDelivery> {
@@ -232,7 +244,6 @@ pub(crate) const SLACK_RECIPIENT_TEAM_ID: &str = "slack_recipient_team_id";
 mod reactions;
 pub(crate) use reactions::emoji_for_slack_reaction;
 mod streams;
-use streams::classify_slack_failure;
 
 /// Map a Slack transport failure onto a `ChannelDeliveryResult`.
 /// Slack's agent-surface methods, in one place.
@@ -244,21 +255,20 @@ use streams::classify_slack_failure;
 #[async_trait]
 impl ChannelAgentSurface for SlackDeliveryAdapter {
     async fn set_status(&self, s: &str, c: &ChannelDeliveryContext) -> ChannelDeliveryResult {
-        everruns_integrations::slack_channel::surfaces::SlackSurfaces {
-            api_base: &self.api_base,
+        match self.surfaces() {
+            Ok(surface) => surface.set_status(s, c).await,
+            Err(error) => error,
         }
-        .set_status(s, c)
-        .await
     }
     async fn set_title(&self, t: &str, c: &ChannelDeliveryContext) -> ChannelDeliveryResult {
-        everruns_integrations::slack_channel::surfaces::SlackSurfaces {
-            api_base: &self.api_base,
+        match self.surfaces() {
+            Ok(surface) => surface.set_title(t, c).await,
+            Err(error) => error,
         }
-        .set_title(t, c)
-        .await
     }
 }
 
+#[cfg(test)]
 async fn post_to_slack_with_retry_base(
     base_url: &str,
     bot_token: &str,
@@ -267,35 +277,11 @@ async fn post_to_slack_with_retry_base(
     text: &str,
     correlation: Option<&SlackCorrelation>,
 ) -> Result<Option<String>, SlackApiError> {
-    let max_attempts = 3;
-    let mut backoff = std::time::Duration::from_secs(1);
-
-    for attempt in 1..=max_attempts {
-        match post_slack_message(base_url, bot_token, channel, thread_ts, text, correlation).await {
-            Ok(ts) => return Ok(ts),
-            Err(e) => {
-                if e.is_permanent() || attempt == max_attempts {
-                    return Err(e);
-                }
-
-                let wait = retry_wait(&e, backoff);
-
-                warn!(
-                    attempt,
-                    max_attempts,
-                    wait_secs = wait.as_secs(),
-                    error = %e,
-                    "Slack post failed, retrying"
-                );
-                tokio::time::sleep(wait).await;
-                backoff *= 2;
-            }
-        }
-    }
-
-    unreachable!()
+    // The delivery journal owns retries. Never repeat an uncertain accepted prefix.
+    post_slack_message(base_url, bot_token, channel, thread_ts, text, correlation).await
 }
 
+#[cfg(test)]
 use everruns_integrations::slack_channel::markdown::reply_payloads;
 #[cfg(test)]
 use everruns_integrations::slack_channel::markdown::{
@@ -306,12 +292,14 @@ use everruns_integrations::slack_channel::markdown::{
 /// Correlation stamped onto a posted message via `chat.postMessage`'s
 /// `metadata`, giving a durable key from a Slack message back to the run that
 /// produced it — no tag-string heuristics required.
+#[cfg(test)]
 #[derive(Debug, Clone)]
 pub(crate) struct SlackCorrelation {
     pub session_id: String,
     pub input_message_id: String,
 }
 
+#[cfg(test)]
 impl SlackCorrelation {
     fn to_metadata(&self) -> serde_json::Value {
         serde_json::json!({
@@ -328,33 +316,24 @@ impl SlackCorrelation {
 ///
 /// Normally one payload; the shared builder owns rendering (Markdown blocks,
 /// splitting, broadcast neutralization). This adds the correlation metadata.
+#[cfg(test)]
 pub(crate) fn build_post_payloads(
     channel: &str,
     thread_ts: &str,
     text: &str,
     correlation: Option<&SlackCorrelation>,
-) -> Vec<serde_json::Value> {
-    let mut payloads = reply_payloads(channel, thread_ts, text);
+) -> Result<Vec<serde_json::Value>, SlackApiError> {
+    let mut payloads = reply_payloads(channel, thread_ts, text)?;
     if let Some(correlation) = correlation {
         for payload in &mut payloads {
             payload["metadata"] = correlation.to_metadata();
         }
     }
-    payloads
-}
-
-/// Post a message to Slack using the Bot API.
-pub(crate) async fn post_to_slack(
-    bot_token: &str,
-    channel: &str,
-    thread_ts: &str,
-    text: &str,
-) -> anyhow::Result<()> {
-    post_to_slack_base(SLACK_API_BASE, bot_token, channel, thread_ts, text).await?;
-    Ok(())
+    Ok(payloads)
 }
 
 /// Post a message to Slack using the Bot API (with configurable base URL for testing).
+#[cfg(test)]
 pub(crate) async fn post_to_slack_base(
     base_url: &str,
     bot_token: &str,
@@ -373,6 +352,7 @@ pub(crate) async fn post_to_slack_base(
 /// as the Markdown it actually is rather than being reinterpreted as the much
 /// smaller `mrkdwn` dialect. Returns the first message's `ts`, the key a
 /// reaction on the reply names.
+#[cfg(test)]
 pub(crate) async fn post_slack_message(
     base_url: &str,
     bot_token: &str,
@@ -381,33 +361,32 @@ pub(crate) async fn post_slack_message(
     text: &str,
     correlation: Option<&SlackCorrelation>,
 ) -> Result<Option<String>, SlackApiError> {
-    let payloads = build_post_payloads(channel, thread_ts, text, correlation);
-    let total = payloads.len();
-    let mut first_ts = None;
-
-    for (index, payload) in payloads.into_iter().enumerate() {
-        // The shared call classifies and logs failures, and resends a post
-        // Slack rejects as `invalid_blocks` as plain text.
-        let body = slack_api_call(base_url, bot_token, "chat.postMessage", payload)
-            .await
-            .inspect_err(|_| {
-                debug!(
-                    channel = channel,
-                    part = index + 1,
-                    parts = total,
-                    "Slack post failed"
-                );
-            })?;
-        if first_ts.is_none() {
-            first_ts = body
-                .get("ts")
-                .and_then(|ts| ts.as_str())
-                .map(str::to_string);
-        }
-    }
-
-    info!(channel = channel, parts = total, "Posted response to Slack");
-    Ok(first_ts)
+    let context =
+        everruns_integrations::slack_channel::web_api::tool_context(bot_token, channel, thread_ts);
+    let surface = everruns_integrations::slack_channel::channelkit_surfaces::ChannelkitSurfaces {
+        api_base: base_url,
+        factory: everruns_integrations::slack_channel::bridge::direct_factory()
+            .map_err(everruns_integrations::slack_channel::web_api::provider_error)?,
+    };
+    surface
+        .post_reply(
+            text,
+            &context,
+            correlation.map(|correlation| {
+                (
+                    correlation.session_id.as_str(),
+                    correlation.input_message_id.as_str(),
+                )
+            }),
+        )
+        .await
+        .map(|receipt| {
+            receipt
+                .messages
+                .first()
+                .map(|reference| reference.id.clone())
+        })
+        .map_err(everruns_integrations::slack_channel::web_api::delivery_error)
 }
 
 #[cfg(test)]
@@ -420,11 +399,11 @@ mod tests {
     mod wiremock_tests {
         use super::*;
         use wiremock::matchers::{header, method, path};
-        use wiremock::{Mock, MockServer, ResponseTemplate};
+        use wiremock::{Mock, ResponseTemplate};
 
         #[tokio::test]
         async fn test_post_to_slack_success() {
-            let mock_server = MockServer::start().await;
+            let mock_server = crate::channels::slack::events::tests_support::mock_provider().await;
 
             Mock::given(method("POST"))
                 .and(path("/chat.postMessage"))
@@ -452,7 +431,7 @@ mod tests {
 
         #[tokio::test]
         async fn test_post_to_slack_success_no_thread_ts() {
-            let mock_server = MockServer::start().await;
+            let mock_server = crate::channels::slack::events::tests_support::mock_provider().await;
 
             Mock::given(method("POST"))
                 .and(path("/chat.postMessage"))
@@ -475,7 +454,7 @@ mod tests {
 
         #[tokio::test]
         async fn test_post_to_slack_channel_not_found() {
-            let mock_server = MockServer::start().await;
+            let mock_server = crate::channels::slack::events::tests_support::mock_provider().await;
 
             Mock::given(method("POST"))
                 .and(path("/chat.postMessage"))
@@ -507,7 +486,7 @@ mod tests {
 
         #[tokio::test]
         async fn test_post_to_slack_invalid_auth() {
-            let mock_server = MockServer::start().await;
+            let mock_server = crate::channels::slack::events::tests_support::mock_provider().await;
 
             Mock::given(method("POST"))
                 .and(path("/chat.postMessage"))
@@ -529,7 +508,7 @@ mod tests {
 
         #[tokio::test]
         async fn test_post_to_slack_rate_limited() {
-            let mock_server = MockServer::start().await;
+            let mock_server = crate::channels::slack::events::tests_support::mock_provider().await;
 
             Mock::given(method("POST"))
                 .and(path("/chat.postMessage"))
@@ -551,7 +530,7 @@ mod tests {
 
         #[tokio::test]
         async fn test_post_to_slack_unknown_error() {
-            let mock_server = MockServer::start().await;
+            let mock_server = crate::channels::slack::events::tests_support::mock_provider().await;
 
             Mock::given(method("POST"))
                 .and(path("/chat.postMessage"))
@@ -578,7 +557,7 @@ mod tests {
 
         #[tokio::test]
         async fn test_post_to_slack_malformed_json() {
-            let mock_server = MockServer::start().await;
+            let mock_server = crate::channels::slack::events::tests_support::mock_provider().await;
 
             Mock::given(method("POST"))
                 .and(path("/chat.postMessage"))
@@ -596,7 +575,7 @@ mod tests {
 
         #[tokio::test]
         async fn test_post_to_slack_retry_non_retryable_errors_fail_immediately() {
-            let mock_server = MockServer::start().await;
+            let mock_server = crate::channels::slack::events::tests_support::mock_provider().await;
 
             // Non-retryable error should only be called once (no retry)
             Mock::given(method("POST"))
@@ -631,7 +610,7 @@ mod tests {
 
         #[tokio::test]
         async fn test_post_to_slack_retry_success_on_first_attempt() {
-            let mock_server = MockServer::start().await;
+            let mock_server = crate::channels::slack::events::tests_support::mock_provider().await;
 
             Mock::given(method("POST"))
                 .and(path("/chat.postMessage"))
@@ -659,7 +638,7 @@ mod tests {
 
         #[tokio::test]
         async fn test_post_to_slack_ok_false_no_error_field() {
-            let mock_server = MockServer::start().await;
+            let mock_server = crate::channels::slack::events::tests_support::mock_provider().await;
 
             Mock::given(method("POST"))
                 .and(path("/chat.postMessage"))
@@ -675,7 +654,7 @@ mod tests {
                     .await;
 
             assert!(result.is_err());
-            assert!(result.unwrap_err().to_string().contains("unknown"));
+            assert_eq!(result.unwrap_err().code(), Some("http_error"));
         }
     }
 
@@ -747,10 +726,10 @@ mod tests {
         use everruns_contracts::typed_id::SessionId;
         use std::collections::HashMap;
         use wiremock::matchers::{method, path};
-        use wiremock::{Mock, MockServer, ResponseTemplate};
+        use wiremock::{Mock, ResponseTemplate};
 
         async fn deliver_against(body: serde_json::Value) -> ChannelDeliveryResult {
-            let mock_server = MockServer::start().await;
+            let mock_server = crate::channels::slack::events::tests_support::mock_provider().await;
             Mock::given(method("POST"))
                 .and(path("/chat.postMessage"))
                 .respond_with(ResponseTemplate::new(200).set_body_json(body))
@@ -768,8 +747,12 @@ mod tests {
                 auth_token: "xoxb-test-token".to_string(),
                 channel_id: "C123".to_string(),
                 thread_ref: String::new(),
-                extra: HashMap::new(),
+                extra: HashMap::from([(
+                    everruns_integrations::slack_channel::bridge::INSTALLATION_ID.into(),
+                    "server-delivery-test".into(),
+                )]),
                 receipts: None,
+                egress: None,
             };
             adapter.deliver(&message, &ctx).await
         }
@@ -790,12 +773,13 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn unknown_errors_stay_transient() {
+        async fn provider_internal_failures_retain_unknown_acceptance() {
             let result =
-                deliver_against(serde_json::json!({ "ok": false, "error": "ratelimited" })).await;
+                deliver_against(serde_json::json!({ "ok": false, "error": "internal_error" }))
+                    .await;
             assert!(
-                matches!(result, ChannelDeliveryResult::TransientError(_)),
-                "a rate limit must stay retryable, got {result:?}"
+                matches!(result, ChannelDeliveryResult::Unknown { .. }),
+                "Slack cannot confirm whether an internal failure accepted output, got {result:?}"
             );
         }
 
@@ -830,11 +814,11 @@ mod tests {
         use super::*;
         use std::time::Duration;
         use wiremock::matchers::{method, path};
-        use wiremock::{Mock, MockServer, ResponseTemplate};
+        use wiremock::{Mock, ResponseTemplate};
 
         /// Post once against a mock returning `response`, and hand back the error.
         async fn post_against(response: ResponseTemplate) -> SlackApiError {
-            let mock_server = MockServer::start().await;
+            let mock_server = crate::channels::slack::events::tests_support::mock_provider().await;
             Mock::given(method("POST"))
                 .and(path("/chat.postMessage"))
                 .respond_with(response)
@@ -871,18 +855,18 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn rate_limit_without_header_is_still_rate_limited() {
+        async fn rate_limit_without_header_uses_a_bounded_default() {
             let error =
                 post_against(ResponseTemplate::new(200).set_body_json(rate_limited_body())).await;
 
             assert!(
-                matches!(error, SlackApiError::RateLimited { retry_after: None }),
+                matches!(error, SlackApiError::RateLimited { retry_after: Some(delay) } if delay == Duration::from_secs(1)),
                 "expected a rate limit with no advice, got {error:?}"
             );
         }
 
         #[tokio::test]
-        async fn unparseable_retry_after_falls_back_to_no_advice() {
+        async fn unparseable_retry_after_uses_a_bounded_default() {
             // Slack documents whole seconds; an HTTP-date or junk value must not
             // panic or be mistaken for a duration.
             let error = post_against(
@@ -893,17 +877,15 @@ mod tests {
             .await;
 
             assert!(
-                matches!(error, SlackApiError::RateLimited { retry_after: None }),
+                matches!(error, SlackApiError::RateLimited { retry_after: Some(delay) } if delay == Duration::from_secs(1)),
                 "expected no usable advice, got {error:?}"
             );
         }
 
-        /// End to end through the retry loop, on virtual time: the first attempt
-        /// is rate limited with 30s of advice, the second succeeds, and the loop
-        /// must have waited the 30s rather than its 1s backoff.
-        #[tokio::test(start_paused = true)]
-        async fn retry_loop_waits_the_advised_window() {
-            let mock_server = MockServer::start().await;
+        /// The journal owns waiting/retries; transport returns advice after one send.
+        #[tokio::test]
+        async fn transport_returns_advice_without_retrying_the_send() {
+            let mock_server = crate::channels::slack::events::tests_support::mock_provider().await;
             Mock::given(method("POST"))
                 .and(path("/chat.postMessage"))
                 .respond_with(
@@ -911,28 +893,20 @@ mod tests {
                         .insert_header("Retry-After", "30")
                         .set_body_json(rate_limited_body()),
                 )
-                .up_to_n_times(1)
+                .expect(1)
                 .mount(&mock_server)
                 .await;
-            Mock::given(method("POST"))
-                .and(path("/chat.postMessage"))
-                .respond_with(
-                    ResponseTemplate::new(200)
-                        .set_body_json(serde_json::json!({ "ok": true, "ts": "1.2" })),
-                )
-                .mount(&mock_server)
-                .await;
-
-            let started = tokio::time::Instant::now();
             let result =
                 post_to_slack_with_retry_base(&mock_server.uri(), "xoxb-t", "C123", "", "hi", None)
                     .await;
-            let waited = started.elapsed();
-
-            assert!(result.is_ok(), "second attempt should succeed: {result:?}");
             assert!(
-                waited >= Duration::from_secs(30),
-                "loop waited {waited:?}, expected the advised 30s"
+                matches!(result, Err(SlackApiError::RateLimited { retry_after: Some(delay) }) if delay == Duration::from_secs(30))
+            );
+            assert_eq!(
+                crate::channels::slack::events::tests_support::provider_requests(&mock_server)
+                    .await
+                    .len(),
+                1
             );
         }
     }
@@ -967,7 +941,7 @@ mod tests {
             let reply =
                 "# Heading\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n```rust\nfn main() {}\n```";
 
-            let payloads = build_post_payloads("C123", "1700.1", reply, None);
+            let payloads = build_post_payloads("C123", "1700.1", reply, None).unwrap();
 
             assert_eq!(payloads.len(), 1);
             let blocks = blocks_of(&payloads[0]);
@@ -981,7 +955,7 @@ mod tests {
         /// `thread_ts` is omitted rather than sent empty for a top-level post.
         #[test]
         fn top_level_post_omits_thread_ts() {
-            let payloads = build_post_payloads("C123", "", "hi", None);
+            let payloads = build_post_payloads("C123", "", "hi", None).unwrap();
             assert!(payloads[0].get("thread_ts").is_none());
         }
 
@@ -993,7 +967,7 @@ mod tests {
                 .collect::<Vec<_>>()
                 .join("\n"); // ~40k characters
 
-            let payloads = build_post_payloads("C123", "", &reply, None);
+            let payloads = build_post_payloads("C123", "", &reply, None).unwrap();
 
             assert_eq!(payloads.len(), 1, "40k fits in one message");
             let blocks = blocks_of(&payloads[0]);
@@ -1023,7 +997,7 @@ mod tests {
                 .join("\n");
             let reply = format!("intro\n\n```rust\n{}\n```", body);
 
-            let blocks = blocks_of(&build_post_payloads("C123", "", &reply, None)[0]);
+            let blocks = blocks_of(&build_post_payloads("C123", "", &reply, None).unwrap()[0]);
             assert!(blocks.len() > 1, "fixture must be long enough to split");
 
             // Every block has balanced fences, so none renders half-open.
@@ -1050,7 +1024,7 @@ mod tests {
         #[test]
         fn notification_fallback_is_capped() {
             let reply = "y".repeat(SLACK_TEXT_FALLBACK_LIMIT * 3);
-            let payloads = build_post_payloads("C123", "", &reply, None);
+            let payloads = build_post_payloads("C123", "", &reply, None).unwrap();
             let fallback = payloads[0]["text"].as_str().unwrap();
             assert_eq!(fallback.chars().count(), SLACK_TEXT_FALLBACK_LIMIT);
         }
@@ -1059,9 +1033,13 @@ mod tests {
         /// losing the tail to Slack's per-message block cap.
         #[test]
         fn reply_past_the_block_cap_spills_into_another_message() {
-            // Comfortably more than 50 full blocks.
-            let reply = "z".repeat(SLACK_MARKDOWN_BLOCK_LIMIT * 52);
-            let payloads = build_post_payloads("C123", "1700.1", &reply, None);
+            // A valid full host budget needs extra fence continuations and
+            // therefore more than fifty rendered blocks, without truncation.
+            let reply = format!(
+                "```text\n{}\n```",
+                "z".repeat(SLACK_MAX_OUTBOUND_REPLY_CHARS - 12)
+            );
+            let payloads = build_post_payloads("C123", "1700.1", &reply, None).unwrap();
 
             assert_eq!(payloads.len(), 2);
             assert_eq!(blocks_of(&payloads[0]).len(), SLACK_MAX_BLOCKS_PER_MESSAGE);
@@ -1079,7 +1057,7 @@ mod tests {
                 session_id: "session_01abc".to_string(),
                 input_message_id: "msg_01xyz".to_string(),
             };
-            let payloads = build_post_payloads("C123", "", "hi", Some(&correlation));
+            let payloads = build_post_payloads("C123", "", "hi", Some(&correlation)).unwrap();
 
             let metadata = &payloads[0]["metadata"];
             assert_eq!(metadata["event_type"], "everruns_agent_reply");
@@ -1090,7 +1068,7 @@ mod tests {
         /// Without correlation the key is absent, not empty or invented.
         #[test]
         fn absent_correlation_omits_metadata() {
-            let payloads = build_post_payloads("C123", "", "hi", None);
+            let payloads = build_post_payloads("C123", "", "hi", None).unwrap();
             assert!(payloads[0].get("metadata").is_none());
         }
 
@@ -1098,7 +1076,7 @@ mod tests {
         #[test]
         fn fallback_truncation_respects_char_boundaries() {
             let reply = "\u{1f680}".repeat(SLACK_TEXT_FALLBACK_LIMIT * 2);
-            let payloads = build_post_payloads("C123", "", &reply, None);
+            let payloads = build_post_payloads("C123", "", &reply, None).unwrap();
             let fallback = payloads[0]["text"].as_str().unwrap();
             assert_eq!(fallback.chars().count(), SLACK_TEXT_FALLBACK_LIMIT);
         }
@@ -1108,7 +1086,7 @@ mod tests {
         #[test]
         fn a_single_oversized_line_is_hard_split() {
             let reply = "q".repeat(SLACK_MARKDOWN_BLOCK_LIMIT * 3);
-            let blocks = blocks_of(&build_post_payloads("C123", "", &reply, None)[0]);
+            let blocks = blocks_of(&build_post_payloads("C123", "", &reply, None).unwrap()[0]);
             assert!(blocks.len() >= 3);
             for block in &blocks {
                 assert!(block.chars().count() <= SLACK_MARKDOWN_BLOCK_LIMIT);
@@ -1163,16 +1141,9 @@ mod tests {
         }
 
         #[test]
-        fn outbound_reply_source_has_a_total_cap() {
+        fn oversized_reply_is_refused_without_silent_truncation() {
             let reply = "z".repeat(SLACK_MAX_OUTBOUND_REPLY_CHARS + 10_000);
-            let payloads = build_post_payloads("C123", "", &reply, None);
-            let delivered_chars: usize = payloads
-                .iter()
-                .flat_map(blocks_of)
-                .map(|block| block.chars().count())
-                .sum();
-
-            assert_eq!(delivered_chars, SLACK_MAX_OUTBOUND_REPLY_CHARS);
+            assert!(build_post_payloads("C123", "", &reply, None).is_err());
         }
 
         /// End to end through the real post path: the wire body Slack receives
@@ -1180,11 +1151,11 @@ mod tests {
         #[tokio::test]
         async fn posted_request_body_carries_markdown_blocks_and_metadata() {
             use wiremock::{
-                Mock, MockServer, ResponseTemplate,
+                Mock, ResponseTemplate,
                 matchers::{method, path},
             };
 
-            let mock_server = MockServer::start().await;
+            let mock_server = crate::channels::slack::events::tests_support::mock_provider().await;
             Mock::given(method("POST"))
                 .and(path("/chat.postMessage"))
                 .respond_with(
@@ -1209,7 +1180,9 @@ mod tests {
             .await
             .expect("post should succeed");
 
-            let requests = mock_server.received_requests().await.unwrap();
+            let requests =
+                crate::channels::slack::events::tests_support::provider_requests(&mock_server)
+                    .await;
             assert_eq!(requests.len(), 1);
             let body: serde_json::Value = serde_json::from_slice(&requests[0].body).unwrap();
 
@@ -1226,15 +1199,16 @@ mod tests {
         #[tokio::test]
         async fn ack_path_posts_blocks_without_metadata() {
             use wiremock::{
-                Mock, MockServer, ResponseTemplate,
+                Mock, ResponseTemplate,
                 matchers::{method, path},
             };
 
-            let mock_server = MockServer::start().await;
+            let mock_server = crate::channels::slack::events::tests_support::mock_provider().await;
             Mock::given(method("POST"))
                 .and(path("/chat.postMessage"))
                 .respond_with(
-                    ResponseTemplate::new(200).set_body_json(serde_json::json!({"ok": true})),
+                    ResponseTemplate::new(200)
+                        .set_body_json(serde_json::json!({"ok": true, "ts": "1.2"})),
                 )
                 .mount(&mock_server)
                 .await;
@@ -1243,7 +1217,9 @@ mod tests {
                 .await
                 .expect("ack should succeed");
 
-            let requests = mock_server.received_requests().await.unwrap();
+            let requests =
+                crate::channels::slack::events::tests_support::provider_requests(&mock_server)
+                    .await;
             let body: serde_json::Value = serde_json::from_slice(&requests[0].body).unwrap();
             assert_eq!(body["blocks"][0]["text"], "On it.");
             assert!(body.get("metadata").is_none());

@@ -341,6 +341,7 @@ pub(crate) fn rejected_worker_calls() -> (u64, Option<chrono::DateTime<chrono::U
 /// Uses domain commands/queries for agents and harnesses, and services for
 /// sessions, events, and other domains not yet migrated.
 pub struct WorkerServiceImpl {
+    slack_egress: Arc<dyn everruns_core::EgressService>,
     event_service: EventService,
     session_service: Arc<SessionService>,
     session_file_service: Arc<WorkspaceFileService>,
@@ -498,6 +499,7 @@ impl WorkerServiceImpl {
         let budget_service = Arc::new(crate::domains::budgets::BudgetService::new(db.clone()));
 
         Self {
+            slack_egress: host_composition.egress_service(),
             event_service,
             session_service: Arc::new(session_service),
             session_file_service,

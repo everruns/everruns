@@ -20,7 +20,7 @@ FEATURES = {
         'cursor', 'daytona', 'daytona-test-util', 'duckduckgo', 'e2b', 'filesystem',
         'github', 'lua', 'openai-decisions', 'image-generation', 'openrouter', 'parallel',
         'typesafe', 'typesafe-hosted', 'web-fetch', 'modal', 'modal-test-util', 'boxd',
-        'boxd-test-util'],
+        'boxd-test-util', 'slack-channel', 'webhook-channel'],
     'everruns-integrations-experimental': ['agentid'],
     'everruns-coding': ['local'],
 }

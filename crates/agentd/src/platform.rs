@@ -104,6 +104,18 @@ pub struct Platform {
     /// (`dataplane::personal_approval_setting`). Set once, with the create.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub owner: Option<String>,
+    /// Latest consumed channel approval. Kept outside the event tail so an
+    /// offload, snapshot or move cannot make another card consume it again.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub approval_claim: Option<ApprovalClaim>,
+}
+
+/// One host-authorized approval, identified by its canonical request position.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApprovalClaim {
+    pub approval_sequence: i32,
+    pub turn_id: String,
+    pub claim_id: String,
 }
 
 impl Platform {
@@ -117,6 +129,7 @@ impl Platform {
             && self.records.is_empty()
             && self.origin.is_none()
             && self.owner.is_none()
+            && self.approval_claim.is_none()
     }
 
     /// Charge `micros` a committed model call cost to the schedule whose
@@ -216,6 +229,14 @@ pub enum Op {
     Record {
         event_id: EventId,
         request: Box<everruns_core::events::EventRequest>,
+    },
+    /// The trusted host checked the approval against this log snapshot. The
+    /// comparison and consumption share the session's ordered state machine.
+    ClaimApproval {
+        expected_last_sequence: i32,
+        approval_sequence: i32,
+        turn_id: String,
+        claim_id: String,
     },
     /// A person's change to the session's storage
     /// (`session_storage.rs`).
@@ -426,6 +447,53 @@ impl ShardState {
         if let Op::Record { event_id, request } = op {
             return record(state, session, event_id, *request, changes);
         }
+        if let Op::ClaimApproval {
+            expected_last_sequence,
+            approval_sequence,
+            turn_id,
+            claim_id,
+        } = op
+        {
+            if approval_sequence <= 0
+                || approval_sequence > expected_last_sequence
+                || turn_id.trim().is_empty()
+                || turn_id.len() > 128
+                || claim_id.trim().is_empty()
+                || claim_id.len() > 128
+                || claim_id.contains("://")
+            {
+                return Response::Rejected {
+                    reason: "invalid channel approval claim".into(),
+                };
+            }
+            // All renderings of one approval share its event position. Only
+            // retaining the button id would admit two cards before the input
+            // recording the first decision reached the session.
+            if state
+                .platform
+                .approval_claim
+                .as_ref()
+                .is_some_and(|claim| claim.approval_sequence >= approval_sequence)
+            {
+                return Response::Value {
+                    value: json!({"claimed": false, "retry": false}),
+                };
+            }
+            if state.last_sequence() != Some(expected_last_sequence) {
+                return Response::Value {
+                    value: json!({"claimed": false, "retry": true}),
+                };
+            }
+            state.platform.approval_claim = Some(ApprovalClaim {
+                approval_sequence,
+                turn_id,
+                claim_id,
+            });
+            changes.push(Change::Session(session));
+            return Response::Value {
+                value: json!({"claimed": true, "retry": false}),
+            };
+        }
         if let Op::Storage(op) = op {
             return crate::session_storage::apply(state, session, op, now_ms, changes);
         }
@@ -539,6 +607,7 @@ impl ShardState {
             Op::Call(_)
             | Op::Task(_)
             | Op::Record { .. }
+            | Op::ClaimApproval { .. }
             | Op::Storage(_)
             | Op::Records(_)
             | Op::Subagent { .. }

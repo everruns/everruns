@@ -259,6 +259,7 @@ async fn slack_action(ctx: &Ctx, params: &serde_json::Value) -> serde_json::Valu
             crate::channels::slack::actions::in_process_invoker(
                 &ctx.db,
                 ctx.encryption.as_ref(),
+                ctx.egress_service.clone(),
                 ctx.org_id(),
                 session,
             )

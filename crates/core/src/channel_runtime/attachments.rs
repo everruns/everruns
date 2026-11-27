@@ -110,6 +110,16 @@ impl AttachmentIntake<'_> {
     /// Content parts for a message's files, in order: each a stored
     /// attachment or a note.
     pub async fn parts(&self, attachments: &[InboundAttachment]) -> Vec<ContentPart> {
+        self.parts_with_resolver(attachments, None).await
+    }
+
+    /// Resolve provider file IDs after the same count, download and size policy
+    /// as remote files. A missing resolver produces a note, never a URL fallback.
+    pub async fn parts_with_resolver(
+        &self,
+        attachments: &[InboundAttachment],
+        resolver: Option<&dyn super::ChannelAttachmentResolver>,
+    ) -> Vec<ContentPart> {
         let mut parts = Vec::new();
         let mut files = 0;
         for attachment in attachments {
@@ -121,7 +131,9 @@ impl AttachmentIntake<'_> {
                         None => format!("[Attached file: {name}]"),
                     }))
                 }
-                InboundAttachment::Bytes { .. } | InboundAttachment::Remote { .. } => {
+                InboundAttachment::Bytes { .. }
+                | InboundAttachment::Remote { .. }
+                | InboundAttachment::ProviderFile { .. } => {
                     let name = display_name(attachment);
                     files += 1;
                     let part = if files > self.policy.max_files {
@@ -130,7 +142,7 @@ impl AttachmentIntake<'_> {
                             self.policy.max_files
                         )))
                     } else {
-                        self.take(attachment, &name).await
+                        self.take(attachment, &name, resolver).await
                     };
                     parts.push(part.unwrap_or_else(|NotReceived(reason)| {
                         ContentPart::text(not_received_note(&name, &reason))
@@ -145,6 +157,7 @@ impl AttachmentIntake<'_> {
         &self,
         attachment: &InboundAttachment,
         name: &str,
+        resolver: Option<&dyn super::ChannelAttachmentResolver>,
     ) -> Result<ContentPart, NotReceived> {
         let (declared, data) = match attachment {
             InboundAttachment::Bytes {
@@ -169,6 +182,48 @@ impl AttachmentIntake<'_> {
                     self.check_size(*size)?;
                 }
                 let data = self.download(url, credential.as_ref()).await?;
+                (media_type.as_deref(), data)
+            }
+            InboundAttachment::ProviderFile {
+                reference,
+                media_type,
+                size,
+                ..
+            } => {
+                if !self.policy.downloads {
+                    return Err(NotReceived(
+                        "this channel takes files inline, not as links".into(),
+                    ));
+                }
+                if let Some(size) = size {
+                    self.check_size(*size)?;
+                }
+                if reference.is_empty() || reference.len() > 4096 || reference.contains("://") {
+                    return Err(NotReceived("invalid provider file reference".into()));
+                }
+                let resolver = resolver.ok_or_else(|| {
+                    NotReceived("this host does not resolve provider files".into())
+                })?;
+                let egress = self
+                    .egress
+                    .as_ref()
+                    .ok_or_else(|| NotReceived("this host does not download files".into()))?;
+                let max_bytes = usize::try_from(self.policy.max_bytes).unwrap_or(usize::MAX);
+                let data = match tokio::time::timeout(
+                    DOWNLOAD_TIMEOUT,
+                    resolver.download(reference, max_bytes, egress.clone()),
+                )
+                .await
+                {
+                    Ok(Ok(data)) => data,
+                    Ok(Err(_)) => {
+                        return Err(NotReceived(
+                            "the provider file could not be downloaded".into(),
+                        ));
+                    }
+                    Err(_) => return Err(NotReceived("the download timed out".into())),
+                };
+                self.check_size(data.len() as u64)?;
                 (media_type.as_deref(), data)
             }
             _ => unreachable!("only files are taken"),
@@ -279,7 +334,9 @@ impl AttachmentIntake<'_> {
 
 fn display_name(attachment: &InboundAttachment) -> String {
     let (name, url) = match attachment {
-        InboundAttachment::Bytes { name, .. } => (name.as_deref(), None),
+        InboundAttachment::Bytes { name, .. } | InboundAttachment::ProviderFile { name, .. } => {
+            (name.as_deref(), None)
+        }
         InboundAttachment::Remote { name, url, .. } => (name.as_deref(), Some(url.as_str())),
         _ => (None, None),
     };

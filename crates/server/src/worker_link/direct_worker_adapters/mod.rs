@@ -11,6 +11,7 @@ pub(crate) mod mcp;
 mod message_projection;
 mod provider_config;
 mod scheduled_triggers;
+mod slack;
 mod user_mcp;
 
 // Direct implementation of WorkerAdapters for in-process worker
@@ -29,15 +30,15 @@ use crate::domains::{agents::record::Agent, harnesses::record::Harness, sessions
 use crate::domains::{budgets::BudgetService, messages::MessageService};
 use crate::kernel_imports::{
     Caller, EgressService, RuntimeMessage, UtilityLlmService,
-    contracts::driver_registry::DriverRegistry, contracts::provider::DriverId,
-    contracts::tool_types::ToolDefinition, resolve_runtime_capabilities,
-};
-use crate::kernel_imports::{
     connection_services::ProviderCredentialStore,
+    contracts::driver_registry::DriverRegistry,
     contracts::model_spec::ModelSpec,
+    contracts::provider::DriverId,
+    contracts::tool_types::ToolDefinition,
     delegation_services::SessionCreationAuthority,
     file_services::ResolvedFile,
     image_services::{ImageArtifactStore, ResolvedImage},
+    resolve_runtime_capabilities,
     tool_execution::BudgetChecker,
 };
 use crate::max_iterations;
@@ -1137,10 +1138,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
     }
 
     fn slack_action_invoker(&self, org: i64, session: SessionId) -> Option<Arc<dyn SlackAction>> {
-        let encryption = self.encryption.as_ref();
-        Some(crate::channels::slack::actions::in_process_invoker(
-            &self.db, encryption, org, session,
-        ))
+        Some(self.slack_invoker_for(org, session))
     }
 
     fn user_mcp_invoker(&self, org: i64, session: SessionId) -> Option<Arc<dyn UserMcpInvoker>> {

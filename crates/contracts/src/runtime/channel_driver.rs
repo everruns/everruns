@@ -223,6 +223,19 @@ impl ChannelError {
     }
 }
 
+/// Resolves opaque provider file references with the driver's own credentials.
+/// Implementations enforce provider destination and installation scope and bound
+/// bytes while reading. The host additionally checks returned bytes before storage.
+#[async_trait]
+pub trait ChannelAttachmentResolver: Send + Sync {
+    async fn download(
+        &self,
+        reference: &str,
+        max_bytes: usize,
+        egress: std::sync::Arc<dyn super::egress::EgressService>,
+    ) -> Result<Vec<u8>, ChannelError>;
+}
+
 /// One platform: parses its requests and delivers its replies.
 #[async_trait]
 pub trait ChannelDriver: ChannelDeliveryAdapter + 'static {
@@ -234,6 +247,22 @@ pub trait ChannelDriver: ChannelDeliveryAdapter + 'static {
     /// Interpret one request: verify it, then turn it into a message, a direct
     /// answer, or nothing.
     async fn receive(&self, request: &ChannelRequest) -> Result<Inbound, ChannelError>;
+
+    /// Verify input with the host's scoped egress when installation discovery
+    /// requires a provider read. Signature checks still precede any such read.
+    async fn receive_with_egress(
+        &self,
+        request: &ChannelRequest,
+        _egress: Option<std::sync::Arc<dyn super::egress::EgressService>>,
+    ) -> Result<Inbound, ChannelError> {
+        self.receive(request).await
+    }
+
+    /// Provider-owned files; the host invokes this only after admission and
+    /// intake policy checks. Other attachment kinds use the normal host intake.
+    fn attachment_resolver(&self) -> Option<&dyn ChannelAttachmentResolver> {
+        None
+    }
 
     /// The delivery context for a target. Drivers holding credentials put
     /// their token here; the default has none.
@@ -268,6 +297,16 @@ pub trait ChannelDriver: ChannelDeliveryAdapter + 'static {
         _message: &InboundMessage,
     ) -> Result<Vec<InboundChannelEvent>, ChannelError> {
         Ok(Vec::new())
+    }
+
+    /// Read history using the same host-scoped transport as delivery. Legacy
+    /// drivers retain their existing implementation through the default.
+    async fn backfill_with_context(
+        &self,
+        message: &InboundMessage,
+        _context: &DeliveryContext,
+    ) -> Result<Vec<InboundChannelEvent>, ChannelError> {
+        self.backfill(message).await
     }
 
     /// Called after a decision was applied, so the driver can update the

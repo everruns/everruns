@@ -69,31 +69,6 @@ impl OpenResponsesRequestExtension for MistralResponsesExtension {
                 body.remove("text");
             }
         }
-        // The shared content contract stores both URLs and data URLs in `url`.
-        // Mistral distinguishes file_url from file_data on the wire.
-        if let Some(input) = body.get_mut("input").and_then(Value::as_array_mut) {
-            for item in input {
-                for key in ["content", "output"] {
-                    if let Some(parts) = item.get_mut(key).and_then(Value::as_array_mut) {
-                        for part in parts {
-                            if part["type"] == "input_file"
-                                && let Some(object) = part.as_object_mut()
-                                && let Some(Value::Object(mut file)) = object.remove("input_file")
-                            {
-                                if let Some(Value::String(url)) = file.get("file_data")
-                                    && url.starts_with("https://")
-                                {
-                                    let url = url.clone();
-                                    file.remove("file_data");
-                                    file.insert("file_url".into(), Value::String(url));
-                                }
-                                object.extend(file);
-                            }
-                        }
-                    }
-                }
-            }
-        }
         Ok(())
     }
 }

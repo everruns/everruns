@@ -267,6 +267,8 @@ everruns-capabilities = { path = "crates/capabilities", version = "0.53.1", defa
 everruns-contracts = { path = "crates/contracts", version = "0.53.1", default-features = false }
 everruns-ard = { path = "crates/ard", version = "0.53.1" }
 everruns-drivers = { path = "crates/drivers/drivers", version = "0.53.1", default-features = false }
+channelkit = "=0.1.0-alpha.7"
+channelkit-slack = "=0.1.0-alpha.7"
 everruns-integrations = { path = "crates/integrations", version = "0.53.1", default-features = false }
 everruns-coding = { path = "crates/coding", version = "0.53.1", default-features = false }
 everruns-integrations-experimental = { path = "crates/integrations-experimental", version = "0.53.1", default-features = false }

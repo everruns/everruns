@@ -1,5 +1,12 @@
 # Everruns Knowledge Update Log
 
+## 2026-11-27
+
+- [Channelkit migration](integrations/channelkit-migration.md): share the published alpha.7 core and Slack pin with the server's email adapter after merging current main; Slack provider source is unchanged from alpha.6. No additional upstream release is required.
+- Add opt-in live bridge contracts for file byte/limit verification, reaction readback and DM stream replacement/closure, with explicit workspace fixtures and owned-resource cleanup.
+- Framework channels retain snapshot Agents' Environment factories when registering their builds, so incoming files survive the session reopen used by channel intake.
+- [Slack actions](integrations/slack-agent-actions.md): model instructions recognize explicitly host-bound standalone conversations as well as Slack-created sessions; the invoker remains the authorization authority.
+
 ## 2026-11-26
 
 - [Memory](runtime-resources/memory.md) v2 replaces v1: stores under `/memory` (agent, team, parent, user, org, named), each a switch on `agent_memory`; typed Markdown entries; memory card as a context update; every file version kept. The v1 `memory` capability, source-backed memories, the `memory` flag and the Memory Model note are removed.
@@ -39,12 +46,26 @@
 
 - [Markdown Messages Rendering](ui/markdown-messages.md): Pele renders Mermaid diagrams across the shared UI renderer and Markdown file previews.
 
+- [Channelkit migration](integrations/channelkit-migration.md): channel approval claims follow canonical session authority; v2 atomically consumes checked log positions and retains claims through offload and restart, using the existing matched control-plane/shard upgrade contract.
+
 ## 2026-11-24
 
 - [Session Spend](execution/session-spend.md): tool-less completions retain bounded, payload-free usage on both hosting lanes, including portable authority profiles, streaming and unreadable reviews; [Application API](framework/application-api.md) preserves query isolation.
 
+- [LLM drivers](foundations/llm-drivers.md): real Slack file qualification exposed rejected Responses attachment encoding; share native file serialization across messages, tool results, compacted history and compatible providers.
+
+- [Channelkit migration](integrations/channelkit-migration.md): adopt verified registry alpha.6 after real private-file intake exposed a host/download-budget mismatch; bounded caller ceilings preserve the default intake policy.
+
+- [Channelkit migration](integrations/channelkit-migration.md): opt-in Framework channels enable policy-aware host egress by default; real-model qualification exposed replies blocked by an offline service despite completed generation.
+
+- [Channelkit migration](integrations/channelkit-migration.md): new public approval cards retain their original reply destination and reject redirected callbacks before consuming the durable decision; legacy signed cards remain compatible.
+
+- [Slack modernization](integrations/slack-modernization.md): Socket Mode follows host HTTP proxy/TLS settings through a validated upgrade, bounds provider frames and omits ticket-bearing URLs from connection diagnostics.
+
 - [Channels](integrations/channels.md#output-delivery-checkpoints): protocol-marked pending rows survive the pre-intent crash window under legacy adapters; missing channels retain reconciliation evidence. Deploy the shared-host compatibility baseline before rolling the Channelkit bridge.
 - [Agents using agents](runtime-resources/agents-using-agents.md): name the agent roster Team, link created children to their parent in breadcrumbs, and make ZIP exports bundle linked team agents for fresh-destination imports. Keep source links and credential isolation.
+
+- [Channelkit migration](integrations/channelkit-migration.md): pin verified Rust alpha.5 and move shared/server Slack ingress, history, delivery, media and actions through the scoped bridge; retain host egress, native file references, durable approvals and action receipts. Preserve legacy pending deliveries for reconciliation during cutover.
 
 - [Channels](integrations/channels.md#output-delivery-checkpoints): structured provider outcomes, fenced write-ahead output intents, restartable native handles and split receipts, persistent retry advice, and retained uncertainty for the Channelkit migration. Slack transport cutover follows separately.
 

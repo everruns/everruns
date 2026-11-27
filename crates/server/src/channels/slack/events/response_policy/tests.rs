@@ -179,9 +179,14 @@ async fn a_message_event_that_mentions_the_bot_bypasses_the_judge() {
         ..Judge::probability(0.0)
     });
     let (state, app, mut config, mut event) = fixture(Some(judge.clone())).await;
-    state
-        .bot_user_cache
-        .insert(app.channels[0].public_id.to_string(), Some("UBOT".into()));
+    state.bot_user_cache.insert(
+        crate::channels::slack::provider::cache_key(
+            &app.channels[0].public_id.to_string(),
+            &config.bot_token,
+            "bot",
+        ),
+        Some("UBOT".into()),
+    );
     event.text = Some("<@UBOT> run your first check".into());
     assert!(should_process_message(&state, &app, &app.channels[0], &config, &event, None).await);
     event.text = Some("hey <@UBOT|ecosystem-watch>, anything new?".into());

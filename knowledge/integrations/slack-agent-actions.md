@@ -47,6 +47,12 @@ different bots. It acts as the bot the user already invited —
 no second token, no second set of scopes to rotate, and the agent's Slack
 identity matches the one answering in the thread.
 
+Standalone Framework hosts can also authorize a conversation explicitly through
+[`SlackActions`](../../crates/everruns/src/slack.rs). The model instructions must
+describe this host binding as well as Slack-created sessions; otherwise the model
+can refuse a valid bound action before calling a tool. User-supplied identifiers
+never grant access, and the invoker still checks the bound channel and thread.
+
 **Exact message references are part of the model view.** Slack actions address
 messages by their platform timestamp, including its fractional digits. A received
 message's wall-clock time cannot reconstruct that identifier. The Slack capability
@@ -171,15 +177,14 @@ An invoker is **bound to one org and one session at construction**, the way
 `platform_store(org_id, session_id)` is. A capability holds only the handle it
 was given, so there is no argument it could vary to reach another session's
 endpoint. Org scoping is then structural rather than a check: the session read
-is `get_session(org_id, session_id)` and the app read is
-`get_by_internal_id(.., org_id, ..)`.
+is `get_session(org_id, session_id)` and the channel read is scoped to the same
+organization.
 
-Resolution prefers `sessions.channel_id` (EVE-1004) over the
-`slack:endpoint:{id}` routing tag, because the FK is immutable and the tag is
-not; the tag remains the fallback for pre-backfill sessions. Either way the
-endpoint must be `ChannelType::Slack` and `status == live`, so a session that
-came through another channel never falls through to a sibling Slack endpoint —
-the wrong-bot bug that resolving by endpoint exists to prevent.
+Resolution requires `sessions.channel_id`. The structural FK is authoritative;
+mutable routing tags cannot grant bot actions. The channel must be
+`ChannelType::Slack` and live, so a session that came through another channel
+never falls through to a sibling Slack channel — the wrong-bot bug that
+channel-bound resolution prevents.
 
 Mutating actions are also bound to the conversation recorded by trusted Slack
 ingress metadata. Model-selected alternate channels, channel-level uploads, and
@@ -223,11 +228,11 @@ That makes the Slack half smaller than the shape above implies, and better:
 - A click posts an ordinary user message on that session. The turn resumes
   through the path that already exists.
 
-Answering as a message is also what keeps attribution honest for free.
-`ApprovalAuditListener` resolves the approver from the `input.message` event the
-API wrote — never from anything the model said — so a Slack click lands in the
-audit log under the Slack identity that clicked it, and approvals need no
-identity path of their own.
+The verified interaction records one org audit row for the consumed card after
+the decision message is admitted. It names the Slack workspace and user in the
+row's details; that external identity is not a management-user UUID. The
+session message also keeps its `ExternalActor` for the conversation. Tool-call
+audit rows remain separate from the provider click record.
 
 ### Authorization
 

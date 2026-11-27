@@ -109,7 +109,7 @@ impl ChannelReactionSurface for SlackDeliveryAdapter {
     ) -> Result<Option<String>, ChannelDeliveryResult> {
         match self.post_reply(message, context).await {
             Ok(ts) => Ok(ts.map(|ts| format!("{}:{ts}", context.channel_id))),
-            Err(error) => Err(classify_slack_failure(error)),
+            Err(error) => Err(error),
         }
     }
 
@@ -129,19 +129,30 @@ impl ChannelReactionSurface for SlackDeliveryAdapter {
             debug!(%emoji, "No Slack name for the agent's reaction; not mirrored");
             return ChannelDeliveryResult::Ok;
         };
-        let method = if add {
-            "reactions.add"
-        } else {
-            "reactions.remove"
-        };
-        let payload = serde_json::json!({ "channel": channel, "timestamp": ts, "name": name });
-        match slack_api_call(&self.api_base, &context.auth_token, method, payload).await {
-            Ok(_) => ChannelDeliveryResult::Ok,
-            // Already there, or already gone: the agent's intent holds.
-            Err(error) if matches!(error.code(), Some("already_reacted" | "no_reaction")) => {
+        if channel != context.channel_id {
+            return ChannelDeliveryResult::PermanentError("Slack reaction scope mismatch".into());
+        }
+        let result = async {
+            use channelkit::Adapter;
+            let factory = everruns_integrations::slack_channel::bridge::direct_factory()?;
+            let client = factory.for_context(context, &self.api_base).await?;
+            let reference =
+                everruns_integrations::slack_channel::bridge::reference(&client, context, ts)?;
+            if add {
+                client.react(&reference, Some(&name)).await
+            } else {
+                client.remove_reaction(&reference, &name).await
+            }
+        }
+        .await;
+        match result {
+            Ok(()) => ChannelDeliveryResult::Ok,
+            Err(channelkit::Error::Rejected { code })
+                if matches!(code.as_str(), "already_reacted" | "no_reaction") =>
+            {
                 ChannelDeliveryResult::Ok
             }
-            Err(error) => classify_slack_failure(error),
+            Err(error) => everruns_integrations::slack_channel::bridge::outcome(&error),
         }
     }
 }
@@ -174,15 +185,19 @@ mod tests {
             auth_token: "xoxb-test".into(),
             channel_id: "C1".into(),
             thread_ref: "1700.1".into(),
-            extra: HashMap::new(),
+            extra: HashMap::from([(
+                everruns_integrations::slack_channel::bridge::INSTALLATION_ID.into(),
+                "server-delivery-test".into(),
+            )]),
             receipts: None,
+            egress: None,
         };
         (adapter, context)
     }
 
     #[tokio::test]
     async fn the_agents_reaction_lands_on_the_slack_message() {
-        let server = MockServer::start().await;
+        let server = crate::channels::slack::events::tests_support::mock_provider().await;
         Mock::given(method("POST"))
             .and(path("/reactions.add"))
             .and(body_partial_json(
@@ -219,7 +234,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_posted_reply_is_keyed_by_its_first_message() {
-        let server = MockServer::start().await;
+        let server = crate::channels::slack::events::tests_support::mock_provider().await;
         Mock::given(method("POST"))
             .and(path("/chat.postMessage"))
             .respond_with(

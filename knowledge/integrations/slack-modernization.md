@@ -162,6 +162,13 @@ install redirect must be HTTPS, so a laptop setup costs two pastes per agent (bo
 app token); the UI defaults new channels to Socket Mode when the page itself is not on
 public HTTPS.
 
+The outgoing socket uses the host HTTP client's proxy and TLS settings. The
+[connection transport](../../crates/server/src/channels/slack/socket_transport.rs)
+validates the upgrade before accepting bounded frames; redirects, URL credentials
+and fragments are refused, and diagnostics omit ticket-bearing connection URLs.
+The supervisor retains ownership of hello, acknowledgement, reconnect and liveness;
+Channelkit normalizes the authenticated envelopes.
+
 ## Sources
 
 Slack platform behavior was verified against

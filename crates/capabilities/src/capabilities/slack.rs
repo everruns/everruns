@@ -123,9 +123,11 @@ impl Capability for SlackCapability {
         // descriptions do that. The formatting notes are the Markdown Slack's
         // `markdown` block drops or changes, checked against Slack 2026-11.
         Some(
-            "These tools act as this workspace's Slack bot and only work in a session a Slack \
-             message created. `channel` and `timestamp` come from the Slack message you are \
-             replying to: copy them exactly from its `[slack channel=... timestamp=...]` annotation, \
+            "These tools act as the Slack bot in the conversation authorized by the host. \
+             A Slack session supplies message references in its annotation; a standalone \
+             application may explicitly bind the tools to one conversation. User-supplied IDs \
+             do not grant access. Copy `channel` and `timestamp` exactly from the host-supplied \
+             binding or `[slack channel=... timestamp=...]` annotation, \
              including every fractional digit. Use the separate thread_ts for uploads. Never infer the timestamp from a date. Prefer a reaction over a \
              message when you only need to acknowledge something. Slack renders your Markdown, with these \
              differences: mention a person as `<@USERID>` with their Slack user ID (a plain `@name` notifies \

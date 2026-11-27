@@ -1,34 +1,33 @@
 use super::*;
-use everruns_integrations::slack_channel::surfaces::SlackSurfaces;
-pub(super) use everruns_integrations::slack_channel::surfaces::classify_slack_failure;
 #[async_trait]
 impl ChannelStreamDelivery for SlackDeliveryAdapter {
     async fn start(&self, c: &ChannelDeliveryContext) -> Result<String, String> {
-        SlackSurfaces {
-            api_base: &self.api_base,
-        }
-        .start(c)
-        .await
+        self.start_checked(c)
+            .await
+            .map_err(|error| error.to_string())
+    }
+    async fn start_checked(
+        &self,
+        c: &ChannelDeliveryContext,
+    ) -> Result<String, ChannelDeliveryResult> {
+        self.surfaces()?.start_checked(c).await
     }
     async fn append(&self, h: &str, t: &str, c: &ChannelDeliveryContext) -> ChannelDeliveryResult {
-        SlackSurfaces {
-            api_base: &self.api_base,
+        match self.surfaces() {
+            Ok(surface) => surface.append(h, t, c).await,
+            Err(error) => error,
         }
-        .append(h, t, c)
-        .await
     }
     async fn replace(&self, h: &str, t: &str, c: &ChannelDeliveryContext) -> ChannelDeliveryResult {
-        SlackSurfaces {
-            api_base: &self.api_base,
+        match self.surfaces() {
+            Ok(surface) => surface.replace(h, t, c).await,
+            Err(error) => error,
         }
-        .replace(h, t, c)
-        .await
     }
     async fn stop(&self, h: &str, c: &ChannelDeliveryContext) -> ChannelDeliveryResult {
-        SlackSurfaces {
-            api_base: &self.api_base,
+        match self.surfaces() {
+            Ok(surface) => surface.stop(h, c).await,
+            Err(error) => error,
         }
-        .stop(h, c)
-        .await
     }
 }
