@@ -993,6 +993,20 @@ impl Ports {
         state.pending.clone()
     }
 
+    /// Count an appended event; a thread's turn events settle its assignment.
+    fn appended(&self, event: &Event, waited: Option<std::time::Instant>) {
+        if let Ok(node) = self.inner.node() {
+            if let Some(started) = waited {
+                node.metrics.append.record(started.elapsed());
+                node.prom.append_seconds.observe(&[], started.elapsed());
+            }
+            let kind = event.event_type.as_str();
+            node.prom.events_appended.inc(&[("type", kind)]);
+            node.prom.observe_event(event);
+        }
+        crate::thread_turns::observe(Port(self.inner.clone()), event);
+    }
+
     async fn write(&self, op: WriteOp) -> Result<Value> {
         let fence = self.epoch()?.fence;
         let response = self
@@ -1033,12 +1047,7 @@ impl Ports {
                 .append_in_background(epoch, request)
                 .await
                 .map_err(|e| backend(e.to_string()))?;
-            if let Ok(node) = self.inner.node() {
-                node.prom
-                    .events_appended
-                    .inc(&[("type", event.event_type.as_str())]);
-                node.prom.observe_event(&event);
-            }
+            self.appended(&event, None);
             return Ok(event);
         }
         let response = self
@@ -1058,14 +1067,7 @@ impl Ports {
                 let event: Event =
                     serde_json::from_value(value).map_err(|e| backend(e.to_string()))?;
                 epoch.pipe.state.lock().next = event.sequence.map(|seq| seq + 1);
-                if let Ok(node) = self.inner.node() {
-                    node.metrics.append.record(started.elapsed());
-                    node.prom.append_seconds.observe(&[], started.elapsed());
-                    node.prom
-                        .events_appended
-                        .inc(&[("type", event.event_type.as_str())]);
-                    node.prom.observe_event(&event);
-                }
+                self.appended(&event, Some(started));
                 Ok(event)
             }
             Response::Conflict { expected, actual } => Err(EventLogError::SequenceConflict {
@@ -1078,9 +1080,7 @@ impl Ports {
         }
     }
 
-    /// Events after `after`, at most `limit + 1`, paged in from the object
-    /// store as needed, with the log's last sequence.
-    ///
+    /// Events after `after` (see below), paged in from the object store.
     /// Decision: an executor's ports read earlier turns sparsely. Engine
     /// builds a turn's model input from messages only and resumes a turn
     /// from its own `turn.started` on, so before the current turn an epoch

@@ -351,8 +351,11 @@ Threads and Parent communication are native capabilities (sessions, tasks), cons
 with the native-vs-injected rule. `crates/agentd/src/subagents.rs` already
 runs children on any shard from the org's catalog and bounds them by the
 capability's allow list; it reads the `threads` config instead of three. The
-assignment lifecycle and `settle_thread_turn` must run in shard task state;
-verify against the capability matrix before merge.
+assignment lives in the parent's shard task state; a thread on another shard
+reaches it through the gateway, and the thread's own turn events settle it
+(`crates/agentd/src/thread_turns.rs`, the shard's counterpart of the server's
+thread turn listener). A child session is never offered Threads or
+Coordinator, on either data plane (`hidden_reason_capabilities`).
 
 ## Framework and serve
 

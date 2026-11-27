@@ -105,6 +105,7 @@ pub mod stream;
 pub mod subagents;
 pub mod tasks;
 pub mod tenants;
+pub mod thread_turns;
 pub mod types;
 mod user_mcp;
 pub mod wal;

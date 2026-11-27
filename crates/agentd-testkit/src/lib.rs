@@ -178,7 +178,7 @@ struct FilesSim;
 
 /// The first words [`FilesSim`] plays.
 const FILES_COMMANDS: &[&str] = &[
-    "write", "read", "at", "ask", "later", "answer", "mcp", "sh", "call",
+    "write", "read", "at", "ask", "later", "answer", "mcp", "sh", "call", "tools",
 ];
 
 #[async_trait::async_trait]
@@ -268,6 +268,16 @@ impl everruns::ChatDriver for FilesSim {
                             }),
                         )
                     }
+                    // The tools this turn offers, by name.
+                    (Some("tools"), _, _) => SimTurn::Assistant(format!(
+                        "Tools: {}.",
+                        config
+                            .tools
+                            .iter()
+                            .map(|tool| tool.name())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    )),
                     (Some("answer"), Some(_), _) => SimTurn::Assistant(format!(
                         "The answer is {}.",
                         text.trim()["answer".len()..].trim()

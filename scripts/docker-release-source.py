@@ -20,6 +20,9 @@ def resolve(env, run=command):
     source = sha
     tag = ""
     latest = False
+    # amd64 only: PR validation, and a main snapshot that asks for it (the
+    # nightly v2 workflow checks run on amd64 runners, at half the build).
+    amd64 = event == "pull_request"
     if event == "pull_request":
         sha = env["PR_HEAD_SHA"]
     elif event == "workflow_dispatch" and not env.get("INPUT_TAG"):
@@ -30,6 +33,7 @@ def resolve(env, run=command):
         # knowledge/project/release-process.md#trigger-rationale.
         if ref != "refs/heads/main":
             raise ValueError("a snapshot without a tag must be dispatched from main")
+        amd64 = env.get("INPUT_AMD64_ONLY") == "true"
     else:
         tag = env["INPUT_TAG"] if event == "workflow_dispatch" else env["REF_NAME"]
         if not re.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z]+([.-][0-9A-Za-z]+)*)?", tag):
@@ -63,10 +67,10 @@ def resolve(env, run=command):
         "tag": tag,
         "is_release": str(bool(tag)).lower(),
         "is_latest": str(latest).lower(),
-        "platforms": "linux/amd64" if event == "pull_request" else "linux/amd64,linux/arm64",
+        "platforms": "linux/amd64" if amd64 else "linux/amd64,linux/arm64",
         # Architectures whose release binaries are compiled natively (one runner
         # per architecture) before the images package them.
-        "arches": json.dumps(["amd64"] if event == "pull_request" else ["amd64", "arm64"]),
+        "arches": json.dumps(["amd64"] if amd64 else ["amd64", "arm64"]),
     }
 
 

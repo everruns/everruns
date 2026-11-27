@@ -368,6 +368,7 @@ impl Executor {
     async fn memory_loop(self: Arc<Self>) {
         use crate::memwatch::ExecLevel;
         let mut tick = tokio::time::interval(Duration::from_secs(1));
+        let mut parked_since: Option<std::time::Instant> = None;
         loop {
             tick.tick().await;
             let (used, limit) = crate::memwatch::reading(self.cfg.memory_limit);
@@ -377,7 +378,19 @@ impl Executor {
                 self.forget_coldest(trim);
                 self.stats.add(&[("mirror", "trimmed")], trim as u64);
             }
-            match crate::memwatch::exec_level(used, limit) {
+            let parked = crate::memwatch::parked(used, limit, self.running());
+            let since = *parked_since.get_or_insert_with(std::time::Instant::now);
+            if !parked {
+                parked_since = None;
+            }
+            let level = match crate::memwatch::exec_level(used, limit) {
+                _ if parked && since.elapsed() >= crate::memwatch::PARKED_FOR => {
+                    self.stats.inc(&[("memory", "parked")]);
+                    ExecLevel::Restart
+                }
+                level => level,
+            };
+            match level {
                 ExecLevel::Ok => {}
                 ExecLevel::Stop => {
                     let handed = self.hand_back_newest();
@@ -395,7 +408,7 @@ impl Executor {
                         tracing::error!(
                             used_mb = used >> 20,
                             limit_mb = limit >> 20,
-                            "executor memory at 98%: draining to restart"
+                            "executor memory at 98%, or parked full and idle: draining to restart"
                         );
                         self.stats.inc(&[("memory", "restart")]);
                         self.drain();

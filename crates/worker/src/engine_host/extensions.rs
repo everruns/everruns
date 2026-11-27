@@ -194,6 +194,16 @@ impl<A: WorkerAdapters> HostToolAugmentor for PlatformTools<A> {
             .await
     }
 
+    async fn hidden_reason_capabilities(
+        &self,
+        session_id: SessionId,
+        _engine_sessions: Arc<dyn SessionStore>,
+    ) -> Result<Vec<&'static str>> {
+        PlatformToolAugmentor
+            .hidden_reason_capabilities(session_id, self.host.session_store(self.org_id))
+            .await
+    }
+
     async fn augment_act_tools(
         &self,
         session_id: SessionId,
