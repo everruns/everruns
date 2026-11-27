@@ -277,8 +277,22 @@ const rows = {
       "wait=true returned no reply",
     );
 
+    // Deltas are live only (the stored history has none), so the stream says
+    // when the reply is under way.
+    let stop;
+    const watching = stream(id, new Promise((done) => (stop = done)));
+    await delay(1000);
     const long = await say(id, "Write a 3000-word essay on the history of bridges, with ten sections.");
-    await turnOf(id, long.id, { until: "output.message.delta", timeout: 120_000 });
+    try {
+      const deadline = Date.now() + 120_000;
+      while (!watching.seen.includes("output.message.delta")) {
+        assert(Date.now() < deadline, `the long reply did not stream in 120s (saw: ${[...new Set(watching.seen)].join(", ")})`);
+        await delay(500);
+      }
+    } finally {
+      stop();
+      await watching.done;
+    }
     await post(`/sessions/${id}/cancel`);
     const cancelled = await turnOf(id, long.id, { until: "turn.cancelled", timeout: 60_000 });
     assert(!cancelled.some((e) => e.type === "turn.completed"), "the cancelled turn completed");
