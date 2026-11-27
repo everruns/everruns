@@ -25,8 +25,8 @@ use crate::turn_agent::{TurnAgent, TurnAgentBuilder};
 use crate::typed_id::{MessageId, ModelId, SessionId};
 use crate::{AgentCapabilityConfig, ResolvedExecutionSnapshot};
 
-pub(crate) const PROVIDER_MANAGED_REDUCTION_FALLBACK: &str =
-    "everruns/provider_managed_reduction_fallback";
+mod reduction_telemetry;
+pub use reduction_telemetry::{ReductionFallbackReason, ReductionReplaySource, ReductionTelemetry};
 
 /// Narrow host seam used by callers that cannot preassemble a context before
 /// invoking a reason atom. Implementations live outside the kernel.
@@ -109,6 +109,8 @@ pub struct ResolvedTurnContextInput {
 /// Credential-safe context consumed by kernel reason execution.
 #[derive(Debug, Clone)]
 pub struct AssembledTurnContext {
+    /// Internal observations, never provider model options.
+    pub reduction_telemetry: ReductionTelemetry,
     /// Effective, secret-free execution snapshot.
     pub snapshot: ResolvedExecutionSnapshot,
     /// Capability configurations after dependency expansion.
@@ -219,20 +221,20 @@ pub async fn assemble_resolved_turn_context(
             &turn_agent.model,
         ));
     }
+    let mut reduction_telemetry = ReductionTelemetry::default();
     if let Some((key, value)) = &model.provider_managed_reduction_option {
         turn_agent.driver_options.insert(key.clone(), value.clone());
     } else if resolved_capability_configs
         .iter()
         .any(|config| config.capability_id() == "infinity_context")
     {
-        turn_agent.driver_options.insert(
-            PROVIDER_MANAGED_REDUCTION_FALLBACK.to_string(),
-            serde_json::json!({"reason":"provider_or_model_ineligible"}),
-        );
+        reduction_telemetry.fallback_reason =
+            Some(ReductionFallbackReason::ProviderOrModelIneligible);
     }
     let embedder_metadata = snapshot.embedder_metadata.clone();
 
     Ok(AssembledTurnContext {
+        reduction_telemetry,
         snapshot,
         resolved_capability_configs,
         messages,

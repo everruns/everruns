@@ -1,6 +1,6 @@
 ---
 title: "Tool refreshes are distinguished from history compaction"
-description: "OpenRouter request budgets exclude unused inline tool declarations, and tool-only refresh markers explain that conversation messages were retained."
+description: "Provider-owned request projections exclude unused tool declarations, and tool-only refresh markers explain that conversation messages were retained."
 date: 2026-11-25
 kind: fix
 significance: minor
@@ -10,14 +10,13 @@ links:
   docs: [/advanced/compaction/]
 ---
 
-OpenRouter sends the current tool declarations. Request budgeting no longer
-counts historical inline tool epochs that this transport does not send. That
-could repeatedly report a smaller request even though its conversation and
-actual tool declarations stayed the same.
+Compaction budgeting now follows the declarations and prompt each driver sends.
+OpenRouter budgets current tools; verified native inline routes include their
+baseline and changes. Custom Framework drivers keep conservative estimates until
+they opt in.
 
-Historical tool-only markers now say **Tool definitions refreshed** and explain
-that no conversation messages were removed. For example, this recorded event
-represents a tool refresh rather than a saved summary:
+Tool-only refresh markers say **Tool definitions refreshed**, making clear that
+conversation messages were retained. This event records a refresh, not a saved summary:
 
 ```json
 {
@@ -28,6 +27,10 @@ represents a tool refresh rather than a saved summary:
 }
 ```
 
-Verified first-party inline tool changes retain their existing cache behavior.
-[Compaction](/advanced/compaction/) explains the distinction between request
-projections and durable continuity.
+Inline prompt updates count once, and epoch resets survive worker restarts.
+Runtime fallback diagnostics remain in traces instead of provider options.
+Only verified complete, nonempty, tool-free summaries can replace history;
+unknown, paused and truncated endings are rejected. Incomplete Responses remain
+incomplete even when their reason is missing or contradictory.
+
+See [Compaction](/advanced/compaction/) for request budgets and durable continuity.

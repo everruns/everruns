@@ -80,6 +80,38 @@ async fn stream(sse: String) -> (Vec<ToolCall>, LlmCompletionMetadata) {
     (calls, done.expect("stream ends with Done"))
 }
 
+#[tokio::test]
+async fn unfinished_or_missing_terminal_status_never_becomes_complete() {
+    for (status, detail) in [
+        (Some("incomplete"), None),
+        (Some("incomplete"), Some("stop")),
+        (Some("in_progress"), None),
+        (Some("future_status"), None),
+        (None, None),
+    ] {
+        let mut response = json!({
+            "id": "resp_unknown", "object": "response", "created_at": 1780000000,
+            "model": "gpt-5.5", "output": [],
+            "usage": {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2}
+        });
+        if let Some(status) = status {
+            response["status"] = json!(status);
+        }
+        if let Some(reason) = detail {
+            response["incomplete_details"] = json!({"reason": reason});
+        }
+        let (_, metadata) = stream(frame(json!({
+            "type": if status == Some("incomplete") { "response.incomplete" } else { "response.completed" },
+            "response": response
+        }))).await;
+        assert_ne!(
+            metadata.outcome(),
+            crate::CompletionOutcome::Complete,
+            "{status:?} {detail:?}"
+        );
+    }
+}
+
 /// The response hits `max_output_tokens` after one call finished and while a
 /// second was still streaming its arguments. The finished call is handed on;
 /// the cut one is dropped and counted, never run as `{}`.

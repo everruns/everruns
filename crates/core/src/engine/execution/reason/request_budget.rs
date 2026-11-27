@@ -6,7 +6,7 @@ use crate::engine::compaction_policy::CompactionPolicy;
 use crate::engine::driver_registry::{LlmCallConfig, Message, MessageRole};
 use crate::engine::error::{AgentLoopError, Result};
 use crate::engine::tool_types::ToolDefinition;
-use everruns_contracts::DriverId;
+use everruns_contracts::ToolRequestProjection;
 
 fn tool_tokens(tool: &ToolDefinition) -> usize {
     let projected = tool.parameters_for_model();
@@ -34,16 +34,31 @@ pub(super) fn tools_tokens(tools: &[ToolDefinition]) -> usize {
     tools.iter().map(tool_tokens).fold(0, usize::saturating_add)
 }
 
+/// Inline requests send the original prompt, with later additions in replay
+/// notes. Counting the current prompt plus those notes charges the text twice.
+/// This is an estimate-only view: trimming retains canonical instructions.
+pub(super) fn messages_for_request<'a>(
+    projection: ToolRequestProjection,
+    config: &LlmCallConfig,
+    messages: &'a [Message],
+) -> std::borrow::Cow<'a, [Message]> {
+    if projection == ToolRequestProjection::BaselineWithChanges {
+        everruns_contracts::tool_changes::with_system_prompt(
+            messages,
+            config.system_prompt_baseline.as_deref(),
+        )
+    } else {
+        std::borrow::Cow::Borrowed(messages)
+    }
+}
+
 pub(super) fn tool_tokens_for_request(
-    provider: &str,
+    projection: ToolRequestProjection,
     config: &LlmCallConfig,
     messages: &[Message],
 ) -> usize {
     let current = tools_tokens(&config.tools);
-    // OpenRouter always sends current declarations, including when the model
-    // profile advertises inline changes. Keep neutral replay metadata intact
-    // for drivers; exclude only this known wire-unused epoch from its budget.
-    if provider == DriverId::OpenRouter.as_str() {
+    if projection == ToolRequestProjection::Current {
         return current;
     }
     let Some(baseline) = &config.tool_baseline else {
@@ -121,7 +136,7 @@ mod tests {
     fn empty_and_deferred_catalogs_only_count_model_visible_schemas() {
         let mut config = LlmCallConfig::new("test");
         assert_eq!(
-            tool_tokens_for_request(DriverId::OpenAI.as_str(), &config, &[]),
+            tool_tokens_for_request(ToolRequestProjection::BaselineWithChanges, &config, &[]),
             0
         );
         let mut deferred = tool("Lookup");
@@ -129,12 +144,16 @@ mod tests {
             t.full_parameters = Some(json!({"description": "secret".repeat(10_000)}));
         }
         config.tools.push(deferred);
-        let small = tool_tokens_for_request(DriverId::OpenAI.as_str(), &config, &[]);
+        let small =
+            tool_tokens_for_request(ToolRequestProjection::BaselineWithChanges, &config, &[]);
         assert!(small > 0 && small < 100);
         if let ToolDefinition::ClientSide(t) = &mut config.tools[0] {
             t.parameters = t.full_parameters.take().expect("full schema");
         }
-        assert!(tool_tokens_for_request(DriverId::OpenAI.as_str(), &config, &[]) > small + 10_000);
+        assert!(
+            tool_tokens_for_request(ToolRequestProjection::BaselineWithChanges, &config, &[])
+                > small + 10_000
+        );
     }
 
     #[test]
@@ -182,10 +201,11 @@ mod tests {
     fn inline_replay_is_reserved_without_double_counting_current_tools() {
         let mut config = LlmCallConfig::new("test");
         config.tools = vec![tool("current")];
-        let current = tool_tokens_for_request(DriverId::OpenAI.as_str(), &config, &[]);
+        let current =
+            tool_tokens_for_request(ToolRequestProjection::BaselineWithChanges, &config, &[]);
         config.tool_baseline = Some(config.tools.clone());
         assert_eq!(
-            tool_tokens_for_request(DriverId::OpenAI.as_str(), &config, &[]),
+            tool_tokens_for_request(ToolRequestProjection::BaselineWithChanges, &config, &[]),
             current
         );
         let mut message = Message::text(MessageRole::User, "reveal");
@@ -194,14 +214,18 @@ mod tests {
             ..Default::default()
         });
         assert!(
-            tool_tokens_for_request(DriverId::OpenAI.as_str(), &config, &[message]) > current + 400
+            tool_tokens_for_request(
+                ToolRequestProjection::BaselineWithChanges,
+                &config,
+                &[message]
+            ) > current + 400
         );
     }
     #[test]
     fn gateway_history_does_not_create_false_request_pressure() {
         use crate::engine::{execution::reason::tool_changes, message::RuntimeMessage};
         let model = "openai/gpt-6.1-terra";
-        let provider = DriverId::OpenRouter;
+        let provider = everruns_contracts::DriverId::OpenRouter;
         let mut agent = crate::engine::TurnAgent::new("system", model);
         agent.tools = vec![tool(&"historical schema ".repeat(1_000))];
         let first = RuntimeMessage::user("first");
@@ -232,20 +256,28 @@ mod tests {
             config.tool_baseline.is_some(),
             "driver replay metadata is preserved"
         );
-        let actual = tool_tokens_for_request(DriverId::OpenRouter.as_str(), &config, &sent);
+        let actual = tool_tokens_for_request(ToolRequestProjection::Current, &config, &sent);
         assert_eq!(actual, tools_tokens(&config.tools));
         assert!(!policy().should_compact_with_fixed_input(&sent, 1_000, actual));
         // Custom drivers retain conservative accounting of the same metadata.
         assert!(policy().should_compact_with_fixed_input(
             &sent,
             1_000,
-            tool_tokens_for_request(DriverId::external("recording").as_str(), &config, &sent)
+            tool_tokens_for_request(ToolRequestProjection::Conservative, &config, &sent)
         ));
     }
 
-    struct SmallWindowDriver;
+    struct SmallWindowDriver(ToolRequestProjection);
     #[async_trait::async_trait]
     impl crate::engine::ChatDriver for SmallWindowDriver {
+        fn tool_request_projection(
+            &self,
+            _: &crate::engine::ProviderEndpoint,
+            _: &[Message],
+            _: &LlmCallConfig,
+        ) -> ToolRequestProjection {
+            self.0
+        }
         fn effective_context_window(&self, _: &str) -> Option<usize> {
             Some(1_000)
         }
@@ -260,6 +292,14 @@ mod tests {
     }
 
     async fn compact(messages: &mut Vec<Message>, config: &mut LlmCallConfig) -> Result<()> {
+        compact_with_projection(ToolRequestProjection::Conservative, messages, config).await
+    }
+
+    async fn compact_with_projection(
+        projection: ToolRequestProjection,
+        messages: &mut Vec<Message>,
+        config: &mut LlmCallConfig,
+    ) -> Result<()> {
         use super::super::{ProactiveCompactionContext, apply_proactive_compaction};
         let p = policy();
         let emitter = crate::engine::test_fixtures::TestEventEmitter::new();
@@ -268,7 +308,7 @@ mod tests {
         apply_proactive_compaction(
             ProactiveCompactionContext {
                 history_evidence_allowed: false,
-                chat_driver: &SmallWindowDriver,
+                chat_driver: &SmallWindowDriver(projection),
                 policy: p.as_ref(),
                 checkpoint_store: None,
                 event_emitter: &emitter,
@@ -292,6 +332,65 @@ mod tests {
         )
         .await
         .map(|_| ())
+    }
+
+    #[tokio::test]
+    async fn proactive_flow_uses_the_driver_projection_for_unused_historical_schemas() {
+        for projection in [
+            ToolRequestProjection::Current,
+            ToolRequestProjection::BaselineWithChanges,
+            ToolRequestProjection::Conservative,
+        ] {
+            let mut config = LlmCallConfig::new("application-model");
+            config.tools = vec![tool("small")];
+            config.tool_baseline = Some(vec![tool(&"old schema ".repeat(2000))]);
+            let mut messages = vec![
+                Message::text(MessageRole::System, "system"),
+                Message::text(MessageRole::User, "hello"),
+            ];
+            compact_with_projection(projection, &mut messages, &mut config)
+                .await
+                .unwrap();
+            assert_eq!(messages.len(), 2, "no message loss or summary call");
+            assert_eq!(
+                config.tool_baseline.is_some(),
+                projection == ToolRequestProjection::Current,
+                "unused metadata must not cause a refresh, while sent baselines must fit"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn inline_prompt_updates_are_counted_once_without_mutating_current_instructions() {
+        let base = "base ".repeat(20);
+        let note = "instruction ".repeat(180);
+        let current = format!("{base}\n\n{note}");
+        let mut config = LlmCallConfig::new("application-model");
+        config.tools = vec![tool("small")];
+        config.tool_baseline = Some(config.tools.clone());
+        config.system_prompt_baseline = Some(base);
+        let mut user = Message::text(MessageRole::User, "hello");
+        user.tool_changes = Some(everruns_contracts::tool_changes::ToolChanges {
+            note: Some(note),
+            ..Default::default()
+        });
+        let mut messages = vec![Message::text(MessageRole::System, &current), user];
+        compact_with_projection(
+            ToolRequestProjection::BaselineWithChanges,
+            &mut messages,
+            &mut config,
+        )
+        .await
+        .unwrap();
+        assert!(
+            config.tool_baseline.is_some(),
+            "an update sent once must not create false pressure"
+        );
+        assert_eq!(
+            messages[0].content.to_text(),
+            current,
+            "budget projection never edits canonical instructions"
+        );
     }
 
     #[tokio::test]

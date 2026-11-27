@@ -462,8 +462,8 @@ pub use everruns_contracts::turn::TurnStopReason;
 // role that travel on a direct model call live in [`llm`], so both keep the
 // plain name on their own surface.
 pub use everruns_contracts::driver_registry::{
-    ChatDriver, LlmCallConfig, LlmCallConfigBuilder, LlmCompletionMetadata, LlmContentPart,
-    LlmResponse, LlmResponseStream, LlmStreamEvent,
+    ChatDriver, CompletionOutcome, LlmCallConfig, LlmCallConfigBuilder, LlmCompletionMetadata,
+    LlmContentPart, LlmResponse, LlmResponseStream, LlmStreamEvent, ToolRequestProjection,
 };
 pub use everruns_core::{
     ContentPart, Controls, ImageContentPart, InitialFile, InputMessage, ReasoningConfig,

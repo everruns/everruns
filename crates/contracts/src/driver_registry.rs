@@ -29,6 +29,7 @@ use std::sync::Arc;
 pub type LlmResponseStream = Pin<Box<dyn Stream<Item = Result<LlmStreamEvent>> + Send>>;
 
 pub use crate::provider_managed::{ProviderCheckpointCandidate, ProviderOpaqueContext};
+pub use crate::{CompletionOutcome, ToolRequestProjection};
 
 pub use crate::stream_error::LlmStreamError;
 
@@ -65,6 +66,18 @@ use crate::recommended_models::ProviderRecommendedModels;
 /// reports it under a transient status like 429.
 #[async_trait]
 pub trait ChatDriver: Send + Sync {
+    /// Pure request planning, using the same layout decision as serialization.
+    /// Bound providers must forward their actual endpoint. Custom drivers may
+    /// opt in without depending on a server or a closed provider identifier.
+    fn tool_request_projection(
+        &self,
+        _endpoint: &crate::runtime_provider::ProviderEndpoint,
+        _messages: &[Message],
+        _config: &LlmCallConfig,
+    ) -> ToolRequestProjection {
+        ToolRequestProjection::Conservative
+    }
+
     /// Whether a separate history-summary request is a safe model operation.
     /// Deterministic execution adapters must opt out rather than execute a
     /// historical script or another side effect for a summarization prompt.
@@ -291,6 +304,19 @@ pub trait ChatDriver: Send + Sync {
 /// Implement ChatDriver for `Box<dyn ChatDriver>` to allow dynamic dispatch
 #[async_trait]
 impl ChatDriver for Box<dyn ChatDriver> {
+    fn supports_history_summarization(&self) -> bool {
+        (**self).supports_history_summarization()
+    }
+
+    fn tool_request_projection(
+        &self,
+        endpoint: &crate::ProviderEndpoint,
+        messages: &[Message],
+        config: &LlmCallConfig,
+    ) -> ToolRequestProjection {
+        (**self).tool_request_projection(endpoint, messages, config)
+    }
+
     fn batch_driver(&self) -> Option<&dyn crate::batch::BatchDriver> {
         (**self).batch_driver()
     }
@@ -780,6 +806,20 @@ impl CredentialGateDriver {
 
 #[async_trait]
 impl ChatDriver for CredentialGateDriver {
+    fn supports_history_summarization(&self) -> bool {
+        self.inner.supports_history_summarization()
+    }
+
+    fn tool_request_projection(
+        &self,
+        endpoint: &crate::ProviderEndpoint,
+        messages: &[Message],
+        config: &LlmCallConfig,
+    ) -> ToolRequestProjection {
+        self.inner
+            .tool_request_projection(endpoint, messages, config)
+    }
+
     async fn chat_completion_stream(
         &self,
         _endpoint: &crate::runtime_provider::ProviderEndpoint,
@@ -875,6 +915,20 @@ impl RequestOptionsDriver {
 
 #[async_trait]
 impl ChatDriver for RequestOptionsDriver {
+    fn supports_history_summarization(&self) -> bool {
+        self.inner.supports_history_summarization()
+    }
+
+    fn tool_request_projection(
+        &self,
+        endpoint: &crate::ProviderEndpoint,
+        messages: &[Message],
+        config: &LlmCallConfig,
+    ) -> ToolRequestProjection {
+        self.inner
+            .tool_request_projection(endpoint, messages, &self.apply(config))
+    }
+
     fn native_async_driver(
         &self,
         model: &str,
@@ -1193,3 +1247,7 @@ pub fn truncate_tool_result(text: String) -> String {
 #[cfg(test)]
 #[path = "driver_registry_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "driver_registry/compaction_tests.rs"]
+mod compaction_contract_tests;

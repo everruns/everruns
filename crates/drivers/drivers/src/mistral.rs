@@ -141,6 +141,22 @@ impl Default for MistralChatDriver {
 
 #[async_trait]
 impl ChatDriver for MistralChatDriver {
+    fn tool_request_projection(
+        &self,
+        endpoint: &everruns_contracts::ProviderEndpoint,
+        messages: &[Message],
+        config: &LlmCallConfig,
+    ) -> everruns_contracts::ToolRequestProjection {
+        let config = supported_effort(config);
+        if self.api == MistralApi::Responses {
+            self.responses
+                .tool_request_projection(endpoint, messages, &config)
+        } else {
+            self.inner
+                .tool_request_projection(endpoint, messages, &config)
+        }
+    }
+
     #[cfg(not(target_arch = "wasm32"))]
     fn batch_driver(&self) -> Option<&dyn everruns_contracts::batch::BatchDriver> {
         Some(self)

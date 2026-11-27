@@ -55,13 +55,17 @@ impl Gate {
 
     pub(super) fn decide(&self, outcome: &GenerationOutcome) -> Decision {
         Decision {
-            action: self.config.decide(
-                &outcome.finish_reason,
+            action: self.config.decide_outcome(
+                outcome.completion_outcome,
                 outcome.tool_calls_dropped,
                 self.prior,
             ),
             lost: outcome.tool_calls_dropped,
-            finish_reason: outcome.finish_reason.clone(),
+            finish_reason: match outcome.completion_outcome {
+                everruns_contracts::CompletionOutcome::OutputLimit => "length".to_owned(),
+                everruns_contracts::CompletionOutcome::ToolCalls => "tool_calls".to_owned(),
+                _ => outcome.finish_reason.clone(),
+            },
             consecutive: self.prior.saturating_add(1),
             policy: self.config.policy.as_str(),
         }
@@ -110,11 +114,14 @@ impl Decision {
     /// The turn-ending error for [`OutputTruncationAction::Fail`]. Not
     /// transient, so no host retries it.
     pub(super) fn failure(&self) -> AgentLoopError {
-        let cause = if self.finish_reason == "length" {
-            "was cut off at its output limit"
-        } else {
-            "had tool-call arguments that were not valid JSON"
-        };
+        let cause =
+            if everruns_contracts::CompletionOutcome::from_finish_reason(Some(&self.finish_reason))
+                == everruns_contracts::CompletionOutcome::OutputLimit
+            {
+                "was cut off at its output limit"
+            } else {
+                "had tool-call arguments that were not valid JSON"
+            };
         let attempts = if self.consecutive > 1 {
             format!(" in {} consecutive responses", self.consecutive)
         } else {
@@ -161,7 +168,10 @@ fn note(stamp: &Value) -> String {
         .get("tool_calls_lost")
         .and_then(Value::as_u64)
         .unwrap_or(1);
-    if stamp.get("finish_reason").and_then(Value::as_str) == Some("length") {
+    if everruns_contracts::CompletionOutcome::from_finish_reason(
+        stamp.get("finish_reason").and_then(Value::as_str),
+    ) == everruns_contracts::CompletionOutcome::OutputLimit
+    {
         format!(
             "[Runtime notice] Your previous response hit the output token limit before it \
              finished, so {lost} tool call(s) in it were cut off and NOT run. Retry with less \
@@ -302,6 +312,57 @@ mod tests {
     fn untouched_transcript_is_returned_as_is() {
         let messages = vec![RuntimeMessage::user("go"), RuntimeMessage::assistant("ok")];
         assert_eq!(texts(&insert_notes(messages)), ["go", "ok"]);
+    }
+
+    #[test]
+    fn missing_finish_metadata_preserves_partial_tool_call_recovery() {
+        let gate = Gate::new(&[], &[]);
+        for (raw, has_calls, retries) in [
+            (None, true, true),
+            (Some("extension-ending"), true, true),
+            (Some("safety"), true, false),
+            (None, false, false),
+        ] {
+            let mut metadata = crate::engine::driver_registry::LlmCompletionMetadata::default();
+            metadata.provider_finish_reason = raw.map(str::to_owned);
+            metadata.tool_calls_dropped = 1;
+            let outcome = GenerationOutcome::from_completion(Some(&metadata), has_calls);
+            assert_eq!(gate.decide(&outcome).retries(), retries, "{raw:?}");
+            assert_ne!(
+                metadata.outcome(),
+                everruns_contracts::CompletionOutcome::Complete
+            );
+        }
+    }
+
+    #[test]
+    fn provider_limit_spellings_and_raw_cutoffs_share_the_bounded_gate() {
+        let gate = Gate::new(&[], &[]);
+        for reason in [
+            "length",
+            "MAX_TOKENS",
+            "MAX_OUTPUT_TOKENS",
+            "max_output_tokens",
+        ] {
+            let mut metadata = crate::engine::driver_registry::LlmCompletionMetadata::default();
+            metadata.finish_reason = Some("stop".to_owned());
+            metadata.provider_finish_reason = Some(reason.to_owned());
+            metadata.tool_calls_dropped = 1;
+            let outcome = GenerationOutcome::from_completion(Some(&metadata), false);
+            let decision = gate.decide(&outcome);
+            assert!(decision.retries(), "{reason}");
+            let mut stamp = HashMap::new();
+            decision.stamp(&mut stamp);
+            assert!(note(&stamp[METADATA_KEY]).contains("hit the output token limit"));
+            let exhausted = Gate {
+                config: gate.config,
+                prior: gate.config.max_retries,
+            };
+            assert_eq!(
+                exhausted.decide(&outcome).action,
+                OutputTruncationAction::Fail
+            );
+        }
     }
 
     #[test]

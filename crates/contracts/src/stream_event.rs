@@ -113,8 +113,9 @@ pub struct LlmCompletionMetadata {
     pub finish_reason: Option<String>,
     /// The provider's own stop reason, verbatim (`max_tokens`, `MAX_TOKENS`,
     /// `max_output_tokens`, ...), next to the normalized `finish_reason`.
-    /// Telemetry only: lets an operator tell which provider vocabulary a
-    /// normalized value came from. `None` when the driver does not record it.
+    /// Retained for telemetry and terminal validation: a legacy normalized
+    /// stop cannot hide a provider cutoff or unknown ending. `None` when the
+    /// driver does not record it.
     pub provider_finish_reason: Option<String>,
     /// Tool calls the model started that the driver discarded: the response
     /// was cut off or rejected (`length`, `content_filter`, ...), or a call's
@@ -197,4 +198,30 @@ pub enum HostedToolCallStatus {
 ///
 pub fn disjoint_prompt_tokens(reported_input: u32, cache_read: Option<u32>) -> u32 {
     reported_input.saturating_sub(cache_read.unwrap_or(0))
+}
+
+impl LlmCompletionMetadata {
+    /// Provider-neutral outcome; missing or unrecognized terminal reasons stay unknown.
+    pub fn outcome(&self) -> crate::CompletionOutcome {
+        let normalized =
+            crate::CompletionOutcome::from_finish_reason(self.finish_reason.as_deref());
+        let raw =
+            crate::CompletionOutcome::from_finish_reason(self.provider_finish_reason.as_deref());
+        if normalized == crate::CompletionOutcome::Unknown
+            && self.finish_reason.is_some()
+            && raw == crate::CompletionOutcome::Complete
+        {
+            // An explicit unfinished/unknown status is stronger than a conflicting raw stop.
+            return normalized;
+        }
+        if normalized == crate::CompletionOutcome::Unknown
+            || (normalized == crate::CompletionOutcome::Complete
+                && self.provider_finish_reason.is_some())
+        {
+            // A legacy normal-stop projection cannot certify an unknown provider ending.
+            raw
+        } else {
+            normalized
+        }
+    }
 }

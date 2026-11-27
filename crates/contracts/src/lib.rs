@@ -44,6 +44,8 @@ pub mod background_call;
 /// Provider-native offline model request contracts.
 pub mod batch;
 pub mod compact;
+pub mod completion_outcome;
+pub use completion_outcome::CompletionOutcome;
 pub mod credential_provider;
 pub mod credential_schema;
 pub mod dataplane;
@@ -103,6 +105,7 @@ mod provider_managed;
 pub mod public_metadata;
 pub mod reasoning;
 pub mod recommended_models;
+pub mod request_projection;
 pub mod retry_failure;
 pub mod rt;
 pub mod runtime_provider;
@@ -112,6 +115,7 @@ pub mod session_commands;
 pub mod stream_accumulator;
 mod stream_error;
 pub mod stream_event;
+pub use request_projection::ToolRequestProjection;
 #[cfg(feature = "http")]
 pub mod stream_reconnect;
 pub mod structured_output;

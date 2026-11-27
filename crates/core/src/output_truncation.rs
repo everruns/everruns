@@ -140,7 +140,27 @@ impl OutputTruncationConfig {
         tool_calls_lost: u32,
         prior: u32,
     ) -> OutputTruncationAction {
-        if tool_calls_lost == 0 || !matches!(finish_reason, "length" | "tool_calls") {
+        self.decide_outcome(
+            everruns_contracts::CompletionOutcome::from_finish_reason(Some(finish_reason)),
+            tool_calls_lost,
+            prior,
+        )
+    }
+
+    /// Typed terminal decisions share provider normalization with summary validation.
+    pub fn decide_outcome(
+        &self,
+        outcome: everruns_contracts::CompletionOutcome,
+        tool_calls_lost: u32,
+        prior: u32,
+    ) -> OutputTruncationAction {
+        if tool_calls_lost == 0
+            || !matches!(
+                outcome,
+                everruns_contracts::CompletionOutcome::OutputLimit
+                    | everruns_contracts::CompletionOutcome::ToolCalls
+            )
+        {
             return OutputTruncationAction::Proceed;
         }
         match self.policy {

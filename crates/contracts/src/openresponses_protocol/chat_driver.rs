@@ -38,6 +38,22 @@ use super::*;
 
 #[async_trait]
 impl ChatDriver for OpenResponsesProtocolChatDriver {
+    fn tool_request_projection(
+        &self,
+        endpoint: &crate::ProviderEndpoint,
+        messages: &[Message],
+        config: &LlmCallConfig,
+    ) -> crate::ToolRequestProjection {
+        if self
+            .inline_changes_for(endpoint, messages, config)
+            .is_some()
+        {
+            crate::ToolRequestProjection::BaselineWithChanges
+        } else {
+            crate::ToolRequestProjection::Current
+        }
+    }
+
     fn supports_native_non_streaming(&self) -> bool {
         self.request_extension
             .as_ref()
@@ -93,27 +109,7 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
         if native_search {
             replaced.push(crate::native_web_search::WEB_SEARCH_FUNCTION_TOOL);
         }
-        // Hosted search defers tools only at or above its threshold, counted on
-        // the baseline that inline mode sends.
-        let hosted_search = supports_tool_search
-            && config.tool_search.as_ref().is_some_and(|ts| {
-                ts.enabled
-                    && config.tool_baseline.as_ref().is_some_and(|baseline| {
-                        baseline
-                            .iter()
-                            .filter(|tool| !replaced.contains(&tool.name()))
-                            .count()
-                            >= ts.threshold
-                    })
-            });
-        let inline_tool_changes = super::tool_changes::eligible(
-            self.inline_tool_changes,
-            endpoint.base_url(),
-            config,
-            &messages,
-            &replaced,
-        )
-        .then_some(super::tool_changes::InlineToolChanges { hosted_search });
+        let inline_tool_changes = self.inline_changes_for(endpoint, &messages, config);
         // Inline mode sends the epoch's system prompt too; prompt text added
         // since rides in the changes' notes.
         let sent = crate::tool_changes::with_system_prompt(
@@ -755,7 +751,7 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                                         let status = response_obj
                                             .get("status")
                                             .and_then(|s| s.as_str())
-                                            .unwrap_or("completed");
+                                            .unwrap_or("unknown");
 
                                         let (dropped, truncated_executed) = {
                                             let acc = accumulated_tool_calls.lock().unwrap();
@@ -780,18 +776,11 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                                                 );
                                                 "error".to_string()
                                             }
-                                            "incomplete" => response_obj
-                                                .get("incomplete_details")
-                                                .and_then(|details| details.get("reason"))
-                                                .and_then(|reason| reason.as_str())
-                                                .map(|reason| match reason {
-                                                    "max_output_tokens" | "max_tokens" => "length",
-                                                    other => other,
-                                                })
-                                                .unwrap_or("stop")
-                                                .to_string(),
+                                            "incomplete" => super::completion_contract::incomplete_reason(
+                                                response_obj.pointer("/incomplete_details/reason").and_then(Value::as_str),
+                                            ),
                                             "cancelled" => "cancelled".to_string(),
-                                            _ => "stop".to_string(),
+                                            other => other.to_string(),
                                         };
 
                                         // Extract phase from the last assistant message in output items

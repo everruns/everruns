@@ -65,6 +65,7 @@ mod reasoning_updates;
 mod request_controls;
 mod restore_history;
 mod stream_state;
+mod summary_outcome;
 mod tool_changes;
 mod transcript;
 mod truncation_gate;
@@ -81,7 +82,7 @@ use error_policy::{filter_response_text, is_error_placeholder_message};
 #[cfg(test)]
 use observability::capability_usage_snapshot_records;
 pub use observability::capability_usage_snapshot_records as capability_usage_records;
-use observability::{build_request_options, emit_capability_usage_snapshot};
+use observability::emit_capability_usage_snapshot;
 use output_hooks::{client_visible_guardrail_text, collect_output_hooks};
 use request_controls::resolve_request_controls;
 use stream_state::{
@@ -200,6 +201,7 @@ impl ReasonAtom {
         let compaction_policy = assembled.compaction_policy;
         let resolved_capability_configs = assembled.resolved_capability_configs;
         let truncation_gate = truncation_gate::Gate::new(&resolved_capability_configs, &messages);
+        let mut reduction_telemetry = assembled.reduction_telemetry;
         let turn_agent = assembled.turn_agent;
         let embedder_metadata = assembled.embedder_metadata;
 
@@ -220,7 +222,6 @@ impl ReasonAtom {
         let annotation_providers = output_hooks.annotations;
         let citation_verifiers = output_hooks.citation_verifiers;
 
-        // 7. Create LLM driver using factory
         let chat_driver = Arc::clone(&model_with_provider.driver);
         let mut stateful_response_continuation =
             previous_response_id.is_some() && chat_driver.supports_stateful_responses();
@@ -386,7 +387,7 @@ impl ReasonAtom {
             checkpoint_reasoning,
         )
         .filter(|_| native_reasoning_compaction);
-        let tool_changes = tool_changes::prepare_for(
+        let mut tool_changes = tool_changes::prepare_for(
             &messages,
             &model_with_provider.provider_type,
             &model_with_provider.model,
@@ -607,6 +608,7 @@ impl ReasonAtom {
             .build();
         llm_config.background_call = self.background_call.clone();
         tool_changes.apply_to(&mut llm_config, &llm_messages);
+        let had_tool_baseline = llm_config.tool_baseline.is_some();
         if let Some(replay) = &reasoning_replay {
             llm_config.reasoning_effort = replay.state.baseline;
             llm_config.reasoning_state = Some(replay.state.clone());
@@ -639,11 +641,7 @@ impl ReasonAtom {
             llm_config.previous_response_id = None;
             llm_config.provider_opaque_context = Some(context.clone());
         }
-        provider_managed_compaction::decorate_request(
-            &mut llm_config,
-            provider_managed,
-            restored_checkpoint.is_some(),
-        );
+        reduction_telemetry.prepare_request(provider_managed, restored_checkpoint.is_some());
         hosted_tools::ensure_hosted_tools_supported(
             &llm_config.driver_options,
             model_with_provider.provider_type.as_str(),
@@ -771,9 +769,10 @@ impl ReasonAtom {
             agent: &turn_agent,
             model: &model_with_provider,
             messages: &messages_for_event,
-            request_options: build_request_options(
+            request_options: observability::build_runtime_request_options(
                 &llm_config,
                 model_with_provider.provider_type.as_str(),
+                &reduction_telemetry,
             ),
             started: llm_start,
         };
@@ -791,8 +790,6 @@ impl ReasonAtom {
             &llm_config,
             raw_history_allowed,
         );
-
-        let fallback = provider_managed_compaction::take_fallback(&mut llm_config);
 
         if !provider_managed && let Some(policy) = compaction_policy.as_deref() {
             compaction_info = apply_proactive_compaction(
@@ -1609,8 +1606,7 @@ impl ReasonAtom {
         };
         let (mut text, mut thinking, mut reasoning, mut tool_calls) =
             (text, thinking, reasoning, tool_calls);
-        provider_managed_compaction::restore_fallback(&mut llm_config, fallback);
-        compaction_lifecycle.record_observed(&mut llm_config, compaction_started_at);
+        reduction_telemetry.compaction_observed = compaction_started_at.is_some();
 
         // End-of-message citation annotation seam (see knowledge/runtime-resources/citations.md).
         // Runs once on the finalized final-answer text to attach claim-level citations, with any
@@ -1888,6 +1884,7 @@ impl ReasonAtom {
             &llm_config,
             model_with_provider.provider_type.as_str(),
             meta,
+            &reduction_telemetry,
         );
 
         if let Err(e) = self
@@ -1924,6 +1921,9 @@ impl ReasonAtom {
             response_id.as_deref(),
         );
         truncation.stamp(&mut metadata);
+        if had_tool_baseline && llm_config.tool_baseline.is_none() {
+            tool_changes.restart_epoch(&llm_config.tools, &turn_agent.system_prompt);
+        }
         tool_changes.stamp(&mut metadata);
         context_updates.stamp(&mut metadata);
 

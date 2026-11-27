@@ -597,16 +597,13 @@ pub(crate) fn handle_streaming_event(
                     "error".to_string()
                 }
                 types::ResponseStatus::Cancelled => "cancelled".to_string(),
-                types::ResponseStatus::Incomplete => response
-                    .incomplete_details
-                    .as_ref()
-                    .map(|details| match details.reason.as_str() {
-                        "max_output_tokens" | "max_tokens" => "length",
-                        other => other,
-                    })
-                    .unwrap_or("stop")
-                    .to_string(),
-                _ => "stop".to_string(),
+                types::ResponseStatus::Incomplete => super::completion_contract::incomplete_reason(
+                    response
+                        .incomplete_details
+                        .as_ref()
+                        .map(|details| details.reason.as_str()),
+                ),
+                _ => "unknown".to_string(),
             };
 
             // Extract phase from the last assistant message in output items.

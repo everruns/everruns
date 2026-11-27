@@ -153,6 +153,16 @@ impl CloudflareChatDriver {
 
 #[async_trait]
 impl ChatDriver for CloudflareChatDriver {
+    fn tool_request_projection(
+        &self,
+        endpoint: &everruns_contracts::ProviderEndpoint,
+        messages: &[Message],
+        config: &LlmCallConfig,
+    ) -> everruns_contracts::ToolRequestProjection {
+        self.inner
+            .tool_request_projection(endpoint, messages, config)
+    }
+
     async fn chat_completion_stream(
         &self,
         endpoint: &ProviderEndpoint,

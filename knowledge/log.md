@@ -7,6 +7,13 @@
 - Framework channels retain snapshot Agents' Environment factories when registering their builds, so incoming files survive the session reopen used by channel intake.
 - [Slack actions](integrations/slack-agent-actions.md): model instructions recognize explicitly host-bound standalone conversations as well as Slack-created sessions; the invoker remains the authorization authority.
 
+- Share provider-owned request projection between compaction budgets and wire
+  serialization, including arbitrary Framework provider keys and configured
+  wrappers. Persist declaration epoch resets through transcript reloads. Keep
+  reduction telemetry outside provider options and require typed complete summary
+  outcomes before installing continuity. See [Compaction](runtime-resources/compaction.md)
+  and [Provider extension](framework/provider-extension.md).
+
 ## 2026-11-26
 
 - [Memory](runtime-resources/memory.md) v2 replaces v1: stores under `/memory` (agent, team, parent, user, org, named), each a switch on `agent_memory`; typed Markdown entries; memory card as a context update; every file version kept. The v1 `memory` capability, source-backed memories, the `memory` flag and the Memory Model note are removed.

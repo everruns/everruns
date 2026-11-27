@@ -1,6 +1,5 @@
 use web_time::Instant;
 
-use crate::engine::driver_registry::LlmCallConfig;
 use crate::engine::error::Result;
 use crate::engine::event_emitter::EventEmitter;
 use crate::engine::events::{
@@ -16,22 +15,6 @@ use super::error_policy::{error_disclosure_override, resolve_error_disclosure};
 use super::{ReasonAtom, ReasonResult};
 
 const STRATEGY: &str = "anthropic_server_compaction";
-
-/// Keep fallback metadata in the runtime; strict providers reject this option.
-pub(super) fn take_fallback(config: &mut LlmCallConfig) -> Option<serde_json::Value> {
-    config
-        .driver_options
-        .remove(crate::runtime_context::PROVIDER_MANAGED_REDUCTION_FALLBACK)
-}
-
-pub(super) fn restore_fallback(config: &mut LlmCallConfig, marker: Option<serde_json::Value>) {
-    if let Some(marker) = marker {
-        config.driver_options.insert(
-            crate::runtime_context::PROVIDER_MANAGED_REDUCTION_FALLBACK.to_string(),
-            marker,
-        );
-    }
-}
 
 pub(super) fn replay_artifacts(
     metadata: Option<&crate::engine::driver_registry::LlmCompletionMetadata>,
@@ -50,23 +33,6 @@ pub(super) fn replay_artifacts(
             metadata.provider_checkpoint_candidate.clone(),
         )
     })
-}
-
-pub(super) fn decorate_request(
-    config: &mut crate::engine::driver_registry::LlmCallConfig,
-    provider_managed: bool,
-    checkpoint_restored: bool,
-) {
-    if !provider_managed {
-        return;
-    }
-    config.driver_options.insert(
-        "everruns/provider_managed_reduction".to_string(),
-        serde_json::json!({
-            "mode": STRATEGY,
-            "replay_source": if checkpoint_restored { "checkpoint" } else { "raw" },
-        }),
-    );
 }
 
 pub(super) struct Lifecycle<'a> {
@@ -199,19 +165,6 @@ impl<'a> Lifecycle<'a> {
             "provider compaction stream ended before its terminal event",
         ))
     }
-    pub(super) fn record_observed(
-        &self,
-        config: &mut crate::engine::driver_registry::LlmCallConfig,
-        started_at: Option<Instant>,
-    ) {
-        if started_at.is_some() {
-            config.driver_options.insert(
-                "everruns/provider_managed_compaction_observed".to_string(),
-                serde_json::Value::Bool(true),
-            );
-        }
-    }
-
     #[allow(clippy::too_many_arguments)]
     pub(super) async fn finish_after_output(
         &self,
@@ -425,10 +378,7 @@ pub(super) async fn execute_with_fallback(call: Call<'_>) -> CallOutcome {
                     && fallback.model.model == assembled.model.model
                     && fallback.model.provider_managed_reduction_option.is_none() =>
             {
-                fallback.turn_agent.driver_options.insert(
-                    crate::runtime_context::PROVIDER_MANAGED_REDUCTION_FALLBACK.to_string(),
-                    serde_json::json!({"reason":reason}),
-                );
+                fallback.reduction_telemetry.fallback_reason = Some(reason.into());
                 assembled = fallback;
             }
             Ok(_) => {
@@ -581,10 +531,8 @@ pub(super) async fn execute_with_fallback(call: Call<'_>) -> CallOutcome {
                 model,
                 "ReasonAtom: retrying provider capability rejection with legacy history"
             );
-            fallback.turn_agent.driver_options.insert(
-                crate::runtime_context::PROVIDER_MANAGED_REDUCTION_FALLBACK.to_string(),
-                serde_json::json!({"reason":"provider_capability_rejected"}),
-            );
+            fallback.reduction_telemetry.fallback_reason =
+                Some(crate::runtime_context::ReductionFallbackReason::ProviderCapabilityRejected);
             disclosure = resolve_error_disclosure(
                 &atom.capability_registry,
                 &fallback.resolved_capability_configs,

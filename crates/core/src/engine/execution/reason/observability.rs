@@ -124,18 +124,6 @@ pub(super) fn build_request_options(
     {
         provider_options.insert("gemini".to_string(), json!({ "cached_content": true }));
     }
-    let reduction_fallback = config
-        .driver_options
-        .get(crate::runtime_context::PROVIDER_MANAGED_REDUCTION_FALLBACK);
-    if provider != "anthropic"
-        && let Some(fallback) = reduction_fallback
-    {
-        let options = provider_options
-            .entry(provider.to_string())
-            .or_insert_with(|| json!({}));
-        options["reduction_mode"] = json!("legacy");
-        options["fallback_reason"] = fallback["reason"].clone();
-    }
     if provider == "anthropic" {
         let mut anthropic = json!({});
         if let Some(option) = config.driver_options.get("anthropic/server_compaction") {
@@ -144,30 +132,6 @@ pub(super) fn build_request_options(
                 .get("trigger_tokens")
                 .cloned()
                 .unwrap_or(serde_json::Value::Null);
-        }
-        if let Some(option) = config
-            .driver_options
-            .get("everruns/provider_managed_reduction")
-        {
-            anthropic["replay_source"] = option
-                .get("replay_source")
-                .cloned()
-                .unwrap_or(serde_json::Value::Null);
-        }
-        if let Some(option) = reduction_fallback {
-            anthropic["reduction_mode"] = json!("legacy");
-            anthropic["fallback_reason"] = option
-                .get("reason")
-                .cloned()
-                .unwrap_or(serde_json::Value::Null);
-        }
-        if config
-            .driver_options
-            .get("everruns/provider_managed_compaction_observed")
-            .and_then(serde_json::Value::as_bool)
-            == Some(true)
-        {
-            anthropic["compaction_block_observed"] = json!(true);
         }
         if anthropic
             .as_object()
@@ -198,13 +162,25 @@ pub(super) fn build_request_options(
     (!request_options.is_empty()).then_some(request_options)
 }
 
+pub(super) fn build_runtime_request_options(
+    config: &crate::engine::driver_registry::LlmCallConfig,
+    provider: &str,
+    reduction: &crate::runtime_context::ReductionTelemetry,
+) -> Option<LlmRequestOptions> {
+    let mut options = build_request_options(config, provider).unwrap_or_default();
+    reduction.decorate(provider, &mut options);
+    (!options.is_empty()).then_some(options)
+}
+
 pub(super) fn with_completed_request_options(
     mut generation: crate::engine::events::LlmGenerationData,
     config: &crate::engine::driver_registry::LlmCallConfig,
     provider: &str,
     meta: Option<&crate::engine::driver_registry::LlmCompletionMetadata>,
+    reduction: &crate::runtime_context::ReductionTelemetry,
 ) -> crate::engine::events::LlmGenerationData {
-    let mut options = build_request_options(config, provider).unwrap_or_default();
+    let mut options =
+        build_runtime_request_options(config, provider, reduction).unwrap_or_default();
     record_wire_request_options(
         &mut options,
         meta.and_then(|m| m.request_body.as_ref()),

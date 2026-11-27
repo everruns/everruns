@@ -109,6 +109,16 @@ impl HostedMcpDriver {
 
 #[async_trait]
 impl ChatDriver for HostedMcpDriver {
+    fn tool_request_projection(
+        &self,
+        endpoint: &crate::ProviderEndpoint,
+        messages: &[Message],
+        config: &LlmCallConfig,
+    ) -> crate::ToolRequestProjection {
+        self.inner
+            .tool_request_projection(endpoint, messages, config)
+    }
+
     fn supports_history_summarization(&self) -> bool {
         self.inner.supports_history_summarization()
     }

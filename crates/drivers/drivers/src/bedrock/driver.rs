@@ -286,6 +286,15 @@ impl ChatDriver for FailDriver {
 
 #[async_trait]
 impl ChatDriver for BedrockChatDriver {
+    fn tool_request_projection(
+        &self,
+        _endpoint: &everruns_contracts::ProviderEndpoint,
+        _messages: &[Message],
+        _config: &LlmCallConfig,
+    ) -> everruns_contracts::ToolRequestProjection {
+        everruns_contracts::ToolRequestProjection::Current
+    }
+
     fn supports_native_non_streaming(&self) -> bool {
         true
     }

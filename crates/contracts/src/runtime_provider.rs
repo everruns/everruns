@@ -756,6 +756,18 @@ impl crate::driver_registry::EmbeddingsDriver for ProviderBoundEmbeddingsDriver 
 
 #[async_trait]
 impl ChatDriver for ProviderBoundDriver {
+    fn tool_request_projection(
+        &self,
+        _endpoint: &ProviderEndpoint,
+        messages: &[crate::driver_registry::Message],
+        config: &crate::driver_registry::LlmCallConfig,
+    ) -> crate::ToolRequestProjection {
+        self.0
+            .driver
+            .as_ref()
+            .map(|driver| driver.tool_request_projection(self.0.endpoint(), messages, config))
+            .unwrap_or_default()
+    }
     fn supports_history_summarization(&self) -> bool {
         self.0
             .driver
