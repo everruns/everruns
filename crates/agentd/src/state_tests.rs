@@ -73,21 +73,13 @@ fn compaction_keeps_tiers_whatever_the_flush_sizes() {
             .wrapping_add(1442695040888963407);
         let n = 11 * (1 + (rng >> 33) % 7) as i32;
         let from = s.flushed() + 1;
-        s.record(SegRef {
-            from,
-            to: from + n - 1,
-            branch: 0,
-        });
+        s.record(SegRef::legacy(from, from + n - 1, 0));
         writes += i64::from(n);
         if s.segments.len() >= 16
             && let Some((from, to)) = s.compaction_range()
         {
             writes += i64::from(to - from + 1);
-            s.record(SegRef {
-                from,
-                to,
-                branch: 0,
-            });
+            s.record(SegRef::legacy(from, to, 0));
         }
         assert!(s.segments.len() <= 20, "flush {flush}: {:?}", s.segments);
         // Contiguous from 1; the first segment is the first flush.
@@ -100,16 +92,8 @@ fn compaction_keeps_tiers_whatever_the_flush_sizes() {
     assert!(writes < events * 10, "wrote {writes} for {events} events");
     // A segment that matches no run, or starts nowhere recorded, is ignored.
     let before = s.segments.clone();
-    s.record(SegRef {
-        from: 7,
-        to: s.flushed(),
-        branch: 0,
-    });
-    s.record(SegRef {
-        from: 1,
-        to: 5,
-        branch: 0,
-    });
+    s.record(SegRef::legacy(7, s.flushed(), 0));
+    s.record(SegRef::legacy(1, 5, 0));
     assert_eq!(s.segments, before);
 }
 

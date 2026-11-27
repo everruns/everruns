@@ -48,16 +48,44 @@ pub fn is_context(event_type: &str) -> bool {
 /// session's history branch (`SessionState::branch`). A name then always
 /// holds the same events, whoever reads it (caches included), and a
 /// restore point of the earlier branch still reads the history it saw.
+///
+/// A segment written since segment packs (`packs.rs`) sits in a pack, at
+/// `events` (every event) and `context` (its context events, [`is_context`])
+/// byte ranges; one without a pack is a legacy pair of objects of its own.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, Default)]
 pub struct SegRef {
     pub from: i32,
     pub to: i32,
     #[serde(default, skip_serializing_if = "is_zero")]
     pub branch: u64,
+    #[serde(rename = "p", default, skip_serializing_if = "Option::is_none")]
+    pub pack: Option<crate::packs::PackId>,
+    /// `(offset, length)` of the segment's events in its pack.
+    #[serde(rename = "e", default, skip_serializing_if = "is_empty_range")]
+    pub events: (u32, u32),
+    /// `(offset, length)` of its context events in its pack.
+    #[serde(rename = "c", default, skip_serializing_if = "is_empty_range")]
+    pub context: (u32, u32),
+}
+
+impl SegRef {
+    /// A legacy segment (objects of its own) over `from..=to`.
+    pub fn legacy(from: i32, to: i32, branch: u64) -> Self {
+        Self {
+            from,
+            to,
+            branch,
+            ..Default::default()
+        }
+    }
 }
 
 fn is_zero(n: &u64) -> bool {
     *n == 0
+}
+
+fn is_empty_range(range: &(u32, u32)) -> bool {
+    *range == (0, 0)
 }
 
 #[derive(Clone)]
@@ -295,6 +323,28 @@ impl Store {
         Ok(bytes)
     }
 
+    /// [`get_immutable`](Self::get_immutable) for the byte range
+    /// `(offset, length)` of an immutable object (a pack's entry).
+    async fn get_immutable_range(
+        &self,
+        key: Path,
+        (offset, len): (u32, u32),
+    ) -> anyhow::Result<bytes::Bytes> {
+        let range = u64::from(offset)..u64::from(offset) + u64::from(len);
+        let fetch =
+            || async { retry(|| async { self.inner.get_range(&key, range.clone()).await }).await };
+        let Some(cache) = &self.cache else {
+            return fetch().await;
+        };
+        let name = format!("{key}#{offset}+{len}");
+        if let Some(bytes) = cache.get(&name) {
+            return Ok(bytes);
+        }
+        let bytes = fetch().await?;
+        cache.put(&name, bytes.clone());
+        Ok(bytes)
+    }
+
     pub(crate) fn key(&self, rest: &str) -> Path {
         Path::from(format!("{}/{rest}", self.prefix).trim_start_matches('/'))
     }
@@ -318,11 +368,11 @@ impl Store {
         events: &[Event],
         branch: u64,
     ) -> anyhow::Result<SegRef> {
-        let seg = SegRef {
-            from: events.first().and_then(|e| e.sequence).unwrap_or(0),
-            to: events.last().and_then(|e| e.sequence).unwrap_or(0),
+        let seg = SegRef::legacy(
+            events.first().and_then(|e| e.sequence).unwrap_or(0),
+            events.last().and_then(|e| e.sequence).unwrap_or(0),
             branch,
-        };
+        );
         // The messages first: a segment that exists has its messages.
         let messages: Vec<&Event> = events
             .iter()
@@ -383,19 +433,7 @@ impl Store {
         }
         let mut out = Vec::new();
         for seg in segments {
-            let events: Vec<Event> =
-                match self.get_immutable(self.messages_key(session, *seg)).await {
-                    Ok(bytes) => serde_json::from_slice(&bytes)?,
-                    Err(error) if is_not_found(&error) => {
-                        let bytes = self.get_immutable(self.segment_key(session, *seg)).await?;
-                        let events: Vec<Event> = serde_json::from_slice(&bytes)?;
-                        events
-                            .into_iter()
-                            .filter(|e| is_context(&e.event_type))
-                            .collect()
-                    }
-                    Err(error) => return Err(error),
-                };
+            let events = self.segment_context(session, *seg).await?;
             let last = out_last(&out);
             out.extend(
                 events
@@ -407,9 +445,9 @@ impl Store {
     }
 
     /// The events `from..=to` of `session`, read from the segments that
-    /// cover them (`segments` is contiguous from sequence 1). A segment that
-    /// was pruned (see [`prune_segments`](Self::prune_segments)) is read
-    /// from whatever stored segments cover the range now.
+    /// cover them (`segments` is contiguous from sequence 1). A legacy
+    /// segment that is gone is read from whatever stored legacy segments
+    /// cover the range now.
     pub async fn load(
         &self,
         session: SessionId,
@@ -442,8 +480,7 @@ impl Store {
     ) -> anyhow::Result<Vec<Event>> {
         let mut out = Vec::new();
         for seg in segments.iter().filter(|s| s.to >= from && s.from <= to) {
-            let bytes = self.get_immutable(self.segment_key(session, *seg)).await?;
-            let events: Vec<Event> = serde_json::from_slice(&bytes)?;
+            let events = self.segment_events(session, *seg).await?;
             let last = out_last(&out);
             out.extend(
                 events
@@ -461,6 +498,49 @@ impl Store {
         Ok(out)
     }
 
+    /// Every event of one segment, from its pack or its own object.
+    pub(crate) async fn segment_events(
+        &self,
+        session: SessionId,
+        seg: SegRef,
+    ) -> anyhow::Result<Vec<Event>> {
+        let bytes = match seg.pack {
+            Some(pack) => {
+                self.get_immutable_range(self.pack_key(pack), seg.events)
+                    .await?
+            }
+            None => self.get_immutable(self.segment_key(session, seg)).await?,
+        };
+        Ok(serde_json::from_slice(&bytes)?)
+    }
+
+    /// One segment's context events: its pack's context range, the
+    /// messages object beside a legacy segment, or (for a segment stored
+    /// before messages were) the segment itself, filtered.
+    pub(crate) async fn segment_context(
+        &self,
+        session: SessionId,
+        seg: SegRef,
+    ) -> anyhow::Result<Vec<Event>> {
+        if let Some(pack) = seg.pack {
+            let bytes = self
+                .get_immutable_range(self.pack_key(pack), seg.context)
+                .await?;
+            return Ok(serde_json::from_slice(&bytes)?);
+        }
+        match self.get_immutable(self.messages_key(session, seg)).await {
+            Ok(bytes) => Ok(serde_json::from_slice(&bytes)?),
+            Err(error) if is_not_found(&error) => {
+                let events = self.segment_events(session, seg).await?;
+                Ok(events
+                    .into_iter()
+                    .filter(|e| is_context(&e.event_type))
+                    .collect())
+            }
+            Err(error) => Err(error),
+        }
+    }
+
     /// Every segment of `session` in the store.
     async fn segments_of(&self, session: SessionId) -> anyhow::Result<Vec<SegRef>> {
         let prefix = self.key(&format!("sessions/{session}"));
@@ -469,27 +549,6 @@ impl Store {
             .iter()
             .filter_map(|meta| parse_segment(meta.location.filename()?))
             .collect())
-    }
-
-    /// Retire `session`'s segments that `newer` (a compaction) covers.
-    /// Best effort.
-    ///
-    /// Decision: compaction and re-flushes leave older segments behind.
-    /// They are not deleted here: a restore point (an archived snapshot
-    /// plus the shipped log after it) may still name them. Each is marked
-    /// retired (`restore_points.rs`), and the collector deletes it once no
-    /// restore point inside the restore window can refer to it.
-    pub async fn prune_segments(&self, session: SessionId, newer: SegRef) {
-        let Ok(stored) = self.segments_of(session).await else {
-            return;
-        };
-        let covered: Vec<SegRef> = stored
-            .into_iter()
-            .filter(|seg| *seg != newer && seg.from >= newer.from && seg.to <= newer.to)
-            .collect();
-        if let Err(error) = self.retire_segments(session, &covered).await {
-            tracing::debug!(%session, %error, "retiring replaced segments failed");
-        }
     }
 
     pub(crate) async fn put(&self, key: Path, bytes: Vec<u8>) -> anyhow::Result<()> {
@@ -549,11 +608,7 @@ pub(crate) fn parse_segment(name: &str) -> Option<SegRef> {
         Some((to, branch)) => (to, branch.parse().ok()?),
         None => (rest, 0),
     };
-    Some(SegRef {
-        from: from.parse().ok()?,
-        to: to.parse().ok()?,
-        branch,
-    })
+    Some(SegRef::legacy(from.parse().ok()?, to.parse().ok()?, branch))
 }
 
 /// A chain of `stored` segments covering `from..=to`, standing in for
@@ -611,11 +666,11 @@ fn put_kind(key: &Path) -> usize {
         let kind = match part.as_str() {
             "shards" => match parts.get(i + 2).map(String::as_str) {
                 Some("log") => "log",
-                Some("snapshots") => "snapshot",
+                Some("snapshots") | Some("packrefs") => "snapshot",
                 Some("incarnations") => "incarnation",
                 _ => continue,
             },
-            "sessions" => "segment",
+            "sessions" | "packs" => "segment",
             "feed" => "feed",
             "blobs" => "blob",
             "retired" => "retired",
@@ -742,6 +797,8 @@ mod tests {
         assert_eq!(kind("shards/3/snapshots/i2-n9-t1-x.snap"), "snapshot");
         assert_eq!(kind("runs/r1/shards/0/incarnations/2"), "incarnation");
         assert_eq!(kind("live/sessions/s1/1-9.messages.json"), "segment");
+        assert_eq!(kind("live/packs/3/i0/1-17.pack"), "segment");
+        assert_eq!(kind("shards/3/packrefs/i0-n9-t1-x.json"), "snapshot");
         assert_eq!(kind("feed/0/1/a.json"), "feed");
         assert_eq!(kind("blobs/abc"), "blob");
         assert_eq!(kind("retired/0000000001/s1/1-9.json"), "retired");
@@ -749,11 +806,7 @@ mod tests {
     }
 
     fn seg(from: i32, to: i32) -> SegRef {
-        SegRef {
-            from,
-            to,
-            branch: 0,
-        }
+        SegRef::legacy(from, to, 0)
     }
 
     #[test]
@@ -777,16 +830,8 @@ mod tests {
 
     #[test]
     fn a_rebuilt_shards_segments_never_stand_in_for_an_earlier_incarnations() {
-        let old = |from, to| SegRef {
-            from,
-            to,
-            branch: 1,
-        };
-        let new = |from, to| SegRef {
-            from,
-            to,
-            branch: 2,
-        };
+        let old = |from, to| SegRef::legacy(from, to, 1);
+        let new = |from, to| SegRef::legacy(from, to, 2);
         assert_eq!(
             parse_segment("0000000001-0000000022@2.json"),
             Some(new(1, 22))

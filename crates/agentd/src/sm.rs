@@ -273,7 +273,8 @@ impl Shared {
     /// unstored tail reaches [`FLUSH_BUSY_AT`] events; one with
     /// [`COMPACT_AT`] segments has a run of them rewritten as one (see
     /// [`compaction_range`](crate::state::SessionState::compaction_range)).
-    /// The flag marks a compaction.
+    /// Every segment of the pass goes into one pack (`packs.rs`), written by
+    /// node `writer`, or a few when it passes [`crate::packs::PACK_CAP`].
     ///
     /// Decision: an idle session waits [`FLUSH_IDLE_AFTER`] before its tail
     /// is stored, not one pass of the loop. A conversation's next message
@@ -286,13 +287,15 @@ impl Shared {
         &self,
         limit: usize,
         idle_for: std::time::Duration,
-    ) -> Vec<(SessionId, SegRef, bool)> {
+        writer: u64,
+    ) -> Vec<Flushed> {
         // Per session: a compaction of stored segments `(from, to)`, or a
         // flush of the unstored tail.
-        let jobs: Vec<(SessionId, Option<(i32, i32)>)> = {
+        type Job = (SessionId, Option<(i32, i32)>);
+        let (jobs, inc): (Vec<Job>, u64) = {
             let touched = self.touched.lock();
             let state = self.state.read();
-            state
+            let jobs = state
                 .sessions
                 .iter()
                 .filter_map(|(id, s)| {
@@ -307,69 +310,114 @@ impl Shared {
                         .then_some((*id, compact))
                 })
                 .take(limit)
-                .collect()
+                .collect();
+            (jobs, state.incarnation)
         };
-        stream::iter(jobs)
+        if jobs.is_empty() {
+            return Vec::new();
+        }
+        let mut reads = stream::iter(jobs)
             .map(|(id, range)| async move {
-                let compact = range.is_some();
-                let read =
-                    match range {
-                        Some((from, to)) => {
-                            let segments = {
-                                let state = self.state.read();
-                                state.sessions.get(&id)?.segments.clone()
-                            };
-                            Some(self.store.load(id, &segments, from, to).await.map(
-                                |mut events| {
+                let (read, replaced) = match range {
+                    Some((from, to)) => {
+                        let segments = {
+                            let state = self.state.read();
+                            state.sessions.get(&id)?.segments.clone()
+                        };
+                        let replaced: Vec<SegRef> = segments
+                            .iter()
+                            .filter(|s| s.from >= from && s.to <= to)
+                            .copied()
+                            .collect();
+                        let read =
+                            self.store
+                                .load(id, &segments, from, to)
+                                .await
+                                .map(|mut events| {
                                     events.retain(|e| {
                                         e.sequence.is_some_and(|seq| seq >= from && seq <= to)
                                     });
                                     events
-                                },
-                            ))
-                        }
-                        None => {
-                            let flushed = self.state.read().sessions.get(&id)?.flushed();
-                            self.read_events(id, flushed).await
-                        }
-                    };
-                let events = match read? {
-                    Ok(events) if !events.is_empty() => events,
-                    Ok(_) => return None,
-                    Err(error) => {
-                        tracing::warn!(session = %id, %error, "reading events to store failed");
-                        return None;
+                                });
+                        (Some(read), replaced)
+                    }
+                    None => {
+                        let flushed = self.state.read().sessions.get(&id)?.flushed();
+                        (self.read_events(id, flushed).await, Vec::new())
                     }
                 };
-                match self.put_segment(id, &events).await {
-                    Ok(seg) => Some((id, seg, compact)),
+                match read? {
+                    Ok(events) if !events.is_empty() => Some((id, events, replaced)),
+                    Ok(_) => None,
                     Err(error) => {
-                        tracing::warn!(session = %id, %error, "segment write failed");
+                        tracing::warn!(session = %id, %error, "reading events to store failed");
                         None
                     }
                 }
             })
-            .buffer_unordered(64)
-            .filter_map(|x| async move { x })
-            .collect()
-            .await
+            .buffer_unordered(64);
+        let new_pack =
+            || crate::packs::PackBuilder::new(crate::packs::PackId::new(self.shard, inc, writer));
+        let (mut pack, mut pending, mut out) = (new_pack(), Vec::new(), Vec::new());
+        while let Some(read) = reads.next().await {
+            let Some((session, events, replaced)) = read else {
+                continue;
+            };
+            let branch = self
+                .state
+                .read()
+                .sessions
+                .get(&session)
+                .map_or(0, |s| s.branch);
+            match pack.add(&events, branch) {
+                Ok(seg) => {
+                    self.weigh(seg.events.1 as usize, events.len());
+                    let compact = !replaced.is_empty();
+                    pending.push(Flushed {
+                        session,
+                        seg,
+                        compact,
+                        replaced,
+                    });
+                }
+                Err(error) => {
+                    tracing::warn!(%session, %error, "adding a segment to a pack failed");
+                    continue;
+                }
+            }
+            if pack.len() >= crate::packs::PACK_CAP {
+                let full = std::mem::replace(&mut pack, new_pack());
+                self.write_pack(full, &mut pending, &mut out).await;
+            }
+        }
+        self.write_pack(pack, &mut pending, &mut out).await;
+        out
     }
 
-    async fn put_segment(&self, session: SessionId, events: &[Event]) -> anyhow::Result<SegRef> {
-        let branch = self
-            .state
-            .read()
-            .sessions
-            .get(&session)
-            .map_or(0, |s| s.branch);
-        let seg = self.store.put_segment(session, events, branch).await?;
-        // Weigh the in-memory size estimate by what was just written.
-        let bytes = serde_json::to_vec(events).map(|b| b.len()).unwrap_or(0) as u64;
-        let per = bytes * HEAP_PER_JSON_BYTE / events.len().max(1) as u64;
+    /// Write `pack`; its entries (`pending`) join `out` once it is stored.
+    async fn write_pack(
+        &self,
+        pack: crate::packs::PackBuilder,
+        pending: &mut Vec<Flushed>,
+        out: &mut Vec<Flushed>,
+    ) {
+        let id = pack.id();
+        match self.store.put_pack(pack).await {
+            Ok(()) => out.append(pending),
+            Err(error) => {
+                tracing::warn!(%id, entries = pending.len(), %error, "pack write failed");
+                pending.clear();
+            }
+        }
+    }
+
+    /// Weigh the in-memory size estimate by `bytes` of JSON just written
+    /// for `events` events.
+    fn weigh(&self, bytes: usize, events: usize) {
+        let per = bytes as u64 * HEAP_PER_JSON_BYTE / events.max(1) as u64;
         let old = self.event_bytes.load(Ordering::Relaxed);
         self.event_bytes
             .store((old * 7 + per) / 8, Ordering::Relaxed);
-        Ok(seg)
     }
 
     /// How long since this replica last built a snapshot (or started).
@@ -801,6 +849,16 @@ pub(crate) fn event_allowance(budget: u64, rss: u64, resident: u64) -> u64 {
         .max(budget / 8)
 }
 
+/// One segment a store pass wrote, to record with `Stored`.
+#[derive(Debug, Clone)]
+pub struct Flushed {
+    pub session: SessionId,
+    pub seg: SegRef,
+    /// A compaction: `replaced` are the segments it stands for.
+    pub compact: bool,
+    pub replaced: Vec<SegRef>,
+}
+
 /// Compact a session's trailing segments once it has this many.
 const COMPACT_AT: usize = 16;
 
@@ -1226,11 +1284,7 @@ mod tests {
                 ..Default::default()
             };
             if stored > 0 {
-                s.segments.push(SegRef {
-                    from: 1,
-                    to: stored,
-                    branch: 0,
-                });
+                s.segments.push(SegRef::legacy(1, stored, 0));
             }
             s
         }

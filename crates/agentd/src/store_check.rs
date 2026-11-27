@@ -83,11 +83,7 @@ async fn claim_once(store: &Store) -> Check {
 }
 
 fn seg(from: i32, to: i32) -> SegRef {
-    SegRef {
-        from,
-        to,
-        branch: 1,
-    }
+    SegRef::legacy(from, to, 1)
 }
 
 async fn rewrite_outlives_mark(store: &Store) -> Check {

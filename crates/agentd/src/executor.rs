@@ -615,6 +615,7 @@ impl Executor {
             running.insert(session, std::time::Instant::now());
         }
         self.recent.lock().retain(|s| *s != session);
+        self.remote.wake(session);
         if self.remote.bind(session, shard) {
             // Moved since it last ran here: the writes this hosting waits
             // to see were at positions in the old shard's log.
@@ -695,9 +696,10 @@ impl Executor {
         }
     }
 
-    /// Keep `session` mirrored for a while; evict the least recently run
-    /// beyond the bound.
+    /// Keep `session` mirrored for a while, without its stored events
+    /// (`Remote::rest`); evict the least recently run beyond the bound.
     fn retire(&self, session: SessionId) {
+        self.remote.rest(session);
         let evict: Vec<SessionId> = {
             let mut recent = self.recent.lock();
             recent.push_back(session);

@@ -2,6 +2,7 @@
 
 * [Data plane v2: shards](design.md) - Shard-native execution for 75 000 agents: control plane, data plane v1 and Raft shards with S3.
 * [Control plane and data plane protocol](cp-dp-protocol.md) - Config stream, org admin, feed, spend allowances and org tokens over HTTPS and JSON.
+* [Segment packs](segment-packs.md) - One object per store pass for every session's history segments on a shard, swept once no restore point names it.
 * [Data plane v2 file system](fs.md) - Workspaces as versioned trees in the shard with contents in S3.
 * [Platform sessions on the Everruns Engine](platform-on-engine.md) - Running every platform feature under Engine hosting.
 * [Operating data plane v2 shards](operations.md) - Inspecting a fleet, the per-shard SLO gauges, and runbooks for a lost leader, a stuck move and a drain.
