@@ -70,6 +70,8 @@ everruns evals create [OPTIONS] --name <name>
 | `--tags <TAGS>` | Free-form tags attached to this resource. Comma-separated or a JSON array of strings. Repeatable. |
 | `--target <TARGET>` |  |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -104,6 +106,8 @@ Report whether the caller can import eval results.
 everruns evals import-preflight [OPTIONS]
 ```
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -122,6 +126,8 @@ everruns evals get [OPTIONS] [EVAL_ID]
 | Flag | Description |
 |---|---|
 | `--eval-id <EVAL_ID>` | Eval's prefixed public identifier. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -144,6 +150,8 @@ everruns evals import [OPTIONS] --evals <evals> --source <source>
 | `--experiment <EXPERIMENT>` |  |
 | `--source <SOURCE>` | Required. Attribution for the external system that produced the run. |
 
+Output: a JSON array. Read the items with jq '.[]'.
+
 Example:
 
 ```bash
@@ -163,6 +171,8 @@ everruns evals list [OPTIONS]
 |---|---|
 | `--include-archived` | Include archived evals. |
 | `--search <SEARCH>` | Case-insensitive name filter. |
+
+Output: a JSON array. Read the items with jq '.[]'.
 
 Example:
 
@@ -188,6 +198,8 @@ everruns evals update [OPTIONS] --eval-id <eval_id>
 | `--tags <TAGS>` | Free-form tags attached to this resource. Comma-separated or a JSON array of strings. Repeatable. |
 | `--target <TARGET>` |  |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -207,6 +219,8 @@ everruns evals atif-import import [OPTIONS] --body <body> --eval-id <eval_id>
 |---|---|
 | `--body <BODY>` | Required. Raw ATIF payload (NDJSON or JSON). |
 | `--eval-id <EVAL_ID>` | Required. Eval's prefixed public identifier. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -239,6 +253,8 @@ everruns evals cases create [OPTIONS] --eval-id <eval_id> --name <name> --scorer
 | `--target <TARGET>` |  |
 | `--timeout-seconds <TIMEOUT_SECONDS>` | Per-case timeout in seconds. |
 | `--tool-fixtures <TOOL_FIXTURES>` | Tools the case gives the agent, each answered with a canned response. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -280,6 +296,8 @@ everruns evals cases get [OPTIONS] --case-id <case_id> --eval-id <eval_id>
 | `--case-id <CASE_ID>` | Required. Eval case's prefixed public identifier. |
 | `--eval-id <EVAL_ID>` | Required. Eval's prefixed public identifier. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -298,6 +316,8 @@ everruns evals cases list [OPTIONS] --eval-id <eval_id>
 | Flag | Description |
 |---|---|
 | `--eval-id <EVAL_ID>` | Required. Eval's prefixed public identifier. |
+
+Output: a JSON array. Read the items with jq '.[]'.
 
 Example:
 
@@ -332,6 +352,8 @@ everruns evals cases update [OPTIONS] --case-id <case_id> --eval-id <eval_id>
 | `--timeout-seconds <TIMEOUT_SECONDS>` | Per-case timeout in seconds. |
 | `--tool-fixtures <TOOL_FIXTURES>` | Tool fixtures, replacing the stored ones. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -354,6 +376,8 @@ everruns evals experiments create [OPTIONS] --eval-id <eval_id> --variants <vari
 | `--name <NAME>` | Display name. |
 | `--trials <TRIALS>` | Trials per case and variant, 1 to 20 (default 3). |
 | `--variants <VARIANTS>` | Required. One to four variants. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -379,6 +403,8 @@ everruns evals experiments gate [OPTIONS] --eval-id <eval_id> --experiment-id <e
 | `--no-regression` | Fail when the variant is a regression against the baseline. |
 | `--variant <VARIANT>` | Variant to judge; the last one when omitted. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -399,6 +425,8 @@ everruns evals experiments get [OPTIONS] --eval-id <eval_id> --experiment-id <ex
 | `--eval-id <EVAL_ID>` | Required. Eval's prefixed public identifier. |
 | `--experiment-id <EXPERIMENT_ID>` | Required. Experiment's prefixed public identifier. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -413,6 +441,8 @@ List the organization's experiments across evals, newest first.
 ```bash
 everruns evals experiments recent [OPTIONS]
 ```
+
+Output: a JSON array. Read the items with jq '.[]'.
 
 Example:
 
@@ -433,6 +463,8 @@ everruns evals experiments list [OPTIONS] --eval-id <eval_id>
 |---|---|
 | `--eval-id <EVAL_ID>` | Required. Eval's prefixed public identifier. |
 
+Output: a JSON array. Read the items with jq '.[]'.
+
 Example:
 
 ```bash
@@ -451,6 +483,8 @@ everruns evals samples export [OPTIONS] --eval-id <eval_id>
 | Flag | Description |
 |---|---|
 | `--eval-id <EVAL_ID>` | Required. Eval's prefixed public identifier. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -472,6 +506,8 @@ everruns evals samples import [OPTIONS] --eval-id <eval_id> --samples <samples>
 | `--eval-id <EVAL_ID>` | Required. Eval's prefixed public identifier. |
 | `--samples <SAMPLES>` | Required. Mira samples. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -490,6 +526,8 @@ everruns evals fixes apply [OPTIONS] --fix-id <fix_id>
 | Flag | Description |
 |---|---|
 | `--fix-id <FIX_ID>` | Required. Prefixed public identifier of the fix. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -513,6 +551,8 @@ everruns evals fixes check [OPTIONS] --fix-id <fix_id>
 | `--max-cost-usd <MAX_COST_USD>` | Spending cap in USD for the whole check. |
 | `--trials <TRIALS>` | Trials per case and side, 1 to 20 (default 2). |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -534,6 +574,8 @@ everruns evals fixes list [OPTIONS]
 | `--issue-id <ISSUE_ID>` | The finding whose fix to show. |
 | `--open` | Only fixes still waiting on a person (agent lists only). |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -553,6 +595,8 @@ everruns evals fixes reject [OPTIONS] --fix-id <fix_id> --note <note>
 |---|---|
 | `--fix-id <FIX_ID>` | Required. Prefixed public identifier of the fix. |
 | `--note <NOTE>` | Required. Kept so later suggestions can be compared with what people turned down. (Named `note` because... |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -575,6 +619,8 @@ everruns evals fixes update [OPTIONS] --addition <addition> --fix-id <fix_id>
 | `--fix-id <FIX_ID>` | Required. Prefixed public identifier of the fix. |
 | `--summary <SUMMARY>` | One line on what the change does. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -594,6 +640,8 @@ everruns evals proposals accept [OPTIONS] --eval-id <eval_id> --proposal-id <pro
 |---|---|
 | `--eval-id <EVAL_ID>` | Required. Dataset (eval) to add the case to. |
 | `--proposal-id <PROPOSAL_ID>` | Required. Proposal's prefixed public identifier. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -615,6 +663,8 @@ everruns evals proposals dismiss [OPTIONS] --proposal-id <proposal_id>
 | `--note <NOTE>` | Why it is not wanted, kept so the builder does not offer it again. |
 | `--proposal-id <PROPOSAL_ID>` | Required. Proposal's prefixed public identifier. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -633,6 +683,8 @@ everruns evals proposals list [OPTIONS] --agent-id <agent_id>
 | Flag | Description |
 |---|---|
 | `--agent-id <AGENT_ID>` | Required. Agent's prefixed public identifier. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -653,6 +705,8 @@ everruns evals proposals create [OPTIONS] --agent-id <agent_id>
 |---|---|
 | `--agent-id <AGENT_ID>` | Required. Agent's prefixed public identifier. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -672,6 +726,8 @@ everruns evals runs cancel [OPTIONS] --eval-id <eval_id> --run-id <run_id>
 |---|---|
 | `--eval-id <EVAL_ID>` | Required. Eval's prefixed public identifier. |
 | `--run-id <RUN_ID>` | Required. Eval run's prefixed public identifier. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -697,6 +753,8 @@ everruns evals runs create [OPTIONS] --eval-id <eval_id>
 | `--target <TARGET>` |  |
 | `--trials <TRIALS>` | How many times to run each case, 1 to 20 (default 1). |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -717,6 +775,8 @@ everruns evals runs get [OPTIONS] --eval-id <eval_id> --run-id <run_id>
 | `--eval-id <EVAL_ID>` | Required. Eval's prefixed public identifier. |
 | `--run-id <RUN_ID>` | Required. Eval run's prefixed public identifier. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -735,6 +795,8 @@ everruns evals runs list [OPTIONS] --eval-id <eval_id>
 | Flag | Description |
 |---|---|
 | `--eval-id <EVAL_ID>` | Required. Eval's prefixed public identifier. |
+
+Output: a JSON array. Read the items with jq '.[]'.
 
 Example:
 
@@ -755,6 +817,8 @@ everruns evals runs artifacts export [OPTIONS] --eval-id <eval_id> --run-id <run
 |---|---|
 | `--eval-id <EVAL_ID>` | Required. Eval's prefixed public identifier. |
 | `--run-id <RUN_ID>` | Required. Eval run's prefixed public identifier. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -779,6 +843,8 @@ everruns evals runs dataset export [OPTIONS] --eval-id <eval_id> --run-id <run_i
 | `--redaction <REDACTION>` | Redaction controls. |
 | `--run-id <RUN_ID>` | Required. Completed eval run's prefixed public identifier. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -799,6 +865,8 @@ everruns evals runs dataset get [OPTIONS] --dataset-id <dataset_id> --eval-id <e
 | `--dataset-id <DATASET_ID>` | Required. Dataset export's prefixed public identifier. |
 | `--eval-id <EVAL_ID>` | Required. Eval's prefixed public identifier. |
 | `--run-id <RUN_ID>` | Required. Eval run's prefixed public identifier. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -824,6 +892,8 @@ everruns evals runs results scores update [OPTIONS] --eval-id <eval_id> --result
 | `--scores <SCORES>` | Required. Externally computed scores to store on the result. |
 | `--status <STATUS>` |  |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -846,6 +916,8 @@ everruns evals runs scores bulk [OPTIONS] --eval-id <eval_id> --results <results
 | `--results <RESULTS>` | Required. Per-result score updates applied together. |
 | `--run-id <RUN_ID>` | Required. Eval run's prefixed public identifier. |
 
+Output: a JSON array. Read the items with jq '.[]'.
+
 Example:
 
 ```bash
@@ -866,6 +938,8 @@ everruns evals runs share create [OPTIONS] --eval-id <eval_id> --run-id <run_id>
 | `--eval-id <EVAL_ID>` | Required. Eval's prefixed public identifier. |
 | `--run-id <RUN_ID>` | Required. Eval run's prefixed public identifier. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -885,6 +959,8 @@ everruns evals runs share get [OPTIONS] --eval-id <eval_id> --run-id <run_id>
 |---|---|
 | `--eval-id <EVAL_ID>` | Required. Eval's prefixed public identifier. |
 | `--run-id <RUN_ID>` | Required. Eval run's prefixed public identifier. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 

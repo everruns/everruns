@@ -92,6 +92,8 @@ fn turn_options(
             .map(str::to_string),
         session_link: session_link.map(|link| format!("<{link}|View the session>")),
         replies: true,
+        // The turn planner turns this on for explicit agents with Reactions.
+        acknowledge: false,
     }
 }
 

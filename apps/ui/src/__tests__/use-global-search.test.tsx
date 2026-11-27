@@ -100,7 +100,6 @@ const mockFeatureFlags = {
   evals: false,
   extractions: true,
   skills: true,
-  memory: true,
   observers: true,
 };
 jest.mock("@/providers/feature-flags-provider", () => ({
@@ -152,7 +151,6 @@ describe("useGlobalSearch", () => {
       evals: false,
       extractions: true,
       skills: true,
-      memory: true,
       observers: true,
     });
   });
@@ -167,20 +165,21 @@ describe("useGlobalSearch", () => {
     Object.assign(mockFeatureFlags, {
       evals: false,
       skills: false,
-      memory: false,
     });
 
-    const { result } = renderHook(() => useGlobalSearch("memory"));
+    renderHook(() => useGlobalSearch("memory"));
 
     expect(mockUseSkills).toHaveBeenCalledWith({ enabled: false });
     expect(mockUseEvals).toHaveBeenCalledWith({ enabled: false });
-    expect(mockUseMemories).toHaveBeenCalledWith({ enabled: false });
     expect(mockUseKnowledgeCollections).toHaveBeenCalledWith({ enabled: true });
     expect(mockUseInstalledPlugins).toHaveBeenCalledWith({ enabled: true });
-    expect(result.current).not.toContainEqual(expect.objectContaining({ href: "/memory" }));
-    expect(result.current).not.toContainEqual(
-      expect.objectContaining({ href: "/memory/mem_product" }),
-    );
+  });
+
+  it("finds memory without a feature flag", () => {
+    const { result } = renderHook(() => useGlobalSearch("memory"));
+
+    expect(mockUseMemories).toHaveBeenCalledWith({ enabled: true });
+    expect(result.current).toContainEqual(expect.objectContaining({ href: "/memory" }));
   });
 
   it("does not enable entity fetches before the user enters a query", () => {

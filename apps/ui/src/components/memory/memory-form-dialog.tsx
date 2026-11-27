@@ -1,12 +1,12 @@
 "use client";
 
+// Create or rename a named memory. A named memory is a store agents reach at
+// /memory/<name> once it is attached in their Memory capability, so its name
+// is a store name: lower-case letters, digits and dashes. Source-backed
+// (GitHub/Git) memories were retired with memory v1.
+
 import { useUiTranslations } from "@/providers/locale-provider";
-import { usePageChatMode } from "@/components/chat-mode/chat-mode-context";
-
-import { useTextPageFormDraft } from "@/components/chat-mode/use-text-page-form-draft";
-
-import Link from "next/link";
-import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -18,33 +18,46 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { useUserConnections } from "@/hooks/use-user-connections";
 import type { CreateMemoryRequest, UpdateMemoryRequest, Memory } from "@/lib/api/types";
 
 type MemoryFormMode = "create" | "edit";
-type CreateSourceKind = "manual" | "github" | "git";
+
+const RESERVED = ["agent", "user", "org", "team", "parent", "named", "shared"];
+
+/** Why `name` cannot name a store, or null when it can (mirrors `validate_store_name`). */
+export function storeNameError(name: string): string | null {
+  if (!/^[a-z]([a-z0-9-]{0,61}[a-z0-9])?$/.test(name)) {
+    return "Use up to 63 lower-case letters, digits and dashes, starting with a letter.";
+  }
+  if (RESERVED.includes(name)) {
+    return `"${name}" is the name of a built-in store.`;
+  }
+  return null;
+}
 
 interface MemoryFormDialogProps {
   mode: MemoryFormMode;
   open: boolean;
-  memory?: Memory | null;
+  memory?: Pick<Memory, "id" | "name" | "description"> | null;
   isPending?: boolean;
   writable?: boolean;
   onOpenChange: (open: boolean) => void;
   onSubmit: (request: CreateMemoryRequest | UpdateMemoryRequest) => Promise<void>;
 }
 
-export function MemoryFormDialog({
+export function MemoryFormDialog(props: MemoryFormDialogProps) {
+  // The form remounts each time the dialog opens, so it starts from the
+  // memory being edited (or empty) without syncing state in an effect.
+  return (
+    <Dialog open={props.open} onOpenChange={props.onOpenChange}>
+      {props.open && <MemoryForm key={props.memory?.id ?? "new"} {...props} />}
+    </Dialog>
+  );
+}
+
+function MemoryForm({
   mode,
-  open,
   memory,
   isPending = false,
   writable = false,
@@ -52,404 +65,88 @@ export function MemoryFormDialog({
   onSubmit,
 }: MemoryFormDialogProps) {
   const ui = useUiTranslations();
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [sourceKind, setSourceKind] = useState<CreateSourceKind>("manual");
-  const [repository, setRepository] = useState("");
-  const [gitUrl, setGitUrl] = useState("");
-  const [branch, setBranch] = useState("");
-  const [rootFolder, setRootFolder] = useState("");
-  const [syncIntervalSecs, setSyncIntervalSecs] = useState("0");
+  const [name, setName] = useState(mode === "edit" ? (memory?.name ?? "") : "");
+  const [description, setDescription] = useState(
+    mode === "edit" ? (memory?.description ?? "") : "",
+  );
   const [fieldError, setFieldError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
-  const { data: connections = [] } = useUserConnections();
-  const githubConnection = connections.find((connection) => connection.provider === "github");
 
-  const source = mode === "edit" ? memory?.source : undefined;
-  const initial = [
-    mode === "edit" ? (memory?.name ?? "") : "",
-    mode === "edit" ? (memory?.description ?? "") : "",
-    source?.provider === "git" || source?.provider === "github" ? source.provider : "manual",
-    source?.provider === "github" ? source.repository : "",
-    source?.provider === "git" ? source.url : "",
-    source?.provider === "git" || source?.provider === "github" ? source.branch : "",
-    source?.provider === "git" || source?.provider === "github" ? (source.root_folder ?? "") : "",
-    String(
-      source?.provider === "git" || source?.provider === "github"
-        ? (source.sync_interval_secs ?? 0)
-        : 0,
-    ),
-  ];
-  const initialState = JSON.stringify(initial);
-  const formState = JSON.stringify([
-    name,
-    description,
-    sourceKind,
-    repository,
-    gitUrl,
-    branch,
-    rootFolder,
-    syncIntervalSecs,
-  ]);
-  const currentFormState = useRef(formState);
-  const seededState = useRef<string | null>(null);
-  useLayoutEffect(() => {
-    currentFormState.current = formState;
-  });
-  const dirty = seededState.current !== null && formState !== seededState.current;
-  const adopted = !!usePageChatMode();
-  const seededForm = useRef<string | null>(null);
-  useEffect(() => {
-    if (!open) {
-      seededForm.current = null;
-      seededState.current = null;
-      return;
-    }
-    const seed = `${mode}:${memory?.id ?? "new"}`;
-    // Preserve every manual field, including controls excluded from Chat. A
-    // clean form can follow a refetch; a dirty form keeps its original baseline.
-    if (adopted && seededForm.current === seed && seededState.current !== currentFormState.current)
-      return;
-    seededState.current = initialState;
-    seededForm.current = seed;
-    setName(mode === "edit" ? (memory?.name ?? "") : "");
-    setDescription(mode === "edit" ? (memory?.description ?? "") : "");
-    setSourceKind(
-      memory?.source.provider === "git"
-        ? "git"
-        : memory?.source.provider === "github"
-          ? "github"
-          : "manual",
-    );
-    setRepository("");
-    setGitUrl("");
-    setBranch("");
-    setRootFolder("");
-    setSyncIntervalSecs("0");
-    if (mode === "edit" && memory?.source.provider === "github") {
-      setRepository(memory.source.repository);
-      setBranch(memory.source.branch);
-      setRootFolder(memory.source.root_folder ?? "");
-      setSyncIntervalSecs(String(memory.source.sync_interval_secs ?? 0));
-    }
-    if (mode === "edit" && memory?.source.provider === "git") {
-      setGitUrl(memory.source.url);
-      setBranch(memory.source.branch);
-      setRootFolder(memory.source.root_folder ?? "");
-      setSyncIntervalSecs(String(memory.source.sync_interval_secs ?? 0));
-    }
-    setFieldError(null);
-    setFormError(null);
-  }, [mode, open, memory, adopted, initialState]);
-
-  const chatDraft = useTextPageFormDraft({
-    fields: ["name", "description"],
-    values: { name, description },
-    entityId: memory?.id,
-    entityType: "memory",
-    formId: "details",
-    label: mode === "create" ? "New memory" : (memory?.name ?? "Edit memory"),
-    baseline: JSON.stringify([mode, memory?.name, memory?.description, memory?.source]),
-    dirty,
-    writable: writable && !isPending,
-    enabled: open && (mode === "create" || !!memory),
-    priority: 30,
-    apply: (values) => {
-      setName(values.name);
-      setDescription(values.description);
-    },
-  });
-
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent) {
     event.preventDefault();
-    if (chatDraft.blocked) return;
-    setFieldError(null);
-    setFormError(null);
-
-    const trimmedName = name.trim();
-    if (!trimmedName) {
-      setFieldError("Name is required");
+    const trimmed = name.trim();
+    const error = storeNameError(trimmed);
+    if (error) {
+      setFieldError(error);
       return;
     }
-
+    setFormError(null);
     try {
-      const trimmedDescription = description.trim();
-      if (mode === "create") {
-        const source = buildCreateSource({
-          sourceKind,
-          repository,
-          gitUrl,
-          branch,
-          rootFolder,
-          syncIntervalSecs,
-        });
-        await onSubmit({
-          name: trimmedName,
-          ...(trimmedDescription ? { description: trimmedDescription } : {}),
-          ...(source ? { source } : {}),
-        });
-      } else {
-        const source =
-          memory?.source.provider === "manual"
-            ? undefined
-            : buildCreateSource({
-                sourceKind,
-                repository,
-                gitUrl,
-                branch,
-                rootFolder,
-                syncIntervalSecs,
-              });
-        await onSubmit({
-          name: trimmedName,
-          description: trimmedDescription || null,
-          ...(source && memory && !sourceMatchesMemory(memory, source) ? { source } : {}),
-        });
-      }
+      await onSubmit({
+        name: trimmed,
+        description: description.trim() || undefined,
+      });
       onOpenChange(false);
-    } catch (error) {
-      setFormError(error instanceof Error ? error.message : "Memory could not be saved");
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : String(err));
     }
   }
-
-  const title = mode === "create" ? "New Memory" : "Edit Memory";
-  const submitLabel = mode === "create" ? "Create Memory" : "Save Changes";
-  const showSourceFields = mode === "create" || memory?.source.provider !== "manual";
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+    <DialogContent>
+      <form onSubmit={handleSubmit} className="space-y-4">
         <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
+          <DialogTitle>
+            {mode === "create" ? ui("New named memory") : ui("Edit memory")}
+          </DialogTitle>
           <DialogDescription>
-            {mode === "create" ? ui("Create an org-scoped memory.") : memory?.id}
+            {ui(
+              "A named memory is shared by every agent you attach it to in the Memory capability. Agents find it at /memory/<name>.",
+            )}
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {chatDraft.notice}
-          <div className="space-y-2">
-            <Label htmlFor="memory-name">{ui("Name")}</Label>
-            <Input
-              id="memory-name"
-              value={name}
-              onChange={(event) => {
-                setName(event.target.value);
-                setFieldError(null);
-              }}
-              aria-invalid={!!fieldError}
-              required
-            />
-            {fieldError && <p className="text-xs text-destructive">{fieldError}</p>}
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="memory-description">{ui("Description")}</Label>
-            <Textarea
-              id="memory-description"
-              value={description}
-              onChange={(event) => setDescription(event.target.value)}
-              rows={3}
-            />
-          </div>
-          {showSourceFields && (
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="memory-source">{ui("Source")}</Label>
-                <Select
-                  value={sourceKind}
-                  onValueChange={(value) => setSourceKind(value as CreateSourceKind)}
-                >
-                  <SelectTrigger id="memory-source" className="w-full" aria-label={ui("Source")}>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {mode === "create" && <SelectItem value="manual">{ui("Manual")}</SelectItem>}
-                    <SelectItem value="github">{ui("GitHub")}</SelectItem>
-                    <SelectItem value="git">{ui("Git URL")}</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              {sourceKind === "github" && (
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="memory-repository">{ui("Repository")}</Label>
-                    <Input
-                      id="memory-repository"
-                      value={repository}
-                      onChange={(event) => setRepository(event.target.value)}
-                      placeholder={ui("owner/repo")}
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="memory-github-connection">{ui("Connection")}</Label>
-                    <Select value={githubConnection ? "github" : "none"} disabled>
-                      <SelectTrigger
-                        id="memory-github-connection"
-                        className="w-full"
-                        aria-label={ui("GitHub connection")}
-                      >
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="github">
-                          {githubConnection?.provider_username ?? ui("GitHub connected")}
-                        </SelectItem>
-                        <SelectItem value="none">{ui("No GitHub connection")}</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    {!githubConnection && (
-                      <p className="text-xs text-muted-foreground">
-                        {ui("Private repositories need a")}{" "}
-                        <Link href="/settings/connections" className="underline">
-                          {ui("GitHub connection")}
-                        </Link>
-                        .
-                      </p>
-                    )}
-                  </div>
-                </div>
-              )}
-              {sourceKind === "git" && (
-                <div className="space-y-2">
-                  <Label htmlFor="memory-git-url">{ui("Git URL")}</Label>
-                  <Input
-                    id="memory-git-url"
-                    value={gitUrl}
-                    onChange={(event) => setGitUrl(event.target.value)}
-                    placeholder="https://example.com/org/repo.git"
-                    required
-                  />
-                </div>
-              )}
-              {sourceKind !== "manual" && (
-                <div className="grid gap-4 sm:grid-cols-3">
-                  <div className="space-y-2">
-                    <Label htmlFor="memory-branch">{ui("Branch")}</Label>
-                    <Input
-                      id="memory-branch"
-                      value={branch}
-                      onChange={(event) => setBranch(event.target.value)}
-                      placeholder={ui("main")}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="memory-root-folder">{ui("Root Folder")}</Label>
-                    <Input
-                      id="memory-root-folder"
-                      value={rootFolder}
-                      onChange={(event) => setRootFolder(event.target.value)}
-                      placeholder={ui("docs")}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="memory-sync-interval">{ui("Resync")}</Label>
-                    <Select value={syncIntervalSecs} onValueChange={setSyncIntervalSecs}>
-                      <SelectTrigger
-                        id="memory-sync-interval"
-                        className="w-full"
-                        aria-label={ui("Resync interval")}
-                      >
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="0">{ui("Manual only")}</SelectItem>
-                        <SelectItem value="300">{ui("Every 5 minutes")}</SelectItem>
-                        <SelectItem value="900">{ui("Every 15 minutes")}</SelectItem>
-                        <SelectItem value="3600">{ui("Hourly")}</SelectItem>
-                        <SelectItem value="86400">{ui("Daily")}</SelectItem>
-                        <SelectItem value="604800">{ui("Weekly")}</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-              )}
-            </div>
+        <div className="space-y-2">
+          <Label htmlFor="memory-name">{ui("Name")}</Label>
+          <Input
+            id="memory-name"
+            value={name}
+            placeholder="everruns-maintenance"
+            disabled={!writable || isPending}
+            aria-invalid={fieldError ? true : undefined}
+            onChange={(event) => {
+              setName(event.target.value);
+              setFieldError(null);
+            }}
+          />
+          {fieldError ? (
+            <p className="text-xs text-destructive">{ui(fieldError)}</p>
+          ) : (
+            <p className="font-mono text-xs text-muted-foreground">
+              /memory/{name.trim() || "<name>"}
+            </p>
           )}
-          {formError && <p className="text-sm text-destructive">{formError}</p>}
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-              disabled={isPending}
-            >
-              {ui("Cancel")}
-            </Button>
-            <Button type="submit" variant="accent" disabled={chatDraft.blocked || isPending}>
-              {submitLabel}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="memory-description">{ui("Description")}</Label>
+          <Textarea
+            id="memory-description"
+            value={description}
+            rows={3}
+            placeholder={ui("What the agents sharing it should keep here")}
+            disabled={!writable || isPending}
+            onChange={(event) => setDescription(event.target.value)}
+          />
+        </div>
+        {formError && <p className="text-sm text-destructive">{formError}</p>}
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            {ui("Cancel")}
+          </Button>
+          <Button type="submit" variant="accent" disabled={!writable || isPending}>
+            {mode === "create" ? ui("Create") : ui("Save")}
+          </Button>
+        </DialogFooter>
+      </form>
+    </DialogContent>
   );
-}
-
-function buildCreateSource({
-  sourceKind,
-  repository,
-  gitUrl,
-  branch,
-  rootFolder,
-  syncIntervalSecs,
-}: {
-  sourceKind: CreateSourceKind;
-  repository: string;
-  gitUrl: string;
-  branch: string;
-  rootFolder: string;
-  syncIntervalSecs: string;
-}): CreateMemoryRequest["source"] {
-  const trimmedBranch = branch.trim();
-  const trimmedRootFolder = rootFolder.trim();
-  const parsedSyncInterval = Number.parseInt(syncIntervalSecs, 10);
-  const optionalPathFields = {
-    ...(trimmedBranch ? { branch: trimmedBranch } : {}),
-    ...(trimmedRootFolder ? { root_folder: trimmedRootFolder } : {}),
-    ...(parsedSyncInterval > 0 ? { sync_interval_secs: parsedSyncInterval } : {}),
-  };
-  if (sourceKind === "github") {
-    return {
-      type: "github",
-      repository: repository.trim(),
-      ...optionalPathFields,
-    };
-  }
-  if (sourceKind === "git") {
-    return {
-      type: "git",
-      url: gitUrl.trim(),
-      ...optionalPathFields,
-    };
-  }
-  return undefined;
-}
-
-function sourceMatchesMemory(memory: Memory, source: NonNullable<CreateMemoryRequest["source"]>) {
-  if (source.type !== memory.source.provider) {
-    return false;
-  }
-  const expectedBranch = source.branch ?? "main";
-  const expectedRootFolder = source.root_folder ?? null;
-  const expectedSyncInterval = source.sync_interval_secs ?? null;
-
-  if (source.type === "github" && memory.source.provider === "github") {
-    return (
-      source.repository === memory.source.repository &&
-      expectedBranch === memory.source.branch &&
-      expectedRootFolder === (memory.source.root_folder ?? null) &&
-      expectedSyncInterval === (memory.source.sync_interval_secs ?? null)
-    );
-  }
-
-  if (source.type === "git" && memory.source.provider === "git") {
-    return (
-      source.url === memory.source.url &&
-      expectedBranch === memory.source.branch &&
-      expectedRootFolder === (memory.source.root_folder ?? null) &&
-      expectedSyncInterval === (memory.source.sync_interval_secs ?? null)
-    );
-  }
-
-  return false;
 }

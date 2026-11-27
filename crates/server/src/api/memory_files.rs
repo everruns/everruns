@@ -62,24 +62,35 @@ pub fn routes(state: ApiState) -> Router {
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct MemoryFileInfo {
+    /// Path inside the memory, starting with `/`.
     pub path: String,
+    /// True for a folder.
     pub is_directory: bool,
+    /// Size in bytes; 0 for a folder.
     pub size_bytes: i64,
+    /// Hash of the content; absent for a folder.
     pub content_hash: Option<String>,
+    /// When the file was created.
     pub created_at: chrono::DateTime<chrono::Utc>,
+    /// When the file last changed.
     pub updated_at: chrono::DateTime<chrono::Utc>,
 }
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct MemoryFile {
+    /// Path inside the memory, starting with `/`.
     pub path: String,
     /// Text or base64-encoded content; check `encoding`.
     pub content: String,
     /// "text" or "base64".
     pub encoding: String,
+    /// Size in bytes.
     pub size_bytes: i64,
+    /// Hash of the content.
     pub content_hash: Option<String>,
+    /// When the file was created.
     pub created_at: chrono::DateTime<chrono::Utc>,
+    /// When the file last changed.
     pub updated_at: chrono::DateTime<chrono::Utc>,
 }
 
@@ -201,9 +212,6 @@ fn authorize_memory_file_access(
     org: &ResolvedOrg,
     policy: &Policy,
 ) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
-    if !org.feature_flags.memory {
-        return Err(ErrorResponse::feature_not_enabled("memory"));
-    }
     let caller = Caller::from(org);
     policy
         .evaluate_with(state.auth.permission_resolver.as_ref(), &caller)
@@ -216,9 +224,9 @@ fn err_to_response(e: MemoryFsError) -> (StatusCode, Json<ErrorResponse>) {
             (StatusCode::NOT_FOUND, e.to_string())
         }
         MemoryFsError::Readonly => (StatusCode::FORBIDDEN, e.to_string()),
-        MemoryFsError::InvalidPath(_) | MemoryFsError::InvalidPattern(_) => {
-            (StatusCode::BAD_REQUEST, e.to_string())
-        }
+        MemoryFsError::InvalidPath(_)
+        | MemoryFsError::InvalidEntry(_)
+        | MemoryFsError::InvalidPattern(_) => (StatusCode::BAD_REQUEST, e.to_string()),
         MemoryFsError::Conflict(_) => (StatusCode::CONFLICT, e.to_string()),
         MemoryFsError::DirectoryNotEmpty => (StatusCode::CONFLICT, e.to_string()),
         MemoryFsError::IsDirectory | MemoryFsError::NotDirectory => {
@@ -260,7 +268,7 @@ pub async fn list_root(
     authorize_memory_file_access(&state, &org, &MEMORY_VIEW)?;
     let svc = service(&state);
     let mem = svc
-        .resolve_memory(org.org_id, &memory_id)
+        .resolve_visible_memory(org.org_id, &memory_id, org.user_id)
         .await
         .map_err(err_to_response)?;
     let rows = svc
@@ -295,7 +303,7 @@ pub async fn get_file(
     authorize_memory_file_access(&state, &org, &MEMORY_VIEW)?;
     let svc = service(&state);
     let mem = svc
-        .resolve_memory(org.org_id, &memory_id)
+        .resolve_visible_memory(org.org_id, &memory_id, org.user_id)
         .await
         .map_err(err_to_response)?;
     // Normalize trailing slashes so `/foo/` and `/foo` resolve identically
@@ -375,7 +383,7 @@ pub async fn create_file(
     authorize_memory_file_access(&state, &org, &MEMORY_MANAGE)?;
     let svc = service(&state);
     let mem = svc
-        .resolve_memory(org.org_id, &memory_id)
+        .resolve_visible_memory(org.org_id, &memory_id, org.user_id)
         .await
         .map_err(err_to_response)?;
     let is_directory = req.is_directory.unwrap_or(false);
@@ -434,7 +442,7 @@ pub async fn update_file(
     authorize_memory_file_access(&state, &org, &MEMORY_MANAGE)?;
     let svc = service(&state);
     let mem = svc
-        .resolve_memory(org.org_id, &memory_id)
+        .resolve_visible_memory(org.org_id, &memory_id, org.user_id)
         .await
         .map_err(err_to_response)?;
     let bytes = decode_request_content(req.content, req.encoding)?;
@@ -479,7 +487,7 @@ pub async fn delete_file(
     authorize_memory_file_access(&state, &org, &MEMORY_MANAGE)?;
     let svc = service(&state);
     let mem = svc
-        .resolve_memory(org.org_id, &memory_id)
+        .resolve_visible_memory(org.org_id, &memory_id, org.user_id)
         .await
         .map_err(err_to_response)?;
     svc.delete(&mem, &ensure_leading_slash(&path), query.recursive)
@@ -509,7 +517,7 @@ pub async fn stat_action(
     authorize_memory_file_access(&state, &org, &MEMORY_VIEW)?;
     let svc = service(&state);
     let mem = svc
-        .resolve_memory(org.org_id, &memory_id)
+        .resolve_visible_memory(org.org_id, &memory_id, org.user_id)
         .await
         .map_err(err_to_response)?;
     let info = svc.stat(mem.id, &req.path).await.map_err(err_to_response)?;
@@ -538,7 +546,7 @@ pub async fn grep_action(
     authorize_memory_file_access(&state, &org, &MEMORY_VIEW)?;
     let svc = service(&state);
     let mem = svc
-        .resolve_memory(org.org_id, &memory_id)
+        .resolve_visible_memory(org.org_id, &memory_id, org.user_id)
         .await
         .map_err(err_to_response)?;
     let rows: Vec<GrepMatchInfo> = svc
@@ -578,7 +586,7 @@ pub async fn download_action(
     authorize_memory_file_access(&state, &org, &MEMORY_VIEW)?;
     let svc = service(&state);
     let mem = svc
-        .resolve_memory(org.org_id, &memory_id)
+        .resolve_visible_memory(org.org_id, &memory_id, org.user_id)
         .await
         .map_err(err_to_response)?;
     let normalized = ensure_leading_slash(&path);

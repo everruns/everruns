@@ -267,3 +267,20 @@ records them, but does not meter spend.
 Related: [Budgeting](../security/budgeting.md),
 [Actionable Health Issues](health-issues.md),
 [Session tasks](../runtime-resources/session-tasks.md).
+
+## Evidence for later investigations
+
+The opening observation of each newly opened health episode is stored independently
+of mutable current evidence, including the detector's evaluation windows and
+thresholds for unattended-spend spikes. Rechecks never overwrite it; reopening
+creates a new observation. Notifications already identify the episode, so readers
+can select that episode through the existing health issue command. Episodes that
+predate collection have no reconstructed opening observation.
+
+The spike sweep fixes one evaluation timestamp and uses it for both rolling windows.
+The cost summary and the alert can disagree legitimately: the detector reads
+positive unattended-budget postings; the general summary reads cost postings.
+An investigator must use the recorded definition, not substitute the latest total.
+Implementation: [health presentation](../../crates/server/src/domains/health_issues/commands.rs),
+[detector](../../crates/server/src/domains/health_issues/background_work.rs) and
+[opening-evidence migration](../../crates/server/migrations/20261126032757_investigation_evidence.sql).

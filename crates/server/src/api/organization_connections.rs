@@ -24,7 +24,8 @@ use super::{
 pub type AppState = super::virtual_user_connections::AppState;
 
 /// Connector capabilities whose connectors can hold organization accounts.
-const ORGANIZATION_ACCOUNT_CAPABILITIES: [&str; 2] = [
+const ORGANIZATION_ACCOUNT_CAPABILITIES: [&str; 3] = [
+    "email_inbox",
     "sandbox_provisioning",
     everruns_contracts::runtime::web_search::WEB_SEARCH_CONNECTOR_CAPABILITY,
 ];
@@ -64,7 +65,8 @@ pub fn routes(state: AppState) -> Router {
         )
         .with_state(state.clone())
         // Web search reads these accounts; its catalog and preview share the state.
-        .merge(super::search_providers::routes(state))
+        .merge(super::search_providers::routes(state.clone()))
+        .merge(crate::channels::email::routes::routes(state))
 }
 
 fn account_caller(org: &OrgContext, user: &AuthUser) -> everruns_core::Caller {
@@ -143,7 +145,7 @@ fn fields(body: &SaveOrganizationConnectionRequest) -> HashMap<String, String> {
     fields
 }
 
-#[utoipa::path(get, path = "/v1/platform/orgs/{org}/organization-connections", description = "List non-secret metadata for organization-owned provider accounts: sandbox provider accounts and web search accounts.", responses((status = 200, body = Vec<OrganizationConnectionResponse>)), tag = "sandbox-templates")]
+#[utoipa::path(get, path = "/v1/platform/orgs/{org}/organization-connections", description = "List non-secret metadata for organization-owned provider accounts: sandbox provider accounts, web search accounts and email inbox accounts.", responses((status = 200, body = Vec<OrganizationConnectionResponse>)), tag = "sandbox-templates")]
 pub async fn list_connections(
     State(state): State<AppState>,
     OrgAdmin(org): OrgAdmin,
@@ -163,7 +165,7 @@ pub async fn list_connections(
     ))
 }
 
-#[utoipa::path(post, path = "/v1/platform/orgs/{org}/organization-connections/providers/{provider}", description = "Create and validate an encrypted organization-owned account for a connector that declares sandbox_provisioning or web_search.", request_body = SaveOrganizationConnectionRequest, responses((status = 201, body = OrganizationConnectionResponse)), tag = "sandbox-templates")]
+#[utoipa::path(post, path = "/v1/platform/orgs/{org}/organization-connections/providers/{provider}", description = "Create and validate an encrypted organization-owned account for a connector that declares sandbox_provisioning, web_search or email_inbox.", request_body = SaveOrganizationConnectionRequest, responses((status = 201, body = OrganizationConnectionResponse)), tag = "sandbox-templates")]
 pub async fn create_connection(
     State(state): State<AppState>,
     OrgAdmin(org): OrgAdmin,

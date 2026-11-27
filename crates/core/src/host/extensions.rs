@@ -42,6 +42,18 @@ pub trait HostToolAugmentor: Send + Sync {
         definitions: &mut Vec<ToolDefinition>,
     ) -> Result<()>;
 
+    /// Capabilities whose model-visible contributions (prompt and tools) this
+    /// session's reason steps leave out; their message filters still apply.
+    /// The thread tools are capability tools, which `augment_reason_tools`
+    /// never sees, so hiding them goes through here.
+    async fn hidden_reason_capabilities(
+        &self,
+        _session_id: SessionId,
+        _session_store: Arc<dyn SessionStore>,
+    ) -> Result<Vec<&'static str>> {
+        Ok(Vec::new())
+    }
+
     /// Add executable tools requested by the reason phase to the act registry.
     async fn augment_act_tools(
         &self,

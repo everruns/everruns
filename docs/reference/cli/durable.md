@@ -36,6 +36,8 @@ everruns durable executions get [OPTIONS] [EXECUTION_ID]
 |---|---|
 | `--execution-id <EXECUTION_ID>` | Schedule execution's identifier. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -63,6 +65,8 @@ everruns durable schedules create [OPTIONS] --cron-expression <cron_expression> 
 | `--retry-policy <RETRY_POLICY>` | Retry policy for failed executions (provider-specific JSON; see the durable engine's `RetryPo... |
 | `--target <TARGET>` | Required. Target for a schedule - either a workflow or activity. |
 | `--timezone <TIMEZONE>` | Timezone (default: UTC). |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -102,6 +106,8 @@ everruns durable schedules get [OPTIONS] [SCHEDULE_ID]
 |---|---|
 | `--schedule-id <SCHEDULE_ID>` | Schedule's prefixed public identifier. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -124,6 +130,8 @@ everruns durable schedules list [OPTIONS]
 | `--offset <OFFSET>` | Pagination offset. |
 | `--target-type <TARGET_TYPE>` | Filter by target type ("workflow" or "activity") |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -142,6 +150,8 @@ everruns durable schedules pause [OPTIONS] --schedule-id <schedule_id>
 | Flag | Description |
 |---|---|
 | `--schedule-id <SCHEDULE_ID>` | Required. Schedule's prefixed public identifier. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -162,6 +172,8 @@ everruns durable schedules resume [OPTIONS] --schedule-id <schedule_id>
 |---|---|
 | `--schedule-id <SCHEDULE_ID>` | Required. Schedule's prefixed public identifier. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -180,6 +192,8 @@ everruns durable schedules trigger [OPTIONS] --schedule-id <schedule_id>
 | Flag | Description |
 |---|---|
 | `--schedule-id <SCHEDULE_ID>` | Required. Schedule's prefixed public identifier. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -209,6 +223,8 @@ everruns durable schedules update [OPTIONS] --schedule-id <schedule_id>
 | `--target <TARGET>` |  |
 | `--timezone <TIMEZONE>` | New timezone (IANA name). |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -231,6 +247,8 @@ everruns durable schedules executions list [OPTIONS] --schedule-id <schedule_id>
 | `--schedule-id <SCHEDULE_ID>` | Required. Schedule ID. |
 | `--status <STATUS>` | Filter by execution status. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -249,6 +267,8 @@ everruns durable schedules stats get [OPTIONS] --schedule-id <schedule_id>
 | Flag | Description |
 |---|---|
 | `--schedule-id <SCHEDULE_ID>` | Required. Schedule's prefixed public identifier. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 

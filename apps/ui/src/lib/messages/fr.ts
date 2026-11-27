@@ -1,4 +1,5 @@
 import { messages as applications } from "./fr/applications";
+import { messages as email } from "./fr/email";
 import { messages as qualityMonitoring } from "./fr/quality-monitoring";
 import { messages as mcpApps } from "./fr/mcp-apps";
 import { messages as extractions } from "./fr/extractions";
@@ -89,4 +90,5 @@ export const messages: Readonly<Record<string, string>> = Object.assign(
   extractions,
   rooms,
   mcpApps,
+  email,
 );

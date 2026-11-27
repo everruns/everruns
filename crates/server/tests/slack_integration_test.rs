@@ -407,13 +407,14 @@ async fn test_slack_message_creates_session() {
         .filter_map(|t| t.as_str())
         .collect();
 
-    // Should also have the app tag
-    let expected_app_tag = format!("app:{}", app.public_id);
+    // Attribution follows the owning channel; the retired Apps entity has no tag.
+    let expected_channel_tag = format!("channel:{}", app.channels[0].public_id);
     assert!(
-        tags.contains(&expected_app_tag.as_str()),
-        "Session should have the app tag, got: {:?}",
+        tags.contains(&expected_channel_tag.as_str()),
+        "Session should have the channel tag, got: {:?}",
         tags
     );
+    assert!(tags.contains(&"channel_type:slack"));
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

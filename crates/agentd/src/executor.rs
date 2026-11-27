@@ -21,7 +21,8 @@
 //!   (`memwatch::turn_credits`). At 95% of its limit it starts nothing and
 //!   hands its newest turns back, which resume on another executor from the
 //!   session's log; at 98% it drains and exits for a clean restart, before
-//!   the kernel would kill it.
+//!   the kernel would kill it. Past half its limit it drops its coldest idle
+//!   mirrors first (`memwatch::mirror_trim`): they are a cache.
 //! - Capability memory classes (memory design, "Capabilities"): only
 //!   capabilities with a hard memory cap run inside the executor process
 //!   (the virtual shell's `max_memory`, 10 MB, in `integrations::bashkit`;
@@ -367,10 +368,29 @@ impl Executor {
     async fn memory_loop(self: Arc<Self>) {
         use crate::memwatch::ExecLevel;
         let mut tick = tokio::time::interval(Duration::from_secs(1));
+        let mut parked_since: Option<std::time::Instant> = None;
         loop {
             tick.tick().await;
             let (used, limit) = crate::memwatch::reading(self.cfg.memory_limit);
-            match crate::memwatch::exec_level(used, limit) {
+            let idle = self.recent.lock().len();
+            let trim = crate::memwatch::mirror_trim(used, limit, idle);
+            if trim > 0 {
+                self.forget_coldest(trim);
+                self.stats.add(&[("mirror", "trimmed")], trim as u64);
+            }
+            let parked = crate::memwatch::parked(used, limit, self.running());
+            let since = *parked_since.get_or_insert_with(std::time::Instant::now);
+            if !parked {
+                parked_since = None;
+            }
+            let level = match crate::memwatch::exec_level(used, limit) {
+                _ if parked && since.elapsed() >= crate::memwatch::PARKED_FOR => {
+                    self.stats.inc(&[("memory", "parked")]);
+                    ExecLevel::Restart
+                }
+                level => level,
+            };
+            match level {
                 ExecLevel::Ok => {}
                 ExecLevel::Stop => {
                     let handed = self.hand_back_newest();
@@ -388,7 +408,7 @@ impl Executor {
                         tracing::error!(
                             used_mb = used >> 20,
                             limit_mb = limit >> 20,
-                            "executor memory at 98%: draining to restart"
+                            "executor memory at 98%, or parked full and idle: draining to restart"
                         );
                         self.stats.inc(&[("memory", "restart")]);
                         self.drain();
@@ -595,6 +615,7 @@ impl Executor {
             running.insert(session, std::time::Instant::now());
         }
         self.recent.lock().retain(|s| *s != session);
+        self.remote.wake(session);
         if self.remote.bind(session, shard) {
             // Moved since it last ran here: the writes this hosting waits
             // to see were at positions in the old shard's log.
@@ -675,9 +696,10 @@ impl Executor {
         }
     }
 
-    /// Keep `session` mirrored for a while; evict the least recently run
-    /// beyond the bound.
+    /// Keep `session` mirrored for a while, without its stored events
+    /// (`Remote::rest`); evict the least recently run beyond the bound.
     fn retire(&self, session: SessionId) {
+        self.remote.rest(session);
         let evict: Vec<SessionId> = {
             let mut recent = self.recent.lock();
             recent.push_back(session);
@@ -692,7 +714,31 @@ impl Executor {
             }
             out
         };
-        for session in evict {
+        self.forget_all(evict);
+    }
+
+    /// Drop the `n` least recently run idle mirrors (memory, see
+    /// `memwatch::mirror_trim`).
+    fn forget_coldest(&self, n: usize) {
+        let evict: Vec<SessionId> = {
+            let mut recent = self.recent.lock();
+            let running = self.running.lock();
+            let mut out = Vec::new();
+            while out.len() < n {
+                let Some(oldest) = recent.pop_front() else {
+                    break;
+                };
+                if !running.contains_key(&oldest) {
+                    out.push(oldest);
+                }
+            }
+            out
+        };
+        self.forget_all(evict);
+    }
+
+    fn forget_all(&self, sessions: Vec<SessionId>) {
+        for session in sessions {
             self.remote.evict(session);
             self.hosting.forget(session);
         }

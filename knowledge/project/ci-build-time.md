@@ -287,6 +287,11 @@ from the previous profile; published release settings and the test dependency
 caches are unchanged. Faster artifact compression limits transfer preparation
 cost for the larger executables. See [producer](../../.github/workflows/ci.yml).
 
+The chaos consumer keeps its HTTP and gRPC listeners below Linux's outbound
+ephemeral range. Fixed listeners inside that range can fail startup after an
+unrelated outbound connection claims the port; Docker-assigned database ports
+remain independently reserved. The harness regression checks this CI boundary.
+
 The same library executable passed all 3,704 tests (four ignored) in each of six
 native-PostgreSQL runs, in thread order 2/4/8/8/4/2. Mean execution was 309.8s,
 265.1s and 262.3s respectively. Eight threads saved only about one percent versus

@@ -21,6 +21,10 @@ struct DeliveryState {
     pending_links: Vec<(String, String)>,
     last_sequence: Option<i64>,
     effects_done: HashSet<String>,
+    #[serde(default)]
+    buffered_replies: Vec<(String, String)>,
+    #[serde(default)]
+    buffer_overflow: bool,
 }
 
 impl TurnDelivery {
@@ -65,6 +69,8 @@ impl TurnDelivery {
             self.new_links = state.pending_links;
             self.last_sequence = state.last_sequence;
             self.effects_done = state.effects_done;
+            self.buffered_replies = state.buffered_replies;
+            self.buffer_overflow = state.buffer_overflow;
             if !checkpoint.retries.is_empty()
                 || checkpoint
                     .in_flight
@@ -166,6 +172,8 @@ impl TurnDelivery {
             pending_links: self.new_links.clone(),
             last_sequence: self.last_sequence,
             effects_done: self.effects_done.clone(),
+            buffered_replies: self.buffered_replies.clone(),
+            buffer_overflow: self.buffer_overflow,
         })
         .unwrap_or(Value::Null)
     }
@@ -189,7 +197,10 @@ impl TurnDelivery {
 
     pub(super) async fn checkpoint(&self) {
         if let Some(journal) = &self.journal
-            && (self.finished || journal.has_changes())
+            // Aggregate channels have no provider writes until turn completion.
+            // Their buffered replies and suppression decisions are durable state
+            // even when the provider journal has not recorded an effect yet.
+            && (self.finished || self.adapter.aggregate_replies() || journal.has_changes())
             && let Err(error) = journal.save(self.snapshot()).await
         {
             warn!(session_id = %self.session_id, %error, "channel: output checkpoint failed; writes stopped");

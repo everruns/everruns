@@ -48,6 +48,8 @@ everruns workspaces get [OPTIONS] [WORKSPACE_ID]
 |---|---|
 | `--workspace-id <WORKSPACE_ID>` | Workspace ID (wsp_<32-hex>). |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -67,6 +69,8 @@ everruns workspaces list [OPTIONS]
 |---|---|
 | `--include-archived` | Also return archived items. |
 | `--search <SEARCH>` | Case-insensitive substring match on name or description. |
+
+Output: a JSON array. Read the items with jq '.[]'.
 
 Example:
 
@@ -89,6 +93,8 @@ everruns workspaces update [OPTIONS] --workspace-id <workspace_id>
 | `--name <NAME>` |  |
 | `--status <STATUS>` |  |
 | `--workspace-id <WORKSPACE_ID>` | Required. Workspace ID (wsp_<32-hex>). |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 

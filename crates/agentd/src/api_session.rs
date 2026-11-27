@@ -289,6 +289,8 @@ async fn seed(
 
 #[derive(Deserialize)]
 struct Schedules {
+    #[serde(default)]
+    include_deleted: bool,
     /// A change to make; none lists them.
     #[serde(default)]
     action: Option<crate::platform::Op>,
@@ -327,7 +329,7 @@ async fn schedules(
                 .platform
                 .schedules
                 .values()
-                .filter(|schedule| schedule.deleted_at.is_none())
+                .filter(|schedule| body.include_deleted || schedule.deleted_at.is_none())
                 .collect();
             json!(live)
         });

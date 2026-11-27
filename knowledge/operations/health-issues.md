@@ -146,6 +146,12 @@ One condition is deduplicated by organization, channel and detector. Repeated
 failures keep the same episode and preserve acknowledgments. Reappearance after
 verified recovery opens a new episode with a fresh announcement.
 
+Opening evidence is retained for each episode even as checks update current
+evidence. The issue read can select a recorded episode's opening observation;
+its current state remains separate. Collection is prospective: openings from
+before collection started remain unavailable. See
+[background evidence](background-limits.md#evidence-for-later-investigations).
+
 Only a current observation for the same channel revision can resolve an issue.
 Timeouts, unavailable scope headers and workspace mismatches retain unknown or stale
 health. A previously confirmed failure retains its missing permissions when a probe

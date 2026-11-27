@@ -111,7 +111,23 @@ async fn a_subagent_on_another_shard_answers_its_parent() {
         )
         .await;
     assert_eq!(added["has_secret"], false, "{added}");
-    let listed = fleet.get(&configs).await;
+    // Listings may hit a follower before it applies the committed add. Wait
+    // for this exact config; an acknowledged config that never appears fails.
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let listed = loop {
+        let listed = fleet.get(&configs).await;
+        if listed
+            .as_array()
+            .is_some_and(|rows| rows.iter().any(|config| config["id"] == added["id"]))
+        {
+            break listed;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "committed push config did not become visible: {listed}"
+        );
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    };
     assert_eq!(listed[0]["id"], added["id"], "{listed}");
     assert_eq!(
         listed[0]["event_filter"],
@@ -198,6 +214,53 @@ async fn a_thread_on_another_shard_finishes_its_parents_assignment() {
     assert_ne!(
         parent_shard, thread_shard,
         "the thread ran on another shard"
+    );
+}
+
+/// A thread is offered its parent tools and none of the thread tools, and
+/// a thread turn that ends without `finish` flags its parent's assignment
+/// as needing attention. Before, `start_thread` was offered inside a thread
+/// (and refused when called), and on the data plane nothing settled the
+/// assignment, so it stayed running and the parent never heard back.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_thread_that_stops_without_finishing_flags_its_parent() {
+    let mut fleet = Fleet::start().await;
+    fleet.executor(1);
+    let parent = fleet.create_in("threads", 0).await;
+    fleet
+        .say(
+            &parent,
+            r#"call start_thread {"title":"Look","brief":"tools"}"#,
+        )
+        .await;
+    fleet.turns(&parent, 1).await;
+    let thread = child_of(&fleet.events(&parent).await);
+
+    let deadline = Instant::now() + Duration::from_secs(60);
+    let task = loop {
+        let tasks = fleet.get(&format!("/v1/sessions/{parent}/tasks")).await;
+        let task = tasks[0].clone();
+        if task["state"] == "awaiting_input" {
+            break task;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "the assignment was not flagged: {tasks}\nthread: {:?}",
+            fleet.events(&thread).await
+        );
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    };
+    assert!(
+        task["input_request"]["prompt"]
+            .as_str()
+            .is_some_and(|p| p.contains("without completing")),
+        "{task}"
+    );
+    let offered = answers(&fleet.events(&thread).await).join(" ");
+    assert!(offered.contains("finish"), "parent tools: {offered}");
+    assert!(
+        !offered.contains("start_thread") && !offered.contains("list_threads"),
+        "thread tools inside a thread: {offered}"
     );
 }
 

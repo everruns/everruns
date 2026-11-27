@@ -44,6 +44,21 @@ pub async fn read(
         value.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
     };
     match read {
+        "schedules" => {
+            gateway
+                .session_command(
+                    session,
+                    "schedules",
+                    &serde_json::json!({"include_deleted": true}),
+                )
+                .await
+        }
+        "cost" => {
+            let events = crate::gateway_v1::read_events(gateway, session, 0).await?;
+            json(serde_json::to_value(
+                everruns_contracts::runtime::session_cost::cost_inputs(&events),
+            ))
+        }
         "trace" => {
             let events = crate::gateway_v1::read_events(gateway, session, 0).await?;
             json(serde_json::to_value(trace_rows(&events)))

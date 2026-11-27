@@ -5,7 +5,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import type { Memory } from "@/lib/api/types";
 
 interface ArchiveMemoryDialogProps {
-  memory: Memory | null;
+  memory: Pick<Memory, "name"> | null;
   open: boolean;
   isPending?: boolean;
   onOpenChange: (open: boolean) => void;

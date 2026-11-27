@@ -183,9 +183,20 @@ pub(crate) async fn create_on_plane(
 ) -> anyhow::Result<(String, String)> {
     let Joining {
         initial_files,
-        layer,
+        mut layer,
         importing,
     } = joining;
+    let record = cp.db.get_session(org_id, session).await?;
+    // Only the persisted, server-owned source can attach email tools. A
+    // caller-supplied capability still goes through normal write validation.
+    // Attach after that validation, before the controller replaces the ref
+    // with its own trusted MCP definition and session-token audience.
+    if record.as_ref().is_some_and(|row| row.source == "email") {
+        layer
+            .get_or_insert_with(AgentConfigOverlay::default)
+            .capabilities
+            .push(everruns_contracts::CapabilityRef::new("injected:email"));
+    }
     let (key, revision) = key_for(&cp.db, org_id, harness_id, agent_id).await?;
     agent_published(cp, &key, org_id, &revision).await?;
     let definition = match layer {
@@ -198,11 +209,7 @@ pub(crate) async fn create_on_plane(
     // the sandbox's key when the session first calls it.
     let sandbox = super::sandboxes::pinned(cp, org_id, session).await?;
     let memory = super::memory::mounts(cp, session).await?;
-    let owner = cp
-        .db
-        .get_session(org_id, session)
-        .await?
-        .and_then(|row| row.resolved_owner_user_id);
+    let owner = record.and_then(|row| row.resolved_owner_user_id);
     let plane = for_org(cp, org_id).await?;
     let public = org_public(org_id);
     let mut last = None;
@@ -301,8 +308,16 @@ impl TriggerRun<'_> {
     /// `false` for a session the platform's workers run, which takes the
     /// message the ordinary way.
     pub async fn admit(&self, cp: &ControlPlane) -> Result<bool, CommandError> {
+        Ok(self.admit_message(cp).await?.is_some())
+    }
+
+    /// The admitted input's identity, for causal links in trigger history.
+    pub async fn admit_message(
+        &self,
+        cp: &ControlPlane,
+    ) -> Result<Option<MessageId>, CommandError> {
         if !runs_on_data_plane(cp, self.org_id, self.session).await? {
-            return Ok(false);
+            return Ok(None);
         }
         let message = match &self.key {
             Some(key) => MessageId::from_uuid(uuid::Uuid::new_v5(
@@ -329,6 +344,6 @@ impl TriggerRun<'_> {
             )
             .await
             .map_err(|error| error.context("the data plane did not take the message"))?;
-        Ok(true)
+        Ok(Some(message))
     }
 }

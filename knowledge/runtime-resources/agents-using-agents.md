@@ -167,7 +167,7 @@ pass paths instead of pasting long content and to have each agent write under
   own. A session outside any run has no `/team`, and a write there stays in
   its own files.
 
-Code: `crates/server/src/domains/session_files/memory_mounts.rs`
+Code: `crates/server/src/domains/session_files/memory_mounts/mod.rs`
 (`team_folder_owner`), `ensure_run_memory` in the memory repository,
 migration `20261103075442_run_team_folder`.
 

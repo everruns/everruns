@@ -493,4 +493,54 @@ mod reads {
         assert_eq!(rows[0].0.as_deref(), Some(turn.to_string().as_str()));
         assert_eq!(rows[0].1["model"], "second");
     }
+
+    #[tokio::test]
+    async fn investigation_session_cost_uses_half_open_call_windows_and_existing_turn_attribution()
+    {
+        use crate::domains::common::{Command, Ctx};
+        use crate::domains::session_cost::GetSessionCost;
+        use std::sync::Arc;
+        let db = Arc::new(StorageBackend::test_database());
+        let session = db.create_test_session().await;
+        let org = everruns_core::DEFAULT_ORG_ID;
+        let (turn_id, rows) = turn(
+            session,
+            Some(json!({"type":"schedule","schedule_id":"sched_test"})),
+            true,
+        );
+        db.create_events(rows).await.unwrap();
+        // PostgreSQL persists timestamps to microsecond precision.
+        let at = chrono::DateTime::from_timestamp_micros(Utc::now().timestamp_micros()).unwrap();
+        sqlx::query("INSERT INTO llm_generations (org_id,session_id,turn_id,model,provider,input_tokens,output_tokens,actual_cost_usd,created_at) VALUES ($1,$2,$3,'unknown','openrouter',10,5,1,$4),($1,$2,$3,'unknown','openrouter',10,5,8,$5)")
+            .bind(org).bind(session.uuid()).bind(turn_id.uuid()).bind(at).bind(at+chrono::Duration::seconds(1))
+            .execute(db.database().pool()).await.unwrap();
+        let ctx = Ctx::minimal_for_test(everruns_core::Caller::internal(org), db.clone(), None);
+        let cost = GetSessionCost {
+            session_id: session.to_string(),
+            from: Some(at),
+            to: Some(at + chrono::Duration::seconds(1)),
+        }
+        .run(&ctx)
+        .await
+        .unwrap();
+        assert_eq!(
+            cost.total_usd, 1.0,
+            "exclusive upper bound excludes the second call"
+        );
+        assert_eq!(cost.sources[0].kind, "schedule");
+        assert_eq!(cost.sources[0].usd, 1.0);
+        assert_eq!(cost.model_calls, 1);
+        let invalid = GetSessionCost {
+            session_id: session.to_string(),
+            from: Some(at),
+            to: Some(at),
+        }
+        .run(&ctx)
+        .await
+        .unwrap_err();
+        assert!(matches!(
+            invalid.kind,
+            crate::domains::common::CommandErrorKind::BadRequest(_)
+        ));
+    }
 }

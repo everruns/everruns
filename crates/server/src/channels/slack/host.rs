@@ -694,9 +694,9 @@ impl TurnDeliveryPlanner for SlackTurnPlanner {
         let session = session_id.parse().ok();
         // A session without the approval hint gets the ask in prose: the
         // documented degradation, not a gap (EVE-1025).
-        let hints = match session {
+        let row = match session {
             Some(session) => match self.state.db.get_session(self.org_id, session).await {
-                Ok(row) => row.and_then(|row| row.hints),
+                Ok(row) => row,
                 Err(error) => {
                     tracing::warn!(%session_id, %error, "Slack delivery: could not read the session's hints");
                     None
@@ -704,6 +704,11 @@ impl TurnDeliveryPlanner for SlackTurnPlanner {
             },
             None => None,
         };
+        let acknowledge = match row.as_ref().and_then(|row| row.agent_id) {
+            Some(agent) => self.acknowledges(agent).await,
+            None => false,
+        };
+        let hints = row.and_then(|row| row.hints);
         let adapter = Arc::new(SlackTurnAdapter {
             inner: self.state.delivery_adapter.clone(),
             approval_cards: approvals_enabled(hints.as_ref()),
@@ -717,11 +722,57 @@ impl TurnDeliveryPlanner for SlackTurnPlanner {
                 }
             }),
         });
-        let options = slack_turn_options(
+        let mut options = slack_turn_options(
             surface,
             &self.config,
             session.and_then(|session| self.state.session_link(session)),
         );
+        options.acknowledge = acknowledge;
         (adapter, options)
+    }
+}
+
+impl SlackTurnPlanner {
+    /// Whether the platform reacts 👀/✅ for this agent: it talks explicitly
+    /// (its words reach Slack only through `send_message`, so nothing else
+    /// shows it got the message) and has the Reactions capability, the switch
+    /// that says it may react at all. Turning Reactions off turns this off.
+    ///
+    /// Decision (2026-11-26): a platform default rather than prompt text. The
+    /// Reactions capability's instructions asked for the same thing, and
+    /// models with a busy prompt skipped it; the agent's own reaction on the
+    /// message still takes over (`TurnDelivery::acknowledge_*`).
+    async fn acknowledges(&self, agent_id: everruns_contracts::typed_id::AgentId) -> bool {
+        let reactions = everruns_capabilities::capabilities::reactions::REACTIONS_CAPABILITY_ID;
+        let agent = match self.state.db.get_agent(self.org_id, agent_id).await {
+            Ok(Some(agent)) => agent,
+            Ok(None) => return false,
+            Err(error) => {
+                tracing::warn!(%agent_id, %error, "Slack delivery: could not read the agent");
+                return false;
+            }
+        };
+        if !everruns_contracts::runtime::conversation::Communication::from_wire(Some(
+            &agent.communication,
+        ))
+        .is_explicit()
+        {
+            return false;
+        }
+        let own = self
+            .state
+            .db
+            .get_agent_capabilities(agent.id.uuid())
+            .await
+            .map(|rows| rows.iter().any(|row| row.capability_id == reactions))
+            .unwrap_or(false);
+        own || crate::domains::harnesses::queries::get_capabilities(
+            &self.state.db,
+            self.org_id,
+            agent.harness_id.uuid(),
+        )
+        .await
+        .map(|capabilities| capabilities.iter().any(|c| c.capability_id() == reactions))
+        .unwrap_or(false)
     }
 }

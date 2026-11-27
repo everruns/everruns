@@ -74,6 +74,16 @@ class ReleaseSourceTests(unittest.TestCase):
         self.assertEqual((result["is_release"], result["is_latest"]), ("false", "false"))
         self.assertEqual(json.loads(result["arches"]), ["amd64", "arm64"])
 
+    def test_snapshot_may_ask_for_amd64_only_and_a_release_may_not(self):
+        env = self.env()
+        env.update(INPUT_TAG="", INPUT_AMD64_ONLY="true")
+        result = source.resolve(env)
+        self.assertEqual((result["platforms"], json.loads(result["arches"])), ("linux/amd64", ["amd64"]))
+        env = self.env()
+        env.update(EVENT_NAME="push", GIT_REF="refs/tags/v0.46.0", REF_NAME="v0.46.0",
+                   COMMIT_SHA=RELEASE, INPUT_AMD64_ONLY="true")
+        self.assertEqual(json.loads(source.resolve(env)["arches"]), ["amd64", "arm64"])
+
     def test_snapshot_from_other_branch_rejected(self):
         for ref in ("refs/heads/feature", "refs/tags/v0.46.0"):
             env = self.env()

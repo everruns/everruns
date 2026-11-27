@@ -1260,7 +1260,11 @@ impl ChannelHost {
         let events = self
             .inner
             .port
-            .events(&channel.config, session_id, None)
+            .events(
+                &channel.config,
+                session_id,
+                driver.durable_intake().then_some(0),
+            )
             .await?;
         let outcome = self
             .inner

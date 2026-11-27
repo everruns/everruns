@@ -1419,6 +1419,16 @@ impl ServerAppBuilder {
         // resolves every channel type, so one loop covers them all.
         if let Some(channels) = channel_recovery {
             supervisor.track(
+                "email_intake",
+                crate::channels::email::worker::Worker {
+                    db: Arc::new(db.for_background()),
+                    encryption: encryption.clone(),
+                    channels: channels.clone(),
+                    decisions: relevance.clone(),
+                }
+                .spawn(),
+            );
+            supervisor.track(
                 "channel_delivery_recovery",
                 channels
                     .host

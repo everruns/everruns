@@ -38,8 +38,7 @@ use everruns_contracts::typed_id::{AgentId, SessionId, TriggerId};
 use everruns_core::InputContentPart;
 use everruns_core::channel::SessionBinding;
 use everruns_durable::{
-    CreateScheduleRow, Pagination as DurablePagination, ScheduleExecutionFilter,
-    ScheduleTargetType, StoreError, UpdateSchedule, WorkflowEventStore,
+    CreateScheduleRow, ScheduleTargetType, StoreError, UpdateSchedule, WorkflowEventStore,
 };
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -653,7 +652,7 @@ pub struct UpdateAgentTriggerCmd {
     method = "PATCH",
     path = "/v1/platform/agents/{agent_id}/triggers/{trigger_id}",
     policy = AGENT_MANAGE,
-    cli = CliRoute::new(&["agents", "triggers"], "update").with_examples(&[CliExample::new("Pause a trigger without deleting it", "everruns agents triggers update --agent-id agent_01h9 --trigger-id trg_01h9 --enabled false --reason 'Pause during the migration'")]),
+    cli = CliRoute::new(&["agents", "triggers"], "update").with_examples(&[CliExample::new("Pause a trigger without deleting it", "everruns agents triggers update --agent-id agent_01h9 --trigger-id trg_01h9 --enabled false --reason 'Pause during the migration'"), CliExample::new("Post a schedule's runs into a Slack channel conversation (the result shows it as .config.target)", "everruns agents triggers update --agent-id agent_01h9 --trigger-id trg_01h9 --target-channel-id appchan_01h9 --target-binding-key slack:channel:C0123456789 --reason 'Report in #ops'")]),
 )]
 impl Command for UpdateAgentTriggerCmd {
     type Output = AgentTrigger;
@@ -937,13 +936,6 @@ impl Command for TriggerAgentTriggerNow {
                 "This trigger runs on events: pass the event to fire it with",
             ));
         }
-        let session_service = ctx.session_service.as_ref().ok_or_else(|| {
-            CommandError::internal(anyhow::anyhow!("Session service not available"))
-        })?;
-        let message_service = ctx.message_service.as_ref().ok_or_else(|| {
-            CommandError::internal(anyhow::anyhow!("Message service not available"))
-        })?;
-        let trigger_id = parse_trigger_id(&self.trigger_id)?;
         let execution_id = if let Some(schedule_id) = trigger.durable_schedule_id {
             Some(
                 durable_store(ctx)?
@@ -954,20 +946,47 @@ impl Command for TriggerAgentTriggerNow {
         } else {
             None
         };
-        let result = invoke_agent_trigger(
-            &ctx.db,
-            session_service,
-            message_service,
-            ctx.channels.as_deref(),
-            ctx.encryption.as_ref(),
-            ctx.org_id(),
-            &agent.public_id,
-            &trigger_id.to_string(),
+        if let Some(execution_id) = execution_id {
+            ctx.db
+                .database()
+                .record_manual_trigger_run(
+                    ctx.org_id(),
+                    trigger.id,
+                    execution_id,
+                    ctx.caller.user_id,
+                    trigger.updated_at,
+                    &json!({"trigger_type":trigger.trigger_type,"cron_expression":trigger.config.get("cron_expression"),"timezone":trigger.config.get("timezone"),"session_mode":trigger.config.get("session_mode")}),
+                )
+                .await?;
+        }
+        let result = super::manual::fire(
+            ctx,
+            &agent,
+            &trigger,
+            super::manual::ManualTriggerEvent::default(),
         )
-        .await;
+        .await
+        .and_then(|result| {
+            Ok(AgentTriggerInvocationResult {
+                session_id: result.session_id.ok_or_else(|| {
+                    CommandError::internal(anyhow::anyhow!("manual schedule did not dispatch"))
+                })?,
+                created_session: result.created_session,
+                input_message_id: result.input_message_id,
+            })
+        });
         let result = match result {
             Ok(result) => {
                 if let Some(execution_id) = execution_id {
+                    ctx.db
+                        .database()
+                        .finish_manual_trigger_run(
+                            ctx.org_id(),
+                            trigger.id,
+                            execution_id,
+                            result.input_message_id.map(|id| id.uuid()),
+                        )
+                        .await?;
                     durable_store(ctx)?
                         .complete_schedule_execution(execution_id, result.session_id.uuid(), false)
                         .await
@@ -978,7 +997,10 @@ impl Command for TriggerAgentTriggerNow {
             Err(err) => {
                 if let Some(execution_id) = execution_id {
                     durable_store(ctx)?
-                        .fail_schedule_execution(execution_id, &err.to_string())
+                        .fail_schedule_execution(
+                            execution_id,
+                            &events::failure_reason(&err, trigger.id),
+                        )
                         .await
                         .map_err(|store_err| classify_anyhow(store_err.into()))?;
                 }
@@ -1000,6 +1022,9 @@ impl Command for TriggerAgentTriggerNow {
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct AgentTriggerInvocationResult {
+    /// Input that started the turn; older receipts or channel deliveries can lack it.
+    #[serde(default)]
+    pub input_message_id: Option<everruns_contracts::typed_id::MessageId>,
     /// Session's prefixed public identifier.
     pub session_id: SessionId,
     pub created_session: bool,
@@ -1258,7 +1283,7 @@ pub(super) async fn dispatch_trigger_message(
     rendered_message: String,
     script: Option<&everruns_contracts::runtime::saved_scripts::ScriptRun>,
     request_id: Option<String>,
-) -> Result<(), CommandError> {
+) -> Result<Option<everruns_contracts::typed_id::MessageId>, CommandError> {
     // Data plane v2 (step 11.4): a session the org's data plane runs takes
     // the run there (`data_plane::sessions::TriggerRun`).
     let origin = trigger_origin(trigger_id, trigger_type);
@@ -1272,8 +1297,8 @@ pub(super) async fn dispatch_trigger_message(
         origin: &origin,
         script,
     };
-    if run.admit(&message_service.data_plane()).await? {
-        return Ok(());
+    if let Some(message) = run.admit_message(&message_service.data_plane()).await? {
+        return Ok(Some(message));
     }
     let metadata = Some(
         [
@@ -1319,10 +1344,10 @@ pub(super) async fn dispatch_trigger_message(
         external_actor: None,
         client_message_id: None,
     };
-    message_service
+    let message = message_service
         .create_with_origin(ctx, req, origin, script)
         .await?;
-    Ok(())
+    Ok(Some(message.id))
 }
 
 /// Who wrote a trigger's message. Triggers have no name of their own, so the

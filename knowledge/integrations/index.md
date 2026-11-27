@@ -48,3 +48,5 @@
 * [Model Router Specification](model-router.md) - Model Routers.
 
 * [Work Chat Channels](work-chat.md) - Published consumer work experiences and qualified interface modes.
+
+* [Email inbox channels](email.md) - Provider accounts, durable batch triage, progressive reads and governed replies.

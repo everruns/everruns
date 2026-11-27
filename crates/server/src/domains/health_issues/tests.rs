@@ -74,6 +74,11 @@ async fn seed_agent(db: &StorageBackend) -> String {
 }
 
 pub(super) async fn fixture() -> (Arc<StorageBackend>, Ctx, crate::storage::IngressChannelRow) {
+    fixture_with(json!({"bot_token":"xoxb-test","signing_secret":"test","team_id":"T1"})).await
+}
+async fn fixture_with(
+    channel_config: serde_json::Value,
+) -> (Arc<StorageBackend>, Ctx, crate::storage::IngressChannelRow) {
     let db = Arc::new(StorageBackend::test_database());
     let agent = seed_agent(&db).await;
     let internal = Ctx::minimal_for_test(Caller::internal(DEFAULT_ORG_ID), db.clone(), None);
@@ -81,7 +86,7 @@ pub(super) async fn fixture() -> (Arc<StorageBackend>, Ctx, crate::storage::Ingr
         agent_id: agent,
         req: CreateAgentChannelRequest {
             channel_type: ChannelType::Slack,
-            channel_config: json!({"bot_token":"xoxb-test","signing_secret":"test","team_id":"T1"}),
+            channel_config,
             enabled: true,
         },
     }
@@ -185,6 +190,7 @@ async fn reading_and_repeated_failures_do_not_resolve_or_duplicate_an_issue() {
     assert_eq!(list(&ctx).await.total, 0);
     assert_eq!(
         GetHealthIssue {
+            episode_id: None,
             issue_id: first.data[0].id
         }
         .run(&ctx)
@@ -307,6 +313,7 @@ async fn denied_policy_revoked_membership_and_other_org_cannot_read_health() {
     let mut other = Ctx::minimal_for_test(Caller::internal(999), db.clone(), None);
     assert!(
         GetHealthIssue {
+            episode_id: None,
             issue_id: first.data[0].id
         }
         .run(&other)
@@ -352,6 +359,67 @@ async fn granted_scopes_verify_without_mutating_slack() {
         .unwrap();
     assert_eq!(list(&ctx).await.total, 0);
     assert_eq!(mock.received_requests().await.unwrap().len(), 1);
+}
+#[tokio::test]
+async fn a_bot_outside_its_bound_channel_is_an_issue_until_invited() {
+    let (db, ctx, row) = fixture_with(json!({
+        "bot_token":"xoxb-test","signing_secret":"test","team_id":"T1","channel_id":"C0PRIVATE"
+    }))
+    .await;
+    let mock = MockServer::start().await;
+    let scopes = crate::domains::agent_channels::record::slack_channel::slack_bot_scopes(false);
+    Mock::given(method("POST"))
+        .and(path("/auth.test"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("x-oauth-scopes", scopes.join(","))
+                .set_body_json(json!({"ok":true,"team_id":"T1"})),
+        )
+        .mount(&mock)
+        .await;
+    // A private channel the bot was never invited to is invisible to it.
+    let history = Mock::given(method("POST"))
+        .and(path("/conversations.history"))
+        .and(wiremock::matchers::body_string_contains(
+            "channel=C0PRIVATE",
+        ))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(json!({"ok":false,"error":"channel_not_found"})),
+        )
+        .expect(1)
+        .mount_as_scoped(&mock)
+        .await;
+    let check = || async {
+        service::SlackHealthService::new(db.clone(), None)
+            .with_api_base(mock.uri())
+            .check(&row.channel_public_id)
+            .await
+            .unwrap()
+    };
+    check().await;
+    let issues = list(&ctx).await;
+    assert_eq!(issues.total, 1);
+    let stored = db
+        .get_health_issue(row.org_id, issues.data[0].id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(stored.error_code.as_deref(), Some(service::NOT_IN_CHANNEL));
+    assert!(stored.missing_scopes.is_empty());
+    let (title, body) = service::issue_copy(&stored);
+    assert_eq!(title, "Slack bot is not in its channel");
+    assert!(body.contains("/invite"), "{body}");
+    drop(history);
+
+    // Once invited, Slack reads the channel and the issue resolves.
+    Mock::given(method("POST"))
+        .and(path("/conversations.history"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"ok":true,"messages":[]})))
+        .mount(&mock)
+        .await;
+    check().await;
+    assert_eq!(list(&ctx).await.total, 0);
 }
 #[tokio::test]
 async fn absent_scope_header_and_wrong_workspace_never_report_healthy() {
@@ -538,4 +606,90 @@ async fn active_turn_limit_issue_opens_reopens_and_resolves_below_the_limit() {
         .unwrap();
     assert_eq!(reopened.status, "open");
     assert_ne!(reopened.episode_id, opened.episode_id);
+}
+
+#[tokio::test]
+async fn investigation_opening_evidence_survives_rechecks_and_episode_changes() {
+    use crate::storage::background_work::SubjectHealthIssue;
+    let db = Arc::new(StorageBackend::test_database());
+    let ctx = Ctx::minimal_for_test(
+        everruns_core::Caller::internal(everruns_core::DEFAULT_ORG_ID),
+        db.clone(),
+        None,
+    );
+    let at = Utc::now();
+    let observation = |status, amount, checked_at| SubjectHealthIssue {
+        org_id: ctx.org_id(),
+        code: "agent.unattended_spend_spike",
+        subject_id: "agent:test",
+        agent_id: None,
+        session_id: None,
+        status,
+        evidence: json!({"last_day_usd":amount,"evaluation":{"from":"2026-11-24T04:13:00Z","to":"2026-11-25T04:13:00Z"}}),
+        checked_at,
+    };
+    let opened = db
+        .observe_subject_health_issue(observation("open", 6.61, at))
+        .await
+        .unwrap()
+        .unwrap();
+    db.observe_subject_health_issue(observation("open", 7.0, at + chrono::Duration::seconds(1)))
+        .await
+        .unwrap();
+    let read = |episode_id| GetHealthIssue {
+        issue_id: opened.id,
+        episode_id,
+    };
+    let issue = read(None).run(&ctx).await.unwrap();
+    assert_eq!(issue.evidence.unwrap()["last_day_usd"], json!(7.0));
+    let frozen = issue.opening_observation.unwrap();
+    assert_eq!(frozen.evidence.unwrap()["last_day_usd"], json!(6.61));
+    assert_eq!(frozen.observed_at.timestamp_micros(), at.timestamp_micros());
+    db.observe_subject_health_issue(observation(
+        "resolved",
+        0.0,
+        at + chrono::Duration::seconds(2),
+    ))
+    .await
+    .unwrap();
+    db.observe_subject_health_issue(observation("open", 8.0, at + chrono::Duration::seconds(3)))
+        .await
+        .unwrap();
+    assert_ne!(
+        read(None).run(&ctx).await.unwrap().episode_id,
+        opened.episode_id
+    );
+    let original = read(Some(opened.episode_id))
+        .run(&ctx)
+        .await
+        .unwrap()
+        .opening_observation
+        .unwrap();
+    assert_eq!(original.evidence.unwrap()["last_day_usd"], json!(6.61));
+    // A recheck cannot invent the opening evidence of an older uncaptured episode.
+    sqlx::query("DELETE FROM health_issue_observations WHERE issue_id=$1")
+        .bind(opened.id)
+        .execute(db.database().pool())
+        .await
+        .unwrap();
+    db.observe_subject_health_issue(observation("open", 9.0, at + chrono::Duration::seconds(4)))
+        .await
+        .unwrap();
+    assert!(
+        read(None)
+            .run(&ctx)
+            .await
+            .unwrap()
+            .opening_observation
+            .is_none()
+    );
+    let other = Ctx::minimal_for_test(everruns_core::Caller::internal(ctx.org_id() + 1), db, None);
+    assert!(matches!(
+        read(Some(opened.episode_id))
+            .run(&other)
+            .await
+            .unwrap_err()
+            .kind,
+        CommandErrorKind::NotFound(_)
+    ));
 }

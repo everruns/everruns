@@ -27,6 +27,8 @@ everruns sandbox-template-metadata get [OPTIONS] --id <id>
 |---|---|
 | `--id <ID>` | Required. Prefixed identifier with 'sbxtpl' prefix. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -47,6 +49,8 @@ everruns sandbox-template-metadata update [OPTIONS] --id <id>
 | `--description <DESCRIPTION>` |  |
 | `--display-name <DISPLAY_NAME>` |  |
 | `--id <ID>` | Required. Prefixed identifier with 'sbxtpl' prefix. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 

@@ -1,0 +1,71 @@
+export const messages: Record<string, string> = {
+  "Add inbox": "Ajouter une boîte",
+  "Approve agent execution": "Autoriser l’exécution de l’agent",
+  "Approve and send this reply": "Approuver et envoyer cette réponse",
+  "Automatically run the agent after admission checks":
+    "Exécuter automatiquement l’agent après les vérifications d’admission",
+  "Automatically send replies after output checks":
+    "Envoyer automatiquement les réponses après vérification",
+  "Clean view": "Vue épurée",
+  "Connect an account for organization email inboxes.":
+    "Connectez un compte pour les boîtes de l’organisation.",
+  "Could not load email data": "Impossible de charger les données des e-mails",
+  "Delivery not yet verified": "Livraison pas encore vérifiée",
+  Email: "E-mail",
+  "Email address": "Adresse e-mail",
+  "Email content is untrusted. Clean view may omit quoted content.":
+    "Le contenu du courriel n’est pas fiable. La vue nettoyée peut masquer les citations.",
+  "Email inbox": "Boîte e-mail",
+  "Email preview": "Aperçu de l’e-mail",
+  "Full message": "Message complet",
+  Inbox: "Boîte de réception",
+  Inboxes: "Boîtes de réception",
+  "Manage inboxes": "Gérer les boîtes",
+  "Manage inboxes, provider accounts and email templates.":
+    "Gérez les boîtes, les comptes fournisseurs et les modèles d’e-mails.",
+  Name: "Nom",
+  "Needs an inbox provider account": "Nécessite un compte fournisseur de messagerie",
+  "No incoming email yet": "Aucun e-mail reçu pour le moment",
+  "No subject": "Sans objet",
+  "One inbox connects to one agent. Each correspondent has a separate conversation.":
+    "Une boîte est liée à un agent. Chaque correspondant dispose d’une conversation distincte.",
+  "Organization admin access required": "Accès administrateur de l’organisation requis",
+  "Outgoing replies": "Réponses sortantes",
+  "People email the agent. It reads selected messages and replies in the same thread.":
+    "Les personnes écrivent à l’agent par e-mail. Il lit les messages sélectionnés et répond dans le même fil.",
+  Preview: "Aperçu",
+  "Sample variables": "Variables d’exemple",
+  "Save template": "Enregistrer le modèle",
+  "Select account": "Sélectionner un compte",
+  "Select inbox": "Sélectionner une boîte",
+  Subject: "Objet",
+  "Template name": "Nom du modèle",
+  Templates: "Modèles",
+  "Uncertain messages and replies remain held for review.":
+    "Les messages et réponses incertains restent en attente de vérification.",
+  "Webhook URL": "URL du webhook",
+  "Webhook signing secret": "Secret de signature du webhook",
+  "What should this inbox answer?": "À quelles demandes cette boîte doit-elle répondre ?",
+  "Reply template": "Modèle de réponse",
+  "Automatic text and HTML": "Texte et HTML automatiques",
+  "Dismiss message": "Ignorer le message",
+  "Reject reply": "Refuser la réponse",
+  Waiting: "En attente",
+  Reviewing: "En cours de vérification",
+  Ready: "Prêt",
+  Running: "En cours",
+  Completed: "Terminé",
+  Ignored: "Ignoré",
+  "Needs review": "À vérifier",
+  Deferred: "Reporté",
+  Failed: "Échec",
+  Sending: "Envoi en cours",
+  Sent: "Envoyé",
+  "Delivery uncertain": "Livraison incertaine",
+  "Approve execution to let the agent handle this message.":
+    "Autorisez l’exécution pour que l’agent traite ce message.",
+  "Sender authentication or provider checks require review.":
+    "L’authentification de l’expéditeur ou les contrôles du fournisseur nécessitent une vérification.",
+  "Automatic checks could not approve this message.":
+    "Les contrôles automatiques n’ont pas pu approuver ce message.",
+};

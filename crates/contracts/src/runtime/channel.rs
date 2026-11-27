@@ -456,6 +456,29 @@ pub trait ChannelDeliveryAdapter: Send + Sync {
         false
     }
 
+    /// Email-like transports deliver a successful turn's completed answer as
+    /// one message. Explicit conversation messages still send individually.
+    /// Working notes, partial failed turns and automatic notices stay private.
+    /// Whether repeating the same reply after an interrupted receipt is safe.
+    /// Implementations must persist a stable deduplication key before returning.
+    fn idempotent_replies(&self) -> bool {
+        false
+    }
+
+    fn aggregate_replies(&self) -> bool {
+        false
+    }
+
+    /// A durable inbox can replay a stable runtime input after a handoff crash.
+    fn durable_intake(&self) -> bool {
+        false
+    }
+
+    /// Idempotent host bookkeeping once a turn's reply handling finishes.
+    async fn turn_finished(&self, _context: &DeliveryContext, _event_type: &str) -> DeliveryResult {
+        DeliveryResult::Ok
+    }
+
     /// Deliver a message to the platform channel.
     ///
     /// Called by the generic delivery dispatcher when agent output is ready.

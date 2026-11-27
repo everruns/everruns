@@ -40,7 +40,7 @@ Before the tree, Worker sat on Worker Base and included bash. Reconciliation det
 
 Web access, secrets/KV tools, arbitrary organization memory mounts, retrieval/citations and session scheduling are opt-in. Recurring agent execution belongs to Agent Triggers. Enforced budgets, permissions, cancellation and durable execution remain infrastructure guarantees at every level.
 
-Filesystem access includes the server-managed agent and owner memory paths described by [memory](../runtime-resources/memory.md). Omitting the organization-memory capability does not disable those paths. Sandbox policies choose the execution target within the rule the harness sets.
+Filesystem access includes the server-managed agent and owner memory paths described by [memory](../runtime-resources/memory.md). Without the `agent_memory` capability only the legacy agent and owner memory mounts remain. Sandbox policies choose the execution target within the rule the harness sets.
 
 Subagents are bundled in Worker and remain independently composable on lower foundations. Ordinary children inherit their parent's harness and agent; blueprints supply specialist behavior. Existing depth and root-tree task limits apply. The task registry supplies monitoring, messaging, cancellation and waiting.
 

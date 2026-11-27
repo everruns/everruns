@@ -29,6 +29,8 @@ everruns tracing destinations get [OPTIONS] --id <id>
 |---|---|
 | `--id <ID>` | Required. Destination identifier owned by the current organization. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -50,6 +52,8 @@ everruns tracing destinations update [OPTIONS] --id <id>
 | `--id <ID>` | Required. Destination identifier owned by the current organization. |
 | `--name <NAME>` | Human-readable destination name, from 1 to 128 characters. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -68,6 +72,8 @@ everruns tracing routing get [OPTIONS] --id <id>
 | Flag | Description |
 |---|---|
 | `--id <ID>` | Required. Organization public ID or agent public ID whose routing policy is selected. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -90,6 +96,8 @@ everruns tracing routing update [OPTIONS] --destination-ids <destination_ids> --
 | `--expected-revision <EXPECTED_REVISION>` | Current policy revision; omit to use the revision read during this command. |
 | `--id <ID>` | Required. Organization public ID or agent public ID whose routing policy is selected. |
 | `--mode <MODE>` | Required. How an agent combines its destinations with organization defaults. One of `inherit`, `add`, `replace`, `off`. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 

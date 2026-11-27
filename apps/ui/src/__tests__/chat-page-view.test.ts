@@ -85,3 +85,12 @@ it("identifies Extractions without exposing extraction or provider data to page 
     expect(isPageQuery([resource, "org_1"], page, "org_1")).toBe(false);
   }
 });
+
+it("identifies Email without exposing inbox or provider data to page chat", () => {
+  const page = pageLocation("/email");
+  expect(page).toMatchObject({ entity_type: "email", label: "Email" });
+  expect(page.entity_id).toBeUndefined();
+  for (const resource of ["email", "organization-connections", "email-templates"]) {
+    expect(isPageQuery([resource, "org_1"], page, "org_1")).toBe(false);
+  }
+});

@@ -1,10 +1,13 @@
 use super::{SeedAgent, SeedCapability, seed_ids};
+use everruns_contracts::runtime::conversation::Communication;
 
 // Seed agent ID range 0x100-0x1FF is listed in `seed_ids` (seed.rs); this one
 // lives here because seed.rs is size-ratcheted.
 const MODAL_CODER_AGENT: uuid::Uuid = uuid::Uuid::from_u128(0x0195bb5a_0000_7000_8000_000000000118);
 const SLACK_TEAM_ASSISTANT_AGENT: uuid::Uuid =
     uuid::Uuid::from_u128(0x0195bb5a_0000_7000_8000_000000000119);
+const SLACK_CHANNEL_COORDINATOR_AGENT: uuid::Uuid =
+    uuid::Uuid::from_u128(0x0195bb5a_0000_7000_8000_00000000011a);
 
 /// Built-in seed agents
 pub(crate) const SEED_AGENTS: &[SeedAgent] = &[
@@ -31,6 +34,7 @@ Example jokes you might tell:
         tags: &["humor", "demo", "seed"],
         capabilities: &[SeedCapability::new("current_time")],
         dev_only: false,
+        communication: Communication::Direct,
     },
     SeedAgent {
         id: seed_ids::RESEARCH_AGENT,
@@ -90,6 +94,7 @@ Use this structure for organizing research:
             SeedCapability::new("session_file_system"),
         ],
         dev_only: false,
+        communication: Communication::Direct,
     },
     SeedAgent {
         id: seed_ids::MS_LEARN_AGENT,
@@ -131,6 +136,7 @@ You have access to Microsoft Learn MCP tools that allow you to:
             "mcp:01933b5a-0000-7000-8000-000000000501",
         )],
         dev_only: false,
+        communication: Communication::Direct,
     },
     SeedAgent {
         id: seed_ids::SHELL_ASSISTANT_AGENT,
@@ -191,6 +197,7 @@ Files you create are stored in the session's virtual filesystem:
             SeedCapability::new("session_file_system"),
         ],
         dev_only: false,
+        communication: Communication::Direct,
     },
     SeedAgent {
         id: seed_ids::DATA_ANALYST_AGENT,
@@ -235,6 +242,7 @@ When users provide data (CSV, JSON, or raw values):
             SeedCapability::new("data_knowledge"),
         ],
         dev_only: false,
+        communication: Communication::Direct,
     },
     SeedAgent {
         id: seed_ids::IMAGE_STUDIO_AGENT,
@@ -260,6 +268,7 @@ Keep prompts concrete: subject, composition, lighting, materials, color palette,
             SeedCapability::new("session_file_system"),
         ],
         dev_only: false,
+        communication: Communication::Direct,
     },
     SeedAgent {
         id: seed_ids::CURSOR_AGENT_MANAGER,
@@ -294,6 +303,7 @@ Do not use `cursor_list_repositories` repeatedly; Cursor rate-limits that endpoi
             SeedCapability::new("session_file_system"),
         ],
         dev_only: false,
+        communication: Communication::Direct,
     },
     SeedAgent {
         id: seed_ids::E2B_CODER_AGENT,
@@ -321,6 +331,7 @@ Delete sandboxes when work is complete; pause only when the user explicitly want
             SeedCapability::new("session_file_system"),
         ],
         dev_only: false,
+        communication: Communication::Direct,
     },
     SeedAgent {
         id: MODAL_CODER_AGENT,
@@ -348,7 +359,8 @@ Always terminate sandboxes when done to stop charges."#,
             SeedCapability::new("session_storage"),
             SeedCapability::new("session_file_system"),
         ],
-        dev_only: true, // Experimental: the modal capability is dev-grade only
+        dev_only: true,
+        communication: Communication::Direct, // Experimental: the modal capability is dev-grade only
     },
     SeedAgent {
         id: seed_ids::GUARDED_BASH_AGENT,
@@ -389,6 +401,7 @@ Always terminate sandboxes when done to stop charges."#,
             }),
         ],
         dev_only: false,
+        communication: Communication::Direct,
     },
     SeedAgent {
         id: seed_ids::PLATFORM_MANAGER_AGENT,
@@ -408,6 +421,7 @@ Discover command names and schemas instead of guessing. Use read-only queries fo
             SeedCapability::new("current_time"),
         ],
         dev_only: false,
+        communication: Communication::Direct,
     },
     SeedAgent {
         id: seed_ids::WEB_RESEARCHER_AGENT,
@@ -453,6 +467,7 @@ Structure your responses with:
             SeedCapability::new("current_time"),
         ],
         dev_only: true,
+        communication: Communication::Direct,
     },
     SeedAgent {
         id: seed_ids::BROWSER_TESTER_AGENT,
@@ -529,6 +544,7 @@ Get a token at https://www.browserless.io/account/home"#,
             SeedCapability::new("session_storage"),
         ],
         dev_only: false,
+        communication: Communication::Direct,
     },
     SeedAgent {
         id: seed_ids::DASHBOARD_BUILDER_AGENT,
@@ -592,6 +608,7 @@ This shows your key metrics at the top, revenue trend in the middle, and recent 
         tags: &["dashboard", "ui", "visualization", "openui", "demo", "seed"],
         capabilities: &[SeedCapability::new("openui")],
         dev_only: false,
+        communication: Communication::Direct,
     },
     SeedAgent {
         id: seed_ids::TASK_ORCHESTRATOR_AGENT,
@@ -631,6 +648,7 @@ User: "Analyze my codebase and suggest improvements"
             SeedCapability::new("current_time"),
         ],
         dev_only: false,
+        communication: Communication::Direct,
     },
     SeedAgent {
         id: seed_ids::KNOWLEDGE_BASE_AGENT,
@@ -665,6 +683,7 @@ Your memory is files that persist across sessions, read and written with the fil
             SeedCapability::new("current_time"),
         ],
         dev_only: false,
+        communication: Communication::Direct,
     },
     // The Slack example shows a channel agent's whole shape: Reactions for the
     // default 👀/✅ acknowledgement, Slack for acting in the workspace, and a
@@ -700,6 +719,62 @@ rest of the conversation."#,
             SeedCapability::new("current_time"),
         ],
         dev_only: false,
+        communication: Communication::Direct,
+    },
+    // A scheduled coordinator that lives in one Slack channel: a schedule
+    // wakes it, the channel is its conversation, blocked work is tagged to
+    // its owner and a daily report closes the day. Explicit communication, so
+    // working notes stay out of the channel and Everruns adds the 👀/✅
+    // acknowledgement itself. Setup after adopting (channel, install, invite,
+    // triggers aimed at the channel) is in the authoring skill's "Scheduled
+    // coordinator in a Slack channel" section.
+    SeedAgent {
+        id: SLACK_CHANNEL_COORDINATOR_AGENT,
+        name: "slack-channel-coordinator",
+        harness_name: "conversation",
+        display_name: "Slack Channel Coordinator",
+        description: "Runs a recurring job on a schedule and reports in one Slack channel: answers people there, tags the owner on anything blocked, and posts a daily report.",
+        system_prompt: r#"You are a coordinator that works in one Slack channel. A schedule wakes you
+to do recurring work, and people talk to you in the same channel.
+
+## Your job
+
+Replace this section with the recurring work: what to check, where, and what "done" means.
+List the owners here, with their Slack user IDs, so you can tag them:
+- Example: deployments and CI: <@U0123456789>
+
+## How you talk
+
+People see only what you send with `send_message`; everything else is your notes.
+- Post in the channel, in the conversation the run or message came from.
+- When a job will take a while, send one short line first saying what you are doing, then
+  send the result.
+- Keep messages short and easy to skim. Link to what you mention.
+- When something is blocked on a person, say what is blocked, why, and what they need to
+  do, and tag its owner from the list above. Tag each owner once per item, not on every run.
+- When a message in the channel is not for you (people talking among themselves), call
+  `no_reply`.
+
+## Scheduled runs
+
+A run that starts from a schedule has no person waiting on it. Do the work, then post one
+message with what changed. Post nothing when nothing changed and nothing is blocked.
+
+## Daily report
+
+When the run's message asks for the daily report, post one message:
+1. Done today, with links.
+2. Blocked, each item with its owner tagged.
+3. Anything that needs a decision.
+Do not start new work in that run."#,
+        tags: &["slack", "schedule", "coordinator", "channels", "example"],
+        capabilities: &[
+            SeedCapability::new("reactions"),
+            SeedCapability::new("slack"),
+            SeedCapability::new("current_time"),
+        ],
+        dev_only: false,
+        communication: Communication::Explicit,
     },
     SeedAgent {
         id: seed_ids::CAPABILITY_SCOUT_AGENT,
@@ -748,6 +823,7 @@ only on the tools you start with.
             SeedCapability::new("auto_tool_search"),
             SeedCapability::new("current_time"),
         ],
-        dev_only: true, // Experimental capability, only in dev environments
+        dev_only: true,
+        communication: Communication::Direct, // Experimental capability, only in dev environments
     },
 ];

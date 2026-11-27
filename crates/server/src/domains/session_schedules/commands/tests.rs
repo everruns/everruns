@@ -370,3 +370,115 @@ fn internal_commands_are_on_no_public_surface() {
         );
     }
 }
+
+#[tokio::test]
+async fn investigation_public_schedule_reads_keep_history_and_enforce_parent_and_tenant() {
+    let db = Arc::new(StorageBackend::test_database());
+    let first = session(&db, DEFAULT_ORG_ID).await;
+    let second = session(&db, DEFAULT_ORG_ID).await;
+    let ctx = worker_ctx(db.clone());
+    let created = run(
+        &ctx,
+        "worker_create_session_schedule",
+        json!({
+            "session_id": first, "description":"Check the build", "timezone":"UTC",
+            "scheduled_at": chrono::Utc::now() + chrono::Duration::hours(1)
+        }),
+    )
+    .await
+    .unwrap();
+    let schedule: everruns_contracts::typed_id::ScheduleId =
+        created["id"].as_str().unwrap().parse().unwrap();
+    crate::domains::session_schedules::SessionScheduleService::new(db.clone())
+        .delete(DEFAULT_ORG_ID, schedule)
+        .await
+        .unwrap();
+    let history = run(&ctx, "list_session_schedules", json!({"session_id":first}))
+        .await
+        .unwrap();
+    assert_eq!(history.as_array().unwrap().len(), 1);
+    assert!(history[0]["deleted_at"].is_string());
+    let surface = crate::worker_link::platform_command_surface::CatalogContext {
+        domain_ctx: ctx.clone(),
+        link_builder: crate::resource_links::UrlBuilder::new(
+            "http://localhost/api",
+            "http://localhost",
+        ),
+    };
+    let native = crate::worker_link::platform_command_surface::invoke(
+        crate::worker_link::platform_command_surface::Operation::Run,
+        &json!({"command":"list_session_schedules","params":{"session_id":first}}),
+        surface.clone(),
+    )
+    .await
+    .unwrap();
+    let cli = crate::worker_link::platform_command_surface::invoke(
+        crate::worker_link::platform_command_surface::Operation::Query,
+        &json!({"commands":format!("everruns sessions schedules list --session-id {first}")}),
+        surface.clone(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        serde_json::from_str::<Value>(&native).unwrap(),
+        serde_json::from_str::<Value>(&cli).unwrap()
+    );
+    crate::worker_link::platform_command_surface::invoke(
+        crate::worker_link::platform_command_surface::Operation::Query,
+        &json!({"commands":"everruns costs summary get --group-by agent,session,source,started_by"}),surface
+    ).await.unwrap();
+    let found = run(
+        &ctx,
+        "get_session_schedule",
+        json!({"session_id":first,"schedule_id":schedule}),
+    )
+    .await
+    .unwrap();
+    assert_eq!(found["description"], "Check the build");
+    assert!(matches!(
+        run(
+            &ctx,
+            "get_session_schedule",
+            json!({"session_id":second,"schedule_id":schedule})
+        )
+        .await
+        .unwrap_err()
+        .kind,
+        CommandErrorKind::NotFound(_)
+    ));
+    let other = Ctx::minimal_for_test(Caller::internal(DEFAULT_ORG_ID + 1), db, None);
+    assert!(matches!(
+        run(
+            &other,
+            "list_session_schedules",
+            json!({"session_id":first})
+        )
+        .await
+        .unwrap_err()
+        .kind,
+        CommandErrorKind::NotFound(_)
+    ));
+}
+
+#[tokio::test]
+async fn investigation_schedule_reads_honor_the_hosts_permission_resolver() {
+    struct Deny;
+    impl everruns_core::PermissionResolver for Deny {
+        fn has_permission(&self, _: &Caller, _: &everruns_core::Permission) -> bool {
+            false
+        }
+        fn caller_permissions(&self, _: &Caller) -> Vec<everruns_core::Permission> {
+            vec![]
+        }
+    }
+    let db = Arc::new(StorageBackend::test_database());
+    let id = session(&db, DEFAULT_ORG_ID).await;
+    let mut ctx = worker_ctx(db);
+    ctx.caller.is_internal = false;
+    ctx.permission_resolver = Arc::new(Deny);
+    let error = crate::domains::session_schedules::reads::ListSessionSchedules { session_id: id }
+        .run(&ctx)
+        .await
+        .unwrap_err();
+    assert!(matches!(error.kind, CommandErrorKind::Forbidden(_)));
+}

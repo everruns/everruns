@@ -39,6 +39,9 @@ pub enum MemoryFsError {
     Readonly,
     #[error("invalid path: {0}")]
     InvalidPath(String),
+    /// A memory entry file that would not parse.
+    #[error("{0}")]
+    InvalidEntry(String),
     #[error("invalid pattern: {0}")]
     InvalidPattern(String),
     #[error("not found")]
@@ -91,6 +94,22 @@ impl MemoryFileService {
         // A room's files change only through the room, which versions each
         // change and records who made it; the Memory API would bypass both.
         if memory.scope == "room" {
+            return Err(MemoryFsError::MemoryNotFound);
+        }
+        Ok(memory)
+    }
+
+    /// `resolve_memory` for a person: another person's private memory
+    /// reports as missing, whatever the caller's org role
+    /// (THREAT[TM-TENANT-013]).
+    pub async fn resolve_visible_memory(
+        &self,
+        org_id: i64,
+        public_id: &str,
+        viewer: Option<Uuid>,
+    ) -> Result<MemoryRow, MemoryFsError> {
+        let memory = self.resolve_memory(org_id, public_id).await?;
+        if !super::entries::visible_to(&memory, viewer) {
             return Err(MemoryFsError::MemoryNotFound);
         }
         Ok(memory)
@@ -179,7 +198,10 @@ impl MemoryFileService {
         let content_bytes = if input.is_directory {
             None
         } else {
-            Some(input.content.unwrap_or_default())
+            let content = input.content.unwrap_or_default();
+            super::entries::check_entry_content(memory, &path, &content)
+                .map_err(MemoryFsError::InvalidEntry)?;
+            Some(content)
         };
         let row = self
             .db
@@ -207,6 +229,8 @@ impl MemoryFileService {
             return Err(MemoryFsError::Readonly);
         }
         let normalized = normalize_path(path)?;
+        super::entries::check_entry_content(memory, &normalized, &content)
+            .map_err(MemoryFsError::InvalidEntry)?;
         let row = self
             .db
             .update_memory_file(
@@ -629,7 +653,7 @@ mod tests {
         svc.create_file(
             &mem,
             NewFileInput {
-                path: "/notes/alpha.md".into(),
+                path: "/guides/alpha.md".into(),
                 content: Some("the quick brown fox".into()),
                 is_directory: false,
             },
@@ -639,7 +663,7 @@ mod tests {
         svc.create_file(
             &mem,
             NewFileInput {
-                path: "/notes/beta.md".into(),
+                path: "/guides/beta.md".into(),
                 content: Some("nothing here".into()),
                 is_directory: false,
             },
@@ -649,7 +673,7 @@ mod tests {
 
         let hits = svc.grep(mem.id, "quick", None).await.unwrap();
         assert_eq!(hits.len(), 1);
-        assert_eq!(hits[0].path, "/notes/alpha.md");
+        assert_eq!(hits[0].path, "/guides/alpha.md");
     }
 
     #[tokio::test]
@@ -658,7 +682,7 @@ mod tests {
         let mem = seed_memory(&db, false).await;
         let svc = MemoryFileService::new(db.clone());
 
-        for path in ["/notes/alpha.md", "/notes/nested/beta.md", "/notes.txt"] {
+        for path in ["/guides/alpha.md", "/guides/nested/beta.md", "/guides.txt"] {
             svc.create_file(
                 &mem,
                 NewFileInput {
@@ -672,12 +696,12 @@ mod tests {
         }
 
         let hits = svc
-            .grep(mem.id, "needle", Some("notes/*.md"))
+            .grep(mem.id, "needle", Some("guides/*.md"))
             .await
             .unwrap();
         let paths: Vec<_> = hits.into_iter().map(|hit| hit.path).collect();
 
-        assert_eq!(paths, vec!["/notes/alpha.md"]);
+        assert_eq!(paths, vec!["/guides/alpha.md"]);
     }
 
     #[tokio::test]

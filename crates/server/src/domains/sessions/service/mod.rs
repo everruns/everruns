@@ -10,7 +10,6 @@ use super::platform_chat_starter::PLATFORM_CHAT_STARTER_TAG;
 use super::types::{SessionFacetCount, SessionFacetsResponse};
 use crate::common_dto::Pagination;
 use crate::domains::harnesses::queries::resolve_effective as resolve_effective_harness;
-use crate::domains::memory::record::{MemoryConfig, MemoryMountAccess};
 use crate::domains::sandbox_templates::record::SandboxPolicy;
 use crate::domains::session_files::memory_mounts::shared_memory_name_for_harness;
 use crate::domains::session_files::{CreateFileInput, WorkspaceFileService};
@@ -23,8 +22,8 @@ use crate::kernel_imports::{
     AgentCapabilityConfig, Caller, CapabilityRegistry, contracts::typed_id::AgentId,
 };
 use crate::kernel_imports::{
-    DeclarativeCapabilityDefinition, InitialFile, MountAccess, MountEntry, MountPoint, MountSource,
-    OrgRole, Permission, Policy, PrincipalSummary, Rule, SessionFile, SessionSeedMode, TokenUsage,
+    DeclarativeCapabilityDefinition, InitialFile, MountPoint, OrgRole, Permission, Policy,
+    PrincipalSummary, Rule, SessionSeedMode, TokenUsage,
     capabilities::{
         RiskLevel, SystemPromptContext, collect_capabilities_with_configs, compute_features,
         resolve_capability_configs,
@@ -42,11 +41,10 @@ use crate::max_iterations;
 use crate::setup::org_init;
 use crate::storage::UpdateField;
 use crate::storage::{
-    CreateEventRow, CreateMemoryRow, CreateSessionRow, MemoryFileRow, MemoryRow,
-    SessionListFilters, StorageBackend, UpdateSession, UpsertSessionKeyValue, UpsertSessionSecret,
+    CreateEventRow, CreateMemoryRow, CreateSessionRow, MemoryRow, SessionListFilters,
+    StorageBackend, UpdateSession, UpsertSessionKeyValue, UpsertSessionSecret,
 };
 use anyhow::Result;
-use everruns_capabilities::capabilities::MEMORY_CAPABILITY_ID;
 use everruns_contracts::typed_id::MemoryId;
 use everruns_core::builtins::AttachSkillCapability;
 use everruns_core::mcp::is_mcp_capability;
@@ -157,32 +155,6 @@ mod mounts;
 mod query;
 pub use query::SessionForSend;
 
-fn memory_files_to_mount_entries(mut files: Vec<MemoryFileRow>) -> HashMap<String, MountEntry> {
-    files.sort_by(|left, right| left.path.cmp(&right.path));
-    let mut entries = HashMap::new();
-
-    for file in files {
-        let path = file.path.trim_matches('/');
-        if path.is_empty() {
-            continue;
-        }
-        let segments = path
-            .split('/')
-            .filter(|segment| !segment.is_empty())
-            .collect::<Vec<_>>();
-        if file.is_directory {
-            insert_mount_directory(&mut entries, &segments);
-            continue;
-        }
-
-        let bytes = file.content.unwrap_or_default();
-        let (content, encoding) = SessionFile::encode_content(&bytes);
-        insert_mount_file(&mut entries, &segments, content, encoding);
-    }
-
-    entries
-}
-
 fn ensure_no_reserved_memory_mounts(mounts: &[MountPoint]) -> Result<()> {
     for mount in mounts {
         if let Some(reserved) = reserved_memory_path(&mount.path) {
@@ -217,49 +189,6 @@ fn reserved_memory_path(path: &str) -> Option<&'static str> {
         Some("/application/*")
     } else {
         None
-    }
-}
-
-fn insert_mount_directory(entries: &mut HashMap<String, MountEntry>, segments: &[&str]) {
-    let Some((name, rest)) = segments.split_first() else {
-        return;
-    };
-    let entry = entries
-        .entry((*name).to_string())
-        .or_insert_with(|| MountEntry::directory(HashMap::new()));
-    if !entry.source.is_directory() {
-        *entry = MountEntry::directory(HashMap::new());
-    }
-    if let MountSource::InlineDirectory { entries } = &mut entry.source {
-        insert_mount_directory(entries, rest);
-    }
-}
-
-fn insert_mount_file(
-    entries: &mut HashMap<String, MountEntry>,
-    segments: &[&str],
-    content: String,
-    encoding: String,
-) {
-    let Some((name, rest)) = segments.split_first() else {
-        return;
-    };
-    if rest.is_empty() {
-        entries.insert(
-            (*name).to_string(),
-            MountEntry::new(MountSource::InlineFile { content, encoding }),
-        );
-        return;
-    }
-
-    let entry = entries
-        .entry((*name).to_string())
-        .or_insert_with(|| MountEntry::directory(HashMap::new()));
-    if !entry.source.is_directory() {
-        *entry = MountEntry::directory(HashMap::new());
-    }
-    if let MountSource::InlineDirectory { entries } = &mut entry.source {
-        insert_mount_file(entries, rest, content, encoding);
     }
 }
 

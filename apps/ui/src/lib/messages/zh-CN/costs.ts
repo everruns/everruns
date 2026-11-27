@@ -19,8 +19,8 @@ export const messages: Readonly<Record<string, string>> = {
   From: "来源",
   "By source": "按来源",
   "By who started the work": "按发起人",
-  "Unattended work is schedules and triggers no person started":
-    "无人值守工作是指没有人启动的计划和触发器",
+  "Unattended work includes schedules and agent triggers.":
+    "无人值守工作包括计划任务和代理触发器。",
   "Started by": "发起人",
   "Usage records": "用量记录",
   "Unknown person": "未知人员",

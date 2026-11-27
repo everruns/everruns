@@ -107,7 +107,7 @@ talk", that explains them to the model. You do not add them yourself.
 
 | Tool | Arguments | What it does |
 |---|---|---|
-| `send_message` | `text` (required): the complete message, in Markdown. `files` (optional): up to 10 session file paths, 8 MiB combined | Sends the message, and any files, to the conversation the turn came from. Success means it was delivered. |
+| `send_message` | `message` (required): the complete message, in Markdown (`text` is accepted as the same field). `files` (optional): up to 10 session file paths, 8 MiB combined | Sends the message, and any files, to the conversation the turn came from. Success means it was delivered. |
 | `no_reply` | `reason` (optional): why no reply is needed | Ends the turn without saying anything. The reason stays in the transcript and is never shown to the person. |
 
 The Agent never chooses where a message goes. The destination is always the

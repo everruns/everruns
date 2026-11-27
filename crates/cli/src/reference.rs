@@ -178,6 +178,15 @@ fn command_section(spelling: &str, command: &Command) -> String {
         section.push('\n');
     }
 
+    if let Some(output) = Mapper::everruns()
+        .contracts()
+        .find(|contract| contract.spelling() == spelling)
+        .filter(|_| contract_mounted(command))
+        .and_then(|contract| contract.output.as_deref())
+    {
+        section.push_str(&format!("Output: {output}\n\n"));
+    }
+
     let examples = examples(spelling, command);
     if !examples.is_empty() {
         section.push_str("Example:\n\n```bash\n");

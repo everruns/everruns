@@ -21,7 +21,6 @@ mod environment_tools;
 pub mod knowledge;
 pub mod knowledge_base;
 pub mod knowledge_index;
-pub mod memory;
 pub mod monitors;
 pub mod platform;
 mod platform_docs;
@@ -101,7 +100,6 @@ pub use knowledge_index::{
     KNOWLEDGE_INDEX_CAPABILITY_ID, KnowledgeIndexCapability, KnowledgeIndexConfig,
     validate_knowledge_index_config,
 };
-pub use memory::{MEMORY_CAPABILITY_ID, MemoryCapability};
 pub use platform::{
     DISCOVER_DESCRIPTION as PLATFORM_DISCOVER_DESCRIPTION,
     EXECUTE_DESCRIPTION as PLATFORM_EXECUTE_DESCRIPTION, PLATFORM_CAPABILITY_ID,
@@ -247,7 +245,6 @@ pub fn register_hosted_capabilities(
     registry.register(SessionSandboxCapability);
     registry.register(sandbox_desktop::SandboxDesktopCapability);
     registry.register(ResearchCapability);
-    registry.register(MemoryCapability);
     registry.register(BackgroundExecutionCapability);
     registry.register(SessionScheduleCapability);
     registry.register(SessionTasksCapability);

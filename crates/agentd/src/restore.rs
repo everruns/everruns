@@ -21,6 +21,8 @@
 //! - Segments the restored state refers to are taken out of retirement
 //!   (`Store::unretire`): a state from before a compaction refers to pieces
 //!   the compaction retired, which the collector would otherwise delete.
+//!   The packs it names are pinned for a window (`Store::pin_packs`), until
+//!   snapshots of the restored state name them.
 //! - A rebuilt shard is a new incarnation, claimed in the store so two
 //!   rebuilds never share one. Its segments, shipped log and feed carry the
 //!   number, so nothing the lost incarnation wrote is read as its own.
@@ -331,7 +333,9 @@ pub async fn rebuild(
         .claim_incarnation(shard, (state.incarnation + 1).max(2))
         .await?;
     renew(&mut state, incarnation);
-    store.unretire(&referenced(state.sessions.iter())).await?;
+    let refs = referenced(state.sessions.iter());
+    store.unretire(&refs).await?;
+    store.pin_packs(refs.iter().map(|(_, seg)| seg)).await?;
     let voters: std::collections::BTreeSet<NodeId> = members.keys().copied().collect();
     let nodes: BTreeMap<NodeId, BasicNode> = members
         .iter()
@@ -443,7 +447,9 @@ pub async fn restore_org(
         at_ms,
         ..Default::default()
     };
-    store.unretire(&referenced(images.iter())).await?;
+    let refs = referenced(images.iter());
+    store.unretire(&refs).await?;
+    store.pin_packs(refs.iter().map(|(_, seg)| seg)).await?;
     let branch = crate::state::new_branch(crate::node::now_ms());
     for (session, image) in images {
         let command = Command::Revert {

@@ -70,6 +70,16 @@ pub const MOUNTS: &[&str] = &[
     "/application/memory",
 ];
 
+/// Whether the control plane may give a session `mount`: one of [`MOUNTS`],
+/// or a memory store (`/memory/org`, `/memory/team`, `/memory/parent`, a
+/// named memory) from the session's Memory capability.
+pub fn allowed_mount(mount: &str) -> bool {
+    MOUNTS.contains(&mount)
+        || mount.strip_prefix("/memory/").is_some_and(|label| {
+            everruns_contracts::runtime::memory::MemoryStoreKey::parse(label).is_ok()
+        })
+}
+
 /// `backends` with the mounts of `session`'s Memory, served by its files
 /// server. None (no control plane): no Memory.
 pub(crate) fn attach(
@@ -86,11 +96,7 @@ pub(crate) fn attach(
     }) else {
         return backends;
     };
-    for mount in memory
-        .mounts
-        .iter()
-        .filter(|m| MOUNTS.contains(&m.as_str()))
-    {
+    for mount in memory.mounts.iter().filter(|m| allowed_mount(m)) {
         let backend: Arc<dyn SessionFileSystem> = Arc::new(ShardMemory {
             server: server.clone(),
             session,

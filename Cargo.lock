@@ -204,6 +204,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e9d4ee0d472d1cd2e28c97dfa124b3d8d992e10eb0a035f33f5d12e3a177ba3b"
 
 [[package]]
+name = "ammonia"
+version = "4.2.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b34ca49e407c06daac53f0c4debe8ff5df9cc2a4e9369d164a5d86ef8c219319"
+dependencies = [
+ "cssparser",
+ "html5ever",
+ "maplit",
+ "url",
+]
+
+[[package]]
 name = "android_system_properties"
 version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1831,9 +1843,9 @@ dependencies = [
 
 [[package]]
 name = "channelkit"
-version = "0.1.0-alpha.6"
+version = "0.1.0-alpha.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5a7135c817b8f55386b1b006aab957bd0aa7d3373c9ef9e0e60317914baaef67"
+checksum = "395776205ce607b2dd4446e3d73a8ea06b433bbccae57306de1aef02c801fbfc"
 dependencies = [
  "async-trait",
  "futures-util",
@@ -1850,10 +1862,25 @@ dependencies = [
 ]
 
 [[package]]
-name = "channelkit-slack"
-version = "0.1.0-alpha.6"
+name = "channelkit-agentmail"
+version = "0.1.0-alpha.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b6da6ec70d68ddf86236a0bf1651b78710567fcdc50cfdcc37d2a7ce90013c24"
+checksum = "05926df80b2b6b513f1f2d9211992fc320c38379423f68e75f56e68415f5ab2a"
+dependencies = [
+ "base64 0.23.1",
+ "channelkit",
+ "hmac 0.12.1",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "url",
+]
+
+[[package]]
+name = "channelkit-slack"
+version = "0.1.0-alpha.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "64cda4559d5f1a3faa394aefd7987bbfdcfcddd377ac1095f2cf06f848dfcb0f"
 dependencies = [
  "async-trait",
  "channelkit",
@@ -4730,6 +4757,7 @@ dependencies = [
  "a2a-client-lf",
  "a2a-lf",
  "aes-gcm",
+ "ammonia",
  "anyhow",
  "argon2",
  "async-nats",
@@ -4742,6 +4770,7 @@ dependencies = [
  "bashkit-scripted-tool",
  "bytes",
  "channelkit",
+ "channelkit-agentmail",
  "channelkit-slack",
  "chrono",
  "chrono-tz",
@@ -6967,9 +6996,9 @@ checksum = "3e2e65a1a2e43cfcb47a895c4c8b10d1f4a61097f9f254f183aee60cad9c651d"
 
 [[package]]
 name = "markkit"
-version = "0.3.1"
+version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "652d7765546c65399d40d0649c6a9b7c4b74b377da8827b1303a3024a65ba9ff"
+checksum = "d43fbeaef65c334d10c1ccabdffe0c0fdfe14759bdbd56048331016278a06da5"
 dependencies = [
  "calamine",
  "cfb",

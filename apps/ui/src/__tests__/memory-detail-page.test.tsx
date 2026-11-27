@@ -1,13 +1,12 @@
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { Suspense } from "react";
 import MemoryDetailPage from "@/app/(main)/memory/[memoryId]/page";
-import type { Memory } from "@/lib/api/types";
+import { groupMemoryEntries } from "@/components/memory/memory-store-labels";
+import { memoryEntry, memoryStore } from "@/test-utils/memory-fixtures";
 
-const mockUseMemory = jest.fn();
-const mockUseUpdateMemory = jest.fn();
-const mockUseSyncMemory = jest.fn();
-const mockUseArchiveMemory = jest.fn();
-const mockUseUserConnections = jest.fn();
+const mockUseMemoryStores = jest.fn();
+const mockUseMemoryEntries = jest.fn();
+const mockUseMemoryHistory = jest.fn();
 
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ replace: jest.fn(), push: jest.fn() }),
@@ -20,126 +19,117 @@ jest.mock("@/providers/org-provider", () => ({
 }));
 
 jest.mock("@/hooks", () => ({
-  useMemory: (...args: unknown[]) => mockUseMemory(...args),
-  useUpdateMemory: () => mockUseUpdateMemory(),
-  useSyncMemory: () => mockUseSyncMemory(),
-  useArchiveMemory: () => mockUseArchiveMemory(),
-  useUserConnections: () => mockUseUserConnections(),
+  useMemoryStores: () => mockUseMemoryStores(),
+  useMemoryEntries: (...args: unknown[]) => mockUseMemoryEntries(...args),
+  useMemoryHistory: (...args: unknown[]) => mockUseMemoryHistory(...args),
+  useUpdateMemory: () => ({ mutateAsync: jest.fn(), isPending: false }),
+  useArchiveMemory: () => ({ mutateAsync: jest.fn(), isPending: false }),
   usePageTitle: () => undefined,
 }));
 
-jest.mock("@/hooks/use-user-connections", () => ({
-  useUserConnections: () => mockUseUserConnections(),
-}));
+const store = memoryStore({
+  scope: "team",
+  store: "team",
+  owner_name: "Housekeeping",
+  mount_path: "/memory/team",
+});
 
-const memory: Memory = {
-  id: "mem_019dfb261a407c6085dcdd602402c3f7",
-  name: "Research",
-  description: "Shared research files",
-  source_type: "manual",
-  source: { provider: "manual" },
-  is_readonly: false,
-  sync_status: "idle",
-  last_synced_at: null,
-  last_sync_error: null,
-  status: "active",
-  created_at: "2026-05-06T02:37:51.552849Z",
-  updated_at: "2026-05-06T02:37:51.552849Z",
-  archived_at: null,
-  deleted_at: null,
-};
+const entries = [
+  memoryEntry(),
+  memoryEntry({
+    path: "/blocked/everruns-5530.md",
+    kind: "blocked",
+    subject: "everruns#5530",
+    statement: "Waiting on Mike to allowlist the package",
+    quote: null,
+  }),
+  memoryEntry({
+    path: "/blocked/old.md",
+    kind: "blocked",
+    subject: "old",
+    statement: "Waiting on CI",
+    resolved_at: "2026-11-26T05:00:00Z",
+    resolution: "green",
+  }),
+  memoryEntry({
+    path: "/proposals/rules/merges.md",
+    kind: "rule",
+    subject: "merges",
+    statement: "Squash only",
+    proposed: true,
+  }),
+];
 
-async function renderWithSuspense(memoryId = memory.id) {
-  const paramsPromise = Promise.resolve({ memoryId });
-
+async function renderPage(memoryId = store.id) {
   await act(async () => {
     render(
       <Suspense fallback={<div>Loading...</div>}>
-        <MemoryDetailPage params={paramsPromise} />
+        <MemoryDetailPage params={Promise.resolve({ memoryId })} />
       </Suspense>,
     );
-    await paramsPromise;
   });
 }
 
-describe("MemoryDetailPage", () => {
+describe("Memory detail page", () => {
   beforeEach(() => {
-    jest.clearAllMocks();
-    mockUseMemory.mockReturnValue({ data: memory, isLoading: false, error: null });
-    mockUseUpdateMemory.mockReturnValue({
-      mutateAsync: jest.fn().mockResolvedValue({}),
-      isPending: false,
-    });
-    mockUseSyncMemory.mockReturnValue({
-      mutate: jest.fn(),
-      isPending: false,
-    });
-    mockUseUserConnections.mockReturnValue({
-      data: [],
-      isLoading: false,
-    });
-    mockUseArchiveMemory.mockReturnValue({
-      mutateAsync: jest.fn().mockResolvedValue({}),
-      isPending: false,
-    });
-  });
-
-  it("updates memory metadata", async () => {
-    const mutateAsync = jest.fn().mockResolvedValue({});
-    mockUseUpdateMemory.mockReturnValue({ mutateAsync, isPending: false });
-    await renderWithSuspense();
-
-    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
-    const dialog = screen.getByRole("dialog");
-    fireEvent.change(within(dialog).getByLabelText("Name"), { target: { value: "Research Hub" } });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Save Changes" }));
-
-    await waitFor(() =>
-      expect(mutateAsync).toHaveBeenCalledWith({
-        memoryId: memory.id,
-        data: { name: "Research Hub", description: "Shared research files" },
-      }),
-    );
-  });
-
-  it("archives the memory after confirmation", async () => {
-    const mutateAsync = jest.fn().mockResolvedValue({});
-    mockUseArchiveMemory.mockReturnValue({ mutateAsync, isPending: false });
-    await renderWithSuspense();
-
-    fireEvent.click(screen.getByRole("button", { name: /^More actions for / }));
-    fireEvent.click(await screen.findByRole("menuitem", { name: /^Archive / }));
-    const dialog = screen.getByRole("dialog");
-    fireEvent.click(within(dialog).getByRole("button", { name: "Archive" }));
-
-    await waitFor(() => expect(mutateAsync).toHaveBeenCalledWith(memory.id));
-  });
-
-  it("treats deleted memory as read-only", async () => {
-    mockUseMemory.mockReturnValue({
+    mockUseMemoryStores.mockReturnValue({ data: [store], isLoading: false, error: null });
+    mockUseMemoryEntries.mockReturnValue({
       data: {
-        ...memory,
-        status: "deleted",
-        deleted_at: "2026-05-06T03:37:51.552849Z",
+        store: "team",
+        entries,
+        invalid: [{ path: "/decisions/broken.md", error: "no header" }],
       },
       isLoading: false,
       error: null,
     });
-
-    await renderWithSuspense();
-
-    expect(screen.getByRole("button", { name: "Edit" })).toBeDisabled();
-    fireEvent.click(screen.getByRole("button", { name: /^More actions for / }));
-    expect(await screen.findByRole("menuitem", { name: "History" })).toBeInTheDocument();
-    expect(screen.queryByRole("menuitem", { name: /^Archive / })).not.toBeInTheDocument();
+    mockUseMemoryHistory.mockReturnValue({
+      data: [
+        {
+          path: "/decisions/everruns-5528.md",
+          action: "write",
+          content: "---\nkind: decision\n---\nAllowlist",
+          size_bytes: 30,
+          changed_by: "session:abc",
+          created_at: "2026-11-26T04:00:00Z",
+        },
+        {
+          path: "/notes/old.md",
+          action: "delete",
+          size_bytes: 0,
+          created_at: "2026-11-26T03:00:00Z",
+        },
+      ],
+      isLoading: false,
+      error: null,
+    });
   });
 
-  it("renders not found state", async () => {
-    mockUseMemory.mockReturnValue({ data: undefined, isLoading: false, error: new Error("404") });
+  it("orders open blocked items first and resolved items last", () => {
+    const sections = groupMemoryEntries(entries).map((section) => section.key);
+    expect(sections).toEqual(["blocked", "proposals", "decision", "resolved"]);
+  });
 
-    await renderWithSuspense("mem_missing");
+  it("shows entries with their quotes, and files that do not parse", async () => {
+    await renderPage();
+    expect(screen.getByRole("heading", { name: /Housekeeping team/ })).toBeTruthy();
+    expect(screen.getByText("Waiting on Mike to allowlist the package")).toBeTruthy();
+    expect(screen.getAllByText("allow it", { selector: "blockquote" }).length).toBeGreaterThan(0);
+    expect(screen.getByText("Proposals to review", { selector: "h2" })).toBeTruthy();
+    expect(screen.getByText("/decisions/broken.md")).toBeTruthy();
+    // A team memory is not renamed or archived from here.
+    expect(screen.queryByRole("button", { name: /Edit/ })).toBeNull();
+  });
 
-    expect(screen.getByText("Memory not found")).toBeInTheDocument();
-    expect(screen.getByText("mem_missing")).toBeInTheDocument();
+  it("shows every kept change in History", async () => {
+    await renderPage();
+    fireEvent.click(screen.getByRole("tab", { name: "History" }));
+    expect(screen.getByText("Written")).toBeTruthy();
+    expect(screen.getByText("Deleted")).toBeTruthy();
+    expect(screen.getByText("session:abc")).toBeTruthy();
+  });
+
+  it("reports a store the caller cannot see as missing", async () => {
+    await renderPage("mem_ffffffffffffffffffffffffffffffff");
+    expect(screen.getByText("Memory not found")).toBeTruthy();
   });
 });

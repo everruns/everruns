@@ -22,11 +22,13 @@ Slack is the first migration and the parity bar. Other providers follow one at a
 time. A2A, AG-UI, Poppy, voice, public chat and the Agent Execution API retain their
 own protocol contracts.
 
-The bridge pins the published Rust `0.1.0-alpha.6` core and Slack packages, frozen at
-[`6a58224`](https://github.com/everruns/channelkit/commit/6a582246ac2f36e7d799d05dbea683bdab35e713).
-The [versioned Slack guide](https://docs.rs/channelkit-slack/0.1.0-alpha.6/channelkit_slack/guide/)
-and upstream [adoption contract](https://github.com/everruns/channelkit/blob/6a582246ac2f36e7d799d05dbea683bdab35e713/knowledge/operations/everruns-adoption.md)
-own library behavior. Cargo resolves registry artifacts with checksums; no mutable
+The bridge pins the published Rust `0.1.0-alpha.7` core and Slack packages, frozen at
+[`c24f799`](https://github.com/everruns/channelkit/commit/c24f799115efb1939c60d849c9cfee052287dddd).
+The [versioned Slack guide](https://docs.rs/channelkit-slack/0.1.0-alpha.7/channelkit_slack/guide/)
+and upstream [adoption contract](https://github.com/everruns/channelkit/blob/c24f799115efb1939c60d849c9cfee052287dddd/knowledge/operations/everruns-adoption.md)
+own library behavior. The shared pin also matches the server's AgentMail adapter,
+avoiding incompatible core types across transports without another upstream release.
+Cargo resolves registry artifacts with checksums; no mutable
 main or path replacement participates in the deployment build.
 
 ## Implementation and qualification
@@ -138,8 +140,8 @@ Source anchors: [server Slack driver](../../crates/server/src/channels/slack/hos
 [interactivity](../../crates/server/src/channels/slack/events/interactivity.rs),
 [scheduled conversations](../../crates/server/src/channels/slack/scheduled.rs),
 [reaction mapping](../../crates/server/src/channels/slack/delivery/reactions.rs),
-[Channelkit adapter contract](https://docs.rs/channelkit/0.1.0-alpha.6/channelkit/trait.Adapter.html)
-and [Slack guide](https://docs.rs/channelkit-slack/0.1.0-alpha.6/channelkit_slack/guide/).
+[Channelkit adapter contract](https://docs.rs/channelkit/0.1.0-alpha.7/channelkit/trait.Adapter.html)
+and [Slack guide](https://docs.rs/channelkit-slack/0.1.0-alpha.7/channelkit_slack/guide/).
 
 ## Correctness prerequisites
 

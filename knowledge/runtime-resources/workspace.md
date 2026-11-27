@@ -64,9 +64,9 @@ Workspace is the **session tier** of the memory model:
 
 * **Workspace** (this spec), named, durable working area owned by one
   session. Files are workspace-scoped.
-* **Memory** (`knowledge/runtime-resources/memory.md`), org-scoped, named, durable shared
-  store. Mounted into a Workspace via the `memory` capability at session
-  creation, RO by default.
+* **Memory** (`knowledge/runtime-resources/memory.md`), durable stores under `/memory`
+  (agent, team, parent, user, org, named), mounted live by the server when the
+  agent has the `agent_memory` capability; each store is a config switch.
 
 Surfaces of a Workspace today:
 
@@ -281,7 +281,7 @@ internally.
 4. **Readonly protection:** Cannot modify or delete readonly files; recursive delete of a directory fails if it contains any readonly files.
 5. **Hash-based freshness:** `read_file` and `write_file` return a `content_hash` (`sha256:...`). `edit_file` requires that hash. A stale edit safely rebases only when every exact replacement remains unique and non-overlapping in the current content; conflicts and write races fail without modifying the file.
 6. **Text-only edit tool:** `edit_file` only operates on text files. Binary/base64 files must be replaced via `write_file`.
-7. **Memory mounts:** Sessions can mount org Memories (`knowledge/runtime-resources/memory.md`) into the workspace, read-only by default or read-write where trust permits.
+7. **Memory mounts:** Memory stores (`knowledge/runtime-resources/memory.md`) appear under `/memory/<store>`, live and durable, never copied into `/workspace`.
 
 ### Database Schema
 

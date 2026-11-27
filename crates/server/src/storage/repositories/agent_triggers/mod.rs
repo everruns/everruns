@@ -194,8 +194,8 @@ impl Database {
     ) -> Result<Option<AgentTriggerDeliveryRow>> {
         let row = sqlx::query_as::<_, AgentTriggerDeliveryRow>(
             sql!(r#"
-            INSERT INTO agent_trigger_deliveries (org_id, trigger_id, source, event_id, event_type, subject, status, reason)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            INSERT INTO agent_trigger_deliveries (org_id, trigger_id, source, event_id, event_type, subject, status, reason, requested_by, source_version)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 1)
             ON CONFLICT (trigger_id, event_id)
                 WHERE event_id IS NOT NULL AND status IN ('dispatched', 'filtered')
                 DO NOTHING
@@ -210,6 +210,7 @@ impl Database {
         .bind(&input.subject)
         .bind(&input.status)
         .bind(&input.reason)
+        .bind(input.requested_by)
         .fetch_optional(&self.pool)
         .await?;
         Ok(row)
@@ -221,11 +222,12 @@ impl Database {
         status: &str,
         reason: Option<&str>,
         session_id: Option<Uuid>,
+        input_message_id: Option<Uuid>,
     ) -> Result<()> {
         sqlx::query(
             r#"
             UPDATE agent_trigger_deliveries
-            SET status = $2, reason = $3, session_id = COALESCE($4, session_id)
+            SET status = $2, reason = $3, session_id = COALESCE($4, session_id), input_message_id = COALESCE($5, input_message_id)
             WHERE id = $1
             "#,
         )
@@ -233,6 +235,7 @@ impl Database {
         .bind(status)
         .bind(reason)
         .bind(session_id)
+        .bind(input_message_id)
         .execute(&self.pool)
         .await?;
         Ok(())
@@ -279,6 +282,25 @@ impl Database {
         )
         .bind(trigger_id)
         .bind(keep)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected())
+    }
+
+    /// Retain the configured number of days, independently of page size.
+    pub async fn prune_agent_trigger_delivery_history(
+        &self,
+        trigger_id: TriggerId,
+        retention_days: i64,
+    ) -> Result<u64> {
+        let result = sqlx::query(
+            r#"
+            DELETE FROM agent_trigger_deliveries
+            WHERE trigger_id = $1 AND created_at < NOW() - make_interval(days => $2::int)
+            "#,
+        )
+        .bind(trigger_id)
+        .bind(retention_days as i32)
         .execute(&self.pool)
         .await?;
         Ok(result.rows_affected())
@@ -424,5 +446,68 @@ impl Database {
             "SELECT EXISTS(SELECT 1 FROM durable_task_queue WHERE id = $1 AND activity_type = 'invoke_agent_trigger' AND input->>'org_id' = $2 AND input->>'agent_id' = $3 AND input->>'trigger_id' = $4)")
             .bind(task_id).bind(org_id.to_string()).bind(agent_id).bind(trigger_id)
             .fetch_one(&self.pool).await?)
+    }
+}
+
+impl Database {
+    pub async fn agent_trigger_delivery_history(
+        &self,
+        org: i64,
+        trigger: TriggerId,
+        limit: i64,
+        from: Option<chrono::DateTime<chrono::Utc>>,
+        to: Option<chrono::DateTime<chrono::Utc>>,
+        before: Option<Uuid>,
+    ) -> Result<Vec<AgentTriggerDeliveryRow>> {
+        Ok(sqlx::query_as::<_, AgentTriggerDeliveryRow>(sql!(r#"
+            SELECT {AgentTriggerDeliveryRow} FROM agent_trigger_deliveries
+            WHERE org_id=$1 AND trigger_id=$2
+              AND ($3::timestamptz IS NULL OR created_at >= $3)
+              AND ($4::timestamptz IS NULL OR created_at < $4)
+              AND ($5::uuid IS NULL OR (created_at,id) < (
+                SELECT created_at,id FROM agent_trigger_deliveries WHERE id=$5 AND org_id=$1 AND trigger_id=$2))
+            ORDER BY created_at DESC,id DESC LIMIT $6
+        "#)).bind(org).bind(trigger).bind(from).bind(to).bind(before).bind(limit)
+        .fetch_all(&self.pool).await?)
+    }
+}
+
+impl Database {
+    pub async fn record_manual_trigger_run(
+        &self,
+        org: i64,
+        trigger: TriggerId,
+        execution: Uuid,
+        requester: Option<Uuid>,
+        revision: chrono::DateTime<chrono::Utc>,
+        configuration: &serde_json::Value,
+    ) -> Result<()> {
+        sqlx::query("INSERT INTO agent_trigger_run_evidence (execution_id,org_id,trigger_id,requested_by,source,trigger_revision,configuration) VALUES ($1,$2,$3,$4,'manual',$5,$6)")
+            .bind(execution).bind(org).bind(trigger).bind(requester).bind(revision).bind(configuration).execute(&self.pool).await?;
+        Ok(())
+    }
+    pub async fn record_scheduled_trigger_run(
+        &self,
+        org: i64,
+        trigger: TriggerId,
+        task: Uuid,
+    ) -> Result<()> {
+        sqlx::query("INSERT INTO agent_trigger_run_evidence (execution_id,org_id,trigger_id,source,trigger_revision,configuration) SELECT e.id,t.org_id,t.id,'schedule',t.updated_at,jsonb_build_object('trigger_type',t.trigger_type,'cron_expression',t.config->'cron_expression','timezone',t.config->'timezone','session_mode',t.config->'session_mode') FROM durable_schedule_executions e JOIN agent_triggers t ON t.durable_schedule_id=e.schedule_id WHERE t.org_id=$1 AND t.id=$2 AND e.task_id=$3 ON CONFLICT DO NOTHING")
+            .bind(org).bind(trigger).bind(task).execute(&self.pool).await?;
+        Ok(())
+    }
+}
+
+impl Database {
+    pub async fn finish_manual_trigger_run(
+        &self,
+        org: i64,
+        trigger: TriggerId,
+        execution: Uuid,
+        input: Option<Uuid>,
+    ) -> Result<()> {
+        sqlx::query("UPDATE agent_trigger_run_evidence SET input_message_id=$4 WHERE org_id=$1 AND trigger_id=$2 AND execution_id=$3")
+            .bind(org).bind(trigger).bind(execution).bind(input).execute(&self.pool).await?;
+        Ok(())
     }
 }

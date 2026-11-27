@@ -77,7 +77,7 @@ Evidence from the review of main at f063e04 plus #5640 (2026-11-24):
    (`crates/server/src/domains/sessions/service/create.rs`), threads included.
 5. **Shared folder skips the parent.** `/team` is mounted in every child
    session but in a first session only when its agent has `agent_handoff`
-   (`team_folder_owner` in `domains/session_files/memory_mounts.rs`), so
+   (`team_folder_owner` in `domains/session_files/memory_mounts/mod.rs`), so
    Platform Chat cannot open its own threads' folder. Writes are whole-file:
    two agents writing one file lose an edit silently.
 6. **Overloaded words.** "Thread" also names side chats ("Threads of this
@@ -351,8 +351,11 @@ Threads and Parent communication are native capabilities (sessions, tasks), cons
 with the native-vs-injected rule. `crates/agentd/src/subagents.rs` already
 runs children on any shard from the org's catalog and bounds them by the
 capability's allow list; it reads the `threads` config instead of three. The
-assignment lifecycle and `settle_thread_turn` must run in shard task state;
-verify against the capability matrix before merge.
+assignment lives in the parent's shard task state; a thread on another shard
+reaches it through the gateway, and the thread's own turn events settle it
+(`crates/agentd/src/thread_turns.rs`, the shard's counterpart of the server's
+thread turn listener). A child session is never offered Threads or
+Coordinator, on either data plane (`hidden_reason_capabilities`).
 
 ## Framework and serve
 

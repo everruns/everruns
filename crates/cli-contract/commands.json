@@ -58,7 +58,8 @@
         "intent": "Check a draft configuration for problems before creating the agent",
         "command": "everruns agents analyze --system-prompt 'Triage incoming issues' --tools '[\"bash\"]'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "generate_agent_avatar",
@@ -103,7 +104,8 @@
         "intent": "Let the agent's name and description pick the picture",
         "command": "everruns agents avatar generate agent_01h9 --reason 'Brand the triage agent'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_avatar_presets",
@@ -121,7 +123,8 @@
         "intent": "Find a curated avatar to give an agent",
         "command": "everruns agents avatar presets"
       }
-    ]
+    ],
+    "output": "a JSON array. Read the items with jq '.[]'."
   },
   {
     "wire_name": "set_agent_avatar",
@@ -173,7 +176,8 @@
         "intent": "Use your own image, base64-encoded into a file first (base64 logo.png > logo.b64)",
         "command": "everruns agents avatar set agent_01h9 --image-base64 @logo.b64 --reason 'Use the team logo'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "create_agent_channel",
@@ -207,6 +211,7 @@
         "required": true,
         "help": "Supported channel types for app distribution.",
         "choices": [
+          "email",
           "slack",
           "ag_ui",
           "schedule",
@@ -233,7 +238,8 @@
         "intent": "Add a weekday-morning schedule that starts the agent on its own",
         "command": "everruns agents channels create --agent-id agent_01h9 --channel-type schedule --channel-config '{\"cron_expression\":\"0 9 * * 1-5\",\"message\":\"Summarize overnight alerts\"}' --reason 'Daily alert digest'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "delete_agent_channel",
@@ -299,7 +305,8 @@
         "intent": "Inspect one channel's configuration and whether it is live",
         "command": "everruns agents channels get --agent-id agent_01h9 --channel-id appchan_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "create_agent_key",
@@ -352,7 +359,8 @@
         "intent": "Give a backend service its own key to call the agent",
         "command": "everruns agents channels keys create --agent-id agent_01h9 --channel-id appchan_01h9 --name \"Support backend\" --reason \"New support integration\""
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_agent_keys",
@@ -384,7 +392,8 @@
         "intent": "See which applications hold a key before rotating or revoking one",
         "command": "everruns agents channels keys list --agent-id agent_01h9 --channel-id appchan_01h9"
       }
-    ]
+    ],
+    "output": "a JSON array. Read the items with jq '.[]'."
   },
   {
     "wire_name": "revoke_agent_key",
@@ -422,7 +431,8 @@
         "intent": "Cut off a key that leaked, immediately",
         "command": "everruns agents channels keys revoke --agent-id agent_01h9 --channel-id appchan_01h9 --key-id agentkey_01h9 --reason \"Key exposed in a log\""
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "rotate_agent_key",
@@ -467,7 +477,8 @@
         "intent": "Replace a key secret on schedule, keeping the old one valid for a day",
         "command": "everruns agents channels keys rotate --agent-id agent_01h9 --channel-id appchan_01h9 --key-id agentkey_01h9 --overlap-hours 24 --reason \"Quarterly rotation\""
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_agent_channels",
@@ -483,6 +494,7 @@
       {
         "field": "agent_id",
         "long": "agent-id",
+        "position": 1,
         "kind": "string",
         "required": true,
         "help": "Agent's prefixed public identifier, or its name."
@@ -491,9 +503,10 @@
     "examples": [
       {
         "intent": "See every way an agent can be reached before adding another",
-        "command": "everruns agents channels list --agent-id agent_01h9"
+        "command": "everruns agents channels list agent_01h9"
       }
-    ]
+    ],
+    "output": "a JSON array. Read the items with jq '.[]'."
   },
   {
     "wire_name": "publish_agent_channel",
@@ -526,7 +539,8 @@
         "intent": "Make a reviewed channel live so it accepts traffic",
         "command": "everruns agents channels publish --agent-id agent_01h9 --channel-id appchan_01h9 --reason 'Config reviewed'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "trigger_agent_channel",
@@ -559,7 +573,8 @@
         "intent": "Run a schedule channel now instead of waiting for its next fire time",
         "command": "everruns agents channels trigger --agent-id agent_01h9 --channel-id appchan_01h9 --reason 'Check the digest before the first scheduled run'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "unpublish_agent_channel",
@@ -592,7 +607,8 @@
         "intent": "Take a channel offline without deleting its configuration",
         "command": "everruns agents channels unpublish --agent-id agent_01h9 --channel-id appchan_01h9 --reason 'Pause while the integration is reworked'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "update_agent_channel",
@@ -639,7 +655,8 @@
         "intent": "Pause a channel without deleting it",
         "command": "everruns agents channels update --agent-id agent_01h9 --channel-id appchan_01h9 --enabled false --reason 'Pause during the migration'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "check_agent_name",
@@ -670,7 +687,8 @@
         "intent": "See whether a name is free before creating an agent",
         "command": "everruns agents check-name --name triage"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "delete_agent_check_rule",
@@ -696,7 +714,8 @@
         "intent": "Drop a custom check rule that no longer applies",
         "command": "everruns agents check-rules delete --rule-id custom.no-pii --reason 'Covered by the org policy'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_agent_check_rules",
@@ -796,7 +815,8 @@
         "intent": "Add an LLM-judged rule that flags prompts handling personal data",
         "command": "everruns agents check-rules upsert --rule-id custom.no-pii --kind nl_rubric --enabled true --category safety --severity warning --rubric 'Flag prompts that tell the agent to store customer personal data' --reason 'Privacy review requirement'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "copy_agent",
@@ -822,7 +842,8 @@
         "intent": "Duplicate an agent to try a change without touching the original",
         "command": "everruns agents copy agent_01h9 --reason 'Trial a stricter prompt'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "plan_agent_costs",
@@ -860,7 +881,8 @@
         "intent": "Suggest task workloads for a draft without running or saving it",
         "command": "everruns agents cost-plan --agent '{\"system_prompt\":\"Draft short customer replies\"}'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "get_agent_cost",
@@ -887,7 +909,8 @@
         "intent": "See what an agent cost this month",
         "command": "everruns agents costs get agent_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "create_agent",
@@ -1106,7 +1129,8 @@
         "intent": "Create an agent on the organization's default harness",
         "command": "everruns agents create --name triage --system-prompt 'Triage incoming issues' --harness conversation --reason 'Set up issue triage for support'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "create_agent_credential_binding",
@@ -1199,7 +1223,8 @@
         "intent": "Declare an API key the agent's shell sends to one host without seeing it",
         "command": "everruns agents credentials create --agent-id agent_01h9 --env-name JEV_API_KEY --url https://api.typesafe.ai --label 'Jev API key' --reason 'Ask Jev for triage decisions'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "delete_agent",
@@ -1329,7 +1354,8 @@
         "intent": "Ask the builder for a first draft",
         "command": "everruns agents draft --messages '[{\"role\":\"user\",\"content\":\"Triage new GitHub issues every morning\"}]'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "adopt_agent_example",
@@ -1356,7 +1382,8 @@
         "intent": "Start a pull request reviewer from its template",
         "command": "everruns agents examples adopt pr-reviewer --reason 'Set up PR reviews for the repo'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_agent_examples",
@@ -1374,7 +1401,8 @@
         "intent": "Find a ready-made agent to start from instead of writing one by hand",
         "command": "everruns agents examples list"
       }
-    ]
+    ],
+    "output": "a JSON array. Read the items with jq '.[]'."
   },
   {
     "wire_name": "export_agent",
@@ -1466,7 +1494,8 @@
         "intent": "Inspect an Agent's external runtime without credentials",
         "command": "everruns agents external-worker get --agent-id agent_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_agent_failures",
@@ -1518,7 +1547,8 @@
         "intent": "Find an agent's failed turns, including sessions that later recovered",
         "command": "everruns agents failures list agent_01h9 --limit 20"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "get_agent",
@@ -1544,7 +1574,8 @@
         "intent": "Show one agent's full configuration",
         "command": "everruns agents get agent_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "connect_agent_github",
@@ -1584,7 +1615,8 @@
         "intent": "Get the link that installs an agent's GitHub App on more repositories",
         "command": "everruns agents github connect --agent-id agent_01h9 --reason 'Let the reviewer reach the API repo'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "disconnect_agent_github",
@@ -1614,7 +1646,8 @@
         "intent": "Start over after creating the App on the wrong account, before installing it",
         "command": "everruns agents github disconnect --agent-id agent_01h9 --reason 'Recreate the App in the acme organization'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "get_agent_github",
@@ -1640,7 +1673,8 @@
         "intent": "Check whether an agent's GitHub App is installed and on which account",
         "command": "everruns agents github get --agent-id agent_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "use_agent_everruns_app",
@@ -1673,7 +1707,8 @@
         "intent": "Let an agent act as the Everruns app through the org's acme installation",
         "command": "everruns agents github use-everruns-app --agent-id agent_01h9 --connection-id 0190f5a2-7c1e-7a3b-9d2e-4f5a6b7c8d9e --reason 'Use the shared app for the reviewer'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "get_agent_health_check_run",
@@ -1706,7 +1741,8 @@
         "intent": "Read the results of one health check run",
         "command": "everruns agents health-checks get --agent-id agent_01h9 --run-id healthcheck_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "get_latest_agent_health_check_run",
@@ -1733,7 +1769,8 @@
         "intent": "See the newest run and whether the agent changed since it",
         "command": "everruns agents health-checks latest get --agent-id agent_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_agent_health_check_runs",
@@ -1759,7 +1796,8 @@
         "intent": "Review recent health check runs and their outcomes",
         "command": "everruns agents health-checks list --agent-id agent_01h9"
       }
-    ]
+    ],
+    "output": "a JSON array. Read the items with jq '.[]'."
   },
   {
     "wire_name": "trigger_agent_health_check",
@@ -1785,7 +1823,8 @@
         "intent": "Smoke-test an agent's behavior after changing its prompt",
         "command": "everruns agents health-checks trigger --agent-id agent_01h9 --reason 'Verify the prompt rewrite'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "import_agent",
@@ -1876,7 +1915,8 @@
         "intent": "Find agents by name when you do not know the id",
         "command": "everruns agents list --search triage --limit 20"
       }
-    ]
+    ],
+    "output": "one page as {data, total, offset, limit}. Read the items with jq '.data[]'; page with --offset and --limit."
   },
   {
     "wire_name": "list_agent_mcp_attachments",
@@ -1903,7 +1943,8 @@
         "intent": "Check whether an agent's MCP sign-ins still work",
         "command": "everruns agents mcp list agent_01h9"
       }
-    ]
+    ],
+    "output": "a JSON array. Read the items with jq '.[]'."
   },
   {
     "wire_name": "revoke_agent_mcp_connection",
@@ -1938,7 +1979,8 @@
         "intent": "Remove the agent's stend sign-in before signing in again",
         "command": "everruns agents mcp revoke agent_01h9 stend --reason 'Sign-in stopped renewing'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "pause_agent",
@@ -1964,7 +2006,8 @@
         "intent": "Stop everything that starts an agent without deleting it",
         "command": "everruns agents pause agent_01h9 --reason 'Pause while the prompt is fixed'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "preview_agent",
@@ -2025,7 +2068,8 @@
         "intent": "See the prompt a draft configuration would produce, without creating it",
         "command": "everruns agents preview --system-prompt 'Triage incoming issues'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "resume_agent",
@@ -2051,7 +2095,8 @@
         "intent": "Let a paused agent start work again",
         "command": "everruns agents resume agent_01h9 --reason 'Prompt fix verified'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "create_agent_script",
@@ -2105,7 +2150,8 @@
         "intent": "Save a reusable shell script on an agent",
         "command": "everruns agents scripts create --agent-id agent_01h9 --name run-tests --description 'Run the unit tests' --body 'cargo test --workspace' --reason 'Give the agent a one-step test runner'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "delete_agent_script",
@@ -2171,7 +2217,8 @@
         "intent": "Read a script's body before editing or running it",
         "command": "everruns agents scripts get --agent-id agent_01h9 --script-id scr_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_agent_scripts",
@@ -2205,7 +2252,8 @@
         "intent": "See which scripts an agent already has before adding another",
         "command": "everruns agents scripts list agent_01h9"
       }
-    ]
+    ],
+    "output": "a JSON array. Read the items with jq '.[]'."
   },
   {
     "wire_name": "update_agent_script",
@@ -2259,7 +2307,8 @@
         "intent": "Change a script's body, keeping its name",
         "command": "everruns agents scripts update --agent-id agent_01h9 --script-id scr_01h9 --body 'cargo test --workspace --locked' --reason 'Pin tests to the lockfile'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_agent_source_accounts",
@@ -2285,7 +2334,8 @@
         "intent": "See which GitHub accounts and repositories can back this Agent's source",
         "command": "everruns agents source accounts list --agent-id agent_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "connect_agent_source",
@@ -2369,7 +2419,8 @@
         "intent": "Enable continuous sync using the commit and Agent digest returned by preview",
         "command": "everruns agents source connect --agent-id agent_01h9 --repository acme/agents --branch main --path agents/support --commit 0123456789abcdef0123456789abcdef01234567 --agent-digest 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef --reason \"Deploy the reviewed GitHub package\""
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "disconnect_agent_source",
@@ -2549,7 +2600,8 @@
         "intent": "Check the source now after pushing a repository change",
         "command": "everruns agents source sync --agent-id agent_01h9 --reason \"Apply the latest repository change\""
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "create_agent_trigger",
@@ -2726,7 +2778,8 @@
         "intent": "Run an agent every weekday morning on a cron schedule",
         "command": "everruns agents triggers create --agent-id agent_01h9 --trigger-type schedule --cron-expression '0 9 * * 1-5' --message 'Summarize overnight alerts' --reason 'Daily alert digest'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "delete_agent_trigger",
@@ -2769,7 +2822,7 @@
       "deliveries"
     ],
     "verb": "list",
-    "description": "List recent events delivered to an agent trigger: dispatched, filtered, duplicate or failed.",
+    "description": "List retained trigger deliveries (90 days), with source, authenticated manual requester, outcome, session and input-message links. Supports time windows and a stable before cursor. Legacy schedule labels with ambiguous ingress are unknown. Older or previously pruned deliveries are unavailable.",
     "method": "GET",
     "http_path": "/v1/platform/agents/{agent_id}/triggers/{trigger_id}/deliveries",
     "args": [
@@ -2781,11 +2834,30 @@
         "help": "Owning agent's prefixed public identifier."
       },
       {
+        "field": "before",
+        "long": "before",
+        "kind": "string",
+        "required": false,
+        "help": "Return records older than this delivery (exclusive)."
+      },
+      {
+        "field": "from",
+        "long": "from",
+        "kind": "string",
+        "required": false
+      },
+      {
         "field": "limit",
         "long": "limit",
         "kind": "integer",
         "required": false,
         "help": "Maximum rows to return (1-200, default 50)."
+      },
+      {
+        "field": "to",
+        "long": "to",
+        "kind": "string",
+        "required": false
       },
       {
         "field": "trigger_id",
@@ -2800,7 +2872,8 @@
         "intent": "Find out why a webhook or event trigger did not start a session",
         "command": "everruns agents triggers deliveries list --agent-id agent_01h9 --trigger-id trg_01h9 --limit 20"
       }
-    ]
+    ],
+    "output": "a JSON array. Read the items with jq '.[]'."
   },
   {
     "wire_name": "get_agent_trigger",
@@ -2833,7 +2906,8 @@
         "intent": "Check a trigger's type, schedule and enabled state",
         "command": "everruns agents triggers get --agent-id agent_01h9 --trigger-id trg_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_agent_triggers",
@@ -2867,7 +2941,8 @@
         "intent": "See what triggers an agent already has before adding one",
         "command": "everruns agents triggers list agent_01h9"
       }
-    ]
+    ],
+    "output": "a JSON array. Read the items with jq '.[]'."
   },
   {
     "wire_name": "list_agent_trigger_runs",
@@ -2877,7 +2952,7 @@
       "runs"
     ],
     "verb": "list",
-    "description": "List recent execution outcomes for an agent trigger.",
+    "description": "List executions in a trigger's current durable schedule binding, with time windows, attempts, authenticated manual requester and resulting session. Disabling a trigger removes durable execution history; use list_agent_trigger_deliveries for retained event history. Historical attribution can be unknown.",
     "method": "GET",
     "http_path": "/v1/platform/agents/{agent_id}/triggers/{trigger_id}/runs",
     "args": [
@@ -2885,23 +2960,50 @@
         "field": "agent_id",
         "long": "agent-id",
         "kind": "string",
-        "required": true,
-        "help": "Owning agent's prefixed public identifier."
+        "required": true
+      },
+      {
+        "field": "before",
+        "long": "before",
+        "kind": "string",
+        "required": false,
+        "help": "Stable cursor: return executions older than this execution."
+      },
+      {
+        "field": "from",
+        "long": "from",
+        "kind": "string",
+        "required": false,
+        "help": "Inclusive scheduled time."
+      },
+      {
+        "field": "limit",
+        "long": "limit",
+        "kind": "integer",
+        "required": false,
+        "help": "Page size, 1-200; default 10."
+      },
+      {
+        "field": "to",
+        "long": "to",
+        "kind": "string",
+        "required": false,
+        "help": "Exclusive scheduled time."
       },
       {
         "field": "trigger_id",
         "long": "trigger-id",
         "kind": "string",
-        "required": true,
-        "help": "Agent trigger's prefixed public identifier."
+        "required": true
       }
     ],
     "examples": [
       {
-        "intent": "See whether recent firings of a trigger succeeded",
-        "command": "everruns agents triggers runs list --agent-id agent_01h9 --trigger-id trg_01h9"
+        "intent": "See recent trigger runs and the sessions they started",
+        "command": "everruns agents triggers runs list --agent-id agent_01h9 --trigger-id trg_01h9 --limit 20"
       }
-    ]
+    ],
+    "output": "a JSON array. Read the items with jq '.[]'."
   },
   {
     "wire_name": "trigger_agent_trigger",
@@ -2944,7 +3046,8 @@
         "intent": "Run a GitHub trigger on an existing pull request, in that pull request's own session",
         "command": "everruns agents triggers trigger --agent-id agent_01h9 --trigger-id trg_01h9 --event '{\"repository\":\"acme/api\",\"pull_request\":12}' --reason 'Review this pull request'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "update_agent_trigger",
@@ -3106,8 +3209,13 @@
       {
         "intent": "Pause a trigger without deleting it",
         "command": "everruns agents triggers update --agent-id agent_01h9 --trigger-id trg_01h9 --enabled false --reason 'Pause during the migration'"
+      },
+      {
+        "intent": "Post a schedule's runs into a Slack channel conversation (the result shows it as .config.target)",
+        "command": "everruns agents triggers update --agent-id agent_01h9 --trigger-id trg_01h9 --target-channel-id appchan_01h9 --target-binding-key slack:channel:C0123456789 --reason 'Report in #ops'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "update_agent",
@@ -3319,7 +3427,8 @@
         "intent": "Cap each model response so calls fit a low provider balance",
         "command": "everruns agents update agent_01h9 --max-output-tokens 4096 --reason 'Provider said it can only afford fewer tokens'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "upsert_agent",
@@ -3539,7 +3648,8 @@
         "intent": "Create or replace an agent at a known id, for a scripted deploy",
         "command": "everruns agents upsert agent_01h9 --name triage --system-prompt 'Triage incoming issues' --reason 'Deploy release 42'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "validate_agent_package",
@@ -3612,7 +3722,8 @@
         "intent": "Read the view settings and revision before editing the layout",
         "command": "everruns agents view get --agent-id agent_01933b5a00007000800000000000001"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "replace_agent_view",
@@ -3651,7 +3762,8 @@
         "intent": "Create a view that shows the status from a scheduled sweep",
         "command": "everruns agents view replace --agent-id agent_01933b5a00007000800000000000001 --revision 0 --view '{\"title\":\"Repository sweep\",\"layout\":{\"format\":\"html\",\"source\":\"<p>{{status}}</p>\"},\"data_fields\":[\"status\"]}'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "create_application",
@@ -3704,7 +3816,8 @@
         "intent": "Reserve a workspace name for organization users",
         "command": "everruns applications create --name 'Content Studio' --slug content-studio --config '{\"membership\":\"org_users\"}' --reason 'Create the editorial workspace'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "get_application",
@@ -3729,7 +3842,8 @@
         "intent": "Read the current resource bindings and version",
         "command": "everruns applications get --application-id application_01a213c3f773718e9d2b8c895eee5d36"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_applications",
@@ -3754,7 +3868,8 @@
         "intent": "Find active and archived workspaces",
         "command": "everruns applications list --include-archived"
       }
-    ]
+    ],
+    "output": "a JSON array. Read the items with jq '.[]'."
   },
   {
     "wire_name": "create_application_resource",
@@ -3820,7 +3935,8 @@
         "intent": "Create a Chat using an existing Agent",
         "command": "everruns applications resources create --application-id application_01a213c3f773718e9d2b8c895eee5d36 --version 1 --kind chat --name Writer --slug writer --agent-id agent_01a213c7b3cf76de8ec474d1c5b7fb27 --reason 'Add the writing assistant'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "set_application_status",
@@ -3863,7 +3979,8 @@
         "intent": "Publish the saved workspace and its audience",
         "command": "everruns applications status --application-id application_01a213c3f773718e9d2b8c895eee5d36 --version 3 --status published --reason 'Open the workspace to its audience'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "update_application",
@@ -3930,7 +4047,8 @@
         "intent": "Rename an empty draft before attaching resources",
         "command": "everruns applications update --application-id application_01a213c3f773718e9d2b8c895eee5d36 --version 1 --name 'Editorial Studio' --slug content-studio --reason 'Name the new draft'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "check_budget",
@@ -3955,7 +4073,8 @@
         "intent": "Check whether a budget still has room before starting expensive work",
         "command": "everruns budgets check --budget-id bdgt_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "create_budget",
@@ -4027,7 +4146,8 @@
         "intent": "Cap an agent's spend with an early warning before the hard limit",
         "command": "everruns budgets create --subject-type agent --subject-id agent_01h9 --currency usd --limit 100 --soft-limit 80 --reason 'Monthly spend cap for the triage agent'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "delete_budget",
@@ -4053,7 +4173,8 @@
         "intent": "Remove a cap that no longer applies",
         "command": "everruns budgets delete bdgt_01h9 --reason 'Agent retired'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "get_budget",
@@ -4079,7 +4200,8 @@
         "intent": "Inspect a budget's limit, balance and status",
         "command": "everruns budgets get bdgt_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_budget_ledger",
@@ -4119,7 +4241,8 @@
         "intent": "Audit what drew down a budget, newest entries first",
         "command": "everruns budgets ledger list --budget-id bdgt_01h9 --limit 20"
       }
-    ]
+    ],
+    "output": "a JSON array. Read the items with jq '.[]'."
   },
   {
     "wire_name": "list_budgets",
@@ -4151,7 +4274,8 @@
         "intent": "Find the budgets that apply to one agent",
         "command": "everruns budgets list --subject-type agent --subject-id agent_01h9"
       }
-    ]
+    ],
+    "output": "a JSON array. Read the items with jq '.[]'."
   },
   {
     "wire_name": "top_up_budget",
@@ -4191,7 +4315,8 @@
         "intent": "Add credits to an exhausted budget so work can continue",
         "command": "everruns budgets top-up top --budget-id bdgt_01h9 --amount 25 --description 'Extra allowance for the launch week' --reason 'Launch week'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "update_budget",
@@ -4250,7 +4375,8 @@
         "intent": "Raise a budget's hard limit",
         "command": "everruns budgets update --budget-id bdgt_01h9 --limit 150 --reason 'Higher volume expected'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "create_declarative_capability",
@@ -4275,7 +4401,8 @@
         "intent": "Package instructions and starter files as a reusable capability",
         "command": "everruns capabilities create --definition '{\"name\":\"research_pack\",\"display_name\":\"Research Pack\",\"description\":\"Research workflow\",\"system_prompt\":\"Use the research workflow.\"}' --reason 'Share the research workflow'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "delete_declarative_capability",
@@ -4356,7 +4483,8 @@
         "intent": "Read the saved definition of a declarative capability",
         "command": "everruns capabilities declarative get cap_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_declarative_capabilities",
@@ -4389,7 +4517,8 @@
         "intent": "List the declarative capabilities your organization has defined",
         "command": "everruns capabilities declarative list --search research"
       }
-    ]
+    ],
+    "output": "a JSON array. Read the items with jq '.[]'."
   },
   {
     "wire_name": "update_declarative_capability",
@@ -4430,7 +4559,8 @@
         "intent": "Replace a declarative capability's definition",
         "command": "everruns capabilities declarative update cap_01h9 --definition '{\"name\":\"research_pack\",\"display_name\":\"Research Pack\",\"description\":\"Research workflow\",\"system_prompt\":\"Use the updated research workflow.\"}' --reason 'Tighten the instructions'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "get_capability",
@@ -4456,7 +4586,8 @@
         "intent": "Read what a capability provides before adding it to an agent",
         "command": "everruns capabilities get cap_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "dry_run_guardrails",
@@ -4509,7 +4640,8 @@
         "intent": "Try a guardrails config on sample text before attaching it to an agent",
         "command": "everruns capabilities guardrails dry-run dry --stage output --text 'this is darn slow' --config '{\"mode\":\"advisory\",\"checks\":[{\"id\":\"profanity\",\"stage\":\"output\",\"type\":\"blocklist\",\"words\":[\"darn\"]}]}'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_guardrail_examples",
@@ -4528,7 +4660,8 @@
         "intent": "Start from a ready-made guardrail preset instead of writing checks by hand",
         "command": "everruns capabilities guardrails examples list"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_capabilities",
@@ -4574,7 +4707,8 @@
         "intent": "Find a capability by name when you do not know its id",
         "command": "everruns capabilities list --search web"
       }
-    ]
+    ],
+    "output": "one page as {data, total, offset, limit}. Read the items with jq '.data[]'; page with --offset and --limit."
   },
   {
     "wire_name": "append_manager_context",
@@ -4788,7 +4922,8 @@
         "intent": "Record a negotiated 20% discount on OpenAI",
         "command": "everruns costs rates create --meter model.tokens --match '{\"provider\":\"openai\"}' --list-price-multiplier 0.8 --reason 'Enterprise discount'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_cost_rates",
@@ -4806,7 +4941,8 @@
         "intent": "See which rates price your agents' usage",
         "command": "everruns costs rates list"
       }
-    ]
+    ],
+    "output": "a JSON array. Read the items with jq '.[]'."
   },
   {
     "wire_name": "retire_cost_rate",
@@ -4839,7 +4975,8 @@
         "intent": "Stop applying a discount that expired",
         "command": "everruns costs rates retire --rate-id rate_01h9 --reason 'Contract ended'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "get_cost_settings",
@@ -4857,7 +4994,8 @@
         "intent": "See which timezone daily and monthly limits reset in",
         "command": "everruns costs settings get"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "update_cost_settings",
@@ -4883,7 +5021,8 @@
         "intent": "Reset monthly limits at midnight in Austin",
         "command": "everruns costs settings update --timezone America/Chicago --reason 'Team is in Austin'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "get_cost_summary",
@@ -4892,7 +5031,7 @@
       "summary"
     ],
     "verb": "get",
-    "description": "Summarize what usage cost the organization.",
+    "description": "Summarize organization costs over a window, with combined agent/session/source/starter filters and an optional joint group_by breakdown. Includes unpriced counts and reports truncated joint groups.",
     "method": "GET",
     "http_path": "/v1/platform/costs/summary",
     "args": [
@@ -4911,6 +5050,34 @@
         "help": "Window start (inclusive)."
       },
       {
+        "field": "group_by",
+        "long": "group-by",
+        "kind": "string",
+        "required": false,
+        "help": "Comma-separated joint dimensions: agent,session,source,started_by,basis,user,day."
+      },
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "kind": "string",
+        "required": false,
+        "help": "Restrict usage to this session."
+      },
+      {
+        "field": "source",
+        "long": "source",
+        "kind": "string",
+        "required": false,
+        "help": "Exact source key from by_source (for example a provider/model)."
+      },
+      {
+        "field": "started_by",
+        "long": "started-by",
+        "kind": "string",
+        "required": false,
+        "help": "person, unattended, or unknown for historical records."
+      },
+      {
         "field": "to",
         "long": "to",
         "kind": "string",
@@ -4923,7 +5090,8 @@
         "intent": "See this month's cost by agent and source",
         "command": "everruns costs summary get"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "create_scoped_credential",
@@ -5004,7 +5172,8 @@
         "intent": "Declare personal mailbox access without putting a value in the command",
         "command": "everruns credential-bindings create --scope virtual_user --owner-id me --usage user --name MAIL_TOKEN --label 'Mailbox API' --binding '{\"url\":\"https://mail.example/api\",\"auth\":{\"type\":\"bearer\"}}'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_scoped_credentials",
@@ -5053,7 +5222,8 @@
         "intent": "Review organization credential metadata before granting access",
         "command": "everruns credential-bindings list --scope organization --usage service"
       }
-    ]
+    ],
+    "output": "a JSON array. Read the items with jq '.[]'."
   },
   {
     "wire_name": "revoke_scoped_credential",
@@ -5112,7 +5282,8 @@
         "intent": "Inspect one run of a schedule, including its error if it failed",
         "command": "everruns durable executions get exec_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "create_schedule",
@@ -5201,7 +5372,8 @@
         "intent": "Run the registered cleanup activity every night",
         "command": "everruns durable schedules create --name nightly-cleanup --cron-expression '0 2 * * *' --timezone UTC --target '{\"type\":\"activity\",\"name\":\"leased_resource_cleanup\",\"input\":{\"batch_size\":25,\"stale_after_seconds\":300,\"retry_after_seconds\":60}}' --reason 'Nightly cleanup'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "delete_schedule",
@@ -5275,7 +5447,8 @@
         "intent": "Find recent failed runs of a schedule",
         "command": "everruns durable schedules executions list --schedule-id sched_01h9 --status failed"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "get_schedule",
@@ -5302,7 +5475,8 @@
         "intent": "Check a schedule's cron expression, target and next run",
         "command": "everruns durable schedules get sched_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_schedules",
@@ -5349,7 +5523,8 @@
         "intent": "Find schedules that are still enabled",
         "command": "everruns durable schedules list --enabled true"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "pause_schedule",
@@ -5375,7 +5550,8 @@
         "intent": "Stop a schedule from firing while you investigate",
         "command": "everruns durable schedules pause --schedule-id sched_01h9 --reason 'Investigate repeated failures'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "resume_schedule",
@@ -5401,7 +5577,8 @@
         "intent": "Turn a paused schedule back on",
         "command": "everruns durable schedules resume --schedule-id sched_01h9 --reason 'Failures fixed'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "get_schedule_stats",
@@ -5428,7 +5605,8 @@
         "intent": "See a schedule's success and failure counts",
         "command": "everruns durable schedules stats get --schedule-id sched_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "trigger_schedule",
@@ -5454,7 +5632,8 @@
         "intent": "Run a schedule once now to test its target",
         "command": "everruns durable schedules trigger --schedule-id sched_01h9 --reason 'Verify the target before the next run'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "update_schedule",
@@ -5542,7 +5721,8 @@
         "intent": "Move a schedule to a different time",
         "command": "everruns durable schedules update --schedule-id sched_01h9 --cron-expression '0 3 * * *' --reason 'Avoid the 02:00 backup window'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "import_atif_trajectories",
@@ -5575,7 +5755,8 @@
         "intent": "Turn recorded agent trajectories into eval cases",
         "command": "everruns evals atif-import import --eval-id eval_01h9 --body \"$(cat trajectories.ndjson)\" --reason 'Seed cases from production sessions'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "create_eval_case",
@@ -5690,7 +5871,8 @@
         "intent": "Add a scripted conversation with a pass condition to an eval",
         "command": "everruns evals cases create --eval-id eval_01h9 --name fix-failing-test --conversation '[{\"content\":\"Fix the failing test in src/lib.rs\"}]' --scorers '[{\"type\":\"contains\",\"text\":\"tests pass\"}]' --reason 'Cover the test-fix flow'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "delete_eval_case",
@@ -5756,7 +5938,8 @@
         "intent": "Read one case's conversation and scorers",
         "command": "everruns evals cases get --eval-id eval_01h9 --case-id evalcase_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_eval_cases",
@@ -5782,7 +5965,8 @@
         "intent": "See which cases an eval contains",
         "command": "everruns evals cases list --eval-id eval_01h9"
       }
-    ]
+    ],
+    "output": "a JSON array. Read the items with jq '.[]'."
   },
   {
     "wire_name": "update_eval_case",
@@ -5904,7 +6088,8 @@
         "intent": "Give a slow case more turns",
         "command": "everruns evals cases update --eval-id eval_01h9 --case-id evalcase_01h9 --max-turns 20 --reason 'Case timed out at the old limit'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "create_eval",
@@ -5956,7 +6141,8 @@
         "intent": "Start a regression suite aimed at one agent",
         "command": "everruns evals create --name support-regression --target '{\"type\":\"session\",\"agent_id\":\"agent_01h9\"}' --reason 'Track support agent quality'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "delete_eval",
@@ -6035,7 +6221,8 @@
         "intent": "Compare two models on the same cases, three trials each, within $10",
         "command": "everruns evals experiments create --eval-id eval_01h9 --variants '[{\"label\":\"luna\",\"model_override\":\"gpt-6-luna\"},{\"label\":\"sol\",\"model_override\":\"gpt-6.2-sol\"}]' --max-cost-usd 10 --reason 'Pick the model for the support agent'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "gate_eval_experiment",
@@ -6096,7 +6283,8 @@
         "intent": "Block a merge unless the candidate passes 90% and is no regression",
         "command": "everruns evals experiments gate --eval-id eval_01h9 --experiment-id evalexp_01h9 --min-pass-rate 0.9 --no-regression true"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "get_eval_experiment",
@@ -6129,7 +6317,8 @@
         "intent": "See which cases a candidate fixed or broke",
         "command": "everruns evals experiments get --eval-id eval_01h9 --experiment-id evalexp_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_eval_experiments",
@@ -6155,7 +6344,8 @@
         "intent": "Find the last experiment on an eval",
         "command": "everruns evals experiments list --eval-id eval_01h9"
       }
-    ]
+    ],
+    "output": "a JSON array. Read the items with jq '.[]'."
   },
   {
     "wire_name": "list_all_eval_experiments",
@@ -6173,7 +6363,8 @@
         "intent": "See what experiments ran lately",
         "command": "everruns evals experiments recent"
       }
-    ]
+    ],
+    "output": "a JSON array. Read the items with jq '.[]'."
   },
   {
     "wire_name": "apply_finding_fix",
@@ -6199,7 +6390,8 @@
         "intent": "Apply a fix after its check passed",
         "command": "everruns evals fixes apply --fix-id fix_01h9 --reason 'Stop rule checked on the support dataset'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "check_finding_fix",
@@ -6246,7 +6438,8 @@
         "intent": "Check a fix on the agent's main eval within $2",
         "command": "everruns evals fixes check --fix-id fix_01h9 --max-cost-usd 2 --reason 'Before applying the stop rule'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_finding_fixes",
@@ -6286,7 +6479,8 @@
         "intent": "Fixes for one agent that still need a decision",
         "command": "everruns evals fixes list --agent-id agent_01h9 --open"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "reject_finding_fix",
@@ -6319,7 +6513,8 @@
         "intent": "Turn down a fix that would hide the real problem",
         "command": "everruns evals fixes reject --fix-id fix_01h9 --note 'The schedule itself is wrong, fixing it there'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "update_finding_fix",
@@ -6359,7 +6554,8 @@
         "intent": "Tighten a fix before checking it",
         "command": "everruns evals fixes update --fix-id fix_01h9 --addition 'Stop after 12 runs with the same result.' --reason 'Shorter stop rule'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "get_eval",
@@ -6385,7 +6581,8 @@
         "intent": "Show an eval's target and settings",
         "command": "everruns evals get eval_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "import_eval_run",
@@ -6423,7 +6620,8 @@
         "intent": "Record results from an eval harness that ran outside Everruns",
         "command": "everruns evals import --source '{\"system\":\"mira\",\"run_id\":\"run-42\"}' --evals '[{\"name\":\"support\",\"cases\":[{\"name\":\"refund\",\"target\":{\"provider\":\"openai\",\"model\":\"gpt-5.1\"},\"status\":\"passed\"}]}]' --reason 'Publish the nightly Mira run'"
       }
-    ]
+    ],
+    "output": "a JSON array. Read the items with jq '.[]'."
   },
   {
     "wire_name": "eval_import_preflight",
@@ -6440,7 +6638,8 @@
         "intent": "Check whether this caller can import eval results",
         "command": "everruns evals import-preflight"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_evals",
@@ -6472,7 +6671,8 @@
         "intent": "Find an eval by name when you do not know the id",
         "command": "everruns evals list --search support"
       }
-    ]
+    ],
+    "output": "a JSON array. Read the items with jq '.[]'."
   },
   {
     "wire_name": "accept_eval_proposal",
@@ -6505,7 +6705,8 @@
         "intent": "Add a proposed case to the agent's main dataset",
         "command": "everruns evals proposals accept --proposal-id evalprop_01h9 --eval-id eval_01h9 --reason 'Cover refunds over the limit'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "propose_eval_cases",
@@ -6531,7 +6732,8 @@
         "intent": "Ask for cases that cover what the support agent got wrong this week",
         "command": "everruns evals proposals create --agent-id agent_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "dismiss_eval_proposal",
@@ -6564,7 +6766,8 @@
         "intent": "Turn down a case that does not fit the agent",
         "command": "everruns evals proposals dismiss --proposal-id evalprop_01h9 --note 'Out of scope for this agent'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_eval_proposals",
@@ -6590,7 +6793,8 @@
         "intent": "Review the cases proposed for an agent",
         "command": "everruns evals proposals list --agent-id agent_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "export_eval_run_artifacts",
@@ -6624,7 +6828,8 @@
         "intent": "Download the files a run captured, one NDJSON line per result",
         "command": "everruns evals runs artifacts export --eval-id eval_01h9 --run-id evalrun_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "cancel_eval_run",
@@ -6657,7 +6862,8 @@
         "intent": "Stop a run that was started with the wrong settings",
         "command": "everruns evals runs cancel --eval-id eval_01h9 --run-id evalrun_01h9 --reason 'Wrong model override'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "create_eval_run",
@@ -6717,7 +6923,8 @@
         "intent": "Run every case in an eval, optionally on a different model",
         "command": "everruns evals runs create --eval-id eval_01h9 --model-override gpt-6-luna --max-cost-usd 5 --reason 'Check the suite on the new model within $5'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "export_eval_run_dataset",
@@ -6777,7 +6984,8 @@
         "intent": "Build a training dataset from a finished run",
         "command": "everruns evals runs dataset export --eval-id eval_01h9 --run-id evalrun_01h9 --format sft --reason 'Fine-tune on the passing cases'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "get_eval_run_dataset",
@@ -6818,7 +7026,8 @@
         "intent": "Poll a dataset export until it completes, then read its NDJSON",
         "command": "everruns evals runs dataset get --eval-id eval_01h9 --run-id evalrun_01h9 --dataset-id evaldataset_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "get_eval_run",
@@ -6851,7 +7060,8 @@
         "intent": "Check a run's status and per-case results",
         "command": "everruns evals runs get --eval-id eval_01h9 --run-id evalrun_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_eval_runs",
@@ -6877,7 +7087,8 @@
         "intent": "Find a past run to compare against",
         "command": "everruns evals runs list --eval-id eval_01h9"
       }
-    ]
+    ],
+    "output": "a JSON array. Read the items with jq '.[]'."
   },
   {
     "wire_name": "update_eval_result_scores",
@@ -6939,7 +7150,8 @@
         "intent": "Override one result's scores after a manual review",
         "command": "everruns evals runs results scores update --eval-id eval_01h9 --run-id evalrun_01h9 --result-id evalresult_01h9 --scores '[{\"pass\":false,\"value\":0.0,\"reason\":\"Wrong refund amount\"}]' --status failed --reason 'Manual review'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "bulk_update_eval_run_scores",
@@ -6987,7 +7199,8 @@
         "intent": "Attach scores from an external grader to every result in a run",
         "command": "everruns evals runs scores bulk --eval-id eval_01h9 --run-id evalrun_01h9 --results '[{\"result_id\":\"evalresult_01h9\",\"scores\":[{\"pass\":true,\"value\":1.0,\"reason\":\"Matches the reference\"}],\"status\":\"passed\"}]' --reason 'Apply grader output'"
       }
-    ]
+    ],
+    "output": "a JSON array. Read the items with jq '.[]'."
   },
   {
     "wire_name": "create_eval_run_share",
@@ -7021,7 +7234,8 @@
         "intent": "Mint a read-only link to show a run's results to someone outside the org",
         "command": "everruns evals runs share create --eval-id eval_01h9 --run-id evalrun_01h9 --reason 'Share results with the vendor'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "get_eval_run_share",
@@ -7055,7 +7269,8 @@
         "intent": "Check whether a run is currently shared",
         "command": "everruns evals runs share get --eval-id eval_01h9 --run-id evalrun_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "revoke_eval_run_share",
@@ -7115,7 +7330,8 @@
         "intent": "Save a dataset as a Mira JSONL file",
         "command": "everruns evals samples export --eval-id eval_01h9 | jq -c '.samples[]' > cases.jsonl"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "import_eval_samples",
@@ -7148,7 +7364,8 @@
         "intent": "Load a Mira JSONL dataset into an eval",
         "command": "everruns evals samples import --eval-id eval_01h9 --samples \"$(jq -s . cases.jsonl)\" --reason 'Share the Mira regression set'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "update_eval",
@@ -7207,7 +7424,8 @@
         "intent": "Point an eval at a different model by default",
         "command": "everruns evals update --eval-id eval_01h9 --model-override gpt-5.1 --reason 'Move the suite to the new model'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "check_harness_name",
@@ -7240,7 +7458,8 @@
         "intent": "Check a name is free before creating a harness",
         "command": "everruns harnesses check-name check --name support-bot"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "copy_harness",
@@ -7266,7 +7485,8 @@
         "intent": "Start a new harness from an existing one",
         "command": "everruns harnesses copy harness_01h9 --reason 'Fork for the EU deployment'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "create_harness",
@@ -7394,7 +7614,8 @@
         "intent": "Create a harness with a prompt and a capability",
         "command": "everruns harnesses create --name support-bot --system-prompt 'You answer support questions' --capabilities '[{\"ref\":\"web_fetch\"}]' --reason 'Base harness for support agents'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "delete_harness",
@@ -7473,7 +7694,8 @@
         "intent": "Add the Coding harness to the org so agents can use it",
         "command": "everruns harnesses examples adopt coding --reason 'Coding agents need the Coding harness'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_harness_examples",
@@ -7491,7 +7713,8 @@
         "intent": "Find a ready-made harness (such as coding) before writing one by hand",
         "command": "everruns harnesses examples list"
       }
-    ]
+    ],
+    "output": "a JSON array. Read the items with jq '.[]'."
   },
   {
     "wire_name": "get_harness",
@@ -7517,7 +7740,8 @@
         "intent": "Show a harness by id or name",
         "command": "everruns harnesses get harness_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_harnesses",
@@ -7549,7 +7773,8 @@
         "intent": "Find harnesses by name when you do not know the id",
         "command": "everruns harnesses list --search support"
       }
-    ]
+    ],
+    "output": "a JSON array. Read the items with jq '.[]'."
   },
   {
     "wire_name": "preview_harness",
@@ -7593,7 +7818,8 @@
         "intent": "See the final prompt and tools a harness would produce before saving it",
         "command": "everruns harnesses preview --system-prompt 'You answer support questions' --capabilities '[{\"ref\":\"web_fetch\"}]'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "update_harness",
@@ -7734,7 +7960,8 @@
         "intent": "Change a harness's system prompt",
         "command": "everruns harnesses update harness_01h9 --system-prompt 'You answer support questions concisely' --reason 'Tighten replies'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_finding_actions",
@@ -7760,7 +7987,8 @@
         "intent": "See whether a repeating schedule was paused",
         "command": "everruns health-issues actions list --issue-id 550e8400-e29b-41d4-a716-446655440000"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "take_finding_action",
@@ -7793,7 +8021,8 @@
         "intent": "Pause a repeating schedule from its finding",
         "command": "everruns health-issues actions take --issue-id 550e8400-e29b-41d4-a716-446655440000 --kind pause_schedule --reason 'Claim expired, polling is pointless'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "undo_finding_action",
@@ -7826,7 +8055,8 @@
         "intent": "Resume a schedule that was paused automatically",
         "command": "everruns health-issues actions undo --issue-id 550e8400-e29b-41d4-a716-446655440000 --action-id fact_01h9 --reason 'Still waiting on the claim; this is expected'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "check_health_issue",
@@ -7851,7 +8081,8 @@
         "intent": "Recheck whether an issue is resolved after fixing it",
         "command": "everruns health-issues check --issue-id 550e8400-e29b-41d4-a716-446655440000"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "dismiss_health_issue",
@@ -7883,7 +8114,8 @@
         "intent": "Close a false alarm and say why",
         "command": "everruns health-issues dismiss --issue-id 550e8400-e29b-41d4-a716-446655440000 --note 'Expected: nightly load test'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "run_health_issue_fixer",
@@ -7915,7 +8147,8 @@
         "intent": "Add missing Slack permissions to an agent's app",
         "command": "everruns health-issues fix --issue-id 550e8400-e29b-41d4-a716-446655440000 --kind slack.add_permissions"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "get_health_issue",
@@ -7923,10 +8156,17 @@
       "health-issues"
     ],
     "verb": "get",
-    "description": "Get an operational health issue.",
+    "description": "Get a health issue with current evidence and frozen opening evidence for its current or selected episode. Opening evidence is unavailable for older episodes that predate collection.",
     "method": "GET",
     "http_path": "/v1/platform/health-issues/{issue_id}",
     "args": [
+      {
+        "field": "episode_id",
+        "long": "episode-id",
+        "kind": "string",
+        "required": false,
+        "help": "Read the opening evidence of this episode; omitted means the current episode."
+      },
       {
         "field": "issue_id",
         "long": "issue-id",
@@ -7940,7 +8180,8 @@
         "intent": "Read an issue's evidence and recovery steps",
         "command": "everruns health-issues get --issue-id 550e8400-e29b-41d4-a716-446655440000"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_health_issues",
@@ -7979,7 +8220,8 @@
         "intent": "See what operational problems need attention",
         "command": "everruns health-issues list --limit 10"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "snooze_health_issue",
@@ -8004,7 +8246,8 @@
         "intent": "Silence your reminders for an issue for a day",
         "command": "everruns health-issues snooze --issue-id 550e8400-e29b-41d4-a716-446655440000 --reason 'Fix scheduled for tomorrow'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "diff_entity_revisions",
@@ -8051,7 +8294,8 @@
         "intent": "See what changed in an agent since revision 4",
         "command": "everruns history diff agent_01h9 --from 4"
       }
-    ]
+    ],
+    "output": "a JSON array. Read the items with jq '.[]'."
   },
   {
     "wire_name": "list_entity_history",
@@ -8105,7 +8349,8 @@
         "intent": "See why an agent was changed",
         "command": "everruns history list agent_01h9 --limit 10"
       }
-    ]
+    ],
+    "output": "a JSON array. Read the items with jq '.[]'."
   },
   {
     "wire_name": "list_org_history",
@@ -8172,7 +8417,8 @@
         "intent": "See what Platform Chat changed today",
         "command": "everruns history org --via-agent agent_01h9 --since 2026-10-05T00:00:00Z"
       }
-    ]
+    ],
+    "output": "a JSON array. Read the items with jq '.[]'."
   },
   {
     "wire_name": "restore_entity_revision",
@@ -8292,7 +8538,8 @@
         "intent": "Fetch an uploaded image's data by id",
         "command": "everruns images get img_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_images",
@@ -8324,7 +8571,8 @@
         "intent": "Browse uploaded images to find an image id",
         "command": "everruns images list --limit 20"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "create_knowledge",
@@ -9065,7 +9313,8 @@
         "intent": "See whether people can sign in to an OAuth MCP server from here",
         "command": "everruns mcp-servers check-connection mcp_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "create_mcp_server",
@@ -9167,7 +9416,8 @@
         "intent": "Register an MCP server so agents can use its tools",
         "command": "everruns mcp-servers create --name github --url https://api.example.com/mcp --reason 'Give agents GitHub tools'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "delete_mcp_server",
@@ -9245,7 +9495,8 @@
         "intent": "Show one MCP server's URL and configuration",
         "command": "everruns mcp-servers get mcp_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "set_mcp_tool_label",
@@ -9285,7 +9536,8 @@
         "intent": "Stop a read-only MCP tool from asking for approval",
         "command": "everruns mcp-servers label-tool mcp_01h9 search_docs --label read_only --reason 'Only reads documentation'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_mcp_servers",
@@ -9315,7 +9567,8 @@
         "intent": "Find a registered MCP server by name",
         "command": "everruns mcp-servers list --search github"
       }
-    ]
+    ],
+    "output": "a JSON array. Read the items with jq '.[]'."
   },
   {
     "wire_name": "suggest_mcp_tool_labels",
@@ -9341,7 +9594,8 @@
         "intent": "Get suggested risk labels for the unlabeled tools of an MCP server",
         "command": "everruns mcp-servers suggest-labels mcp_01h9"
       }
-    ]
+    ],
+    "output": "a JSON array. Read the items with jq '.[]'."
   },
   {
     "wire_name": "list_mcp_server_tools",
@@ -9367,7 +9621,8 @@
         "intent": "See which tools of an MCP server ask for approval",
         "command": "everruns mcp-servers tools mcp_01h9"
       }
-    ]
+    ],
+    "output": "a JSON array. Read the items with jq '.[]'."
   },
   {
     "wire_name": "update_mcp_server",
@@ -9478,7 +9733,8 @@
         "intent": "Repoint an MCP server at a new URL",
         "command": "everruns mcp-servers update mcp_01h9 --name github-prod --reason 'Rename for the production rollout'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "create_memory",
@@ -9513,10 +9769,11 @@
     ],
     "examples": [
       {
-        "intent": "Sync a docs repository into a workspace memory",
-        "command": "everruns memories create --name design-docs --description 'Living design documents' --source '{\"type\":\"github\",\"repository\":\"acme/design-docs\",\"branch\":\"main\",\"root_folder\":\"docs/\"}' --reason 'Give agents the design docs'"
+        "intent": "Create a named memory a coordinator and its workers share",
+        "command": "everruns memories create --name everruns-maintenance --description 'Decisions and rules for repository maintenance' --reason 'Housekeeping and Developer share decisions'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "delete_memory",
@@ -9544,6 +9801,33 @@
     ]
   },
   {
+    "wire_name": "list_memory_entries",
+    "path": [
+      "memories"
+    ],
+    "verb": "entries",
+    "description": "List a memory's typed entries: decisions, rules, facts, preferences, blocked items, notes and dreaming proposals.",
+    "method": "GET",
+    "http_path": "/v1/platform/memories/{memory_id}/entries",
+    "args": [
+      {
+        "field": "memory_id",
+        "long": "memory-id",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Memory's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Read what a team decided and what it is blocked on",
+        "command": "everruns memories entries mem_01h9"
+      }
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
+  },
+  {
     "wire_name": "get_memory",
     "path": [
       "memories"
@@ -9567,7 +9851,42 @@
         "intent": "Check a memory's source and sync state",
         "command": "everruns memories get mem_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
+  },
+  {
+    "wire_name": "memory_file_history",
+    "path": [
+      "memories"
+    ],
+    "verb": "history",
+    "description": "List the versions of a memory file, newest first; every write and delete is kept.",
+    "method": "GET",
+    "http_path": "/v1/platform/memories/{memory_id}/history",
+    "args": [
+      {
+        "field": "memory_id",
+        "long": "memory-id",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Memory's prefixed public identifier."
+      },
+      {
+        "field": "path",
+        "long": "path",
+        "kind": "string",
+        "required": false,
+        "help": "A path inside the memory (`/decisions/everruns-5528.md`)."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "See every version of one decision",
+        "command": "everruns memories history mem_01h9 --path /decisions/everruns-5528.md"
+      }
+    ],
+    "output": "a JSON array. Read the items with jq '.[]'."
   },
   {
     "wire_name": "list_memories",
@@ -9599,7 +9918,26 @@
         "intent": "Find memories by name when you do not know the id",
         "command": "everruns memories list --search design"
       }
-    ]
+    ],
+    "output": "a JSON array. Read the items with jq '.[]'."
+  },
+  {
+    "wire_name": "list_memory_stores",
+    "path": [
+      "memories"
+    ],
+    "verb": "stores",
+    "description": "List the memory stores agents use: the organization's, named memories, team and agent memories, and your own private memory.",
+    "method": "GET",
+    "http_path": "/v1/platform/memory/stores",
+    "args": [],
+    "examples": [
+      {
+        "intent": "See which memories exist and how much each holds",
+        "command": "everruns memories stores"
+      }
+    ],
+    "output": "a JSON array. Read the items with jq '.[]'."
   },
   {
     "wire_name": "sync_memory_now",
@@ -9624,7 +9962,8 @@
         "intent": "Pull the latest source changes without waiting for the schedule",
         "command": "everruns memories sync --memory-id mem_01h9 --reason 'Docs just changed'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "update_memory",
@@ -9669,7 +10008,8 @@
         "intent": "Rename a memory or change its description",
         "command": "everruns memories update --memory-id mem_01h9 --description 'Design docs, main branch' --reason 'Clarify scope'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "apply_model_preset",
@@ -9695,7 +10035,8 @@
         "intent": "Make Gemini's picks the organization defaults",
         "command": "everruns model-presets apply provider:gemini --reason 'Move the org to Gemini'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "create_model_preset",
@@ -9776,7 +10117,8 @@
         "intent": "Start a custom preset from the Gemini picks",
         "command": "everruns model-presets create --name 'Cheap council' --from provider:gemini --reason 'Cheaper helpers for review agents'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "delete_model_preset",
@@ -9827,7 +10169,8 @@
         "intent": "Check which Gemini models the Gemini preset picks",
         "command": "everruns model-presets get provider:gemini"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_model_presets",
@@ -9844,7 +10187,8 @@
         "intent": "See which model each preset uses for coding, research and small work",
         "command": "everruns model-presets list"
       }
-    ]
+    ],
+    "output": "a JSON array. Read the items with jq '.[]'."
   },
   {
     "wire_name": "update_model_preset",
@@ -9925,7 +10269,8 @@
         "intent": "Use a stronger research model in a custom preset",
         "command": "everruns model-presets update --id cheap-council --research-model-id model_01h9 --reason 'Research answers were too shallow'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "get_default_decision_model",
@@ -10013,7 +10358,8 @@
         "intent": "Remove a model that was registered by mistake",
         "command": "everruns models delete model_01h9 --reason 'Duplicate of an existing entry'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "get_model",
@@ -10039,7 +10385,8 @@
         "intent": "Show a model with its provider and capabilities",
         "command": "everruns models get model_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "get_default_image_model",
@@ -10127,7 +10474,8 @@
         "intent": "Find the models you have starred",
         "command": "everruns models list --favorites-only true"
       }
-    ]
+    ],
+    "output": "a JSON array. Read the items with jq '.[]'."
   },
   {
     "wire_name": "apply_model_selection",
@@ -10152,7 +10500,8 @@
         "intent": "Enable a reviewed model only if its provider and current selection still match",
         "command": "everruns models selection apply --changes '[{\"id\":\"model_01h9\",\"provider_id\":\"provider_01h9\",\"expected_enabled\":false,\"enabled\":true}]' --reason 'Make the reviewed model selectable'"
       }
-    ]
+    ],
+    "output": "a JSON array. Read the items with jq '.[]'."
   },
   {
     "wire_name": "undo_model_selection",
@@ -10177,7 +10526,8 @@
         "intent": "Undo reviewed enablement only while the saved revision is still current",
         "command": "everruns models selection undo --changes '[{\"id\":\"model_01h9\",\"from_revision\":1,\"expected_revision\":2}]' --reason 'Restore the reviewed selection'"
       }
-    ]
+    ],
+    "output": "a JSON array. Read the items with jq '.[]'."
   },
   {
     "wire_name": "update_model",
@@ -10257,7 +10607,8 @@
         "intent": "Star a model so it appears first in pickers",
         "command": "everruns models update --id model_01h9 --is-favorite true --reason 'Team default'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_notifications",
@@ -10282,7 +10633,8 @@
         "intent": "Catch up on notifications addressed to you",
         "command": "everruns notifications list --limit 20"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "mark_notification_viewed",
@@ -10309,7 +10661,8 @@
         "intent": "Clear a notification once you have read it",
         "command": "everruns notifications view mark notification_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "backfill_observer",
@@ -10355,7 +10708,8 @@
         "intent": "Score the last day of traffic with a new observer",
         "command": "everruns observers backfill --observer-id observer_01h9 --since-hours 24 --reason 'Baseline the new rubric'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "create_observer",
@@ -10413,7 +10767,8 @@
         "intent": "Score a sample of production turns automatically",
         "command": "everruns observers create --name helpfulness --sampling-rate 0.1 --scorers '[{\"key\":\"mentions_docs\",\"method\":\"rule\",\"rule\":{\"type\":\"contains\",\"text\":\"docs\"}}]' --reason 'Track answer quality'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "delete_observer",
@@ -10464,7 +10819,8 @@
         "intent": "Check an observer's scorers, match rules and sampling rate",
         "command": "everruns observers get observer_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_observers",
@@ -10489,7 +10845,8 @@
         "intent": "See which observers are scoring production sessions",
         "command": "everruns observers list"
       }
-    ]
+    ],
+    "output": "a JSON array. Read the items with jq '.[]'."
   },
   {
     "wire_name": "list_observer_scores",
@@ -10541,7 +10898,8 @@
         "intent": "Look at the scores an observer gave one session",
         "command": "everruns observers scores list --observer-id observer_01h9 --session-id session_01h9"
       }
-    ]
+    ],
+    "output": "a JSON array. Read the items with jq '.[]'."
   },
   {
     "wire_name": "review_observer_score",
@@ -10588,7 +10946,8 @@
         "intent": "Mark a failing score as a grader mistake",
         "command": "everruns observers scores review --observer-id observer_01h9 --score-id score_01h9 --agrees false --note 'The answer cited the refund policy' --reason 'Calibrate the grounded judge'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "get_observer_summary",
@@ -10627,7 +10986,8 @@
         "intent": "See how one agent's production answers scored this week",
         "command": "everruns observers summary --agent-id agent_01h9 --days 7"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "update_observer",
@@ -10697,7 +11057,8 @@
         "intent": "Score fewer turns to cut judge cost",
         "command": "everruns observers update --observer-id observer_01h9 --sampling-rate 0.05 --reason 'Reduce scoring volume'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "get_organization_account",
@@ -10721,7 +11082,8 @@
         "intent": "Read an organization account name without retrieving its credentials",
         "command": "everruns organization-accounts get --id 00000000-0000-0000-0000-000000000001"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "update_organization_account_name",
@@ -10751,7 +11113,8 @@
         "intent": "Rename a connected account while preserving its credential",
         "command": "everruns organization-accounts update --id 00000000-0000-0000-0000-000000000001 --name 'Northstar sandbox' --reason 'Clarify the account purpose'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_audit_logs",
@@ -10812,7 +11175,8 @@
         "intent": "Review who changed what in the organization recently",
         "command": "everruns orgs audit-logs list --domain management --limit 50"
       }
-    ]
+    ],
+    "output": "a JSON array. Read the items with jq '.[]'."
   },
   {
     "wire_name": "get_org_decision_settings",
@@ -10837,7 +11201,8 @@
         "intent": "Check the active organization decision-model selection",
         "command": "everruns orgs decision-settings get --org org_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "get_org_egress_allowlist",
@@ -10863,7 +11228,8 @@
         "intent": "Check whether an organization may add hosts and which ones it added",
         "command": "everruns orgs egress-allowlist get --org org_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "set_org_egress_allowlist_grant",
@@ -10908,7 +11274,8 @@
         "intent": "Give a verified organization open egress (platform administrators)",
         "command": "everruns orgs egress-allowlist grant set --org org_01h9 --open true --reason 'Paid account, verified card'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "set_org_egress_allowlist",
@@ -10941,7 +11308,8 @@
         "intent": "Let agents reach your own API hosts under a curated egress policy",
         "command": "everruns orgs egress-allowlist set --org org_01h9 --patterns api.example.com --patterns '*.internal.example.com' --reason 'Agents call our ticketing API'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "get_org",
@@ -10967,7 +11335,8 @@
         "intent": "Show an organization's details",
         "command": "everruns orgs get org_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_orgs",
@@ -10984,7 +11353,8 @@
         "intent": "See which organizations you belong to and their ids",
         "command": "everruns orgs list"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_organization_connections",
@@ -11010,7 +11380,8 @@
         "intent": "Find the sandbox provider account to point a Sandbox Template at",
         "command": "everruns orgs provider-accounts list --org org_01h9"
       }
-    ]
+    ],
+    "output": "a JSON array. Read the items with jq '.[]'."
   },
   {
     "wire_name": "get_org_quality_monitoring",
@@ -11036,7 +11407,8 @@
         "intent": "Inspect compaction monitoring consent, coverage and allowance",
         "command": "everruns orgs quality-monitoring get --org org_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_org_quality_monitoring_scores",
@@ -11063,7 +11435,8 @@
         "intent": "Read recent compaction assessments and their trace references",
         "command": "everruns orgs quality-monitoring scores list --org org_01h9"
       }
-    ]
+    ],
+    "output": "a JSON array. Read the items with jq '.[]'."
   },
   {
     "wire_name": "review_org_quality_monitoring_score",
@@ -11136,7 +11509,8 @@
         "intent": "Look up an organization by its identifier",
         "command": "everruns orgs resolve --id org_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "update_org",
@@ -11287,7 +11661,8 @@
         "intent": "Rename the active organization while preserving its model and harness defaults",
         "command": "everruns orgs update --org org_01h9 --name 'Northstar Support' --reason 'Use the team name'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "create_plugin_marketplace",
@@ -11326,7 +11701,8 @@
         "intent": "Register a GitHub repository as a source of plugins",
         "command": "everruns plugin-marketplaces create --name acme-plugins --source-type github --source acme/plugins --reason 'Share internal plugins'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "delete_plugin_marketplace",
@@ -11378,7 +11754,8 @@
         "intent": "Check a marketplace's source and sync state",
         "command": "everruns plugin-marketplaces get plgmkt_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_plugin_marketplaces",
@@ -11403,7 +11780,8 @@
         "intent": "Find marketplaces by name when you do not know the id",
         "command": "everruns plugin-marketplaces list --search acme"
       }
-    ]
+    ],
+    "output": "a JSON array. Read the items with jq '.[]'."
   },
   {
     "wire_name": "get_marketplace_catalog",
@@ -11430,7 +11808,8 @@
         "intent": "Browse what a marketplace offers and what is already installed",
         "command": "everruns plugin-marketplaces plugins get plgmkt_01h9"
       }
-    ]
+    ],
+    "output": "a JSON array. Read the items with jq '.[]'."
   },
   {
     "wire_name": "sync_plugin_marketplace",
@@ -11456,7 +11835,8 @@
         "intent": "Refresh a marketplace catalog after its source changed",
         "command": "everruns plugin-marketplaces sync plgmkt_01h9 --reason 'New plugins published'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "update_plugin_marketplace",
@@ -11496,7 +11876,8 @@
         "intent": "Rename a marketplace or disable it",
         "command": "everruns plugin-marketplaces update plgmkt_01h9 --status disabled --reason 'Pause installs while the catalog is audited'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "get_plugin",
@@ -11522,7 +11903,8 @@
         "intent": "Inspect an installed plugin's status and definition",
         "command": "everruns plugins get plugin_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "install_plugin",
@@ -11554,7 +11936,8 @@
         "intent": "Install a plugin listed in a marketplace catalog",
         "command": "everruns plugins install --marketplace-id plgmkt_01h9 --plugin-name microsoft-docs --reason 'Give agents the Microsoft docs tools'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_plugins",
@@ -11579,7 +11962,8 @@
         "intent": "Find installed plugins by name",
         "command": "everruns plugins list --search docs"
       }
-    ]
+    ],
+    "output": "a JSON array. Read the items with jq '.[]'."
   },
   {
     "wire_name": "list_my_plugins",
@@ -11597,7 +11981,8 @@
         "intent": "See which approved plugins you added for yourself",
         "command": "everruns plugins mine list"
       }
-    ]
+    ],
+    "output": "a JSON array. Read the items with jq '.[]'."
   },
   {
     "wire_name": "set_my_plugin_choice",
@@ -11631,7 +12016,8 @@
         "intent": "Add Visti to your own conversations",
         "command": "everruns plugins mine set plugin_01h9 --enabled true"
       }
-    ]
+    ],
+    "output": "a JSON array. Read the items with jq '.[]'."
   },
   {
     "wire_name": "patch_installed_plugin",
@@ -11671,7 +12057,8 @@
         "intent": "Disable a plugin, or choose which identity its MCP servers act as",
         "command": "everruns plugins patch plugin_01h9 --status disabled --reason 'Pause during the incident'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "uninstall_plugin",
@@ -11723,7 +12110,8 @@
         "intent": "Move an installed plugin to the marketplace's current version",
         "command": "everruns plugins update plugin_01h9 --reason 'Pick up the security fix'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "check_provider_credentials",
@@ -11763,7 +12151,8 @@
         "intent": "Verify an API key works before saving a provider",
         "command": "everruns providers check-credentials check --provider-type openai --api-key \"$OPENAI_API_KEY\""
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "create_provider",
@@ -11828,7 +12217,8 @@
         "intent": "Connect an LLM provider with its API key",
         "command": "everruns providers create --name openai-prod --provider-type openai --api-key \"$OPENAI_API_KEY\" --reason 'Enable OpenAI models'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "delete_provider",
@@ -11854,7 +12244,8 @@
         "intent": "Remove a provider and stop using its models",
         "command": "everruns providers delete provider_01h9 --reason 'Account closed'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "get_provider",
@@ -11880,7 +12271,8 @@
         "intent": "Show a provider's type and status",
         "command": "everruns providers get provider_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_providers",
@@ -11897,7 +12289,8 @@
         "intent": "See which LLM providers are connected",
         "command": "everruns providers list"
       }
-    ]
+    ],
+    "output": "a JSON array. Read the items with jq '.[]'."
   },
   {
     "wire_name": "create_model",
@@ -11971,7 +12364,8 @@
         "intent": "Register a model that provider discovery does not list",
         "command": "everruns providers models create --provider-id provider_01h9 --model-id gpt-5.1 --display-name 'GPT-5.1' --enabled true --reason 'Make the new model selectable'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_provider_models",
@@ -11997,7 +12391,8 @@
         "intent": "See which models one provider offers",
         "command": "everruns providers models list --provider-id provider_01h9"
       }
-    ]
+    ],
+    "output": "a JSON array. Read the items with jq '.[]'."
   },
   {
     "wire_name": "review_provider_models",
@@ -12023,7 +12418,8 @@
         "intent": "Clear the new flag once you have looked at a provider's newly discovered models",
         "command": "everruns providers models review --id provider_01h9 --reason 'Checked new models'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "sync_provider_models",
@@ -12049,7 +12445,8 @@
         "intent": "Pull a provider's current model list after it ships new models",
         "command": "everruns providers sync-models sync --id provider_01h9 --reason 'New models released'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "update_provider",
@@ -12126,7 +12523,8 @@
         "intent": "Rotate a provider's API key",
         "command": "everruns providers update --id provider_01h9 --api-key \"$OPENAI_API_KEY\" --reason 'Scheduled key rotation'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "grant_resource_access",
@@ -12196,7 +12594,8 @@
         "intent": "Allow one service agent to use an organization credential",
         "command": "everruns resources grants grant --id 00000000-0000-0000-0000-000000000001 --consumer-scope agent --consumer-id agent_00000000000000000000000000000002 --usage service"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_resource_grants",
@@ -12222,7 +12621,8 @@
         "intent": "Review who can use a credential or connection",
         "command": "everruns resources grants list --id 00000000-0000-0000-0000-000000000001"
       }
-    ]
+    ],
+    "output": "a JSON array. Read the items with jq '.[]'."
   },
   {
     "wire_name": "revoke_resource_grant",
@@ -12286,7 +12686,8 @@
         "intent": "Close a room once its work is done",
         "command": "everruns rooms archive --room-id room_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "create_room",
@@ -12350,7 +12751,8 @@
         "intent": "Open a room where a support agent and your people talk",
         "command": "everruns rooms create --name support-desk --topic 'Customer escalations' --members '[{\"kind\":\"agent\",\"agent_id\":\"agent_01h9\"}]'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_room_events",
@@ -12387,7 +12789,8 @@
         "intent": "Follow one room's changes from where you stopped",
         "command": "everruns rooms events --room-id room_01h9 --after 120"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_room_facts",
@@ -12448,7 +12851,8 @@
         "intent": "See the decisions a room has made",
         "command": "everruns rooms facts list room_01h9 --kind decision"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "remember_room_fact",
@@ -12529,7 +12933,8 @@
         "intent": "Record that the deploy window moved",
         "command": "everruns rooms facts remember --room-id room_01h9 --kind decision --subject 'deploy window' --statement 'Deploys happen Tuesdays at 15:00 CT.'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_org_room_events",
@@ -12560,7 +12965,8 @@
         "intent": "Follow every room in the organization from where you stopped",
         "command": "everruns rooms feed --after 120"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "delete_room_file",
@@ -12607,7 +13013,8 @@
         "intent": "Remove a finished draft from a room",
         "command": "everruns rooms files delete room_01h9 --path /draft.md"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "edit_room_file",
@@ -12653,7 +13060,8 @@
         "intent": "Tick an item off a room's plan",
         "command": "everruns rooms files edit --room-id room_01h9 --path /plans/launch.md --edits '[{\"old_text\":\"- [ ] Draft\",\"new_text\":\"- [x] Draft\"}]'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_room_file_history",
@@ -12692,7 +13100,8 @@
         "intent": "See who changed a room's plan",
         "command": "everruns rooms files history room_01h9 --path /plans/launch.md"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_room_files",
@@ -12725,7 +13134,8 @@
         "intent": "See what notes and plans a room keeps",
         "command": "everruns rooms files list room_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "move_room_file",
@@ -12771,7 +13181,8 @@
         "intent": "File a draft plan under plans",
         "command": "everruns rooms files move --room-id room_01h9 --from /draft.md --to /plans/launch.md"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "read_room_file",
@@ -12811,7 +13222,8 @@
         "intent": "Read a room's launch plan",
         "command": "everruns rooms files read room_01h9 --path /plans/launch.md"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "restore_room_file",
@@ -12857,7 +13269,8 @@
         "intent": "Undo a bad change to a room's plan",
         "command": "everruns rooms files restore --room-id room_01h9 --path /plans/launch.md --version 2"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "write_room_file",
@@ -12917,7 +13330,8 @@
         "intent": "Start a shared plan in a room",
         "command": "everruns rooms files write --room-id room_01h9 --path /plans/launch.md --content '# Launch plan'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "get_room",
@@ -12943,7 +13357,8 @@
         "intent": "Check a room's topic, settings and last activity",
         "command": "everruns rooms get room_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_rooms",
@@ -12988,7 +13403,8 @@
         "intent": "Find the room your product made for a ticket",
         "command": "everruns rooms list --external-ref ticket-4521"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "mark_room_read",
@@ -13025,7 +13441,8 @@
         "intent": "Mark everything in a room as read",
         "command": "everruns rooms mark-read --room-id room_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "add_room_member",
@@ -13123,7 +13540,8 @@
         "intent": "Add an agent that answers only when mentioned",
         "command": "everruns rooms members add --room-id room_01h9 --kind agent --agent-id agent_01h9 --wake mentions"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_room_members",
@@ -13156,7 +13574,8 @@
         "intent": "See who is in a room and how each agent is woken",
         "command": "everruns rooms members list room_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "remove_room_member",
@@ -13187,7 +13606,8 @@
         "intent": "Take an agent out of a room",
         "command": "everruns rooms members remove --room-id room_01h9 --member-id rmem_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "update_room_member",
@@ -13256,7 +13676,8 @@
         "intent": "Let an agent read every message in the room",
         "command": "everruns rooms members update --room-id room_01h9 --member-id rmem_01h9 --wake everything"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "forget_room_memory_entry",
@@ -13294,7 +13715,8 @@
         "intent": "Take back a fact the room got wrong",
         "command": "everruns rooms memory forget --room-id room_01h9 --entry-id rmm_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "get_room_memory_entry",
@@ -13325,7 +13747,8 @@
         "intent": "See where a fact came from and what it replaced",
         "command": "everruns rooms memory get --room-id room_01h9 --entry-id rmm_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "ingest_room_note",
@@ -13392,7 +13815,8 @@
         "intent": "Add yesterday's standup notes to a room",
         "command": "everruns rooms memory ingest --room-id room_01h9 --label 'Standup 2026-11-24' --source-ref standup-2026-11-24 --text 'Agreed to ship the importer behind a flag.'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "publish_session_to_room",
@@ -13431,7 +13855,8 @@
         "intent": "Let a room remember what a session worked out",
         "command": "everruns rooms memory publish-session --room-id room_01h9 --session-id session_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "delete_room_message",
@@ -13468,7 +13893,8 @@
         "intent": "Remove a message posted by mistake",
         "command": "everruns rooms messages delete --room-id room_01h9 --message-id rmsg_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "edit_room_message",
@@ -13511,7 +13937,8 @@
         "intent": "Fix a typo in your message",
         "command": "everruns rooms messages edit --room-id room_01h9 --message-id rmsg_01h9 --text 'Deploy is at 15:00 CT'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "get_room_message",
@@ -13542,7 +13969,8 @@
         "intent": "Open one message with its reactions",
         "command": "everruns rooms messages get --room-id room_01h9 --message-id rmsg_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_room_messages",
@@ -13588,7 +14016,8 @@
         "intent": "Read the latest messages at a room's top level",
         "command": "everruns rooms messages list room_01h9 --limit 20"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "pin_room_message",
@@ -13632,7 +14061,8 @@
         "intent": "Pin the decision so everyone finds it",
         "command": "everruns rooms messages pin --room-id room_01h9 --message-id rmsg_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_room_pins",
@@ -13658,7 +14088,8 @@
         "intent": "List what a room has pinned",
         "command": "everruns rooms messages pinned room_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "post_room_message",
@@ -13704,7 +14135,8 @@
         "intent": "Ask an agent in the room to look at something",
         "command": "everruns rooms messages post --room-id room_01h9 --text '@triage can you look at ticket 4521?'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "react_to_room_message",
@@ -13755,7 +14187,8 @@
         "intent": "Show you are looking at a message",
         "command": "everruns rooms messages react --room-id room_01h9 --message-id rmsg_01h9 --emoji eyes"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_room_message_readers",
@@ -13786,7 +14219,8 @@
         "intent": "See who has read a message and who has not",
         "command": "everruns rooms messages readers --room-id room_01h9 --message-id rmsg_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_room_replies",
@@ -13835,7 +14269,8 @@
         "intent": "Read the replies in one thread",
         "command": "everruns rooms messages replies --room-id room_01h9 --message-id rmsg_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "search_room_messages",
@@ -13873,7 +14308,8 @@
         "intent": "Find where a room talked about a deploy",
         "command": "everruns rooms messages search --room-id room_01h9 --q deploy"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "recall_room",
@@ -13919,7 +14355,8 @@
         "intent": "Check whether a room already decided something",
         "command": "everruns rooms recall room_01h9 --q 'deploy window'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "read_room_unread",
@@ -13962,7 +14399,8 @@
         "intent": "Catch up on what you have not read in a room",
         "command": "everruns rooms unread --room-id room_01h9 --limit 50"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "update_room",
@@ -14023,7 +14461,8 @@
         "intent": "Change what a room is about",
         "command": "everruns rooms update --room-id room_01h9 --topic 'Release 0.52 coordination'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_sandbox_targets",
@@ -14040,7 +14479,8 @@
         "intent": "See which sandbox targets this deployment offers",
         "command": "everruns sandbox-targets list"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "get_sandbox_template_metadata",
@@ -14065,7 +14505,8 @@
         "intent": "Inspect a template display name without reading its execution configuration",
         "command": "everruns sandbox-template-metadata get --id sbxtpl_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "update_sandbox_template_metadata",
@@ -14102,7 +14543,8 @@
         "intent": "Clarify a template label while preserving the current sandbox specification",
         "command": "everruns sandbox-template-metadata update --id sbxtpl_01h9 --display-name 'Northstar review sandbox' --reason 'Clarify the template purpose'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "apply_sandbox_template_build",
@@ -14128,7 +14570,8 @@
         "intent": "Apply a Sandbox Template build",
         "command": "everruns sandbox-templates builds apply --id sbxbuild_01933b5a000070008000000000000001"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "cancel_sandbox_template_build",
@@ -14154,7 +14597,8 @@
         "intent": "Cancel a Sandbox Template build",
         "command": "everruns sandbox-templates builds cancel --id sbxbuild_01933b5a000070008000000000000001"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "discard_sandbox_template_build",
@@ -14180,7 +14624,8 @@
         "intent": "Discard a Sandbox Template build",
         "command": "everruns sandbox-templates builds discard --id sbxbuild_01933b5a000070008000000000000001"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "get_sandbox_template_build",
@@ -14206,7 +14651,8 @@
         "intent": "Get a Sandbox Template build",
         "command": "everruns sandbox-templates builds get --id sbxbuild_01933b5a000070008000000000000001"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_sandbox_template_builds",
@@ -14238,7 +14684,8 @@
         "intent": "List a Sandbox Template build",
         "command": "everruns sandbox-templates builds list --id sbxtpl_01933b5a000070008000000000000001"
       }
-    ]
+    ],
+    "output": "a JSON array. Read the items with jq '.[]'."
   },
   {
     "wire_name": "start_sandbox_template_build",
@@ -14305,7 +14752,8 @@
         "intent": "Start a Sandbox Template build",
         "command": "everruns sandbox-templates builds start --id sbxtpl_01933b5a000070008000000000000001 --source-revision-id sbxtplrev_01933b5a000070008000000000000001 --install-script 'echo ready'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "diagnose_sandbox",
@@ -14331,7 +14779,8 @@
         "intent": "Find out why a Sandbox did not pause",
         "command": "everruns sandboxes diagnose sandbox_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_sandbox_events",
@@ -14379,7 +14828,8 @@
         "intent": "See who paused a Sandbox and why, since a given time",
         "command": "everruns sandboxes events list sandbox_01h9 --from 2026-11-09T02:25:00Z"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "get_sandbox",
@@ -14405,7 +14855,8 @@
         "intent": "See why a Sandbox was rebuilt",
         "command": "everruns sandboxes get sandbox_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_sandboxes",
@@ -14486,7 +14937,8 @@
         "intent": "Find Sandboxes that need attention",
         "command": "everruns sandboxes list --needs-attention true"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "get_sandbox_provider_state",
@@ -14513,7 +14965,8 @@
         "intent": "Check whether Daytona stopped a Sandbox on its own",
         "command": "everruns sandboxes provider get sandbox_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "get_sandbox_fleet_stats",
@@ -14581,7 +15034,8 @@
         "intent": "See how many Sandboxes are running and how many need attention",
         "command": "everruns sandboxes stats get --provider daytona"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "get_sandbox_timeline",
@@ -14670,7 +15124,8 @@
         "intent": "See when Sandboxes ran or were lost over the last day",
         "command": "everruns sandboxes timeline get --from 2026-05-01T00:00:00Z --to 2026-05-02T00:00:00Z --state running,lost"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "get_session_agent_view",
@@ -14773,7 +15228,8 @@
         "intent": "See which approval mode a session runs in",
         "command": "everruns sessions approval-mode get --session-id session_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "set_session_approval_mode",
@@ -14806,7 +15262,8 @@
         "intent": "Let a reviewer model answer routine approvals in a session",
         "command": "everruns sessions approval-mode set --session-id session_01h9 --mode auto --reason 'Long refactor, review routine calls automatically'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "archive_session",
@@ -14859,7 +15316,8 @@
         "intent": "See if any budget would stop this session from running",
         "command": "everruns sessions budget-check check session_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_session_budgets",
@@ -14886,7 +15344,8 @@
         "intent": "List every budget that constrains a session",
         "command": "everruns sessions budgets list session_01h9"
       }
-    ]
+    ],
+    "output": "a JSON array. Read the items with jq '.[]'."
   },
   {
     "wire_name": "cancel_session",
@@ -14912,7 +15371,8 @@
         "intent": "Stop a session that is running away",
         "command": "everruns sessions cancel session_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "get_session_context_report",
@@ -14938,7 +15398,8 @@
         "intent": "See what is filling a session's context window",
         "command": "everruns sessions context session_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "get_session_cost",
@@ -14958,6 +15419,20 @@
         "kind": "string",
         "required": true,
         "help": "Session's prefixed public identifier (a path parameter)."
+      },
+      {
+        "field": "from",
+        "long": "from",
+        "kind": "string",
+        "required": false,
+        "help": "Inclusive model-call and tool-start time."
+      },
+      {
+        "field": "to",
+        "long": "to",
+        "kind": "string",
+        "required": false,
+        "help": "Exclusive model-call and tool-start time."
       }
     ],
     "examples": [
@@ -14965,7 +15440,8 @@
         "intent": "See where a session's spend went",
         "command": "everruns sessions cost get session_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "create_session",
@@ -15136,7 +15612,8 @@
         "intent": "Start a session for an agent",
         "command": "everruns sessions create --agent agent_01h9 --reason 'Investigate the failed release'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "create_session_database",
@@ -15169,7 +15646,8 @@
         "intent": "Give a session a scratch SQL database to work with",
         "command": "everruns sessions databases create --session-id session_01h9 --name analytics --reason 'Store intermediate results'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "delete_session_database",
@@ -15202,7 +15680,8 @@
         "intent": "Drop a session database once its data is exported",
         "command": "everruns sessions databases delete --session-id session_01h9 --name analytics --reason 'No longer needed'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "get_session_database",
@@ -15235,7 +15714,8 @@
         "intent": "Check a session database's size and metadata",
         "command": "everruns sessions databases get --session-id session_01h9 --name analytics"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_session_databases",
@@ -15262,7 +15742,8 @@
         "intent": "See which databases a session has created",
         "command": "everruns sessions databases list session_01h9"
       }
-    ]
+    ],
+    "output": "a JSON array. Read the items with jq '.[]'."
   },
   {
     "wire_name": "get_session_database_schema",
@@ -15296,7 +15777,8 @@
         "intent": "Inspect a session database's tables before writing queries",
         "command": "everruns sessions databases schema get --session-id session_01h9 --name analytics"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "delete_session",
@@ -15470,7 +15952,8 @@
         "intent": "Search a session's events for a phrase, newest first",
         "command": "everruns sessions events list session_01h9 --q timeout --order-desc true"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "events_summary",
@@ -15498,7 +15981,8 @@
         "intent": "Get a quick picture of a session (event counts, turns, errors) before reading events",
         "command": "everruns sessions events summary events session_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "export_session_messages",
@@ -15535,7 +16019,8 @@
         "intent": "Save a session's transcript for review or audit",
         "command": "everruns sessions export session_01h9 --format jsonl"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "get_session_facets",
@@ -15635,7 +16120,8 @@
         "intent": "Break the session list down by status, agent and source",
         "command": "everruns sessions facets --search triage"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "fork_session",
@@ -15668,7 +16154,8 @@
         "intent": "Branch from a session to try a different direction",
         "command": "everruns sessions fork session_01h9 --reason 'Try the rollback path'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "copy_workspace_file",
@@ -15709,7 +16196,8 @@
         "intent": "Duplicate a file in a session's filesystem before editing it",
         "command": "everruns sessions fs - copy --session-id session_01h9 --src-path /notes.md --dst-path /notes.bak.md --reason 'Keep a backup'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "grep_workspace_files",
@@ -15750,7 +16238,8 @@
         "intent": "Find which files in a session mention a word",
         "command": "everruns sessions fs - grep --session-id session_01h9 --pattern TODO"
       }
-    ]
+    ],
+    "output": "a JSON array. Read the items with jq '.[]'."
   },
   {
     "wire_name": "move_workspace_file",
@@ -15791,7 +16280,8 @@
         "intent": "Rename a file in a session's filesystem",
         "command": "everruns sessions fs - move --session-id session_01h9 --src-path /draft.md --dst-path /final.md --reason 'Publish the draft'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "search_workspace_files",
@@ -15867,7 +16357,8 @@
         "intent": "Search file contents with surrounding lines",
         "command": "everruns sessions fs - search --session-id session_01h9 --pattern 'TODO|FIXME' --path-pattern '**/*.rs' --after-context 2"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "stat_workspace_file",
@@ -15901,7 +16392,8 @@
         "intent": "Check a file's size and type without reading it",
         "command": "everruns sessions fs - stat --session-id session_01h9 --path /report.md"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "create_workspace_file",
@@ -15962,7 +16454,8 @@
         "intent": "Seed a session with a file the agent should read",
         "command": "everruns sessions fs create --session-id session_01h9 --path /brief.md --content '# Brief' --reason 'Give the agent context'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "delete_workspace_file",
@@ -16002,7 +16495,8 @@
         "intent": "Remove a scratch directory from a session's filesystem",
         "command": "everruns sessions fs delete --session-id session_01h9 --path /tmp --recursive true --reason 'Clean up scratch files'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "get_workspace_file",
@@ -16042,7 +16536,8 @@
         "intent": "Read a file the agent wrote in a session",
         "command": "everruns sessions fs get --session-id session_01h9 --path /report.md"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_workspace_files",
@@ -16076,7 +16571,8 @@
         "intent": "See what files a session contains",
         "command": "everruns sessions fs list session_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "update_workspace_file",
@@ -16144,7 +16640,8 @@
         "intent": "Overwrite a file in a session's filesystem",
         "command": "everruns sessions fs update --session-id session_01h9 --path /brief.md --content '# Updated brief' --reason 'Correct the scope'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "get_session",
@@ -16170,7 +16667,8 @@
         "intent": "Show one session's state and configuration",
         "command": "everruns sessions get session_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_sessions",
@@ -16284,7 +16782,8 @@
         "intent": "Find recent sessions when you do not know the id",
         "command": "everruns sessions list --limit 20"
       }
-    ]
+    ],
+    "output": "one page as {data, total, offset, limit}. Read the items with jq '.data[]'; page with --offset and --limit."
   },
   {
     "wire_name": "list_session_mcp_servers",
@@ -16311,7 +16810,8 @@
         "intent": "See which MCP servers were added to one chat only",
         "command": "everruns sessions mcp-servers list session_01h9"
       }
-    ]
+    ],
+    "output": "a JSON array. Read the items with jq '.[]'."
   },
   {
     "wire_name": "remove_session_mcp_server",
@@ -16423,7 +16923,8 @@
         "intent": "Send a user message to a session and start the next run",
         "command": "everruns sessions messages create --session-id session_01h9 --message '{\"content\":[{\"type\":\"text\",\"text\":\"Why is the build failing on main?\"}]}' --reason 'Ask about the failing build'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_messages",
@@ -16457,7 +16958,8 @@
         "intent": "Read the latest messages of a session",
         "command": "everruns sessions messages list session_01h9 --limit 20"
       }
-    ]
+    ],
+    "output": "a JSON array. Read the items with jq '.[]'."
   },
   {
     "wire_name": "set_message_feedback",
@@ -16505,7 +17007,8 @@
         "intent": "Mark an agent reply as a bad answer",
         "command": "everruns sessions messages rate session_01h9 msg_01h9 --rating bad --comment 'Ignored the failing test' --reason 'Flag a wrong answer'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_message_feedback",
@@ -16532,7 +17035,8 @@
         "intent": "See which replies you rated in a session",
         "command": "everruns sessions messages ratings session_01h9"
       }
-    ]
+    ],
+    "output": "a JSON array. Read the items with jq '.[]'."
   },
   {
     "wire_name": "add_message_reaction",
@@ -16575,7 +17079,8 @@
         "intent": "Give an agent reply a thumbs up",
         "command": "everruns sessions messages react session_01h9 message_01h9 👍"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_message_reactions",
@@ -16609,7 +17114,8 @@
         "intent": "See who reacted to what in a session",
         "command": "everruns sessions messages reactions session_01h9"
       }
-    ]
+    ],
+    "output": "a JSON array. Read the items with jq '.[]'."
   },
   {
     "wire_name": "remove_message_reaction",
@@ -16652,7 +17158,8 @@
         "intent": "Take back a thumbs up",
         "command": "everruns sessions messages unreact session_01h9 message_01h9 👍"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "add_session_participant",
@@ -16702,7 +17209,8 @@
         "intent": "Bring a user into a running session",
         "command": "everruns sessions participants add --session session_01h9 --kind user --reason 'Bring in the on-call reviewer'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "leave_session_participant",
@@ -16735,7 +17243,8 @@
         "intent": "Remove one participant from a session",
         "command": "everruns sessions participants leave --session session_01h9 --participant-id part_01h9 --reason 'Review finished'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_session_participants",
@@ -16761,7 +17270,8 @@
         "intent": "See who is attached to a session",
         "command": "everruns sessions participants list --session session_01h9"
       }
-    ]
+    ],
+    "output": "a JSON array. Read the items with jq '.[]'."
   },
   {
     "wire_name": "pin_session",
@@ -16805,7 +17315,8 @@
         "intent": "Open your permanent platform conversation, creating it on first use",
         "command": "everruns sessions platform-chat ensure --reason 'Open the platform chat'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "get_session_repositories",
@@ -16832,7 +17343,8 @@
         "intent": "See what a coding session changed in each repository",
         "command": "everruns sessions repositories get session_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_session_resources",
@@ -16859,7 +17371,8 @@
         "intent": "List the files and other resources registered in a session",
         "command": "everruns sessions resources list session_01h9"
       }
-    ]
+    ],
+    "output": "a JSON array. Read the items with jq '.[]'."
   },
   {
     "wire_name": "resume_session_budgets",
@@ -16885,7 +17398,8 @@
         "intent": "Let a session continue after a usage policy asked before going further",
         "command": "everruns sessions resume session_01h9 --reason 'Finish the report'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "get_session_run",
@@ -16912,7 +17426,8 @@
         "intent": "See every agent in a session's run",
         "command": "everruns sessions run get session_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "get_session_sandbox",
@@ -16939,7 +17454,8 @@
         "intent": "See what a session's sandbox can reach",
         "command": "everruns sessions sandbox get session_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "manage_session_sandbox",
@@ -16977,7 +17493,69 @@
         "intent": "Pause a session's sandbox to stop paying for idle compute",
         "command": "everruns sessions sandbox manage --session-id session_01h9 --action pause --reason 'Idle overnight'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
+  },
+  {
+    "wire_name": "get_session_schedule",
+    "path": [
+      "sessions",
+      "schedules"
+    ],
+    "verb": "get",
+    "description": "Read one follow-up schedule in its owning session, with its purpose, stop condition, lifetime, spend and stop reason.",
+    "method": "GET",
+    "http_path": "/v1/platform/sessions/{session_id}/schedules/{schedule_id}",
+    "args": [
+      {
+        "field": "schedule_id",
+        "long": "schedule-id",
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed identifier with 'sched' prefix"
+      },
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed identifier with 'session' prefix"
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Read one follow-up's purpose, limits and stop reason",
+        "command": "everruns sessions schedules get --session-id session_01h9 --schedule-id sched_01h9"
+      }
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
+  },
+  {
+    "wire_name": "list_session_schedules",
+    "path": [
+      "sessions",
+      "schedules"
+    ],
+    "verb": "list",
+    "description": "Read a session's follow-up schedules, including purpose, stop conditions, limits, spend and deleted schedules.",
+    "method": "GET",
+    "http_path": "/v1/platform/sessions/{session_id}/schedules",
+    "args": [
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed identifier with 'session' prefix"
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Inspect a session's follow-ups and their stop conditions",
+        "command": "everruns sessions schedules list --session-id session_01h9"
+      }
+    ],
+    "output": "a JSON array. Read the items with jq '.[]'."
   },
   {
     "wire_name": "stream_sse",
@@ -17021,7 +17599,8 @@
         "intent": "Check token and cost totals across sessions",
         "command": "everruns sessions stats"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_session_storage",
@@ -17090,7 +17669,8 @@
         "intent": "Give a session several credentials in one call",
         "command": "everruns sessions storage secrets batch --session-id session_01h9 --secrets '{\"SERVICE_TOKEN\":\"s3cr3t\",\"DB_PASSWORD\":\"hunter2\"}' --reason 'Provision credentials for the deploy run'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "delete_session_secret",
@@ -17185,7 +17765,8 @@
         "intent": "Ask a runaway background task to stop",
         "command": "everruns sessions tasks cancel --session-id session_01h9 --task-id task_01h9 --reason 'Stuck on a dead host'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "get_session_task",
@@ -17232,7 +17813,8 @@
         "intent": "Read a task's state and its recent messages",
         "command": "everruns sessions tasks get --session-id session_01h9 --task-id task_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_session_tasks",
@@ -17273,7 +17855,8 @@
         "intent": "See what background tasks a session is running",
         "command": "everruns sessions tasks list session_01h9 --state running"
       }
-    ]
+    ],
+    "output": "a JSON array. Read the items with jq '.[]'."
   },
   {
     "wire_name": "post_session_task_message",
@@ -17328,7 +17911,8 @@
         "intent": "Answer a task that is waiting for input",
         "command": "everruns sessions tasks messages post --session-id session_01h9 --task-id task_01h9 --text 'Use the staging database' --reason 'Unblock the migration task'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "create_task_push_config",
@@ -17383,7 +17967,8 @@
         "intent": "Get a webhook call when a task finishes",
         "command": "everruns sessions tasks push-configs create --session-id session_01h9 --task-id task_01h9 --url https://example.com/hooks/tasks --secret \"$WEBHOOK_SECRET\" --reason 'Notify the deploy pipeline'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "delete_task_push_config",
@@ -17458,7 +18043,8 @@
         "intent": "Check where a task's webhooks are delivered",
         "command": "everruns sessions tasks push-configs list --session-id session_01h9 --task-id task_01h9"
       }
-    ]
+    ],
+    "output": "a JSON array. Read the items with jq '.[]'."
   },
   {
     "wire_name": "submit_tool_results",
@@ -17492,7 +18078,8 @@
         "intent": "Return the result of a client-side tool call to a waiting session",
         "command": "everruns sessions tool-results submit session_01h9 --tool-results '[{\"tool_call_id\":\"toolu_01\",\"result\":{\"url\":\"https://example.com/orders/42\"}}]' --reason 'Deliver the tool output'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "get_session_trace",
@@ -17525,7 +18112,8 @@
         "intent": "Count a session's turns, steps and errors",
         "command": "everruns sessions trace get --session-id session_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_session_trace_turn_events",
@@ -17574,7 +18162,8 @@
         "intent": "Read the raw events of one turn",
         "command": "everruns sessions trace turns events list --session-id session_01h9 --turn 12"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "get_session_trace_turn_input",
@@ -17609,7 +18198,8 @@
         "intent": "Read the original input of turn 12",
         "command": "everruns sessions trace turns input get --session-id session_01h9 --turn 12"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_session_trace_turns",
@@ -17671,7 +18261,8 @@
         "intent": "Open the latest turns of a long session",
         "command": "everruns sessions trace turns list --session-id session_01h9 --limit 20"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "get_session_trace_step",
@@ -17720,7 +18311,8 @@
         "intent": "Read a tool call's full input and output",
         "command": "everruns sessions trace turns steps get --session-id session_01h9 --turn 12 --step 4 --full true"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_session_trace_steps",
@@ -17783,7 +18375,8 @@
         "intent": "List only the failed steps of turn 12",
         "command": "everruns sessions trace turns steps list --session-id session_01h9 --turn 12 --errors-only true"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_session_trace_request",
@@ -17861,7 +18454,8 @@
         "intent": "See exactly what a model call was sent",
         "command": "everruns sessions trace turns steps request list --session-id session_01h9 --turn 12 --step 3"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "unarchive_session",
@@ -17985,7 +18579,8 @@
         "intent": "Switch a running session to another model",
         "command": "everruns sessions update session_01h9 --model-id model_01933b5a00007000800000000000001 --reason 'Provider limit on the current model'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "get_session_work",
@@ -18019,7 +18614,8 @@
         "intent": "See what a session's agent is doing or what it got done",
         "command": "everruns sessions work get session_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "get_skill_content",
@@ -18045,7 +18641,8 @@
         "intent": "Read a skill's body to see what it instructs",
         "command": "everruns skills content skill_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "create_skill",
@@ -18070,7 +18667,8 @@
         "intent": "Add a skill from a local file",
         "command": "everruns skills create --skill-md \"$(cat SKILL.md)\" --reason 'Share the code-review checklist'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "delete_skill",
@@ -18148,7 +18746,8 @@
         "intent": "Show one skill's metadata without its body",
         "command": "everruns skills get skill_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_skills",
@@ -18180,7 +18779,8 @@
         "intent": "Find skills by name when you do not know the id",
         "command": "everruns skills list --search code-review"
       }
-    ]
+    ],
+    "output": "a JSON array. Read the items with jq '.[]'."
   },
   {
     "wire_name": "update_skill",
@@ -18219,7 +18819,8 @@
         "intent": "Replace a skill's content from a local file",
         "command": "everruns skills update skill_01h9 --skill-md \"$(cat SKILL.md)\" --reason 'Add the security review step'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_skills_usage",
@@ -18236,7 +18837,8 @@
         "intent": "See which agents use which skills",
         "command": "everruns skills usage"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_platform_detections",
@@ -18268,7 +18870,8 @@
         "intent": "Review sessions suspected of abusing the platform",
         "command": "everruns system detections --limit 20"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "run_system_doctor",
@@ -18293,7 +18896,8 @@
         "intent": "Check every part of the install and list what needs fixing",
         "command": "everruns system doctor --refresh true"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "health_check",
@@ -18310,7 +18914,8 @@
         "intent": "Check that the control plane is reachable and healthy",
         "command": "everruns system health"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_org_tasks",
@@ -18363,7 +18968,8 @@
         "intent": "Find failed background work anywhere in the org",
         "command": "everruns tasks list --state failed --limit 20"
       }
-    ]
+    ],
+    "output": "a JSON array. Read the items with jq '.[]'."
   },
   {
     "wire_name": "get_tracing_destination_metadata",
@@ -18389,7 +18995,8 @@
         "intent": "Inspect a destination without credentials",
         "command": "everruns tracing destinations get --id 00000000-0000-0000-0000-000000000001"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "update_tracing_destination_metadata",
@@ -18429,7 +19036,8 @@
         "intent": "Pause external exports",
         "command": "everruns tracing destinations update --id 00000000-0000-0000-0000-000000000001 --enabled false --reason 'Pause exports'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "get_tracing_policy",
@@ -18455,7 +19063,8 @@
         "intent": "Read an agent's external tracing policy",
         "command": "everruns tracing routing get --id agent_01933b5a000070008000000000000001"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "update_tracing_policy",
@@ -18508,7 +19117,8 @@
         "intent": "Stop an agent's external trace exports",
         "command": "everruns tracing routing update --id agent_01933b5a000070008000000000000001 --mode off --destination-ids '[]' --reason 'Disable external exports'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_user_connections",
@@ -18534,7 +19144,8 @@
         "intent": "Check which accounts you have connected",
         "command": "everruns user connections list --provider github"
       }
-    ]
+    ],
+    "output": "a JSON array. Read the items with jq '.[]'."
   },
   {
     "wire_name": "list_connection_providers",
@@ -18561,7 +19172,8 @@
         "intent": "See which services you can connect an account to",
         "command": "everruns user connections providers list --search github"
       }
-    ]
+    ],
+    "output": "a JSON array. Read the items with jq '.[]'."
   },
   {
     "wire_name": "list_users",
@@ -18586,7 +19198,8 @@
         "intent": "Find a user by name or email in the current organization",
         "command": "everruns users list --search alice"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "update_account_profile",
@@ -18617,7 +19230,8 @@
         "intent": "Update your own display name across organizations",
         "command": "everruns users me update --id 00000000-0000-0000-0000-000000000001 --name 'Alex Rivera' --reason 'Use my preferred name'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "get_account_profile",
@@ -18642,7 +19256,8 @@
         "intent": "Read your own account display name independently of the active organization",
         "command": "everruns users profile get --id 00000000-0000-0000-0000-000000000001"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "create_virtual_user",
@@ -18706,7 +19321,8 @@
         "intent": "Create a service account for unattended agent runs",
         "command": "everruns virtual-users create --name ops-bot --usage service --description 'Runs the nightly triage' --reason 'Dedicated identity for nightly triage'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "delete_virtual_user",
@@ -18784,7 +19400,8 @@
         "intent": "Show a virtual user's profile and status",
         "command": "everruns virtual-users get identity_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_virtual_users",
@@ -18836,7 +19453,8 @@
         "intent": "Find service accounts by name",
         "command": "everruns virtual-users list --usage service --search ops"
       }
-    ]
+    ],
+    "output": "one page as {data, total, offset, limit}. Read the items with jq '.data[]'; page with --offset and --limit."
   },
   {
     "wire_name": "get_own_virtual_user_profile",
@@ -18861,7 +19479,8 @@
         "intent": "Read the organization profile bound to your signed-in account",
         "command": "everruns virtual-users self-profile get --id identity_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "update_own_virtual_user_profile",
@@ -18927,7 +19546,8 @@
         "intent": "Set your own organization profile timezone without management authority",
         "command": "everruns virtual-users self-profile update --id identity_01h9 --timezone Europe/London --reason 'Use my local timezone'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "update_virtual_user",
@@ -18994,7 +19614,8 @@
         "intent": "Change a virtual user's display name",
         "command": "everruns virtual-users update identity_01h9 --name triage-bot --reason 'Match the team naming'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "delete_workspace",
@@ -19046,7 +19667,8 @@
         "intent": "Check a workspace's name and status",
         "command": "everruns workspaces get wsp_01h9"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   },
   {
     "wire_name": "list_workspaces",
@@ -19078,7 +19700,8 @@
         "intent": "Find a workspace by name when you do not know the id",
         "command": "everruns workspaces list --search platform"
       }
-    ]
+    ],
+    "output": "a JSON array. Read the items with jq '.[]'."
   },
   {
     "wire_name": "update_workspace",
@@ -19121,6 +19744,7 @@
         "intent": "Rename a workspace",
         "command": "everruns workspaces update --workspace-id wsp_01h9 --name platform-core --reason 'Team renamed'"
       }
-    ]
+    ],
+    "output": "one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field."
   }
 ]

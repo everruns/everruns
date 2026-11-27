@@ -16,6 +16,20 @@ impl SessionState {
         self.segments.last().map(|s| s.to).unwrap_or(0)
     }
 
+    /// Drop the resident events the session's segments hold, keeping the
+    /// unstored tail; readers page the rest back from the object store.
+    /// Returns the events dropped.
+    pub fn drop_stored(&mut self) -> usize {
+        let cut = self.flushed();
+        if cut <= self.offloaded {
+            return 0;
+        }
+        let dropped = ((cut - self.offloaded) as usize).min(self.events.len());
+        self.events.drain(..dropped);
+        self.offloaded = cut;
+        dropped
+    }
+
     /// Note that `seg` is stored, keeping `segments` contiguous from
     /// sequence 1. A segment that starts where a recorded one does and
     /// reaches the end replaces that one and those after it (compaction);

@@ -16,6 +16,9 @@ Workspace memories in the organization.
 | [`memories delete`](#memories-delete) | Archive a workspace memory. |
 | [`memories get`](#memories-get) | Get a workspace memory by ID. |
 | [`memories list`](#memories-list) | List workspace memories in the current organization. |
+| [`memories entries`](#memories-entries) | List a memory's typed entries: decisions, rules, facts, preferences, blocked items, notes and dreaming proposals. |
+| [`memories stores`](#memories-stores) | List the memory stores agents use: the organization's, named memories, team and agent memories, and your own private memory. |
+| [`memories history`](#memories-history) | List the versions of a memory file, newest first; every write and delete is kept. |
 | [`memories sync`](#memories-sync) | Queue an immediate sync for a source-backed workspace memory. |
 | [`memories update`](#memories-update) | Update a workspace memory. |
 
@@ -33,11 +36,13 @@ everruns memories create [OPTIONS] --name <name>
 | `--name <NAME>` | Required. Human-readable name. |
 | `--source <SOURCE>` |  |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
-# Sync a docs repository into a workspace memory
-everruns memories create --name design-docs --description 'Living design documents' --source '{"type":"github","repository":"acme/design-docs","branch":"main","root_folder":"docs/"}' --reason 'Give agents the design docs'
+# Create a named memory a coordinator and its workers share
+everruns memories create --name everruns-maintenance --description 'Decisions and rules for repository maintenance' --reason 'Housekeeping and Developer share decisions'
 ```
 
 ## memories delete
@@ -71,6 +76,8 @@ everruns memories get [OPTIONS] [MEMORY_ID]
 |---|---|
 | `--memory-id <MEMORY_ID>` | Workspace memory's prefixed public identifier. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -91,11 +98,73 @@ everruns memories list [OPTIONS]
 | `--include-archived` | Include archived memories. |
 | `--search <SEARCH>` | Only memories whose name matches this text. |
 
+Output: a JSON array. Read the items with jq '.[]'.
+
 Example:
 
 ```bash
 # Find memories by name when you do not know the id
 everruns memories list --search design
+```
+
+## memories entries
+
+List a memory's typed entries: decisions, rules, facts, preferences, blocked items, notes and dreaming proposals.
+
+```bash
+everruns memories entries [OPTIONS] [MEMORY_ID]
+```
+
+| Flag | Description |
+|---|---|
+| `--memory-id <MEMORY_ID>` | Memory's prefixed public identifier. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
+Example:
+
+```bash
+# Read what a team decided and what it is blocked on
+everruns memories entries mem_01h9
+```
+
+## memories stores
+
+List the memory stores agents use: the organization's, named memories, team and agent memories, and your own private memory.
+
+```bash
+everruns memories stores [OPTIONS]
+```
+
+Output: a JSON array. Read the items with jq '.[]'.
+
+Example:
+
+```bash
+# See which memories exist and how much each holds
+everruns memories stores
+```
+
+## memories history
+
+List the versions of a memory file, newest first; every write and delete is kept.
+
+```bash
+everruns memories history [OPTIONS] [MEMORY_ID]
+```
+
+| Flag | Description |
+|---|---|
+| `--memory-id <MEMORY_ID>` | Memory's prefixed public identifier. |
+| `--path <PATH>` | A path inside the memory (`/decisions/everruns-5528.md`). |
+
+Output: a JSON array. Read the items with jq '.[]'.
+
+Example:
+
+```bash
+# See every version of one decision
+everruns memories history mem_01h9 --path /decisions/everruns-5528.md
 ```
 
 ## memories sync
@@ -109,6 +178,8 @@ everruns memories sync [OPTIONS] --memory-id <memory_id>
 | Flag | Description |
 |---|---|
 | `--memory-id <MEMORY_ID>` | Required. Workspace memory's prefixed public identifier. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -131,6 +202,8 @@ everruns memories update [OPTIONS] --memory-id <memory_id>
 | `--memory-id <MEMORY_ID>` | Required. Workspace memory's prefixed public identifier. |
 | `--name <NAME>` | Human-readable name. |
 | `--source <SOURCE>` |  |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 

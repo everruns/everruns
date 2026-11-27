@@ -108,7 +108,9 @@ async fn held_gemini_removal_preserves_wire_prefix_but_refuses_execution() {
             executions: executions.clone(),
         })
         .capability(PromptCachingCapability::new())
-        .max_iterations(3)
+        // Keep this cache-prefix contract outside the dynamic last-three-call
+        // turn-limit reminder, which intentionally changes between requests.
+        .max_iterations(10)
         .build()
         .await
         .unwrap();

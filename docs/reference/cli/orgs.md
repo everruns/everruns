@@ -48,6 +48,8 @@ everruns orgs get [OPTIONS] [ORG]
 |---|---|
 | `--org <ORG>` | Organization's prefixed public identifier. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -62,6 +64,8 @@ List organizations for the current user.
 ```bash
 everruns orgs list [OPTIONS]
 ```
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -81,6 +85,8 @@ everruns orgs resolve [OPTIONS] --id <id>
 | Flag | Description |
 |---|---|
 | `--id <ID>` | Required. Prefixed public identifier. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -120,6 +126,8 @@ everruns orgs update [OPTIONS] --org <org>
 | `--tool-approval-policy <TOOL_APPROVAL_POLICY>` |  |
 | `--web-search-defaults <WEB_SEARCH_DEFAULTS>` |  |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -144,6 +152,8 @@ everruns orgs audit-logs list [OPTIONS]
 | `--event-type <EVENT_TYPE>` | Filter by event type prefix (e.g. |
 | `--limit <LIMIT>` | Max entries to return (default 50, max 200). |
 
+Output: a JSON array. Read the items with jq '.[]'.
+
 Example:
 
 ```bash
@@ -163,6 +173,8 @@ everruns orgs decision-settings get [OPTIONS] --org <org>
 |---|---|
 | `--org <ORG>` | Required. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -181,6 +193,8 @@ everruns orgs egress-allowlist get [OPTIONS] --org <org>
 | Flag | Description |
 |---|---|
 | `--org <ORG>` | Required. Organization public ID. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -202,6 +216,8 @@ everruns orgs egress-allowlist set [OPTIONS] --org <org> --patterns <patterns>
 | `--org <ORG>` | Required. Organization public ID. |
 | `--patterns <PATTERNS>` | Required. The full list of host patterns; replaces the stored list. Comma-separated or a JSON array of strings. Repeatable. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -222,6 +238,8 @@ everruns orgs egress-allowlist grant set [OPTIONS] --org <org>
 | `--granted` | Allow or stop this organization extending the allowlist; omitted keeps it. |
 | `--open` | Give or take back open egress; omitted keeps it. |
 | `--org <ORG>` | Required. Organization public ID. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -245,6 +263,8 @@ everruns orgs provider-accounts list [OPTIONS] --org <org>
 |---|---|
 | `--org <ORG>` | Required. Organization public ID. |
 
+Output: a JSON array. Read the items with jq '.[]'.
+
 Example:
 
 ```bash
@@ -264,6 +284,8 @@ everruns orgs quality-monitoring get [OPTIONS] --org <org>
 |---|---|
 | `--org <ORG>` | Required. Organization whose monitoring policy and coverage to inspect. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -282,6 +304,8 @@ everruns orgs quality-monitoring scores list [OPTIONS] --org <org>
 | Flag | Description |
 |---|---|
 | `--org <ORG>` | Required. Organization whose newest monitoring findings to inspect. |
+
+Output: a JSON array. Read the items with jq '.[]'.
 
 Example:
 

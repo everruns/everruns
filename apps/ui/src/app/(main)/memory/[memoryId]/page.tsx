@@ -1,59 +1,73 @@
 "use client";
 
-import { useLocale as useFormattingLocale, useUiTranslations } from "@/providers/locale-provider";
+// One memory store: its typed entries grouped by kind (open blocked items and
+// dreaming proposals first) and the history every change leaves. Entries are
+// read-only here; agents record them with `remember`, and people can edit
+// the Markdown files directly.
 
+import { useLocale as useFormattingLocale, useUiTranslations } from "@/providers/locale-provider";
 import { MemoryIcon } from "@/components/icons/facet-icons";
-import { use, useState } from "react";
-import { AlertCircle, GitBranch, HardDrive, Pencil, RefreshCw } from "lucide-react";
+import { use, useMemo, useState } from "react";
+import { AlertCircle, ExternalLink, Pencil } from "lucide-react";
 import { EntityActionsMenu } from "@/components/entity-actions/entity-actions-menu";
 import { useOrg } from "@/providers/org-provider";
-import { GithubIcon as Github } from "@/components/icons/github-icon";
 import { ResourceNotFound } from "@/components/resource-not-found";
 import { ArchiveMemoryDialog } from "@/components/memory/archive-memory-dialog";
 import { MemoryFormDialog } from "@/components/memory/memory-form-dialog";
+import {
+  groupMemoryEntries,
+  memoryStoreScopeLabel,
+  memoryStoreTitle,
+} from "@/components/memory/memory-store-labels";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { QueryStateWrapper } from "@/components/query-state-wrapper";
 import {
   PageContainer,
   PageBreadcrumb,
   PageMasthead,
-  PageColumns,
   PageMain,
-  PageRail,
   PageFooter,
   BackLink,
+  SectionTabs,
+  StatCard,
+  StatGrid,
+  EmptyState,
 } from "@/components/layout";
-import { useArchiveMemory, usePageTitle, useSyncMemory, useUpdateMemory, useMemory } from "@/hooks";
-import type { UpdateMemoryRequest, Memory } from "@/lib/api/types";
 import {
-  getEntityNameClassName,
-  getEntityStatusBadgeVariant,
-  isReadOnlyStatus,
-} from "@/lib/entity-lifecycle";
-import { formatDate, formatRelativeTime } from "@/lib/formatting";
+  useArchiveMemory,
+  useMemoryEntries,
+  useMemoryHistory,
+  useMemoryStores,
+  usePageTitle,
+  useUpdateMemory,
+} from "@/hooks";
+import type { UpdateMemoryRequest } from "@/lib/api/types";
+import type { MemoryEntry, MemoryFileVersion } from "@/lib/api/types";
+import { formatRelativeTime } from "@/lib/formatting";
+
+type Tab = "entries" | "history";
 
 export default function MemoryDetailPage({ params }: { params: Promise<{ memoryId: string }> }) {
-  const { displayLocale } = useFormattingLocale();
   const ui = useUiTranslations();
   const { memoryId } = use(params);
+  const [tab, setTab] = useState<Tab>("entries");
   const [editOpen, setEditOpen] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
-  const { data: memory, isLoading, error } = useMemory(memoryId);
+  const { data: stores, isLoading, error } = useMemoryStores();
+  const store = stores?.find((candidate) => candidate.id === memoryId);
   const updateMemory = useUpdateMemory();
-  const syncMemory = useSyncMemory();
   const archiveMemory = useArchiveMemory();
-  // `memory.manage` is the org settings permission, held by owners and admins.
   const { currentOrg } = useOrg();
   const canManage = currentOrg?.role === "owner" || currentOrg?.role === "admin";
-  usePageTitle(memory ? memory.name : null, ui("Memory"));
+  usePageTitle(store ? memoryStoreTitle(store) : null, ui("Memory"));
 
   if (isLoading) {
     return <MemoryDetailSkeleton />;
   }
 
-  if (error || !memory) {
+  if (error || !store) {
     return (
       <ResourceNotFound
         title={ui("Memory not found")}
@@ -65,223 +79,264 @@ export default function MemoryDetailPage({ params }: { params: Promise<{ memoryI
     );
   }
 
-  const isReadOnly = isReadOnlyStatus(memory.status);
-  const canSync = memory.source_type !== "manual" && memory.status === "active";
+  const isNamed = store.scope === "org" && store.store !== "org";
 
   return (
     <PageContainer>
-      <PageBreadcrumb items={[{ label: ui("Memory"), href: "/memory" }, { label: memory.name }]} />
+      <PageBreadcrumb
+        items={[{ label: ui("Memory"), href: "/memory" }, { label: memoryStoreTitle(store) }]}
+      />
 
       <PageMasthead
         icon={<MemoryIcon />}
-        entityId={memory.id}
-        title={<span className={getEntityNameClassName(memory.status)}>{memory.name}</span>}
+        entityId={store.id}
+        title={memoryStoreTitle(store)}
+        description={store.description || ui(store.about)}
         badges={
           <>
-            <Badge variant={getEntityStatusBadgeVariant(memory.status)}>{memory.status}</Badge>
-            {memory.is_readonly && <Badge variant="secondary">{ui("Read-only")}</Badge>}
+            <Badge variant="secondary">{ui(memoryStoreScopeLabel(store))}</Badge>
+            {store.is_readonly && <Badge variant="outline">{ui("Read-only")}</Badge>}
           </>
         }
         meta={
-          <>
-            <span>
-              {ui("Source")} <span className="text-foreground">{sourceLabel(memory)}</span>
-            </span>
-          </>
+          <span>
+            {ui("Agents read it at")}{" "}
+            <span className="font-mono text-foreground">{store.mount_path}</span>
+          </span>
         }
         actions={
-          <>
-            <Button variant="outline" onClick={() => setEditOpen(true)} disabled={isReadOnly}>
-              <Pencil className="h-4 w-4" />
-              {ui("Edit")}
-            </Button>
-            {canSync && (
-              <Button
-                variant="outline"
-                onClick={() => syncMemory.mutate(memory.id)}
-                disabled={
-                  syncMemory.isPending ||
-                  memory.sync_status === "pending" ||
-                  memory.sync_status === "syncing"
-                }
-              >
-                <RefreshCw className="h-4 w-4" />
-                {ui("Sync")}
+          isNamed && (
+            <>
+              <Button variant="outline" onClick={() => setEditOpen(true)} disabled={!canManage}>
+                <Pencil className="h-4 w-4" />
+                {ui("Edit")}
               </Button>
-            )}
-            <EntityActionsMenu
-              entityRef={memory.id}
-              kind="memory"
-              entityName={memory.name}
-              permissions={{ manage: canManage }}
-              archive={isReadOnly ? undefined : { onSelect: () => setArchiveOpen(true) }}
-            />
-          </>
+              <EntityActionsMenu
+                entityRef={store.id}
+                kind="memory"
+                entityName={store.name}
+                permissions={{ manage: canManage }}
+                archive={{ onSelect: () => setArchiveOpen(true) }}
+              />
+            </>
+          )
         }
       />
 
-      <PageColumns>
-        <PageMain>
-          <Card>
-            <CardHeader>
-              <CardTitle>{ui("Overview")}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">
-                {memory.description || ui("No description")}
-              </p>
-            </CardContent>
-          </Card>
-        </PageMain>
+      <StatGrid>
+        <StatCard label={ui("Entries")} value={store.entry_count} />
+        <StatCard label={ui("Open blocked items")} value={store.blocked_count} />
+        <StatCard label={ui("Proposals to review")} value={store.proposal_count} />
+        <StatCard label={ui("Files")} value={store.file_count} />
+      </StatGrid>
 
-        <PageRail>
-          <Card>
-            <CardHeader>
-              <CardTitle>{ui("Source")}</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3 text-sm">
-              <div>
-                <div className="font-medium">{ui("Provider")}</div>
-                <div className="flex items-center gap-1.5 text-muted-foreground">
-                  {memory.source.provider === "github" ? (
-                    <Github className="h-4 w-4" />
-                  ) : memory.source.provider === "git" ? (
-                    <GitBranch className="h-4 w-4" />
-                  ) : (
-                    <HardDrive className="h-4 w-4" />
-                  )}
-                  <span>{sourceLabel(memory)}</span>
-                </div>
-              </div>
-              {memory.source.provider !== "manual" && (
-                <>
-                  <div>
-                    <div className="font-medium">{ui("Branch")}</div>
-                    <div className="text-muted-foreground">{memory.source.branch}</div>
-                  </div>
-                  {memory.source.root_folder && (
-                    <div>
-                      <div className="font-medium">{ui("Root Folder")}</div>
-                      <div className="font-mono text-muted-foreground">
-                        {memory.source.root_folder}
-                      </div>
-                    </div>
-                  )}
-                  <div>
-                    <div className="font-medium">{ui("Resync")}</div>
-                    <div className="text-muted-foreground">{formatSyncInterval(memory)}</div>
-                  </div>
-                </>
-              )}
-            </CardContent>
-          </Card>
+      <SectionTabs
+        value={tab}
+        onValueChange={(value) => setTab(value as Tab)}
+        items={[
+          { value: "entries", label: ui("Entries") },
+          { value: "history", label: ui("History") },
+        ]}
+      />
 
-          <Card>
-            <CardHeader>
-              <CardTitle>{ui("Activity")}</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3 text-sm">
-              <div>
-                <div className="font-medium">{ui("Created")}</div>
-                <div className="text-muted-foreground">
-                  {formatDate(memory.created_at, displayLocale)}
-                </div>
-              </div>
-              <div>
-                <div className="font-medium">{ui("Updated")}</div>
-                <div className="text-muted-foreground">
-                  {formatRelativeTime(memory.updated_at, displayLocale)}
-                </div>
-              </div>
-              <div>
-                <div className="font-medium">{ui("Sync")}</div>
-                <div className="text-muted-foreground">{formatSyncStatus(memory)}</div>
-              </div>
-              {memory.last_sync_error && (
-                <div className="flex gap-2 text-destructive">
-                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-                  <span>{memory.last_sync_error}</span>
-                </div>
-              )}
-              {memory.archived_at && (
-                <div>
-                  <div className="font-medium">{ui("Archived")}</div>
-                  <div className="text-muted-foreground">
-                    {formatDate(memory.archived_at, displayLocale)}
-                  </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </PageRail>
-      </PageColumns>
+      <PageMain>
+        {tab === "entries" ? (
+          <EntriesTab memoryId={store.id} />
+        ) : (
+          <HistoryTab memoryId={store.id} />
+        )}
+      </PageMain>
 
       <PageFooter>
         <BackLink href="/memory">{ui("Back to Memory")}</BackLink>
       </PageFooter>
 
-      <MemoryFormDialog
-        writable={canManage && !isReadOnlyStatus(memory.status)}
-        mode="edit"
-        open={editOpen}
-        memory={memory}
-        isPending={updateMemory.isPending}
-        onOpenChange={setEditOpen}
-        onSubmit={async (request) => {
-          await updateMemory.mutateAsync({
-            memoryId: memory.id,
-            data: request as UpdateMemoryRequest,
-          });
-        }}
-      />
-      <ArchiveMemoryDialog
-        open={archiveOpen}
-        memory={memory}
-        isPending={archiveMemory.isPending}
-        onOpenChange={setArchiveOpen}
-        onArchive={() => archiveMemory.mutateAsync(memory.id)}
-      />
+      {isNamed && (
+        <>
+          <MemoryFormDialog
+            writable={canManage}
+            mode="edit"
+            open={editOpen}
+            memory={store}
+            isPending={updateMemory.isPending}
+            onOpenChange={setEditOpen}
+            onSubmit={async (request) => {
+              await updateMemory.mutateAsync({
+                memoryId: store.id,
+                data: request as UpdateMemoryRequest,
+              });
+            }}
+          />
+          <ArchiveMemoryDialog
+            open={archiveOpen}
+            memory={store}
+            isPending={archiveMemory.isPending}
+            onOpenChange={setArchiveOpen}
+            onArchive={() => archiveMemory.mutateAsync(store.id)}
+          />
+        </>
+      )}
     </PageContainer>
   );
 }
 
-function sourceLabel(memory: Memory) {
-  if (memory.source.provider === "github") {
-    return memory.source.repository;
-  }
-  if (memory.source.provider === "git") {
-    return memory.source.url;
-  }
-  return "Manual";
+function EntriesTab({ memoryId }: { memoryId: string }) {
+  const ui = useUiTranslations();
+  const { data, isLoading, error } = useMemoryEntries(memoryId);
+  const sections = useMemo(() => groupMemoryEntries(data?.entries ?? []), [data]);
+
+  return (
+    <div className="space-y-8">
+      {data && data.invalid.length > 0 && (
+        <div className="space-y-1 border border-destructive/40 bg-destructive/5 p-4 text-sm">
+          <div className="flex items-center gap-2 font-medium text-destructive">
+            <AlertCircle className="h-4 w-4" />
+            {ui("Entry files that do not parse")}
+          </div>
+          {data.invalid.map((item) => (
+            <div key={item.path} className="text-muted-foreground">
+              <span className="font-mono text-foreground">{item.path}</span>: {item.error}
+            </div>
+          ))}
+        </div>
+      )}
+      <QueryStateWrapper
+        isLoading={isLoading}
+        error={error}
+        data={sections}
+        errorMessagePrefix="Failed to load entries"
+        skeletonCount={3}
+        emptyState={
+          <EmptyState
+            icon={<MemoryIcon />}
+            title={ui("Nothing remembered yet")}
+            description={ui(
+              "Agents record decisions, rules, facts, preferences and blocked items here with the remember tool.",
+            )}
+          />
+        }
+      >
+        {(items) => (
+          <>
+            {items.map((section) => (
+              <section key={section.key} className="space-y-3">
+                <h2 className="text-sm font-medium text-muted-foreground">
+                  {ui(section.title)} <span className="tabular-nums">{section.entries.length}</span>
+                </h2>
+                <div className="space-y-2">
+                  {section.entries.map((entry) => (
+                    <EntryRow key={entry.path} entry={entry} />
+                  ))}
+                </div>
+              </section>
+            ))}
+          </>
+        )}
+      </QueryStateWrapper>
+    </div>
+  );
 }
 
-function formatSyncStatus(memory: Memory) {
-  if (memory.source_type === "manual") {
-    return "Manual";
-  }
-  if (memory.last_synced_at) {
-    return `${memory.sync_status} · last synced ${formatRelativeTime(memory.last_synced_at)}`;
-  }
-  return memory.sync_status;
+function EntryRow({ entry }: { entry: MemoryEntry }) {
+  const { displayLocale } = useFormattingLocale();
+  const ui = useUiTranslations();
+  return (
+    <div className="space-y-2 border bg-card p-4">
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        <Badge variant={entry.kind === "blocked" && !entry.resolved_at ? "accent" : "secondary"}>
+          {ui(entry.kind)}
+        </Badge>
+        {entry.subject && <span className="font-mono text-foreground">{entry.subject}</span>}
+        <span className="ml-auto font-mono text-muted-foreground">{entry.path}</span>
+      </div>
+      <p className="text-sm text-foreground">{entry.statement}</p>
+      {entry.quote && (
+        <blockquote className="border-l-2 pl-3 text-sm text-muted-foreground">
+          {entry.quote}
+        </blockquote>
+      )}
+      {entry.resolved_at && (
+        <p className="text-xs text-muted-foreground">
+          {ui("Resolved")} {formatRelativeTime(entry.resolved_at, displayLocale)}
+          {entry.resolution ? `: ${entry.resolution}` : ""}
+        </p>
+      )}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+        <span>{formatRelativeTime(entry.occurred_at, displayLocale)}</span>
+        <span>
+          {ui("by")} <span className="font-mono">{entry.recorded_by}</span>
+        </span>
+        {entry.source && (
+          <span className="flex items-center gap-1">
+            {entry.source.kind}
+            {entry.source.reference && <span className="font-mono">{entry.source.reference}</span>}
+            {entry.source.url && (
+              <a
+                href={entry.source.url}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="inline-flex items-center hover:text-foreground"
+                aria-label={ui("Open source")}
+              >
+                <ExternalLink className="h-3 w-3" />
+              </a>
+            )}
+          </span>
+        )}
+      </div>
+    </div>
+  );
 }
 
-function formatSyncInterval(memory: Memory) {
-  const interval =
-    memory.source.provider === "github" || memory.source.provider === "git"
-      ? memory.source.sync_interval_secs
-      : null;
-  if (!interval) {
-    return "Manual only";
+function HistoryTab({ memoryId }: { memoryId: string }) {
+  const ui = useUiTranslations();
+  const { data, isLoading, error } = useMemoryHistory(memoryId);
+  return (
+    <QueryStateWrapper
+      isLoading={isLoading}
+      error={error}
+      data={data}
+      errorMessagePrefix="Failed to load history"
+      skeletonCount={4}
+      emptyState={<EmptyState icon={<MemoryIcon />} title={ui("No changes yet")} />}
+    >
+      {(versions) => (
+        <div className="divide-y border bg-card">
+          {versions.map((version, index) => (
+            <VersionRow key={`${version.path}-${version.created_at}-${index}`} version={version} />
+          ))}
+        </div>
+      )}
+    </QueryStateWrapper>
+  );
+}
+
+function VersionRow({ version }: { version: MemoryFileVersion }) {
+  const { displayLocale } = useFormattingLocale();
+  const ui = useUiTranslations();
+  const header = (
+    <div className="flex flex-wrap items-center gap-2 text-sm">
+      <Badge variant={version.action === "delete" ? "outline" : "secondary"}>
+        {ui(version.action === "delete" ? "Deleted" : "Written")}
+      </Badge>
+      <span className="font-mono">{version.path}</span>
+      <span className="ml-auto text-xs text-muted-foreground">
+        {version.changed_by && <span className="mr-2 font-mono">{version.changed_by}</span>}
+        {formatRelativeTime(version.created_at, displayLocale)}
+      </span>
+    </div>
+  );
+  if (!version.content) {
+    return <div className="p-3">{header}</div>;
   }
-  if (interval % 86400 === 0) {
-    const days = interval / 86400;
-    return days === 1 ? "Daily" : `Every ${days} days`;
-  }
-  if (interval % 3600 === 0) {
-    const hours = interval / 3600;
-    return hours === 1 ? "Hourly" : `Every ${hours} hours`;
-  }
-  return `Every ${Math.round(interval / 60)} minutes`;
+  return (
+    <details className="group p-3">
+      <summary className="cursor-pointer list-none">{header}</summary>
+      <pre className="mt-3 max-h-80 overflow-auto bg-muted/40 p-3 text-xs whitespace-pre-wrap">
+        {version.content}
+      </pre>
+    </details>
+  );
 }
 
 function MemoryDetailSkeleton() {
@@ -295,10 +350,8 @@ function MemoryDetailSkeleton() {
           <Skeleton className="h-4 w-80" />
         </div>
       </div>
-      <PageColumns>
-        <Skeleton className="h-40" />
-        <Skeleton className="h-40" />
-      </PageColumns>
+      <Skeleton className="h-24" />
+      <Skeleton className="h-40" />
     </PageContainer>
   );
 }

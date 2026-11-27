@@ -110,7 +110,10 @@ pub async fn present(ctx: &Ctx, row: HealthIssueRow) -> Result<HealthIssue, Comm
             }),
         None => None,
     };
+    let opening_observation = opening_observation(ctx, row.id, row.episode_id).await?;
     Ok(HealthIssue {
+        episode_id: row.episode_id,
+        opening_observation,
         id: row.id,
         code: row.code,
         agent_id: row.agent_public_id,
@@ -215,6 +218,9 @@ impl Command for ListHealthIssues {
 /// Read the current evidence and recovery guidance for one health issue.
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetHealthIssue {
+    /// Read the opening evidence of this episode; omitted means the current episode.
+    #[serde(default)]
+    pub episode_id: Option<Uuid>,
     /// Stable identifier of the issue in the current organization.
     #[schema(example = "550e8400-e29b-41d4-a716-446655440000")]
     pub issue_id: Uuid,
@@ -222,7 +228,7 @@ pub struct GetHealthIssue {
 #[command(
     name = "get_health_issue",
     category = "health_issues",
-    description = "Get an operational health issue.",
+    description = "Get a health issue with current evidence and frozen opening evidence for its current or selected episode. Opening evidence is unavailable for older episodes that predate collection.",
     method = "GET",
     cli = CliRoute::new(&["health-issues"], "get").with_examples(&[CliExample::new("Read an issue's evidence and recovery steps", "everruns health-issues get --issue-id 550e8400-e29b-41d4-a716-446655440000")]),
     path = "/v1/platform/health-issues/{issue_id}",
@@ -231,7 +237,15 @@ pub struct GetHealthIssue {
 impl Command for GetHealthIssue {
     type Output = HealthIssue;
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
-        present(ctx, issue(ctx, self.issue_id).await?).await
+        let mut result = present(ctx, issue(ctx, self.issue_id).await?).await?;
+        if let Some(episode) = self.episode_id {
+            result.opening_observation = Some(
+                opening_observation(ctx, self.issue_id, episode)
+                    .await?
+                    .ok_or_else(|| CommandError::not_found("Recorded episode evidence"))?,
+            );
+        }
+        Ok(result)
     }
 }
 /// Request fresh, non-mutating verification of one health issue.
@@ -441,4 +455,16 @@ pub async fn filter_notifications(
         visible.push(row);
     }
     Ok(visible)
+}
+
+async fn opening_observation(
+    ctx: &Ctx,
+    issue: Uuid,
+    episode: Uuid,
+) -> Result<Option<super::types::HealthIssueObservation>, CommandError> {
+    // THREAT[TM-TENANT]: the issue's read policy is checked before this lookup;
+    // both identifiers and the authenticated org constrain historical evidence.
+    sqlx::query_as("SELECT episode_id, observed_at, evidence FROM health_issue_observations WHERE org_id=$1 AND issue_id=$2 AND episode_id=$3")
+        .bind(ctx.org_id()).bind(issue).bind(episode)
+        .fetch_optional(ctx.db.database().pool()).await.map_err(|e| CommandError::internal(e.into()))
 }

@@ -177,6 +177,30 @@ class ActorLeaseTakeoverTests(unittest.TestCase):
 
 
 class WorkflowTests(unittest.TestCase):
+    def test_ci_listener_ports_stay_below_linux_ephemeral_range(self):
+        import shlex
+        workflow = Path('.github/workflows/ci.yml').read_text()
+        step = workflow.split('    - name: Run chaos harness\n', 1)[1]
+        script = step.split('      run: |\n', 1)[1].split('\n    - ', 1)[0]
+        argv = shlex.split(script.replace('\\\n', ' '), comments=True)
+        self.assertIn('--port-prefix', argv)
+        prefix = argv[argv.index('--port-prefix') + 1]
+        # HTTP/gRPC listeners must not compete with outbound sockets, whose
+        # Ubuntu ephemeral range starts at 32768.
+        ports = [int(f'{prefix}{offset}') for offset in (41, 42, 45, 46)]
+        self.assertTrue(all(1024 < p < 32768 for p in ports), ports)
+        # Changing the prefix also changes the harness's default Valkey URL.
+        # Bind the service at that endpoint rather than leaving the old port.
+        import re
+        import urllib.parse
+        job = workflow.split('  chaos-test:', 1)[1].split('\n  workflow-test-build:', 1)[0]
+        service_port = int(re.search(r'- (\d+):6379', job).group(1))
+        with patch.object(sys, 'argv', ['chaos', '--server-bin', '/bin/true',
+                                       '--worker-bin', '/bin/true', '--port-prefix', prefix]):
+            args = chaos_run.parse_args()
+        self.assertEqual(urllib.parse.urlparse(args.valkey_url).port, service_port)
+        self.assertLess(service_port, 32768)
+
     def test_ci_postgres_uses_allocated_port_when_default_is_busy(self):
         workflow = Path(".github/workflows/ci.yml").read_text()
         job = workflow.split("  chaos-test:", 1)[1].split("\n  workflow-test-build:", 1)[0]

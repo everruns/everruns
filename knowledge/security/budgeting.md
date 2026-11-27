@@ -418,3 +418,19 @@ UI: the Agent Channels and triggers tab surfaces budget controls (shown to membe
 - **Budget analytics dashboard**: spend by model, by agent, over time
 - **Custom meter registration API**: for external integrations
 - **Rule-based DSL**: promote the JSON escape hatch to a typed expression language with a syntax-highlighted editor
+
+## Investigation reads
+
+The existing cost summary accepts agent, session, source and starter filters and
+an allowlisted joint grouping. Filters apply before every breakdown, including
+delegated-run cost, and each usage fact is grouped after aggregating its cost
+postings and host correction. Usage-policy debits never become extra charges.
+The Costs page labels unrecorded starters Unknown instead of assigning them to people.
+Unpriced records remain visible and missing historical starter attribution is
+`unknown`. Joint results are bounded and report truncation.
+
+This is a cost-posting view by posting time. It does not reproduce the unattended
+budget detector or establish an external provider bill. The session Cost read
+separately uses model-call occurrence time. Implementations and exact public shapes:
+[cost commands](../../crates/server/src/domains/budgets/cost_commands.rs) and
+[cost storage](../../crates/server/src/storage/costs.rs).

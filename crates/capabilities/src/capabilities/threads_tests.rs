@@ -181,6 +181,32 @@ async fn threads_cannot_start_threads() {
     assert!(error_text(&result).contains("threads do not start threads"));
 }
 
+/// The reason surface of a child leaves out Threads and Coordinator, so a
+/// thread is never offered the `start_thread` it would refuse. The
+/// coordinator keeps both.
+#[tokio::test]
+async fn a_thread_is_not_offered_the_thread_tools() {
+    use everruns_core::host::HostToolAugmentor;
+    let fixture = Fixture::new();
+    let (thread, _) = fixture.start_ok("Parent work").await;
+    let sessions: Arc<dyn SessionStore> = Arc::new(MockSessionStore(fixture.store.clone()));
+    let augmentor = crate::PlatformToolAugmentor;
+    assert_eq!(
+        augmentor
+            .hidden_reason_capabilities(thread, sessions.clone())
+            .await
+            .unwrap(),
+        vec![THREADS_CAPABILITY_ID, "coordinator"]
+    );
+    assert!(
+        augmentor
+            .hidden_reason_capabilities(fixture.coordinator(), sessions)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+}
+
 #[tokio::test]
 async fn start_thread_enforces_the_active_thread_cap() {
     let fixture = Fixture::new();

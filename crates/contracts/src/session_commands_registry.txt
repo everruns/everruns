@@ -12,10 +12,12 @@ Command activate v1
 Read events v1
 Read log v1
 Read trace v1
+Read schedules v1
 Read storage v1
 Read secrets v1
 Read sandbox v1
 Read spend v1
+Read cost v1
 # session routes: segment plane
 messages Shard
 events Shard

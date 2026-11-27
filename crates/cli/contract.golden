@@ -12,7 +12,7 @@ agents channels keys create	--agent-id! --channel-id! --context-revision --expir
 agents channels keys list	--agent-id! --channel-id! --context-revision --reason
 agents channels keys revoke	--agent-id! --channel-id! --context-revision --key-id! --reason
 agents channels keys rotate	--agent-id! --channel-id! --context-revision --key-id! --overlap-hours --reason
-agents channels list	--agent-id! --context-revision --reason
+agents channels list	--agent-id --context-revision --reason <agent_id>
 agents channels publish	--agent-id! --channel-id! --context-revision --reason
 agents channels trigger	--agent-id! --channel-id! --context-revision --reason
 agents channels unpublish	--agent-id! --channel-id! --context-revision --reason
@@ -66,10 +66,10 @@ agents source preview	--agent-id! --branch! --context-revision --github-account 
 agents source sync	--agent-id! --context-revision --reason
 agents triggers create	--agent-id! --auth --context-revision --cron-expression --enabled --event-id-template --filter --github-events... --mcp-event --mcp-event-arguments --mcp-server --message! --rate-limit-per-minute --reason --repositories... --script --session-mode --subject-template --target-binding-key --target-channel-id --timezone --token --trigger-type
 agents triggers delete	--agent-id! --context-revision --reason --trigger-id!
-agents triggers deliveries list	--agent-id! --context-revision --limit --reason --trigger-id!
+agents triggers deliveries list	--agent-id! --before --context-revision --from --limit --reason --to --trigger-id!
 agents triggers get	--agent-id! --context-revision --reason --trigger-id!
 agents triggers list	--agent-id --context-revision --include-archived --reason <agent_id>
-agents triggers runs list	--agent-id! --context-revision --reason --trigger-id!
+agents triggers runs list	--agent-id! --before --context-revision --from --limit --reason --to --trigger-id!
 agents triggers trigger	--agent-id! --context-revision --event --reason --trigger-id!
 agents triggers update	--agent-id! --auth --context-revision --cron-expression --enabled --event-id-template --filter --github-events... --mcp-event --mcp-event-arguments --mcp-server --message --rate-limit-per-minute --reason --repositories... --script --session-mode --subject-template --target-binding-key --target-channel-id --timezone --token --trigger-id!
 agents update	--description --file/-f --harness/-H --initial-files-dir --instructions --model --model-preset --model-role --name --reason --tag/-t... --writable <agent_id>
@@ -114,7 +114,7 @@ costs rates list	--context-revision --reason
 costs rates retire	--context-revision --effective-from --rate-id! --reason
 costs settings get	--context-revision --reason
 costs settings update	--context-revision --reason --timezone
-costs summary get	--agent-id --context-revision --from --reason --to
+costs summary get	--agent-id --context-revision --from --group-by --reason --session-id --source --started-by --to
 credential-bindings create	--binding --context-revision --label! --mcp --name --owner-id --reason --scope! --source --usage!
 credential-bindings list	--context-revision --owner-id --reason --scope! --usage!
 credential-bindings revoke	--context-revision --id! --reason --revision!
@@ -200,7 +200,7 @@ health-issues actions undo	--action-id! --context-revision --issue-id! --reason
 health-issues check	--context-revision --issue-id! --reason
 health-issues dismiss	--context-revision --issue-id! --note! --reason
 health-issues fix	--context-revision --issue-id! --kind! --reason
-health-issues get	--context-revision --issue-id! --reason
+health-issues get	--context-revision --episode-id --issue-id! --reason
 health-issues list	--channel-id --context-revision --limit --offset --reason
 health-issues snooze	--context-revision --issue-id! --reason
 history diff	--context-revision --entity-ref --from! --kind --reason --to <entity_ref>
@@ -251,8 +251,11 @@ mcp-servers tools	--context-revision --id --reason <id>
 mcp-servers update	--api-key --auth-mode --context-revision --description --elicitation-policy --headers --id --interactive-views --name --protocol-mode --reason --service-connection-provider --status --tool-timeout-ms --transport-type --url <id>
 memories create	--context-revision --description --name! --reason --source
 memories delete	--context-revision --memory-id! --reason
+memories entries	--context-revision --memory-id --reason <memory_id>
 memories get	--context-revision --memory-id --reason <memory_id>
+memories history	--context-revision --memory-id --path --reason <memory_id>
 memories list	--context-revision --include-archived --reason --search
+memories stores	--context-revision --reason
 memories sync	--context-revision --memory-id! --reason
 memories update	--context-revision --description --memory-id! --name --reason --source
 model-presets apply	--context-revision --id --reason <id>
@@ -391,7 +394,7 @@ sessions budget-check check	--context-revision --reason --session-id <session_id
 sessions budgets list	--context-revision --reason --session-id <session_id>
 sessions cancel	--context-revision --reason --session <session_id>
 sessions context	--context-revision --reason --session <session_id>
-sessions cost get	--context-revision --reason --session-id <session_id>
+sessions cost get	--context-revision --from --reason --session-id --to <session_id>
 sessions create	--agent/-a --budget-limit... --budget-soft-limit... --capability... --harness/-H --hint... --hints-json --locale --max-iterations --model --network-allow... --network-block... --reason --secret... --system-prompt --tag/-t... --title --virtual-user
 sessions databases create	--context-revision --name! --reason --session-id!
 sessions databases delete	--context-revision --name! --reason --session-id!
@@ -436,6 +439,8 @@ sessions resume	--context-revision --reason --session-id <session_id>
 sessions run get	--context-revision --reason --session-id <session_id>
 sessions sandbox get	--context-revision --reason --session-id <session_id>
 sessions sandbox manage	--action! --context-revision --reason --session-id!
+sessions schedules get	--context-revision --reason --schedule-id! --session-id!
+sessions schedules list	--context-revision --reason --session-id!
 sessions sse stream	--context-revision --reason --session-id <session_id>
 sessions stats	--context-revision --reason
 sessions storage keys list	--context-revision --reason --session-id <session_id>

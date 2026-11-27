@@ -27,6 +27,8 @@ everruns notifications list [OPTIONS]
 |---|---|
 | `--limit <LIMIT>` | Maximum number of items returned in this page. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -45,6 +47,8 @@ everruns notifications view mark [OPTIONS] [NOTIFICATION_ID]
 | Flag | Description |
 |---|---|
 | `--notification-id <NOTIFICATION_ID>` | Prefixed public identifier of the notification to mark as viewed. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 

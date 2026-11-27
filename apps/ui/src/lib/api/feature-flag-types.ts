@@ -7,8 +7,6 @@ export interface FeatureFlags {
   extractions: boolean;
   /** Skills registry management UI. Experimental. */
   skills: boolean;
-  /** Workspace memory management UI. Experimental. */
-  memory: boolean;
   voice: boolean;
   /** Observers: online scoring of production sessions. Organization adoption opt-in. */
   observers: boolean;

@@ -16,7 +16,8 @@
 //!
 //! At either level the shard also starts no more turns than its
 //! `pressure_turns` floor (`Node::schedule`): input it already queued
-//! waits. A slow shard otherwise draws the shared executor pool into itself,
+//! waits. A turn already started is resumed at every level: it is admitted
+//! work, and finishing it is what frees memory. A slow shard otherwise draws the shared executor pool into itself,
 //! since its turns hold executor credits longer (EKS run 44355318472: 17,000
 //! running turns in a shard that lost a node, three nodes out of memory).
 //!
@@ -513,7 +514,8 @@ impl Node {
     /// makes progress, so memory that only finished turns free does get
     /// freed.
     ///
-    /// At Emergency it starts none.
+    /// At Emergency it starts none. A turn already open is not held
+    /// (`Node::schedule`).
     pub(crate) fn holds_turns(&self, state: &crate::state::ShardState) -> bool {
         match self.pressure.effective() {
             Level::Emergency => true,

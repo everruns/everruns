@@ -66,6 +66,7 @@ describe("navigationGroupForPath", () => {
       "Virtual Users",
       "Models",
       "Web search",
+      "Email",
       "Sandboxes",
     ]);
   });

@@ -158,6 +158,8 @@ const NOT_DENIED_BY_THE_EXTRACTOR: &[(&str, &str, &str)] = &[
     // Work Chat mutations also have valid-channel read-PAT denial coverage in
     // `work_chat_org_members_require_full_scope_on_both_url_spellings`.
     ("POST", "/v1/channels/{}/a2a", INGRESS),
+    // AgentMail intake requires a valid raw-body signature; a PAT grants no ingress authority.
+    ("POST", "/v1/email/inboxes/{}/webhook", INGRESS),
     ("POST", "/v1/channels/{}/fcp", INGRESS),
     ("POST", "/v1/channels/{}/chat/main", INGRESS),
     ("PUT", "/v1/channels/{}/chat/view", INGRESS),

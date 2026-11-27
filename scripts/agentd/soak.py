@@ -53,9 +53,42 @@ def shard_sample(shard):
     return None
 
 
+def cgroup_limit_mb():
+    """The tightest memory limit on this process's cgroup v2 path, in MiB.
+
+    Decision (R9, 2026-11-26): `/sys/fs/cgroup` is the root of the
+    hierarchy, not this container's cgroup, wherever the container shares
+    the host's cgroup namespace (a privileged pod in kind): its
+    `memory.max` there is the kind node's 32 GiB, and the soak gave six
+    nodes 29.5 GB in a 27 GiB pod. The own cgroup is named in
+    `/proc/self/cgroup`; every level of it up to the root can carry a
+    limit, and the tightest one is what the kernel enforces.
+    """
+    try:
+        own = next(l.split(":", 2)[2].strip() for l in open("/proc/self/cgroup") if l.startswith("0::"))
+    except (OSError, StopIteration):
+        return 0
+    path, best = "/sys/fs/cgroup" + own.rstrip("/"), 0
+    while path.startswith("/sys/fs/cgroup"):
+        try:
+            raw = open(os.path.join(path, "memory.max")).read().strip()
+            if raw.isdigit():
+                mb = int(raw) // 2**20
+                best = mb if not best else min(best, mb)
+        except OSError:
+            pass
+        if path == "/sys/fs/cgroup":
+            break
+        path = os.path.dirname(path)
+    return best
+
+
 def machine_mb():
     """This container's memory limit (cgroup v2, then v1), else the machine's."""
-    for path in ("/sys/fs/cgroup/memory.max", "/sys/fs/cgroup/memory/memory.limit_in_bytes"):
+    own = cgroup_limit_mb()
+    if own:
+        return own
+    for path in ("/sys/fs/cgroup/memory/memory.limit_in_bytes",):
         try:
             raw = open(path).read().strip()
         except OSError:

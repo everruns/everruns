@@ -34,6 +34,8 @@ everruns plugin-marketplaces create [OPTIONS] --name <name> --source <source> --
 | `--source <SOURCE>` | Required. Source value. |
 | `--source-type <SOURCE_TYPE>` | Required. Source type: `github`, `url`, or `local_path` (dev/test only). |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -72,6 +74,8 @@ everruns plugin-marketplaces get [OPTIONS] [ID]
 |---|---|
 | `--id <ID>` | Public marketplace ID (`plgmkt_<32-hex>`). |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -91,6 +95,8 @@ everruns plugin-marketplaces list [OPTIONS]
 |---|---|
 | `--search <SEARCH>` | Only marketplaces whose name matches this text. |
 
+Output: a JSON array. Read the items with jq '.[]'.
+
 Example:
 
 ```bash
@@ -109,6 +115,8 @@ everruns plugin-marketplaces sync [OPTIONS] [ID]
 | Flag | Description |
 |---|---|
 | `--id <ID>` | Public marketplace ID. |
+
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
 
 Example:
 
@@ -131,6 +139,8 @@ everruns plugin-marketplaces update [OPTIONS] [ID]
 | `--name <NAME>` | New marketplace name. |
 | `--status <STATUS>` | New lifecycle status, e.g. |
 
+Output: one JSON object. Read fields with jq; nested settings stay nested, such as '.config.target', and a list sits in one named field.
+
 Example:
 
 ```bash
@@ -149,6 +159,8 @@ everruns plugin-marketplaces plugins get [OPTIONS] [ID]
 | Flag | Description |
 |---|---|
 | `--id <ID>` | Public marketplace ID. |
+
+Output: a JSON array. Read the items with jq '.[]'.
 
 Example:
 

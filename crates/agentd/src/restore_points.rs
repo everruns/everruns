@@ -13,8 +13,11 @@
 //!   lost one had used, so each incarnation ships under its own prefix.
 //! - `shards/<shard>/incarnations/<inc>`: one object per incarnation, created
 //!   once (`claim_incarnation`), so two restores never share a number.
-//! - `retired/<hour>/<session>/<segment>`: segments a compaction replaced,
-//!   by the hour they were replaced in.
+//! - `retired/<hour>/<session>/<segment>`: legacy segments (objects of
+//!   their own) a compaction replaced, by the hour they were replaced in.
+//! - `packs/`, `shards/<shard>/packrefs/` and `packs-pinned/`: segment
+//!   packs, which snapshot names which, and what a restore brought back
+//!   (`packs.rs`, swept with the retired segments).
 //!
 //! Decisions:
 //! - Every point inside the restore window (7 days by default,
@@ -73,6 +76,7 @@ pub struct Collected {
     pub snapshots: usize,
     pub logs: usize,
     pub segments: usize,
+    pub packs: usize,
 }
 
 impl Store {
@@ -93,6 +97,11 @@ impl Store {
         let key = self.key(&format!(
             "shards/{shard}/snapshots/i{inc}-n{index}-t{clock_ms}-{id}.snap"
         ));
+        let parts: Vec<bytes::Bytes> = parts.into_iter().collect();
+        // The sidecar first (`packs.rs`): a kept snapshot always has one.
+        if let Some(state) = parts.last() {
+            self.put_pack_refs(shard, &key, state.clone()).await?;
+        }
         let payload: PutPayload = parts.into_iter().collect();
         retry(|| async {
             crate::store::count_put(&key);
@@ -103,6 +112,10 @@ impl Store {
         let copies = self.snapshot_copies(shard).await?;
         for gone in thin(&copies, restore_window(), now) {
             let _ = self.inner.delete(&gone.key).await;
+            let _ = self
+                .inner
+                .delete(&self.pack_refs_key(shard, &gone.key))
+                .await;
         }
         Ok(())
     }
@@ -312,6 +325,10 @@ impl Store {
         let copies = self.snapshot_copies(shard).await?;
         for gone in thin(&copies, window, now_ms) {
             self.inner.delete(&gone.key).await?;
+            let _ = self
+                .inner
+                .delete(&self.pack_refs_key(shard, &gone.key))
+                .await;
             done.snapshots += 1;
         }
         let kept: Vec<_> = self.snapshot_copies(shard).await?;
@@ -334,6 +351,11 @@ impl Store {
         }
         if segments {
             done.segments = self.collect_segments(window, now_ms).await?;
+            let swept = self.sweep_packs(window, now_ms).await?;
+            if let Some(why) = &swept.skipped {
+                tracing::warn!(%why, "pack sweep skipped");
+            }
+            done.packs = swept.deleted;
         }
         Ok(done)
     }
@@ -479,11 +501,7 @@ mod tests {
     async fn a_retired_segment_waits_a_window_before_it_goes() {
         let store = Store::open("memory:///").unwrap();
         let session = SessionId::new();
-        let seg = SegRef {
-            from: 1,
-            to: 5,
-            branch: 1,
-        };
+        let seg = SegRef::legacy(1, 5, 1);
         store
             .put(store.segment_key(session, seg), b"[]".to_vec())
             .await
@@ -510,11 +528,7 @@ mod tests {
     async fn a_segment_written_again_after_retiring_outlives_the_mark() {
         let store = Store::open("memory:///").unwrap();
         let session = SessionId::new();
-        let seg = SegRef {
-            from: 1,
-            to: 5,
-            branch: 1,
-        };
+        let seg = SegRef::legacy(1, 5, 1);
         let key = store.segment_key(session, seg);
         store.put(key.clone(), b"[]".to_vec()).await.unwrap();
         store.retire_segments(session, &[seg]).await.unwrap();
@@ -536,18 +550,7 @@ mod tests {
     async fn a_restored_reference_takes_back_the_retirement() {
         let store = Store::open("memory:///").unwrap();
         let session = SessionId::new();
-        let (kept, gone) = (
-            SegRef {
-                from: 1,
-                to: 5,
-                branch: 1,
-            },
-            SegRef {
-                from: 6,
-                to: 9,
-                branch: 1,
-            },
-        );
+        let (kept, gone) = (SegRef::legacy(1, 5, 1), SegRef::legacy(6, 9, 1));
         for seg in [kept, gone] {
             store
                 .put(store.segment_key(session, seg), b"[]".to_vec())

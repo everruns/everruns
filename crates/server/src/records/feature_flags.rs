@@ -25,8 +25,6 @@ pub struct FeatureFlags {
     pub extractions: bool,
     /// Skills registry management UI. Experimental.
     pub skills: bool,
-    /// Workspace memory management UI. Experimental.
-    pub memory: bool,
     /// Voice channels and the chat microphone (Adoption).
     pub voice: bool,
     /// Observers (online scoring of production sessions). Organization adoption opt-in.
@@ -108,13 +106,6 @@ pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
         label: "Skills",
         description: "Create and manage reusable instruction packages that teach agents \
              specialized workflows.",
-        grade: FeatureFlagGrade::Dev,
-    },
-    FeatureFlagDefinition {
-        name: "memory",
-        label: "Memory",
-        description: "Manage knowledge stores agents can read, including manual notes and \
-             synchronized files.",
         grade: FeatureFlagGrade::Dev,
     },
     FeatureFlagDefinition {
@@ -238,7 +229,6 @@ impl FeatureFlags {
             ("evals".to_string(), self.evals),
             ("extractions".to_string(), self.extractions),
             ("skills".to_string(), self.skills),
-            ("memory".to_string(), self.memory),
             ("voice".to_string(), self.voice),
             ("observers".to_string(), self.observers),
             ("public_chat".to_string(), self.public_chat),
@@ -260,7 +250,6 @@ impl FeatureFlags {
             "evals" => self.evals,
             "extractions" => self.extractions,
             "skills" => self.skills,
-            "memory" => self.memory,
             "voice" => self.voice,
             "observers" => self.observers,
             "public_chat" => self.public_chat,
@@ -274,7 +263,6 @@ impl FeatureFlags {
             "evals" => self.evals = enabled,
             "extractions" => self.extractions = enabled,
             "skills" => self.skills = enabled,
-            "memory" => self.memory = enabled,
             "voice" => self.voice = enabled,
             "observers" => self.observers = enabled,
             "public_chat" => self.public_chat = enabled,
@@ -303,7 +291,6 @@ impl FeatureFlags {
             "container_sandbox" => Some("container_sandbox"),
             "lua" | "lua_code_mode" => Some("lua"),
             "skills" => Some("skills"),
-            "memory" => Some("memory"),
             _ if capability_id.starts_with("skill:") => Some("skills"),
             _ => {
                 everruns_capabilities::integrations_catalog::capability_feature_flag(capability_id)
@@ -326,7 +313,6 @@ impl FeatureFlags {
             evals: true,
             extractions: true,
             skills: true,
-            memory: true,
             voice: true,
             observers: true,
             public_chat: true,
@@ -474,11 +460,13 @@ mod tests {
             "plugins",
             "machine_payments",
             "docker_capability",
+            // Memory v2 is on for everyone (knowledge/runtime-resources/memory.md).
+            "memory",
         ] {
             assert!(!is_known_feature_flag(removed), "{removed}");
         }
         assert!(!FeatureFlagGrade::Internal.org_configurable(DeploymentGrade::Prod));
-        for name in ["skills", "memory", "public_chat"] {
+        for name in ["skills", "public_chat"] {
             assert_eq!(policy.grade(name), FeatureFlagGrade::Dev, "{name}");
             assert!(!policy.deployment_flags().is_enabled(name), "{name}");
         }
@@ -545,7 +533,6 @@ mod tests {
         for capability in [
             "skills",
             "skill:example",
-            "memory",
             "container_sandbox",
             "lua",
             "lua_code_mode",
