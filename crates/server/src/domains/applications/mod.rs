@@ -280,8 +280,12 @@ impl Command for CreateApplicationResource {
                         .map_err(anyhow::Error::from)?;
                 command.run(ctx).await?.id
             }
+            // A memory store is named for its path (`/memory/<name>`), so the
+            // resource's display label cannot become the store name. The
+            // slug is a valid store name by construction (`valid_slug`);
+            // the label stays on the binding.
             ApplicationResourceKind::Memory => crate::domains::memory::CreateMemory {
-                name: self.name.clone(),
+                name: self.slug.clone(),
                 description: None,
                 source: None,
             }
