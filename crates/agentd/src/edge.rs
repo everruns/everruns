@@ -484,6 +484,7 @@ fn refers_to_uploads(body: &[u8]) -> bool {
 impl Edge {
     /// The org token for a caller's call: the one it sent, checked, or its
     /// credential's exchanged one; None when its org is not on a data plane.
+    #[allow(clippy::result_large_err)] // the Err is the caller's HTTP response
     async fn token_for(&self, headers: &HeaderMap) -> Result<Option<String>, Response> {
         match explicit(headers) {
             // An org token the caller sent is checked here: an expired or

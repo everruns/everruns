@@ -102,6 +102,8 @@ impl RaftNetworkFactory<TypeConfig> for Network {
 }
 
 impl Peer {
+    // openraft's RPCError is the transport's error type, not ours to shrink.
+    #[allow(clippy::result_large_err)]
     async fn call<Req, Resp, E>(
         &self,
         path: &str,
