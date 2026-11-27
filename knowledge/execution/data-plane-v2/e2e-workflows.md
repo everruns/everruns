@@ -19,11 +19,14 @@ not call `finish` or `ask_parent`) were found by a person, not a test.
 
 [`scripts/e2e-v2-workflows.mjs`](../../../scripts/e2e-v2-workflows.mjs), from
 [`.github/workflows/v2-workflows.yml`](../../../.github/workflows/v2-workflows.yml):
-nightly, by hand, and on a pull request that changes the suite.
+nightly and by hand, on main only: the suite needs the Doppler vault token,
+which never runs next to pull request code. A change to the suite is checked
+by dispatching it on main after it lands.
 
 - **The Compose stack** (control plane plus agentd, v2 by default) on a
   GitHub runner, from one commit's images: main's own (a missing set is
-  built by an amd64-only Docker Publish main snapshot), or a pull request's.
+  built by an amd64-only Docker Publish main snapshot), or any published tag
+a dispatch names.
 - **A real model**, GPT-6 Luna through OpenRouter, from Doppler. Workflows
   depend on the model choosing tools, which a simulated model only pretends.
   The key reaches the server through startup seeding only.

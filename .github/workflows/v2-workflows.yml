@@ -9,9 +9,11 @@
 # Images: a nightly run tests main's images for its own commit. Main pushes
 # build no images, so when they are missing the run dispatches a main
 # snapshot of Docker Publish (amd64 only) and waits for it, then tests the
-# commit that snapshot built. A pull request that changes the suite tests
-# the images Docker Publish builds for that pull request. A dispatch may name
-# any published tag instead.
+# commit that snapshot built. A dispatch may name any published tag instead.
+#
+# Main only: the suite needs the Doppler vault token, which never runs next to
+# pull request code (scripts/test-workflow-vault-token-scope.sh). A change to
+# the suite is checked by dispatching this workflow on main after it lands.
 name: v2 Workflows
 
 on:
@@ -27,13 +29,9 @@ on:
         description: 'Rows to run, space separated (default: all)'
         required: false
         type: string
-  pull_request:
-    paths:
-      - 'scripts/e2e-v2-workflows.mjs'
-      - '.github/workflows/v2-workflows.yml'
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -43,6 +41,7 @@ jobs:
   images:
     name: Resolve images
     runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
     timeout-minutes: 200
     permissions:
       contents: read
@@ -55,9 +54,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
-          EVENT: ${{ github.event_name }}
           INPUT_TAG: ${{ inputs.tag }}
-          PR_SHA: ${{ github.event.pull_request.head.sha }}
           MAIN_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
@@ -66,21 +63,9 @@ jobs:
               docker manifest inspect "ghcr.io/everruns/$image:$1" >/dev/null 2>&1 || return 1
             done
           }
-          wait_for() {
-            for _ in $(seq 1 150); do
-              have "$1" && return 0
-              sleep 60
-            done
-            return 1
-          }
           if [ -n "$INPUT_TAG" ]; then
             have "$INPUT_TAG" || { echo "::error::images for $INPUT_TAG are not published"; exit 1; }
             tag="$INPUT_TAG"
-          elif [ "$EVENT" = pull_request ]; then
-            # Docker Publish builds this pull request's images (its paths
-            # include the suite).
-            wait_for "$PR_SHA" || { echo "::error::no images for $PR_SHA after 150 min"; exit 1; }
-            tag="$PR_SHA"
           elif have "$MAIN_SHA"; then
             tag="$MAIN_SHA"
           else
@@ -113,6 +98,7 @@ jobs:
     name: Full-org workflows on v2
     needs: images
     runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7

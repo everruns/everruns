@@ -46,9 +46,6 @@ on:
       - '.github/workflows/sandbox-images.yml'
       - 'scripts/docker-release-source.py'
       - 'scripts/test-docker-release-source.sh'
-      # The v2 workflow checks run on this pull request's images.
-      - 'scripts/e2e-v2-workflows.mjs'
-      - '.github/workflows/v2-workflows.yml'
 
 permissions:
   contents: read
