@@ -212,7 +212,7 @@ fred = { version = "10", features = ["enable-rustls", "i-scripts"] }
 # NATS (event delivery, task queue)
 # Default features minus `ring`, plus `aws-lc-rs`: async-nats picks a rustls
 # backend through its own feature, and the workspace links exactly one (EVE-924).
-async-nats = { version = "0.52", default-features = false, features = [
+async-nats = { version = "0.53", default-features = false, features = [
     "server_2_10",
     "server_2_11",
     "server_2_12",
@@ -230,7 +230,7 @@ async-nats = { version = "0.52", default-features = false, features = [
 
 # Authentication
 argon2 = "0.6"
-jsonwebtoken = { version = "11", features = ["aws_lc_rs"] }
+jsonwebtoken = { version = "12", features = ["aws_lc_rs"] }
 sha2 = "0.11"
 hmac = "0.13"
 hex = "0.4"
@@ -248,7 +248,7 @@ regex = "1.11"
 aho-corasick = "1.1"
 globset = "0.4"
 time = "0.3"
-parking_lot = "0.12"
+parking_lot = "0.13"
 dialoguer = "0.12"
 console = "0.16"
 indicatif = "0.18"
@@ -314,11 +314,11 @@ moka = { version = "0.12", features = ["future", "sync"] }
 
 # Fault injection testing
 fail = "0.5"
-rstest = "0.28"
+rstest = "0.29"
 tempfile = "3"
 
 # File watching and gitignore
-notify = { version = "8.2", default-features = false, features = ["macos_kqueue"] }
+notify = { version = "9.0", default-features = false, features = ["macos_kqueue"] }
 ignore = "0.4"
 
 # TLS

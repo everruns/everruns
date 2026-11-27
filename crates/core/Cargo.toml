@@ -45,7 +45,7 @@ futures.workspace = true
 # Serialization
 serde.workspace = true
 serde_json.workspace = true
-jsonschema = { version = "0.61.0", default-features = false }
+jsonschema = { version = "0.63.1", default-features = false }
 serde-saphyr.workspace = true
 toml = "1.1"
 # Portable archive support is selected independently of core defaults.
