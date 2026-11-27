@@ -624,6 +624,21 @@ resolved endpoint, model-facing messages (`everruns::llm::Message`), and call
 configuration, and returns an `LlmResponseStream`. Exact trait methods and event shapes live in the
 [`everruns::ChatDriver` API reference](https://docs.rs/everruns/latest/everruns/trait.ChatDriver.html).
 
+For compaction budgeting, a driver may implement `tool_request_projection` using
+`everruns::ToolRequestProjection`. The decision must match what it serializes for
+the actual endpoint, model and request features. The default is conservative, so
+existing custom drivers continue to work. Runtime provider keys can be arbitrary;
+they do not select the request layout. Planning is pure and performs no network
+or credential lookup.
+
+A deterministic or side-effecting execution adapter should return `false` from
+`supports_history_summarization`. Provider wrappers preserve that refusal.
+`LlmCompletionMetadata::outcome()` exposes `everruns::CompletionOutcome`; missing
+or unfamiliar terminal reasons stay unknown. Compaction accepts only completed,
+nonempty summaries without tool calls and retains history when validation fails.
+Omitting finish metadata still permits bounded recovery of partial tool calls;
+it cannot certify a completed summary.
+
 Keep credential lookup and refresh in trusted host/provider configuration.
 Model ids must remain safe to log, compare, store, and pass across application
 boundaries. Provider errors should preserve useful decisions without

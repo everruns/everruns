@@ -117,6 +117,15 @@ impl ColdMoment {
 }
 
 impl ToolChangeReplay {
+    /// Persist the catalog actually sent after compaction/recovery restarted
+    /// the epoch. Otherwise replay resurrects the same oversized old baseline.
+    pub(super) fn restart_epoch(&mut self, tools: &[ToolDefinition], system_prompt: &str) {
+        self.record = Some(ToolChanges::baseline_with_prompt(
+            tools.to_vec(),
+            system_prompt,
+        ));
+    }
+
     /// Store the entry on the assistant message's metadata.
     pub(super) fn stamp(&self, metadata: &mut HashMap<String, serde_json::Value>) {
         if let Some(record) = &self.record {
@@ -400,6 +409,40 @@ mod tests {
         let replay = prepare(messages, PROVIDER, MODEL, wanted, PROMPT);
         messages.push(answer(MODEL, replay.record.as_ref()));
         replay
+    }
+
+    #[test]
+    fn reset_epoch_survives_restart_and_does_not_resurrect_old_schemas() {
+        let mut history = Vec::new();
+        step(
+            &mut history,
+            "first",
+            &[tool("old", &"large ".repeat(2000))],
+        );
+        let current = vec![tool("current", "small")];
+        history.push(RuntimeMessage::user("change"));
+        let mut replay = prepare(&history, PROVIDER, MODEL, &current, PROMPT);
+        replay.restart_epoch(&current, PROMPT);
+        history.push(answer(MODEL, replay.record.as_ref()));
+        // Reconstructing from the canonical transcript simulates a fresh worker.
+        let mut restored: Vec<RuntimeMessage> =
+            serde_json::from_value(serde_json::to_value(&history).unwrap()).unwrap();
+        for _ in 0..4 {
+            restored.push(RuntimeMessage::user("continue"));
+            let replay = prepare(&restored, PROVIDER, MODEL, &current, PROMPT);
+            assert_eq!(replay.baseline_for(&[]).unwrap()[0].name(), "current");
+            assert!(replay.transitions.is_empty());
+            assert!(
+                replay.record.is_none(),
+                "unchanged context must not rearm the old epoch"
+            );
+            restored.push(answer(MODEL, replay.record.as_ref()));
+        }
+        let switched = prepare(&restored, "other-provider", MODEL, &current, PROMPT);
+        assert_eq!(
+            switched.record.unwrap().baseline.unwrap()[0].name(),
+            "current"
+        );
     }
 
     #[test]

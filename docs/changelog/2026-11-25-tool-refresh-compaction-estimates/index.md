@@ -1,6 +1,6 @@
 ---
 title: "Tool refreshes are distinguished from history compaction"
-description: "OpenRouter request budgets exclude unused inline tool declarations, and tool-only refresh markers explain that conversation messages were retained."
+description: "Provider-owned request projections exclude unused tool declarations, and tool-only refresh markers explain that conversation messages were retained."
 date: 2026-11-25
 kind: fix
 significance: minor
@@ -27,6 +27,20 @@ represents a tool refresh rather than a saved summary:
   "messages_after": 40
 }
 ```
+
+Drivers now share the model/endpoint layout decision with request budgeting,
+including custom Framework provider keys. Gateway and fallback routes budget
+current declarations; verified native inline routes keep their baseline and
+changes. Inline system-prompt updates are counted once, avoiding false pressure
+from counting both the current prompt and its recorded additions. Epoch resets
+persist across transcript reloads rather than restoring
+obsolete declarations on every turn.
+
+Summary completion and output-limit recovery use typed terminal outcomes. Unknown,
+paused or truncated output cannot replace history. An incomplete Responses result
+stays incomplete even if its reason is missing or conflicts with its status.
+Runtime fallback observations stay outside provider options. Existing custom
+drivers retain conservative budgeting until they opt in.
 
 Verified first-party inline tool changes retain their existing cache behavior.
 [Compaction](/advanced/compaction/) explains the distinction between request

@@ -32,6 +32,7 @@ pub(super) fn served_tier(speed: Option<&str>) -> Option<String> {
 
 pub(super) struct PreparedRequest {
     pub(super) request: AnthropicRequest,
+    pub(super) tool_projection: everruns_contracts::ToolRequestProjection,
     pub(super) needs_interleaved_thinking: bool,
     pub(super) wants_million_context: bool,
     pub(super) wants_cache_diagnostics: bool,
@@ -444,6 +445,11 @@ impl AnthropicChatDriver {
             prompt_cache.and_then(|cfg| cfg.retention.anthropic_ttl()),
         );
         Ok(PreparedRequest {
+            tool_projection: if inline_tool_changes {
+                everruns_contracts::ToolRequestProjection::BaselineWithChanges
+            } else {
+                everruns_contracts::ToolRequestProjection::Current
+            },
             request,
             needs_interleaved_thinking,
             wants_million_context,
@@ -455,8 +461,23 @@ impl AnthropicChatDriver {
     }
 }
 
+#[cfg(test)]
+#[path = "request_projection_tests.rs"]
+mod projection_tests;
+
 #[async_trait]
 impl ChatDriver for AnthropicChatDriver {
+    fn tool_request_projection(
+        &self,
+        endpoint: &everruns_contracts::ProviderEndpoint,
+        messages: &[Message],
+        config: &LlmCallConfig,
+    ) -> everruns_contracts::ToolRequestProjection {
+        self.prepare_request(endpoint, messages.to_vec(), config)
+            .map(|request| request.tool_projection)
+            .unwrap_or_default()
+    }
+
     fn supports_native_non_streaming(&self) -> bool {
         true
     }
@@ -490,6 +511,7 @@ impl ChatDriver for AnthropicChatDriver {
             conversation_betas,
             wants_server_compaction,
             max_tokens_from_profile,
+            ..
         } = self.prepare_request(endpoint, messages, config)?;
         let request_messages = Arc::new(request.messages.clone());
         let thread = Arc::new(Mutex::new(message_threads::Exchange::new(

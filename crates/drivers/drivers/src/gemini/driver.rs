@@ -586,6 +586,15 @@ impl GeminiChatDriver {
 
 #[async_trait]
 impl ChatDriver for GeminiChatDriver {
+    fn tool_request_projection(
+        &self,
+        _endpoint: &everruns_contracts::ProviderEndpoint,
+        _messages: &[Message],
+        _config: &LlmCallConfig,
+    ) -> everruns_contracts::ToolRequestProjection {
+        everruns_contracts::ToolRequestProjection::Current
+    }
+
     #[cfg(not(target_arch = "wasm32"))]
     fn batch_driver(&self) -> Option<&dyn everruns_contracts::batch::BatchDriver> {
         Some(self)

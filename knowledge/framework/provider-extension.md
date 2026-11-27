@@ -45,6 +45,14 @@ branches.
 - Built-in provider conveniences and custom providers converge on the same
   resolution and execution path.
 - Provider-specific protocol differences remain behind the driver boundary.
+- Request budgeting uses the driver's pure model/endpoint projection, shared with
+  serialization. Custom provider keys require no core branch. Unmodified custom
+  drivers keep conservative budgeting; opting in must describe the wire input.
+- Provider wrappers preserve the configured endpoint and history-summarization
+  refusal. Planning must not perform I/O, fetch credentials or run historical work.
+- Unknown completion reasons cannot authorize summary installation. Runtime-only
+  reduction observations are separate from provider options. See
+  [Compaction](../runtime-resources/compaction.md).
 - A driver owns the names of the environment variables it can be configured
   from, declared on its own credential fields and following that vendor's SDK
   convention. No central mapping keyed by driver id: it can express only one

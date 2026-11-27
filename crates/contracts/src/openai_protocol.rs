@@ -482,6 +482,15 @@ fn drop_orphaned_tool_messages(messages: &[Message]) -> Vec<Message> {
 
 #[async_trait]
 impl ChatDriver for OpenAIProtocolChatDriver {
+    fn tool_request_projection(
+        &self,
+        _endpoint: &crate::ProviderEndpoint,
+        _messages: &[Message],
+        _config: &LlmCallConfig,
+    ) -> crate::ToolRequestProjection {
+        crate::ToolRequestProjection::Current
+    }
+
     fn supports_native_non_streaming(&self) -> bool {
         true
     }

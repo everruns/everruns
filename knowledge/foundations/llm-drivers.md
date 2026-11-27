@@ -100,6 +100,29 @@ bounded retries. See [Engine parking](../framework/engine-durable-sessions.md#pa
    driver reports is derived from what it emitted, so a dropped call is
    indistinguishable from the model choosing to stop.
 
+### Request projection and completion semantics
+
+The driver supplies a pure request projection using the same endpoint/model/feature
+selection as serialization. Runtime budgeting does not assume that serving a
+vendor's model implies supporting that vendor's inline protocol. Bound providers
+forward their real endpoint; wrappers preserve both projection and summarization
+refusal. The default remains conservative for open extensions. Exact SPI types
+live in [request projection](../../crates/contracts/src/request_projection.rs).
+
+[Completion outcomes](../../crates/contracts/src/completion_outcome.rs) normalize
+provider spellings without treating an unrecognized or absent ending as success.
+Raw reasons remain available. Safety-sensitive consumers validate the typed
+outcome; the legacy turn-stop projection retains its existing compatibility default.
+
+New or changed request layouts need a wire-conformance regression: compare the
+planning decision with the serialized request across endpoint and feature
+fallbacks, using an arbitrary Framework provider key. See the
+[driver request tests](../../crates/drivers/drivers/tests/request_projection.rs).
+Terminal parsing must cover incomplete, missing and unknown endings as well as
+normal completion; see the [Responses regressions](../../crates/contracts/src/openresponses_protocol/tests_truncation.rs).
+Compaction changes also retain restart and model-switch coverage and the public
+Framework/Wasm portability gate; a hosted-only test is insufficient.
+
 ### Error Types (Contract)
 
 Drivers MUST use the following error types from `AgentLoopError`:

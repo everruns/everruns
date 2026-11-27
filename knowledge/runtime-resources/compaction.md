@@ -38,8 +38,9 @@ change; opaque native content is never translated. Current working-context size
 and raw evidence since the checkpoint trigger reduction; cumulative lifetime
 usage alone cannot rearm a checkpoint. See the [public contract](../../docs/advanced/compaction.md).
 
-The fallback reason is runtime telemetry. The model request records when
-provider-managed reduction falls back to the portable path, and the outgoing
+Fallback reasons, replay provenance and observed compaction blocks live in a
+[typed runtime sidecar](../../crates/core/src/runtime_context/reduction_telemetry.rs),
+not in provider call configuration. Generation events retain these observations;
 provider options contain only options the provider can use.
 
 ## Inspection and defaults
@@ -103,12 +104,21 @@ can differ from provider tokenization and hosted-tool scaffolding. See the
 [request budget implementation](../../crates/core/src/engine/execution/reason/request_budget.rs)
 and [public behavior](../../docs/advanced/compaction.md).
 
-OpenRouter sends current declarations; its historical inline epochs are
-bookkeeping rather than wire input. Request budgeting excludes those epochs
-without changing provider-neutral replay metadata, declaration ordering or
-warm-cache removal holds. Counting that unused epoch caused repeated apparent
-tool rebases without removing messages or installing continuity. Other routes,
-including custom drivers, retain conservative baseline accounting.
+The protocol driver owns the request projection for the actual endpoint, model
+and request features. Inline prompt updates use the baseline system prompt for estimation so their
+recorded notes are counted once; trimming still preserves current instructions.
+Budgeting consumes that same decision rather than inferring
+wire behavior from a provider name or model profile. Bound Framework providers
+and transparent wrappers preserve the configured endpoint and summarization
+refusals. An extension that does not declare a projection keeps conservative
+accounting and its provider-neutral replay metadata.
+
+Restarting a declaration epoch records the catalog actually sent on the next
+assistant message. Reloading the transcript therefore cannot resurrect the old
+baseline and repeatedly refresh unchanged declarations. The [projection contract](../../crates/contracts/src/request_projection.rs),
+[wire cases](../../crates/drivers/drivers/tests/request_projection.rs), and
+[restart regression](../../crates/core/src/engine/execution/reason/tool_changes.rs)
+own these guarantees.
 Tool-only refresh events remain inspectable under an explicit UI label; they do
 not imply saved history compaction or an extra summary call.
 
@@ -206,6 +216,17 @@ before sending a request. Configuration, event shapes and defaults are owned by
 [source](../../crates/core/src/builtins/compaction.rs) and the
 [public guide](../../docs/advanced/compaction.md), not duplicated here.
 
+## Completion contract
+
+Summary installation consumes validated, complete, nonempty, tool-free output.
+[Completion normalization](../../crates/contracts/src/completion_outcome.rs) retains
+unknown endings as unknown and keeps raw provider reasons available for telemetry.
+Output-limit spellings share normalization with ordinary dropped-tool-call
+recovery, with bounded retry rules for each operation. Refusals and cancellations
+are not output-limit retries. Rejected output never advances the checkpoint or
+replaces source history. The [summary outcome contract](../../crates/core/src/engine/execution/reason/summary_outcome.rs)
+serves both the Framework continuity planner and request-local fallback.
+
 ## Qualification boundaries
 
 Synthetic long-session tests establish cursor, restart, retrieval and resource
@@ -226,6 +247,13 @@ Compaction emits a raw-history evidence permission derived from the same driver
 and prompt-hook gate as portable summarization. Old events default to denied.
 The [shared assessment](../../crates/core/src/compaction_observation.rs) reports
 execution metadata without judging semantics; equal message counts remain valid.
+Framework hosts can aggregate the shared terminal events and summary generation
+usage by driver/model to track refresh frequency, ineffective reductions and
+summary spend. Tool refreshes do not imply summary calls; estimated request size,
+provider-reported billed work and installed checkpoint size remain different
+measurements. Alerting must not subtract native output work from an input-window
+estimate or turn absent usage into zero cost.
+
 Hosted opt-in [system observers](../evaluation/online-evals.md#opt-in-system-compaction-monitoring)
 consume terminal outcomes and a bounded continuation, independently of harness
 selection. A successful installation event is not an independent readback test.

@@ -16,6 +16,8 @@ use everruns_contracts::openai_hosted_tools::hosted_call_price_usd;
 /// The ending of one generation, as the driver reported it.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(super) struct GenerationOutcome {
+    /// Safety decisions retain unknown outcomes even when legacy telemetry infers a stop.
+    pub completion_outcome: everruns_contracts::CompletionOutcome,
     /// Normalized finish reason; inferred from the output when the provider
     /// sent none (`tool_calls` with calls, otherwise `stop`).
     pub finish_reason: String,
@@ -38,7 +40,17 @@ impl GenerationOutcome {
         has_tool_calls: bool,
     ) -> Self {
         let inferred = if has_tool_calls { "tool_calls" } else { "stop" };
+        let mut completion_outcome = meta.map(LlmCompletionMetadata::outcome).unwrap_or_default();
+        // Optional finish metadata has always allowed tool-call inference from
+        // emitted calls. Preserve partial-call recovery, never infer Complete.
+        if completion_outcome == everruns_contracts::CompletionOutcome::Unknown
+            && has_tool_calls
+            && meta.is_none_or(|m| m.finish_reason.is_none())
+        {
+            completion_outcome = everruns_contracts::CompletionOutcome::ToolCalls;
+        }
         Self {
+            completion_outcome,
             finish_reason: meta
                 .and_then(|m| m.finish_reason.clone())
                 .unwrap_or_else(|| inferred.to_string()),
@@ -105,6 +117,7 @@ impl GenerationOutcome {
             model,
             has_tool_calls = tool_count > 0,
             tool_count,
+            completion_outcome = ?self.completion_outcome,
             finish_reason = %self.finish_reason,
             provider_finish_reason = self.provider_finish_reason.as_deref(),
             output_tokens = self.output_tokens,

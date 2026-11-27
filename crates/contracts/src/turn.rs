@@ -22,11 +22,13 @@ pub enum TurnStopReason {
 impl TurnStopReason {
     /// Normalize a provider finish reason at the runtime boundary.
     pub fn from_provider_finish_reason(reason: Option<&str>) -> Self {
-        match reason.map(str::to_ascii_lowercase).as_deref() {
-            Some("length" | "max_tokens" | "max_output_tokens") => Self::MaxTokens,
-            Some("refusal" | "content_filter" | "safety") => Self::Refusal,
-            Some("error") => Self::Error,
-            Some("cancelled" | "canceled") => Self::Cancelled,
+        match crate::CompletionOutcome::from_finish_reason(reason) {
+            crate::CompletionOutcome::OutputLimit => Self::MaxTokens,
+            crate::CompletionOutcome::Refused => Self::Refusal,
+            crate::CompletionOutcome::Cancelled => Self::Cancelled,
+            crate::CompletionOutcome::Failed => Self::Error,
+            // Legacy turn projection retains its existing default. Safety-sensitive
+            // consumers, such as summary installation, use CompletionOutcome directly.
             _ => Self::EndTurn,
         }
     }

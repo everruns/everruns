@@ -322,6 +322,15 @@ everruns_core::runtime_context::ResolvedTurnContextInput	struct
 everruns_core::runtime_context::TurnContextRequest	struct
 everruns_core::runtime_context::TurnContextResolver	trait
 everruns_core::runtime_context::assemble_resolved_turn_context	function
+everruns_core::runtime_context::reduction_telemetry::ReductionFallbackReason	enum
+everruns_core::runtime_context::reduction_telemetry::ReductionFallbackReason::Driver	variant
+everruns_core::runtime_context::reduction_telemetry::ReductionFallbackReason::DynamicConversationContext	variant
+everruns_core::runtime_context::reduction_telemetry::ReductionFallbackReason::ProviderCapabilityRejected	variant
+everruns_core::runtime_context::reduction_telemetry::ReductionFallbackReason::ProviderOrModelIneligible	variant
+everruns_core::runtime_context::reduction_telemetry::ReductionReplaySource	enum
+everruns_core::runtime_context::reduction_telemetry::ReductionReplaySource::Checkpoint	variant
+everruns_core::runtime_context::reduction_telemetry::ReductionReplaySource::Raw	variant
+everruns_core::runtime_context::reduction_telemetry::ReductionTelemetry	struct
 everruns_core::runtime_context::resolve_runtime_capabilities	function
 everruns_core::runtime_context::resolve_snapshot_capabilities	function
 everruns_core::session_mcp_servers	module

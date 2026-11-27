@@ -2,6 +2,19 @@
 use crate::{LlmStreamError, LlmStreamEvent};
 use serde_json::Value;
 
+/// An explicitly incomplete resource can never certify a complete summary,
+/// even when a malformed reason claims `stop`. Keep the raw reason in metadata.
+pub(super) fn incomplete_reason(reason: Option<&str>) -> String {
+    match crate::CompletionOutcome::from_finish_reason(reason) {
+        crate::CompletionOutcome::OutputLimit => "length",
+        crate::CompletionOutcome::Refused => "content_filter",
+        crate::CompletionOutcome::Cancelled => "cancelled",
+        crate::CompletionOutcome::Failed => "error",
+        _ => "incomplete",
+    }
+    .to_owned()
+}
+
 pub(super) fn terminal(frame: &Value) -> Option<LlmStreamEvent> {
     match frame["type"].as_str()? {
         "response.completed"

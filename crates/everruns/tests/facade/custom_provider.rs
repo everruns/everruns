@@ -8,6 +8,72 @@ use everruns::{
 #[derive(Clone)]
 struct DownstreamProtocol;
 
+#[cfg(feature = "builtins")]
+#[derive(Clone)]
+struct PlannedProtocol(std::sync::Arc<std::sync::atomic::AtomicUsize>);
+
+#[cfg(feature = "builtins")]
+#[async_trait]
+impl ChatDriver for PlannedProtocol {
+    fn tool_request_projection(
+        &self,
+        endpoint: &ProviderEndpoint,
+        _messages: &[Message],
+        config: &LlmCallConfig,
+    ) -> everruns::ToolRequestProjection {
+        assert_eq!(endpoint.base_url(), Some("https://application.example/v1"));
+        assert!(
+            !config
+                .driver_options
+                .keys()
+                .any(|key| key.starts_with("everruns/"))
+        );
+        self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        everruns::ToolRequestProjection::Current
+    }
+
+    async fn chat_completion_stream(
+        &self,
+        endpoint: &ProviderEndpoint,
+        messages: Vec<Message>,
+        config: &LlmCallConfig,
+    ) -> Result<LlmResponseStream, AgentLoopError> {
+        assert_eq!(endpoint.base_url(), Some("https://application.example/v1"));
+        DownstreamProtocol
+            .chat_completion_stream(endpoint, messages, config)
+            .await
+    }
+}
+
+#[cfg(feature = "builtins")]
+#[tokio::test]
+async fn framework_uses_custom_request_planning_with_the_bound_endpoint() {
+    let planned = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let agent = Agent::builder()
+        .instructions("Reply through the application provider.")
+        .provider(
+            Provider::new(
+                "arbitrary-application-key",
+                PlannedProtocol(planned.clone()),
+            )
+            .base_url("https://application.example/v1"),
+        )
+        .model("application-model")
+        .capability(everruns::CapabilityRef::new("infinity_context"))
+        .build()
+        .unwrap();
+    let session = InMemoryEngine::new().create(agent);
+    for _ in 0..2 {
+        assert_eq!(
+            session.run("hello").await.unwrap().response,
+            "downstream works"
+        );
+    }
+    assert!(planned.load(std::sync::atomic::Ordering::SeqCst) >= 2);
+    let metadata = everruns::LlmCompletionMetadata::default();
+    assert_eq!(metadata.outcome(), everruns::CompletionOutcome::Unknown);
+}
+
 #[async_trait]
 impl ChatDriver for DownstreamProtocol {
     async fn chat_completion_stream(

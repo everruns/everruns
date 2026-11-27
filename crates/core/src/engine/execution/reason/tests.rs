@@ -1,4 +1,5 @@
 use super::compaction::materially_reduced;
+use super::observability::build_request_options;
 use super::*;
 use crate::engine::driver_registry::{
     LlmCallConfig, LlmCompletionMetadata, PromptCacheConfig, PromptCacheRetention,

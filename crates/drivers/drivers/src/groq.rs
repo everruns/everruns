@@ -64,6 +64,16 @@ impl Default for GroqChatDriver {
 
 #[async_trait]
 impl ChatDriver for GroqChatDriver {
+    fn tool_request_projection(
+        &self,
+        endpoint: &everruns_contracts::ProviderEndpoint,
+        messages: &[Message],
+        config: &LlmCallConfig,
+    ) -> everruns_contracts::ToolRequestProjection {
+        self.inner
+            .tool_request_projection(endpoint, messages, config)
+    }
+
     #[cfg(not(target_arch = "wasm32"))]
     fn batch_driver(&self) -> Option<&dyn everruns_contracts::batch::BatchDriver> {
         Some(self)

@@ -155,8 +155,13 @@ pub(super) async fn apply_proactive_compaction(
     let durable_source = context
         .checkpoint_store
         .zip(context.message_source_sequence);
-    let tool_tokens =
-        request_budget::tool_tokens_for_request(context.provider_type, config, messages);
+    let projection = context.chat_driver.tool_request_projection(
+        &everruns_contracts::ProviderEndpoint::default(),
+        messages,
+        config,
+    );
+    let tool_tokens = request_budget::tool_tokens_for_request(projection, config, messages);
+    let budget_messages = request_budget::messages_for_request(projection, config, messages);
     let current_tool_tokens = request_budget::tools_tokens(&config.tools);
     let mut history_budget = request_budget::history_budget(
         context.policy,
@@ -171,7 +176,7 @@ pub(super) async fn apply_proactive_compaction(
     }
     let estimated_tokens_before = context
         .policy
-        .estimate_total_tokens(messages)
+        .estimate_total_tokens(&budget_messages)
         .saturating_add(tool_tokens) as u64;
     let native_attempt_rearmed = if let Some((store, source_sequence)) = durable_source {
         match store
@@ -213,12 +218,14 @@ pub(super) async fn apply_proactive_compaction(
         true
     };
     let window_pressure = context.policy.should_compact_with_fixed_input(
-        messages,
+        &budget_messages,
         context_window.saturating_sub(config.max_tokens.unwrap_or(0) as usize),
         tool_tokens,
     ) || (context.policy.proactive_enabled()
         && context.policy.working_context_tokens().is_some()
         && context.policy.estimate_total_tokens(messages) > history_budget);
+    // Release an owned estimate-only prompt view before mutating history or dispatching.
+    drop(budget_messages);
     let cost_pressure = context.policy.should_compact_for_cost(
         estimated_tokens_before as usize,
         context.raw_tool_result_bytes,
@@ -961,14 +968,15 @@ pub(super) async fn apply_reactive_compaction(
                             ),
                         ))
                         .await?;
-                    if !super::context_plan::valid_summary(&response) {
+                    let Some(summary) = super::context_plan::ValidatedSummary::new(&response)
+                    else {
                         return Err(AgentLoopError::store(
                             "summary was empty, truncated, or requested tools; history was not replaced",
                         ));
-                    }
+                    };
                     let system_message = has_system_prompt.then(|| messages[0].clone());
                     let summary_text = crate::attachment_labels::summary_with_attachment_list(
-                        &response.text,
+                        summary.text(),
                         to_summarize,
                     );
                     *messages = context.policy.compose_summary_with_recent(
