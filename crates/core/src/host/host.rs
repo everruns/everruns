@@ -1082,8 +1082,11 @@ pub async fn execute_reason_activity_with_prompt_messages<A: RuntimeHostAdapter>
         &mut turn_inputs.mcp_tool_definitions,
     )
     .await?;
+    let hidden =
+        reason_surface::hidden_reason_capabilities(adapter, org_id, input.context.session_id)
+            .await?;
     let reason_capability_registry =
-        reason_surface::reason_capability_registry(adapter, query_history_allowed);
+        reason_surface::reason_capability_registry(adapter, query_history_allowed, &hidden);
     let context_resolver = crate::host::runtime_context::StoreTurnContextResolver::new(
         adapter.harness_store(org_id),
         adapter.agent_store(org_id),

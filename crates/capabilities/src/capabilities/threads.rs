@@ -11,7 +11,8 @@
 //   A thread runs at most one open assignment at a time.
 // Decision: a thread finishes an assignment explicitly with `finish`. A turn
 //   that ends without it is not a result: the server's thread turn listener
-//   (crates/server/src/listeners/coordination/mod.rs) flags the assignment as
+//   (crates/server/src/listeners/coordination/mod.rs), or on data plane v2
+//   the shard's (crates/agentd/src/thread_turns.rs), flags the assignment as
 //   needing attention, which wakes the parent.
 // Decision: assignment tasks carry no heartbeat and no watcher. The reaper
 //   ignores tasks without a heartbeat, so a thread can wait on the person for
@@ -21,8 +22,9 @@
 //   2026-11-25), so routing has one owner and one record by default.
 // Decision: parent tools (`report_progress`, `ask_parent`, `finish`,
 //   `hand_back`) are injected per turn by `PlatformToolAugmentor` into a
-//   session that has an open assignment (`parent_communication`). Thread tools
-//   are hidden inside threads: a thread does not start threads.
+//   session that has an open assignment (`parent_communication`). Threads and
+//   Coordinator are hidden from every child session (`PlatformToolAugmentor::
+//   hidden_reason_capabilities`): a thread does not start threads.
 // Decision: who may work a thread is this capability's own list: `self`,
 //   `agents` (named, by agent id; names are filled on save), and `any_agent`.
 //   Threads supersedes Spawn agents, so `spawn_agent` never competes with

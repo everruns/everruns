@@ -36,15 +36,38 @@ pub(super) async fn augment_reason_tools<A: RuntimeHostAdapter>(
     Ok(())
 }
 
+/// Capabilities the host's augmentor hides from `session_id`'s reasons.
+pub(super) async fn hidden_reason_capabilities<A: RuntimeHostAdapter>(
+    adapter: &A,
+    org_id: i64,
+    session_id: SessionId,
+) -> everruns_contracts::error::Result<Vec<&'static str>> {
+    match adapter.tool_augmentor() {
+        Some(augmentor) => {
+            augmentor
+                .hidden_reason_capabilities(session_id, adapter.session_store(org_id))
+                .await
+        }
+        None => Ok(Vec::new()),
+    }
+}
+
 /// The capability registry a reason assembles its model surface from.
 ///
 /// When the executor does not register `query_history`, its owning
-/// capability keeps only its message filter for this turn.
+/// capability keeps only its message filter for this turn, as does every
+/// capability in `hidden` (`hidden_reason_capabilities`).
 pub(super) fn reason_capability_registry<A: RuntimeHostAdapter>(
     adapter: &A,
     query_history_allowed: bool,
+    hidden: &[&str],
 ) -> CapabilityRegistry {
     let mut registry = adapter.capability_registry();
+    for id in hidden {
+        if let Some(capability) = registry.get(id).map(Arc::clone) {
+            registry.register(MessageFilterOnlyCapability(capability));
+        }
+    }
     if !query_history_allowed {
         // Persisted history may contain raw text removed by earlier prompt
         // hooks. Preserve the owning capability's message filter while
@@ -103,7 +126,8 @@ pub(crate) async fn reason_turn_context<A: RuntimeHostAdapter>(
         &mut turn_inputs.mcp_tool_definitions,
     )
     .await?;
-    let registry = reason_capability_registry(adapter, query_history_allowed);
+    let hidden = hidden_reason_capabilities(adapter, org_id, session_id).await?;
+    let registry = reason_capability_registry(adapter, query_history_allowed, &hidden);
     crate::host::runtime_context::assemble_turn_context_from_snapshot(
         turn_inputs.snapshot,
         adapter.message_store().as_ref(),

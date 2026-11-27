@@ -13,10 +13,12 @@ use std::sync::Arc;
 
 use crate::PlatformStore;
 use crate::capabilities::threads::{
-    PARENT_TOOL_NAMES, THREAD_TOOL_NAMES, open_assignment_for_thread, parent_tool_definitions,
-    parent_tools,
+    PARENT_TOOL_NAMES, open_assignment_for_thread, parent_tool_definitions, parent_tools,
 };
 use crate::capabilities::{finish_tool_for_child_session, report_progress_tool_for_child_session};
+use everruns_contracts::capability::delegation::{
+    COORDINATOR_CAPABILITY_ID, THREADS_CAPABILITY_ID,
+};
 
 /// Factory producing a platform store scoped to one organization and session.
 pub type PlatformStoreFactory = Arc<dyn Fn(i64, SessionId) -> Arc<dyn PlatformStore> + Send + Sync>;
@@ -104,16 +106,36 @@ impl HostToolAugmentor for PlatformToolAugmentor {
             definitions.push(tool.to_definition());
         }
         // A thread works its parent's assignment: it gets the parent tools
-        // (`parent_communication`) and never the thread tools (threads do not
-        // start threads).
+        // (`parent_communication`). The thread tools are hidden by
+        // `hidden_reason_capabilities`.
         if let Some(assignment) =
             open_assignment_for_thread(session_id, session_store.as_ref(), task_registry.as_ref())
                 .await?
         {
-            definitions.retain(|definition| !THREAD_TOOL_NAMES.contains(&definition.name()));
             definitions.extend(parent_tool_definitions(&assignment));
         }
         Ok(())
+    }
+
+    /// Decision: a child session (a thread or a spawned agent) never sees
+    /// Threads or Coordinator: threads do not start threads, and
+    /// `start_thread` refuses in any child, so offering it (and the
+    /// coordinator prompt that routes work to it) only invites a refused
+    /// call.
+    async fn hidden_reason_capabilities(
+        &self,
+        session_id: SessionId,
+        session_store: Arc<dyn SessionStore>,
+    ) -> Result<Vec<&'static str>> {
+        let child = session_store
+            .get_session(session_id)
+            .await?
+            .is_some_and(|session| session.parent_session_id.is_some());
+        Ok(if child {
+            vec![THREADS_CAPABILITY_ID, COORDINATOR_CAPABILITY_ID]
+        } else {
+            Vec::new()
+        })
     }
 
     async fn augment_act_tools(

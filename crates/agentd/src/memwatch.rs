@@ -170,6 +170,21 @@ pub fn turn_credits(used: u64, limit: u64) -> usize {
     (turns.saturating_sub(used) / TURN_BASE) as usize
 }
 
+/// How long an executor may stay parked ([`parked`]) before it restarts.
+pub const PARKED_FOR: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// Whether an executor is parked: it offers no turn credits and runs no
+/// turn, so nothing it does will free what it holds.
+///
+/// Decision (G1, 2026-11-27): an executor past the turns' share of its
+/// limit takes no turns, and below [`STOP_AT`] nothing else acts, so memory
+/// that turns do not free (it sat at 87% of 8 GiB for hours with the mirror
+/// trimmed) parked it for good and the run stopped. Parked for
+/// [`PARKED_FOR`], it drains and restarts as at [`RESTART_AT`].
+pub fn parked(used: u64, limit: u64, running: usize) -> bool {
+    limit > 0 && running == 0 && turn_credits(used, limit) == 0
+}
+
 /// Permille of the limit above which an executor drops its coldest idle
 /// mirrors, an eighth of them each second.
 const MIRROR_TRIM_AT: u64 = 500;
@@ -304,6 +319,18 @@ mod tests {
         assert_eq!(exec_level(950, 1000), ExecLevel::Stop);
         assert_eq!(exec_level(980, 1000), ExecLevel::Restart);
         assert_eq!(exec_level(5000, 0), ExecLevel::Ok);
+    }
+
+    #[test]
+    fn an_executor_with_no_credits_and_no_turns_is_parked() {
+        let limit = 1000 * TURN_BASE;
+        assert!(parked(870 * TURN_BASE, limit, 0));
+        assert!(
+            !parked(870 * TURN_BASE, limit, 1),
+            "a running turn will free memory"
+        );
+        assert!(!parked(600 * TURN_BASE, limit, 0), "it still takes turns");
+        assert!(!parked(870 * TURN_BASE, 0, 0), "no limit, never parked");
     }
 
     #[test]

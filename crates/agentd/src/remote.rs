@@ -176,6 +176,10 @@ pub fn merge(state: &mut ShardState, session: SessionId, delta: SessionDelta) ->
             return false;
         }
         new.definition = old.definition;
+        // The mirror may have dropped more than the shard (a resting mirror,
+        // `Remote::rest`): what it dropped is stored, so its own point
+        // stands while the shard's segments still reach it.
+        new.offloaded = new.offloaded.max(old.offloaded.min(new.flushed()));
         let first_new = new.events.first().map(seq);
         let mut events: Vec<Event> = old
             .events
@@ -214,6 +218,9 @@ pub struct Remote {
     homes: Mutex<HashMap<SessionId, ShardId>>,
     /// Per session, the shard's applied index of the mirror's copy.
     applied: Mutex<HashMap<SessionId, u64>>,
+    /// Mirrored sessions not running here: their mirrors keep only what
+    /// the object store does not hold yet ([`rest`](Self::rest)).
+    resting: Mutex<std::collections::HashSet<SessionId>>,
     /// Round trips and payload, for the bench.
     pub calls: crate::prom::Counters,
     /// Where live deltas go (each session's stream node).
@@ -238,6 +245,7 @@ impl Remote {
             http,
             shards: Default::default(),
             leaders: Default::default(),
+            resting: Default::default(),
             homes: Default::default(),
             applied: Default::default(),
             calls: Default::default(),
@@ -294,6 +302,29 @@ impl Remote {
         self.shared.state.write().sessions.remove(&session);
         self.applied.lock().remove(&session);
         self.homes.lock().remove(&session);
+        self.resting.lock().remove(&session);
+    }
+
+    /// `session` stopped running here: drop its mirror's stored events, now
+    /// and after every later refresh, until it runs again.
+    ///
+    /// Decision (executor heap profile, 8k coding sessions, 2026-11-27):
+    /// mirrors of sessions that had finished their turns held 88% of an
+    /// executor's memory, every event they last fetched, and a watch or a
+    /// whole refresh brought them back. A resting mirror keeps its metadata
+    /// and the unstored tail; its next turn pages older events from the
+    /// object store, as a node does after unloading a session.
+    pub fn rest(&self, session: SessionId) {
+        self.resting.lock().insert(session);
+        if let Some(s) = self.shared.state.write().sessions.get_mut(&session) {
+            s.drop_stored();
+        }
+    }
+
+    /// `session` runs here again: its mirror fills as refreshes bring
+    /// events in.
+    pub fn wake(&self, session: SessionId) {
+        self.resting.lock().remove(&session);
     }
 
     pub fn mirrored(&self) -> usize {
@@ -340,6 +371,11 @@ impl Remote {
             let mut state = self.shared.state.write();
             if merge(&mut state, session, delta) {
                 applied.insert(session, at);
+                if self.resting.lock().contains(&session)
+                    && let Some(s) = state.sessions.get_mut(&session)
+                {
+                    s.drop_stored();
+                }
                 (true, at > current)
             } else {
                 state.sessions.remove(&session);
@@ -702,6 +738,45 @@ mod tests {
         let state = remote.shared.state.read();
         assert_eq!(state.sessions[&id].last_sequence(), Some(7));
         assert!(!state.forwarded.contains_key(&id));
+    }
+
+    /// A resting mirror keeps only the unstored tail, whatever refreshes
+    /// bring (a whole view included), and fills again once it runs here.
+    #[test]
+    fn a_resting_mirror_holds_only_what_the_store_does_not() {
+        let remote = Remote::new(
+            crate::remote::EXECUTOR_IDS,
+            crate::store::Store::open("memory://").unwrap(),
+        )
+        .unwrap();
+        let id = SessionId::new();
+        remote.bind(id, 0);
+        let mut shard = ShardState::default();
+        let mut s = session(id, 1..=100, 0);
+        s.segments.push(crate::store::SegRef::legacy(1, 90, 0));
+        shard.sessions.insert(id, s.clone());
+        assert!(remote.absorb(id, 0, delta(&shard, 10, id, None)));
+        let held = |remote: &Remote| {
+            let state = remote.shared.state.read();
+            let s = &state.sessions[&id];
+            (s.offloaded, s.events.len(), s.last_sequence())
+        };
+        assert_eq!(held(&remote), (0, 100, Some(100)));
+
+        remote.rest(id);
+        assert_eq!(held(&remote), (90, 10, Some(100)), "the tail stays");
+        // New events join the dropped history, which the shard still holds.
+        s.events.push(event(id, 101));
+        shard.sessions.insert(id, s.clone());
+        assert!(remote.absorb(id, 0, delta(&shard, 11, id, Some(100))));
+        assert_eq!(held(&remote), (90, 11, Some(101)));
+        // A whole view brings everything back, and it is dropped again.
+        assert!(remote.absorb(id, 0, delta(&shard, 12, id, None)));
+        assert_eq!(held(&remote), (90, 11, Some(101)));
+
+        remote.wake(id);
+        assert!(remote.absorb(id, 0, delta(&shard, 13, id, None)));
+        assert_eq!(held(&remote), (0, 101, Some(101)), "running mirrors fill");
     }
 
     #[test]

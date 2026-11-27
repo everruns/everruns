@@ -96,7 +96,8 @@ funout:
   EBS it will be several times that, which is why waited round trips per
   turn are a budget).
 - **History in S3**: immutable segments with messages-only companions,
-  tiered compaction, snapshots. Idle sessions keep ~20 KB of metadata in
+  packed per store pass ([segment-packs.md](segment-packs.md)), tiered
+  compaction, snapshots. Idle sessions keep ~20 KB of metadata in
   memory and page history in when needed.
 - **Moves, rebalancing, draining and live membership** as funout built and
   proved them under `kill -9`.
@@ -560,7 +561,9 @@ work by prefix, and random org ids spread load across S3 partitions):
 1 250 segment PUTs/s plus blob PUTs from file writes. S3 handles 3 500 PUTs/s
 per prefix, and org-first random prefixes spread it further. Group flushing
 (several sessions' events in one segment) is the fallback if PUT cost
-dominates; funout's per-session segments are the starting point. Reads are
+dominates; funout's per-session segments are the starting point. PUT cost
+did dominate (5.7 PUTs per coding turn, 2026-11-26), and segments now go
+into one pack per shard per store pass ([segment-packs.md](segment-packs.md)). Reads are
 mostly range GETs that executors cache; with session affinity most warm
 turns read nothing from S3, and the bench reports the miss rate.
 
@@ -2506,6 +2509,15 @@ from 9,940 to 30,597 (4% of turns). Two jemalloc tunings (`narenas:4`,
 peak memory in same-commit soaks and cost 6-7% shard CPU, so the defaults
 stay. The next memory lever is live heap: the journal's event copies are
 about 60% of it at the peak.
+
+**Executor mirrors (2026-11-27).** The coding workload (75k verifier G1)
+stalled with executors full and idle. A heap profile of one executor at
+4.1 GB, 8,000 coding sessions on two executors, put 88% of it in the
+mirrors of sessions that had finished their turns: every event they last
+fetched, which a watch or a whole refresh brought back. A mirror at rest now
+keeps only metadata and the unstored tail (`Remote::rest`), and its next
+turn pages older events from the object store; an executor parked full with
+no turns for a minute restarts (`memwatch::parked`).
 
 ### Corrections after the architecture review (2026-11-09)
 

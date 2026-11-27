@@ -84,21 +84,19 @@ impl Node {
 
     /// Leader only: store sessions' unstored events in the object store and
     /// record the segments with `Stored`, so every replica can unload them.
-    /// A compaction (one segment for a trailing run) then deletes the pieces
-    /// it replaces.
+    /// Legacy segments a compaction replaced are marked retired; replaced
+    /// pack entries need nothing (`packs.rs` sweeps unnamed packs).
     pub(crate) async fn store_events(&self, idle_for: Duration) {
-        let stored = self.shared.flush(512, idle_for).await;
+        let stored = self.shared.flush(512, idle_for, self.cfg.node_id).await;
         if stored.is_empty() {
             return;
         }
-        let compacted: Vec<_> = stored
-            .iter()
-            .filter(|(_, _, compact)| *compact)
-            .map(|(session, seg, _)| (*session, *seg))
-            .collect();
         let commands = stored
-            .into_iter()
-            .map(|(session, seg, _)| crate::state::Command::Stored { session, seg })
+            .iter()
+            .map(|f| crate::state::Command::Stored {
+                session: f.session,
+                seg: f.seg,
+            })
             .collect();
         if let Err(error) = self
             .propose(crate::state::Command::Batch { commands })
@@ -107,12 +105,42 @@ impl Node {
             tracing::debug!(%error, "recording stored segments failed");
             return;
         }
+        // Decision: retire only what the applied state no longer names. A
+        // compaction the state ignored (the session moved away, or changed
+        // under the pass) leaves its old segments in use, and a retired
+        // segment is deleted a window later.
+        let retire: Vec<_> = {
+            let state = self.shared.state.read();
+            stored
+                .into_iter()
+                .filter(|f| f.compact)
+                .filter_map(|f| {
+                    let s = state.sessions.get(&f.session)?;
+                    if !s.segments.contains(&f.seg) {
+                        return None;
+                    }
+                    let gone: Vec<_> = f
+                        .replaced
+                        .into_iter()
+                        .filter(|old| old.pack.is_none() && !s.segments.contains(old))
+                        .collect();
+                    (!gone.is_empty()).then_some((f.session, gone))
+                })
+                .collect()
+        };
+        if retire.is_empty() {
+            return;
+        }
         let store = self.shared.store.clone();
         tokio::spawn(async move {
-            futures::stream::iter(compacted)
-                .for_each_concurrent(16, |(session, seg)| {
+            futures::stream::iter(retire)
+                .for_each_concurrent(16, |(session, gone)| {
                     let store = store.clone();
-                    async move { store.prune_segments(session, seg).await }
+                    async move {
+                        if let Err(error) = store.retire_segments(session, &gone).await {
+                            tracing::debug!(%session, %error, "retiring replaced segments failed");
+                        }
+                    }
                 })
                 .await;
         });

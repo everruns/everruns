@@ -23,6 +23,11 @@ on:
         required: false
         default: ''
         type: string
+      amd64_only:
+        description: 'Main snapshot only: build linux/amd64 alone (the nightly v2 workflow checks)'
+        required: false
+        default: false
+        type: boolean
   # Gate PR builds on Docker-relevant paths. PR validation exists to catch
   # Dockerfile / workflow regressions before they land. Rust/UI source
   # changes are validated by tag builds at release time. PR builds still
@@ -73,6 +78,7 @@ jobs:
           GIT_REF: ${{ github.ref }}
           REF_NAME: ${{ github.ref_name }}
           INPUT_TAG: ${{ inputs.tag }}
+          INPUT_AMD64_ONLY: ${{ inputs.amd64_only }}
           COMMIT_SHA: ${{ github.sha }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: python3 scripts/docker-release-source.py

@@ -1,0 +1,145 @@
+# Full-org workflow checks on data plane v2.
+#
+# Runs scripts/e2e-v2-workflows.mjs: the Compose stack (control plane plus
+# agentd, v2 by default) from one commit's images, every workflow a real org
+# uses, with a real model (GPT-6 Luna through OpenRouter), one pass or fail
+# per workflow in the run summary. Design and the row list:
+# knowledge/execution/data-plane-v2/e2e-workflows.md.
+#
+# Images: a nightly run tests main's images for its own commit. Main pushes
+# build no images, so when they are missing the run dispatches a main
+# snapshot of Docker Publish (amd64 only) and waits for it, then tests the
+# commit that snapshot built. A dispatch may name any published tag instead.
+#
+# Main only: the suite needs the Doppler vault token, which never runs next to
+# pull request code (scripts/test-workflow-vault-token-scope.sh). A change to
+# the suite is checked by dispatching this workflow on main after it lands.
+name: v2 Workflows
+
+on:
+  schedule:
+    - cron: '0 8 * * *'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Image tag to test (default: main snapshot of the latest main commit, built if missing)'
+        required: false
+        type: string
+      rows:
+        description: 'Rows to run, space separated (default: all)'
+        required: false
+        type: string
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  images:
+    name: Resolve images
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    timeout-minutes: 200
+    permissions:
+      contents: read
+      actions: write
+    outputs:
+      tag: ${{ steps.resolve.outputs.tag }}
+    steps:
+      - name: Resolve or build the images under test
+        id: resolve
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          INPUT_TAG: ${{ inputs.tag }}
+          MAIN_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          have() {
+            for image in everruns-server everruns-worker everruns-ui agentd; do
+              docker manifest inspect "ghcr.io/everruns/$image:$1" >/dev/null 2>&1 || return 1
+            done
+          }
+          if [ -n "$INPUT_TAG" ]; then
+            have "$INPUT_TAG" || { echo "::error::images for $INPUT_TAG are not published"; exit 1; }
+            tag="$INPUT_TAG"
+          elif have "$MAIN_SHA"; then
+            tag="$MAIN_SHA"
+          else
+            since="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            gh workflow run docker-publish.yml --repo "$REPO" --ref main -f amd64_only=true
+            run=""
+            for _ in $(seq 1 30); do
+              sleep 10
+              run="$(gh api "repos/$REPO/actions/workflows/docker-publish.yml/runs?event=workflow_dispatch&branch=main&created=%3E%3D$since&per_page=1" \
+                --jq '.workflow_runs[0] | select(.) | "\(.id) \(.head_sha)"')"
+              [ -n "$run" ] && break
+            done
+            [ -n "$run" ] || { echo "::error::the Docker Publish snapshot run did not start"; exit 1; }
+            read -r id tag <<<"$run"
+            echo "Docker Publish snapshot: https://github.com/$REPO/actions/runs/$id (commit $tag)"
+            for _ in $(seq 1 180); do
+              status="$(gh api "repos/$REPO/actions/runs/$id" --jq '"\(.status) \(.conclusion)"')"
+              case "$status" in
+                "completed success") break ;;
+                completed*) echo "::error::Docker Publish snapshot ended: $status"; exit 1 ;;
+              esac
+              sleep 60
+            done
+            have "$tag" || { echo "::error::snapshot finished without images for $tag"; exit 1; }
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "Images under test: $tag"
+
+  workflows:
+    name: Full-org workflows on v2
+    needs: images
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 22
+
+      - name: Install Doppler CLI
+        id: doppler_install
+        # Absorbs one transient installer failure; see
+        # scripts/test-doppler-install-retry.sh for why.
+        continue-on-error: true
+        uses: dopplerhq/cli-action@4819d808ab99e5cde19a0637a16536a4038fad73 # v4
+
+      - name: Pause before Doppler CLI retry
+        if: steps.doppler_install.outcome == 'failure'
+        run: sleep 15
+
+      - name: Install Doppler CLI (retry)
+        if: steps.doppler_install.outcome == 'failure'
+        uses: dopplerhq/cli-action@4819d808ab99e5cde19a0637a16536a4038fad73 # v4
+
+      # The provider key reaches the suite only through `doppler run`.
+      - name: Run the workflows
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+          EVERRUNS_TAG: ${{ needs.images.outputs.tag }}
+          ROWS: ${{ inputs.rows }}
+          E2E_REPORT: ${{ runner.temp }}/v2-workflows.json
+          E2E_LOGS: ${{ runner.temp }}
+        # shellcheck disable=SC2086 # ROWS is a list of row names
+        run: doppler run -- node scripts/e2e-v2-workflows.mjs $ROWS
+
+      - name: Keep the report and logs
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: v2-workflows
+          path: |
+            ${{ runner.temp }}/v2-workflows.json
+            ${{ runner.temp }}/everruns-e2e-v2-*.log
+          if-no-files-found: ignore
+          retention-days: 14
