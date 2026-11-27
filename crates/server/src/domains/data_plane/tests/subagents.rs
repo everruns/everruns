@@ -115,9 +115,9 @@ async fn a_grandchild_that_arrives_before_its_parent_waits_for_it() {
 }
 
 /// A child of its parent's own agent: the shard names the Engine's
-/// session-local id for that agent, which no agent here has. The record
-/// takes the parent's agent rather than fail and stall the feed (the v2
-/// workflows suite's threads row).
+/// session-local ids for that agent and its harness, which nothing here
+/// has. The record takes the parent's rather than fail and stall the feed
+/// (the v2 workflows suite's threads row).
 #[tokio::test]
 async fn a_child_of_its_parents_own_agent_runs_the_parents_agent() {
     let (cp, _, _) = control_plane().await;
@@ -141,7 +141,7 @@ async fn a_child_of_its_parents_own_agent_runs_the_parents_agent() {
 
     let origin = SubagentOrigin {
         parent_session_id: parent.id.to_string(),
-        harness_id: harness.to_string(),
+        harness_id: everruns_contracts::typed_id::HarnessId::new().to_string(),
         agent_id: Some(everruns_contracts::typed_id::AgentId::new().to_string()),
         title: Some("Color check".into()),
         locale: None,
@@ -153,5 +153,6 @@ async fn a_child_of_its_parents_own_agent_runs_the_parents_agent() {
         .unwrap();
     let record = cp.db.get_session(ORG, child).await.unwrap().unwrap();
     assert_eq!(record.agent_id, Some(agent));
+    assert_eq!(record.harness_id, Some(harness));
     assert_eq!(record.parent_session_id, Some(parent.id));
 }

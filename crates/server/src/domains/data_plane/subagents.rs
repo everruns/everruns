@@ -18,8 +18,8 @@
 //!   nothing sends its messages to the platform's workers.
 //! - A replayed record finds the child there and changes nothing.
 //! - A child names its agent by the id it has here, except a child of its
-//!   parent's own agent: the shard names that one by the Engine's
-//!   session-local id, and the record takes the parent's agent instead.
+//!   parent's own agent: the shard names that agent and its harness by the
+//!   Engine's session-local ids, and the record takes the parent's instead.
 //! - A parent not recorded yet holds the record back rather than drop it: a
 //!   grandchild started on one shard can reach the feed before its parent,
 //!   a child of another shard, does (codex review, 2026-11-24). The record
@@ -49,7 +49,7 @@ pub async fn record(
 ) -> anyhow::Result<()> {
     let child: SessionId = session_id.parse()?;
     let parent: SessionId = origin.parent_session_id.parse()?;
-    let harness_id: HarnessId = origin.harness_id.parse()?;
+    let named_harness: HarnessId = origin.harness_id.parse()?;
     let named: Option<AgentId> = origin.agent_id.as_deref().map(str::parse).transpose()?;
     if cp.db.get_session(org_id, child).await?.is_some() {
         return Ok(());
@@ -74,12 +74,27 @@ pub async fn record(
         tracing::warn!(org_id, session_id, %parent, "a subagent whose parent never got a record; skipped");
         return Ok(());
     };
-    // A child of its parent's own agent names the Engine's session-local id
-    // for it, which no agent here has (the v2 workflows suite's threads row
-    // stalled the feed on it): it runs its parent's agent.
+    // A child of its parent's own agent names the Engine's session-local ids
+    // for that agent and its harness, which nothing here has (the v2
+    // workflows suite's threads row stalled the feed on each): it runs its
+    // parent's agent on its parent's harness.
     let agent_id = match named {
         Some(id) if cp.db.get_agent_config(org_id, id).await?.is_some() => Some(id),
         _ => parent_row.agent_id,
+    };
+    let harness_id = match parent_row.harness_id {
+        Some(parent_harness)
+            if crate::domains::harnesses::queries::resolve_effective(
+                &cp.db,
+                org_id,
+                named_harness,
+            )
+            .await?
+            .is_none() =>
+        {
+            parent_harness
+        }
+        _ => named_harness,
     };
     let plane = cp
         .db
