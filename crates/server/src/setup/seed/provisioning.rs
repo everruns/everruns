@@ -15,6 +15,14 @@ pub(super) async fn provision_connected_providers(
     host_composition: &HostComposition,
     connected: &[Uuid],
 ) {
+    // Startup may already have put the default org on a data plane, where
+    // its providers travel as connections. The env-key write went straight
+    // to the database, not through the provider service that syncs them, so
+    // without this the org's executor has no provider and every turn fails.
+    // (When placement comes second, placing the org syncs them.)
+    let mut cp = crate::domains::data_plane::ControlPlane::from_env(db.clone());
+    cp.encryption = Some(encryption.clone());
+    crate::domains::data_plane::providers::sync_logged(&cp, DEFAULT_ORG_ID).await;
     if let Err(error) = seed_models_with_host_composition(db, host_composition).await {
         tracing::warn!(%error, "Seeding models for env-connected providers failed (non-fatal)");
     }
