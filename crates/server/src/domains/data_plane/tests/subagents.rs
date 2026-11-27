@@ -113,3 +113,45 @@ async fn a_grandchild_that_arrives_before_its_parent_waits_for_it() {
     let record = cp.db.get_session(ORG, grandchild).await.unwrap().unwrap();
     assert_eq!(record.parent_session_id, Some(child));
 }
+
+/// A child of its parent's own agent: the shard names the Engine's
+/// session-local id for that agent, which no agent here has. The record
+/// takes the parent's agent rather than fail and stall the feed (the v2
+/// workflows suite's threads row).
+#[tokio::test]
+async fn a_child_of_its_parents_own_agent_runs_the_parents_agent() {
+    let (cp, _, _) = control_plane().await;
+    let harness = harness(&cp.db, ORG).await;
+    let agent = everruns_contracts::typed_id::AgentId::new();
+    let mut definition = crate::platform_chat_agent::definition(harness, agent);
+    definition.name = format!("threads-{}", uuid::Uuid::new_v4().simple());
+    definition.is_built_in = false;
+    cp.db
+        .create_agent_with_id(ORG, agent, definition)
+        .await
+        .unwrap()
+        .expect("a new id");
+    let mut row = crate::storage::test_database::test_session_row(ORG);
+    row.harness_id = Some(harness);
+    row.agent_id = Some(agent);
+    let parent = cp.db.create_session(row).await.unwrap();
+    sessions::created(&cp, ORG, parent.id, harness, Some(agent), &[], None)
+        .await
+        .unwrap();
+
+    let origin = SubagentOrigin {
+        parent_session_id: parent.id.to_string(),
+        harness_id: harness.to_string(),
+        agent_id: Some(everruns_contracts::typed_id::AgentId::new().to_string()),
+        title: Some("Color check".into()),
+        locale: None,
+    };
+    let child = SessionId::new();
+    let now = chrono::Utc::now().timestamp_millis();
+    subagents::record(&cp, ORG, &child.to_string(), &origin, now)
+        .await
+        .unwrap();
+    let record = cp.db.get_session(ORG, child).await.unwrap().unwrap();
+    assert_eq!(record.agent_id, Some(agent));
+    assert_eq!(record.parent_session_id, Some(parent.id));
+}
