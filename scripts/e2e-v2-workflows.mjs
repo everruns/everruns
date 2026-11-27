@@ -173,9 +173,12 @@ async function chooseModel() {
 
 let modelId;
 const runId = randomBytes(3).toString("hex");
+// Names are unique per org: a retried row creates its agents again, so each
+// one gets its own counter.
+let agents = 0;
 async function agent(name, systemPrompt, capabilities = []) {
   const created = await post("/agents", {
-    name: `e2e-${name}-${runId}`,
+    name: `e2e-${name}-${runId}-${++agents}`,
     system_prompt: systemPrompt,
     default_model_id: modelId,
     capabilities: capabilities.map((ref) => (typeof ref === "string" ? { ref } : ref)),
