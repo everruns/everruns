@@ -128,7 +128,7 @@ impl Drop for QueuedEvent {
 
 fn reserve_retained_bytes(retained: &AtomicUsize, bytes: usize, capacity: usize) -> bool {
     retained
-        .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+        .try_update(Ordering::AcqRel, Ordering::Acquire, |current| {
             current
                 .checked_add(bytes)
                 .filter(|total| *total <= capacity)

@@ -2,7 +2,7 @@
 name: everruns
 description: Everruns, the open-source runtime for durable AI agents. Build agents into Rust applications with the everruns crate; install, upgrade, or remove a self-hosted Everruns with Docker or Kubernetes; and create, run, debug, evaluate, and ship agents on it through the everruns CLI, the MCP server, the REST API, or the SDKs. Use for any Everruns task, from product questions and getting started to agent definitions, sessions, channels, triggers, costs, and health.
 license: MIT
-compatibility: Framework work needs Rust 1.96+. Platform work needs the everruns CLI, an Everruns MCP connection, or HTTP access to an Everruns deployment.
+compatibility: Framework work needs Rust 1.100+. Platform work needs the everruns CLI, an Everruns MCP connection, or HTTP access to an Everruns deployment.
 metadata:
   category: platform
   version: "6.3"

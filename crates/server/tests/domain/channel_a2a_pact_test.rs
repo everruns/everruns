@@ -425,7 +425,7 @@ async fn authentication_failures_are_a_bare_401() {
     let hs256 = jsonwebtoken::encode(
         &jsonwebtoken::Header::new(jsonwebtoken::Algorithm::HS256),
         &json!({ "iss": ISSUER, "aud": AUDIENCE, "sub": "u", "iat": now, "exp": now + 60 }),
-        &jsonwebtoken::EncodingKey::from_secret(b"not-an-allowed-platform-key"),
+        &jsonwebtoken::EncodingKey::from_secret(b"not-an-allowed-platform-key").unwrap(),
     )
     .unwrap();
 

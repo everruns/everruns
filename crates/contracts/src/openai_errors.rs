@@ -84,14 +84,9 @@ pub fn is_openai_request_too_large(status: http::StatusCode, error_text: &str) -
     }
 
     // Generic patterns that could appear with various status codes
-    if error_lower.contains("tokens must be reduced")
+    error_lower.contains("tokens must be reduced")
         || error_lower.contains("reduce the length")
         || error_lower.contains("input is too long")
-    {
-        return true;
-    }
-
-    false
 }
 
 /// Parses the integer that immediately follows the first `marker` in `text`,

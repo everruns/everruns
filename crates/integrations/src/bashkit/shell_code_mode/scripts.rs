@@ -96,6 +96,7 @@ impl ToolsBuiltin {
         self.run_script(&script, input, ctx).await
     }
 
+    #[allow(clippy::result_large_err)]
     async fn saved_scripts(&self) -> Result<Vec<SavedScript>, ExecResult> {
         if let Some(list) = self
             .saved_list
@@ -119,6 +120,7 @@ impl ToolsBuiltin {
         Ok(list)
     }
 
+    #[allow(clippy::result_large_err)]
     async fn find_script(&self, name: &str) -> Result<Option<SavedScript>, ExecResult> {
         let name = name.to_ascii_lowercase();
         Ok(self

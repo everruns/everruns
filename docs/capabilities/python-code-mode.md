@@ -144,10 +144,9 @@ omits Everruns' kernel boundary; use that only under an independently hardened
 execution host. Model arguments and agent capability config cannot choose the
 binary or weaken its limits.
 
-The bridge and worker are pinned together at 1.5.0 to support Everruns' Rust
-1.96 toolchain. Monty 1.6/1.7 require Rust 1.98. Keep these dependencies and the
-installed worker aligned when upgrading; an arbitrary newer runtime is not a
-supported replacement.
+The bridge and worker are pinned together at 1.5.0 against the Monty subprocess
+protocol and types. Keep these dependencies and the installed worker aligned
+when upgrading; an arbitrary newer runtime is not a supported replacement.
 
 ## Persistence by platform
 

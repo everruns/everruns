@@ -372,6 +372,9 @@ struct Booted {
 
 impl Target {
     /// The stateful server, booted on first use.
+    // The error is the HTTP response handed back to the caller; axum's
+    // `Response` is not ours to shrink.
+    #[allow(clippy::result_large_err)]
     async fn booted(&self) -> Result<&Booted, Response> {
         self.booted
             .get_or_try_init(|| async {

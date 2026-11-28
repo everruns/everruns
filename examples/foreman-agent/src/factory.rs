@@ -133,7 +133,7 @@ impl Factory {
             workspace: workspace.into(),
             job: job.into(),
             tests: None,
-            test_image: "rust:1.96-bookworm".to_owned(),
+            test_image: "rust:1.100-bookworm".to_owned(),
             run_id: run_id(),
             watcher: Arc::new(Silent),
         }

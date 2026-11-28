@@ -181,9 +181,10 @@ mod daytona {
             settings.with_interface(progenitor::InterfaceStyle::Builder);
             settings
         };
-        let tokens = progenitor::Generator::new(&settings)
-            .generate_tokens(&spec)
-            .unwrap_or_else(|e| panic!("failed to generate the client from {src}: {e}"));
+        let tokens = progenitor::Generator::build(&settings, &spec)
+            .unwrap_or_else(|e| panic!("failed to set up the client generator for {src}: {e}"))
+            .generate_sdk()
+            .into_stream();
         let path = std::path::PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR")).join(out);
         std::fs::write(path, tokens.to_string()).expect("write generated client");
     }

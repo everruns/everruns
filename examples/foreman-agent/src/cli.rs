@@ -45,7 +45,7 @@ pub struct Run {
     pub tests: Option<String>,
 
     /// Docker image containing the project toolchain and offline dependencies.
-    #[arg(long, default_value = "rust:1.96-bookworm")]
+    #[arg(long, default_value = "rust:1.100-bookworm")]
     pub test_image: String,
 
     /// An external agent's command line, overriding `--worker`.
@@ -65,7 +65,7 @@ pub struct Demo {
     pub repo: Option<PathBuf>,
 
     /// Docker image for the shell fixture tests.
-    #[arg(long, default_value = "rust:1.96-bookworm")]
+    #[arg(long, default_value = "rust:1.100-bookworm")]
     pub test_image: String,
 
     /// Who does the work. The same choice `run` offers.

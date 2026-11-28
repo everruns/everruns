@@ -178,9 +178,5 @@ pub(crate) fn should_skip_thread_reply(
 
     // Ignore bot-authored history entries. We cannot safely treat arbitrary
     // Slack bot output as trusted assistant context.
-    if reply.bot_id.is_some() {
-        return true;
-    }
-
-    false
+    reply.bot_id.is_some()
 }

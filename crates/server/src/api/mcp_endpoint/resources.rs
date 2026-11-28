@@ -323,7 +323,8 @@ async fn template_read(
             Ok(Err(e)) => return Some(Err(TemplateReadError::Failed(e.to_string()))),
             Err(e) => return Some(Err(e.into())),
         }
-    } else if let Some(session_id) = template_param(uri, SESSION_URI_PREFIX) {
+    } else {
+        let session_id = template_param(uri, SESSION_URI_PREFIX)?;
         let session = crate::domains::sessions::GetSession {
             session_id: session_id.to_string(),
         }
@@ -334,8 +335,6 @@ async fn template_read(
             Ok(Err(e)) => return Some(Err(TemplateReadError::Failed(e.to_string()))),
             Err(e) => return Some(Err(e.into())),
         }
-    } else {
-        return None;
     };
     link_builder(state).decorate_value_links(&mut value);
     Some(

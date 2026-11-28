@@ -394,7 +394,7 @@ impl SessionActorStore for MemoryActors {
         self.renews.fetch_add(1, Ordering::SeqCst);
         if self
             .failing_renews
-            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |left| {
+            .try_update(Ordering::SeqCst, Ordering::SeqCst, |left| {
                 left.checked_sub(1)
             })
             .is_ok()
@@ -482,7 +482,7 @@ impl SessionActorStore for MemoryActors {
     ) -> Result<ActorJournal> {
         if self
             .failing_reads
-            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |left| {
+            .try_update(Ordering::SeqCst, Ordering::SeqCst, |left| {
                 left.checked_sub(1)
             })
             .is_ok()
@@ -493,7 +493,7 @@ impl SessionActorStore for MemoryActors {
         }
         if self
             .backend_down_reads
-            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |left| {
+            .try_update(Ordering::SeqCst, Ordering::SeqCst, |left| {
                 left.checked_sub(1)
             })
             .is_ok()

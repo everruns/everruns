@@ -29,8 +29,7 @@ host mounts, socket adapter, raw credential material or automatic shell fallback
 All effects use existing tools, their current turn allowlist and policy chains.
 Missing egress is explicitly disabled, preventing standalone transport fallback.
 
-Monty 1.5.0 is pinned with its subprocess protocol and types to retain the
-repository's Rust 1.96 contract; 1.6 and 1.7 require Rust 1.98. Upgrade the host
+Monty 1.5.0 is pinned with its subprocess protocol and types. Upgrade the host
 crate, runtime binary, snapshot version and qualification together. Parser
 crashes remain contained in disposable workers; a process boundary alone is
 not an OS privilege boundary.

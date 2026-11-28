@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.7
-FROM rust:1.96-slim-trixie AS build
+FROM rust:1.100-slim-trixie AS build
 WORKDIR /src
 COPY . .
 # The optional secret extends Cargo's normal trust for managed build proxies.

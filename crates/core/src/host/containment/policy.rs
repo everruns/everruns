@@ -255,10 +255,7 @@ fn long_option_is_safe(
         *index += 1;
         return *index < args.len();
     }
-    if options.long_optional.contains(&flag) {
-        return true;
-    }
-    false
+    options.long_optional.contains(&flag)
 }
 
 fn short_cluster_is_safe(

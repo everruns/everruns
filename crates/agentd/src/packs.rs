@@ -67,7 +67,7 @@ impl PackId {
     pub fn new(shard: u32, inc: u64, writer: u64) -> Self {
         let now = crate::node::now_ms().max(0) as u64 * 1000;
         let prev = STAMP
-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |prev| {
+            .try_update(Ordering::AcqRel, Ordering::Acquire, |prev| {
                 Some(now.max(prev + 1))
             })
             .unwrap_or(0);

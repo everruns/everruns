@@ -131,6 +131,7 @@ struct SendBody {
 
 /// An input message's parts, inline images written to the session's
 /// files first (`gateway_input.rs`).
+#[allow(clippy::result_large_err)] // the Err is the caller's HTTP response
 async fn input_parts(
     gateway: &Gateway,
     session: SessionId,
