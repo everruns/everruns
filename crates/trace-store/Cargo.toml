@@ -23,7 +23,7 @@ arrow = { version = "59.2", default-features = false }
 bytes.workspace = true
 chrono.workspace = true
 clap.workspace = true
-datafusion = { version = "55.2", default-features = false, features = ["parquet"] }
+datafusion = { version = "56.0", default-features = false, features = ["parquet"] }
 futures.workspace = true
 # Reuse the platform's cancellation-safe SQLx transaction guards.
 everruns-durable.workspace = true
